@@ -712,16 +712,6 @@ def get_round_results(round_id):
         'results': results
     })
 
-@app.before_first_request
-def initialize_app():
-    db.create_all()
-    # Set base price to 10 for all existing players
-    try:
-        Player.query.update({Player.base_price: 10})
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-
 def finalize_round_bids(round):
     if not round:
         return
