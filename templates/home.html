@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-4 mb-3">Football Player Auction Results</h1>
+            <div class="card bg-light">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 text-center">
+                            <h5 class="text-muted">Total Teams</h5>
+                            <h2 class="mb-0">{{ teams|length }}</h2>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <h5 class="text-muted">Players Sold</h5>
+                            <h2 class="mb-0">{{ sold_players|length }}</h2>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <h5 class="text-muted">Total Rounds</h5>
+                            <h2 class="mb-0">{{ rounds|length }}</h2>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <h5 class="text-muted">Highest Bid</h5>
+                            <h2 class="mb-0">₹{{ highest_bid }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <ul class="nav nav-tabs" id="resultTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="teams-tab" data-bs-toggle="tab" href="#teams" role="tab">
+                        Team Summary
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="rounds-tab" data-bs-toggle="tab" href="#rounds" role="tab">
+                        Round History
+                    </a>
+                </li>
+            </ul>
+
+            <div class="tab-content mt-3" id="resultTabsContent">
+                <!-- Team Summary Tab -->
+                <div class="tab-pane fade show active" id="teams" role="tabpanel">
+                    <div class="row">
+                        {% for team in teams %}
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="card h-100">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="card-title mb-0">{{ team.name }}</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between mb-3">
+                                        <span>Players Bought:</span>
+                                        <strong>{{ team.players|length }}</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-3">
+                                        <span>Budget Spent:</span>
+                                        <strong>₹{{ team.total_spent }}</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span>Remaining Budget:</span>
+                                        <strong>₹{{ team.remaining_budget }}</strong>
+                                    </div>
+                                    <hr>
+                                    <h6 class="mb-3">Squad Composition:</h6>
+                                    <div class="small">
+                                        {% for position, count in team.positions.items() %}
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>{{ position }}:</span>
+                                            <span>{{ count }}</span>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Round History Tab -->
+                <div class="tab-pane fade" id="rounds" role="tabpanel">
+                    {% if rounds %}
+                        <div class="accordion" id="roundsAccordion">
+                            {% for round in rounds %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                            data-bs-target="#round{{ round.id }}">
+                                        {{ round.position }} - {{ round.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    </button>
+                                </h2>
+                                <div id="round{{ round.id }}" class="accordion-collapse collapse" data-bs-parent="#roundsAccordion">
+                                    <div class="accordion-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Player</th>
+                                                        <th>Team</th>
+                                                        <th class="text-end">Bid Amount</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="round-results" data-round-id="{{ round.id }}">
+                                                    <tr>
+                                                        <td colspan="3" class="text-center">
+                                                            <div class="spinner-border spinner-border-sm" role="status">
+                                                                <span class="visually-hidden">Loading...</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">No rounds have been completed yet.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load round results when accordion is opened
+    const accordion = document.getElementById('roundsAccordion');
+    if (accordion) {
+        accordion.addEventListener('show.bs.collapse', function(e) {
+            const roundId = e.target.id.replace('round', '');
+            loadRoundResults(roundId);
+        });
+    }
+});
+
+function loadRoundResults(roundId) {
+    const tbody = document.querySelector(`.round-results[data-round-id="${roundId}"]`);
+    if (tbody.children.length === 1 && tbody.querySelector('.spinner-border')) {
+        fetch(`/admin/round-results/${roundId}`)
+            .then(response => response.json())
+            .then(data => {
+                let html = '';
+                data.results.forEach(result => {
+                    html += `
+                        <tr>
+                            <td>${result.player_name}</td>
+                            <td>
+                                <span class="${result.team_name ? 'text-success' : 'text-muted'}">
+                                    ${result.team_name || 'Unsold'}
+                                </span>
+                            </td>
+                            <td class="text-end">₹${result.price || '-'}</td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            })
+            .catch(error => {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="text-center text-danger">
+                            Failed to load results. Please try again.
+                        </td>
+                    </tr>
+                `;
+            });
+    }
+}
+</script>
+{% endblock %}

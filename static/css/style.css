@@ -1,0 +1,212 @@
+/* General Styles */
+body {
+    background-color: #f8f9fa;
+}
+
+/* Navbar Styles */
+.navbar {
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Card Styles */
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+.card-title {
+    color: #2c3e50;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+/* Player Card Specific Styles */
+.player-card {
+    height: 100%;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(145deg, #ffffff, #f0f0f0);
+}
+
+.player-card .card-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.player-card .card-title {
+    font-size: 1.1rem;
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+}
+
+.player-info {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 1rem;
+}
+
+.nationality-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background-color: #e9ecef;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Bid Table Styles */
+.bid-history-table {
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.bid-history-table th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    padding: 1rem;
+}
+
+.bid-history-table td {
+    padding: 1rem;
+    vertical-align: middle;
+}
+
+.bid-history-table tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Modal Styles */
+.modal-content {
+    border-radius: 15px;
+    border: none;
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 15px 15px 0 0;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+#playerName {
+    color: #2c3e50;
+    margin-bottom: 1rem;
+}
+
+/* Button Styles */
+.btn-primary {
+    background-color: #3498db;
+    border-color: #3498db;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+    transform: translateY(-1px);
+}
+
+.btn-outline-primary {
+    color: #3498db;
+    border-color: #3498db;
+}
+
+.btn-outline-primary:hover {
+    background-color: #3498db;
+    color: white;
+}
+
+/* Timer Styles */
+#timeRemaining {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #e74c3c;
+    background-color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    display: inline-block;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Team Status Card */
+.team-status {
+    background: linear-gradient(145deg, #ffffff, #f0f0f0);
+    border-radius: 10px;
+    border: none;
+}
+
+.team-status .card-header {
+    background-color: transparent;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    padding: 1rem 1.25rem;
+}
+
+#teamPlayers {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+#teamPlayers .list-group-item {
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    border: 1px solid rgba(0,0,0,0.1);
+    transition: all 0.2s;
+}
+
+#teamPlayers .list-group-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(5px);
+}
+
+/* Form Styles */
+.form-control {
+    border-radius: 8px;
+    border: 1px solid #ced4da;
+    padding: 0.5rem 1rem;
+}
+
+.form-control:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+/* Alert Styles */
+.alert {
+    border-radius: 10px;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .card-title {
+        font-size: 1rem;
+    }
+    
+    .btn {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.9rem;
+    }
+}
