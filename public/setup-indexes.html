@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Setup - Create Indexes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .project-info {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+
+        .project-info strong {
+            color: #667eea;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .index-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .index-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .index-card h3 {
+            color: #667eea;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .index-card p {
+            color: #6c757d;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .fields {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .fields div {
+            padding: 4px 0;
+            color: #495057;
+        }
+
+        .create-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .create-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .status.required {
+            background: #ffc107;
+            color: #000;
+        }
+
+        .checklist {
+            background: #e7f5ff;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 30px;
+        }
+
+        .checklist h3 {
+            color: #0066ff;
+            margin-bottom: 15px;
+        }
+
+        .checklist-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+        }
+
+        .checklist-item input[type="checkbox"] {
+            margin-right: 12px;
+            width: 18px;
+            height: 18px;
+        }
+
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #28a745;
+            color: white;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .alert {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .alert-icon {
+            font-size: 20px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔥 Firebase Setup Assistant</h1>
+            <p>Create Firestore Indexes with One Click</p>
+        </div>
+
+        <div class="content">
+            <div class="project-info">
+                <strong>📦 Project ID:</strong> eaguedemo<br>
+                <strong>📅 Setup Date:</strong> 2025-10-03
+            </div>
+
+            <div class="alert">
+                <span class="alert-icon">⚠️</span>
+                <strong>Important:</strong> Make sure you're logged into Firebase Console with the account that owns the <strong>eaguedemo</strong> project before clicking the buttons below.
+            </div>
+
+            <div class="section">
+                <h2>Required Firestore Indexes</h2>
+                <div class="alert">
+                    <span class="alert-icon">ℹ️</span>
+                    <strong>Note:</strong> Composite indexes cannot be created via URL links. Use the Firebase CLI commands below or manually create them in Firebase Console.
+                </div>
+
+                <!-- Index 1 -->
+                <div class="index-card">
+                    <h3>1. Password Reset Requests (status + requestedAt) <span class="status required">REQUIRED</span></h3>
+                    <p>Used for filtering pending password reset requests and sorting by date</p>
+                    <div class="fields">
+                        <div>📁 Collection: <strong>passwordResetRequests</strong></div>
+                        <div>↗️ Field 1: status (Ascending)</div>
+                        <div>↘️ Field 2: requestedAt (Descending)</div>
+                        <div>↘️ Field 3: __name__ (Descending)</div>
+                    </div>
+                    <button class="create-btn" onclick="copyCommand('firebase firestore:indexes:create')" style="margin-right: 10px;">
+                        📋 Copy CLI Command
+                    </button>
+                    <a href="https://console.firebase.google.com/project/eaguedemo/firestore/indexes" target="_blank" class="create-btn" style="background: #28a745;">
+                        🔗 Open Console
+                    </a>
+                </div>
+
+                <!-- Index 2 -->
+                <div class="index-card">
+                    <h3>2. Teams (season_id + created_at) <span class="status required">REQUIRED</span></h3>
+                    <p>Used for filtering teams by season and sorting by creation date</p>
+                    <div class="fields">
+                        <div>📁 Collection: <strong>teams</strong></div>
+                        <div>↗️ Field 1: season_id (Ascending)</div>
+                        <div>↘️ Field 2: created_at (Descending)</div>
+                        <div>↘️ Field 3: __name__ (Descending)</div>
+                    </div>
+                    <button class="create-btn" onclick="copyCommand('firebase firestore:indexes:create')" style="margin-right: 10px;">
+                        📋 Copy CLI Command
+                    </button>
+                    <a href="https://console.firebase.google.com/project/eaguedemo/firestore/indexes" target="_blank" class="create-btn" style="background: #28a745;">
+                        🔗 Open Console
+                    </a>
+                </div>
+
+                <!-- Index 3 -->
+                <div class="index-card">
+                    <h3>3. Invites (seasonId + createdAt) <span class="status required">REQUIRED</span></h3>
+                    <p>Used for filtering invites by season and sorting by creation date</p>
+                    <div class="fields">
+                        <div>📁 Collection: <strong>invites</strong></div>
+                        <div>↗️ Field 1: seasonId (Ascending)</div>
+                        <div>↘️ Field 2: createdAt (Descending)</div>
+                        <div>↘️ Field 3: __name__ (Descending)</div>
+                    </div>
+                    <button class="create-btn" onclick="copyCommand('firebase firestore:indexes:create')" style="margin-right: 10px;">
+                        📋 Copy CLI Command
+                    </button>
+                    <a href="https://console.firebase.google.com/project/eaguedemo/firestore/indexes" target="_blank" class="create-btn" style="background: #28a745;">
+                        🔗 Open Console
+                    </a>
+                </div>
+
+                <!-- Index 4 -->
+                <div class="index-card">
+                    <h3>4. Invite Usages (inviteCode + usedAt) <span class="status required">REQUIRED</span></h3>
+                    <p>Used for viewing who used specific invites, sorted by date</p>
+                    <div class="fields">
+                        <div>📁 Collection: <strong>inviteUsages</strong></div>
+                        <div>↗️ Field 1: inviteCode (Ascending)</div>
+                        <div>↘️ Field 2: usedAt (Descending)</div>
+                        <div>↘️ Field 3: __name__ (Descending)</div>
+                    </div>
+                    <button class="create-btn" onclick="copyCommand('firebase firestore:indexes:create')" style="margin-right: 10px;">
+                        📋 Copy CLI Command
+                    </button>
+                    <a href="https://console.firebase.google.com/project/eaguedemo/firestore/indexes" target="_blank" class="create-btn" style="background: #28a745;">
+                        🔗 Open Console
+                    </a>
+                </div>
+
+                <!-- Index 5 -->
+                <div class="index-card">
+                    <h3>5. Users (role + seasonId) <span class="status required">REQUIRED</span></h3>
+                    <p>Used for finding committee admins by season</p>
+                    <div class="fields">
+                        <div>📁 Collection: <strong>users</strong></div>
+                        <div>↗️ Field 1: role (Ascending)</div>
+                        <div>↗️ Field 2: seasonId (Ascending)</div>
+                        <div>↗️ Field 3: __name__ (Ascending)</div>
+                    </div>
+                    <button class="create-btn" onclick="copyCommand('firebase firestore:indexes:create')" style="margin-right: 10px;">
+                        📋 Copy CLI Command
+                    </button>
+                    <a href="https://console.firebase.google.com/project/eaguedemo/firestore/indexes" target="_blank" class="create-btn" style="background: #28a745;">
+                        🔗 Open Console
+                    </a>
+                </div>
+
+                <!-- Index 6 -->
+                <div class="index-card">
+                    <h3>6. Football Players (season_id + is_sold) <span class="status required">REQUIRED</span></h3>
+                    <p>Used for finding available players for auction</p>
+                    <div class="fields">
+                        <div>📁 Collection: <strong>footballplayers</strong></div>
+                        <div>↗️ Field 1: season_id (Ascending)</div>
+                        <div>↗️ Field 2: is_sold (Ascending)</div>
+                        <div>↗️ Field 3: __name__ (Ascending)</div>
+                    </div>
+                    <button class="create-btn" onclick="copyCommand('firebase firestore:indexes:create')" style="margin-right: 10px;">
+                        📋 Copy CLI Command
+                    </button>
+                    <a href="https://console.firebase.google.com/project/eaguedemo/firestore/indexes" target="_blank" class="create-btn" style="background: #28a745;">
+                        🔗 Open Console
+                    </a>
+                </div>
+
+                <!-- Index 7 -->
+                <div class="index-card">
+                    <h3>7. Password Reset Requests (userId + status) <span class="status required">REQUIRED</span></h3>
+                    <p>Used for finding pending requests for specific users</p>
+                    <div class="fields">
+                        <div>📁 Collection: <strong>passwordResetRequests</strong></div>
+                        <div>↗️ Field 1: userId (Ascending)</div>
+                        <div>↗️ Field 2: status (Ascending)</div>
+                        <div>↗️ Field 3: __name__ (Ascending)</div>
+                    </div>
+                    <button class="create-btn" onclick="copyCommand('firebase firestore:indexes:create')" style="margin-right: 10px;">
+                        📋 Copy CLI Command
+                    </button>
+                    <a href="https://console.firebase.google.com/project/eaguedemo/firestore/indexes" target="_blank" class="create-btn" style="background: #28a745;">
+                        🔗 Open Console
+                    </a>
+                </div>
+            </div>
+
+            <div class="checklist">
+                <h3>✅ Setup Verification Checklist</h3>
+                <div class="checklist-item">
+                    <input type="checkbox" id="check1">
+                    <label for="check1">All 7 indexes created successfully</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="check2">
+                    <label for="check2">Security rules published in Firestore</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="check3">
+                    <label for="check3">Email/Password authentication enabled</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="check4">
+                    <label for="check4">First superadmin user created</label>
+                </div>
+                <div class="checklist-item">
+                    <input type="checkbox" id="check5">
+                    <label for="check5">Tested superadmin login and access</label>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #d4edda; border-radius: 8px;">
+                <strong style="color: #155724;">📖 Need More Help?</strong><br>
+                <p style="color: #155724; margin-top: 10px;">
+                    For detailed instructions on creating the first superadmin user and setting up security rules, 
+                    see <strong>FIREBASE_SETUP_GUIDE.md</strong> in your project root.
+                </p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Fantasy League Management System | Firebase Setup Assistant</p>
+            <p style="font-size: 12px; margin-top: 5px;">Project: eaguedemo | Last Updated: 2025-10-03</p>
+        </div>
+    </div>
+
+    <script>
+        // Copy command to clipboard
+        function copyCommand(command) {
+            navigator.clipboard.writeText(command).then(() => {
+                alert('✅ Command copied to clipboard!\n\nRun this in your terminal: ' + command);
+            }).catch(err => {
+                alert('❌ Failed to copy. Please copy manually: ' + command);
+            });
+        }
+
+        // Save checkbox state
+        document.querySelectorAll('.checklist-item input[type="checkbox"]').forEach(checkbox => {
+            // Load saved state
+            const saved = localStorage.getItem(checkbox.id);
+            if (saved === 'true') {
+                checkbox.checked = true;
+            }
+
+            // Save state on change
+            checkbox.addEventListener('change', function() {
+                localStorage.setItem(this.id, this.checked);
+            });
+        });
+    </script>
+</body>
+</html>

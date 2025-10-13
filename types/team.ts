@@ -1,0 +1,100 @@
+export interface TeamStats {
+  // Match Statistics
+  matches_played: number;
+  matches_won: number;
+  matches_lost: number;
+  matches_drawn: number;
+  
+  // Points
+  points: number; // Win=3, Draw=1, Loss=0
+  
+  // Goals
+  goals_scored: number;
+  goals_conceded: number;
+  goal_difference: number;
+  
+  // Performance
+  clean_sheets: number;
+  win_rate: number; // Calculated percentage
+  
+  // Position
+  current_position?: number; // League table position
+  highest_position?: number;
+  lowest_position?: number;
+}
+
+export interface TeamData {
+  id: string; // Custom ID format: team0001, team0002, etc.
+  team_id: string; // Same as id, kept for consistency
+  team_name: string;
+  team_code: string;
+  owner_uid?: string;
+  owner_name?: string;
+  owner_email?: string;
+  
+  // Financial
+  balance: number;
+  initial_balance: number;
+  total_spent: number;
+  
+  // Season
+  season_id: string;
+  season_name?: string;
+  
+  // Players
+  real_players: string[]; // Array of RealPlayer IDs (sspslpsl0001, etc.)
+  football_players: string[]; // Array of FootballPlayer IDs
+  real_players_count: number;
+  football_players_count: number;
+  
+  // Team Statistics
+  stats: TeamStats;
+  
+  // Status
+  is_active: boolean;
+  
+  // Metadata
+  logo?: string; // Base64 or URL
+  team_color?: string;
+  
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateTeamData {
+  team_name: string;
+  team_code: string;
+  owner_uid?: string;
+  owner_name?: string;
+  owner_email?: string;
+  initial_balance: number;
+  season_id: string;
+  logo?: string;
+  team_color?: string;
+}
+
+export interface UpdateTeamData {
+  team_name?: string;
+  team_code?: string;
+  owner_name?: string;
+  owner_email?: string;
+  initial_balance?: number;
+  balance?: number;
+  season_id?: string;
+  is_active?: boolean;
+  logo?: string;
+  team_color?: string;
+}
+
+export interface UpdateTeamStatsData {
+  matches_played?: number;
+  matches_won?: number;
+  matches_lost?: number;
+  matches_drawn?: number;
+  points?: number;
+  goals_scored?: number;
+  goals_conceded?: number;
+  goal_difference?: number;
+  clean_sheets?: number;
+  current_position?: number;
+}

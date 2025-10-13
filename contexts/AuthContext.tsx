@@ -1,0 +1,102 @@
+'use client';
+
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth } from '@/lib/firebase/config';
+import { getUserDocument } from '@/lib/firebase/auth';
+import { User, AuthState } from '@/types/user';
+import { setupTokenRefreshInterval } from '@/lib/token-refresh';
+
+interface AuthContextType extends AuthState {
+  firebaseUser: FirebaseUser | null;
+  refreshUser: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshUser = async () => {
+    if (firebaseUser) {
+      try {
+        const userData = await getUserDocument(firebaseUser.uid);
+        setUser(userData);
+      } catch (err: any) {
+        console.error('Error refreshing user:', err);
+        setError(err.message);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
+      setError(null);
+
+      if (firebaseUser) {
+        setFirebaseUser(firebaseUser);
+        try {
+          // Get Firebase ID token and store it in a cookie (non-blocking)
+          firebaseUser.getIdToken().then(idToken => {
+            fetch('/api/auth/set-token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: idToken }),
+            }).catch(err => console.error('Error setting token:', err));
+          });
+
+          // Wait a moment for Firebase Auth state to fully propagate
+          // This helps prevent race conditions with Firestore security rules
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const userData = await getUserDocument(firebaseUser.uid);
+          setUser(userData);
+        } catch (err: any) {
+          console.error('Error fetching user data:', err);
+          setError(err.message);
+          setUser(null);
+        }
+      } else {
+        setFirebaseUser(null);
+        setUser(null);
+        
+        // Clear token cookie on logout
+        await fetch('/api/auth/clear-token', { method: 'POST' }).catch(() => {});
+      }
+
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Setup automatic token refresh every 50 minutes
+  useEffect(() => {
+    if (firebaseUser) {
+      const cleanup = setupTokenRefreshInterval();
+      return cleanup;
+    }
+  }, [firebaseUser]);
+
+  const value: AuthContextType = {
+    user,
+    firebaseUser,
+    loading,
+    error,
+    refreshUser,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};

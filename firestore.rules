@@ -1,0 +1,402 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is the owner
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    
+    // Helper function to get user role
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Helper function to check if user is super admin
+    function isSuperAdmin() {
+      return isSignedIn() && getUserRole() == 'super_admin';
+    }
+    
+    // Helper function to check if user is committee admin
+    function isCommitteeAdmin() {
+      return isSignedIn() && getUserRole() == 'committee_admin';
+    }
+    
+    // Helper function to check if user is team
+    function isTeam() {
+      return isSignedIn() && getUserRole() == 'team';
+    }
+    
+    // Helper function to check if user is admin (super or committee)
+    function isAdmin() {
+      return isSuperAdmin() || isCommitteeAdmin();
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Allow any authenticated user to read users
+      // This enables teams to see other team names, logos, etc. in "All Teams" page
+      allow read: if isSignedIn();
+      
+      // Allow create only if:
+      // - User is creating their own document (during registration)
+      // - The document UID matches the auth UID
+      allow create: if isSignedIn() && 
+        request.auth.uid == userId &&
+        request.resource.data.uid == userId;
+      
+      // Allow update if:
+      // - User is updating their own document
+      // - User is a super admin (can update any)
+      allow update: if isSignedIn() && (
+        isOwner(userId) || 
+        isSuperAdmin()
+      );
+      
+      // Only super admins can delete
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Usernames collection (for username uniqueness)
+    match /usernames/{username} {
+      // Anyone can read to check username availability
+      allow read: if true;
+      
+      // Only authenticated users can create (during registration)
+      allow create: if isSignedIn() && 
+        request.resource.data.uid == request.auth.uid;
+      
+      // Only the owner can update their username mapping
+      allow update: if isSignedIn() && 
+        resource.data.uid == request.auth.uid;
+      
+      // Only super admins or the owner can delete
+      allow delete: if isSignedIn() && (
+        resource.data.uid == request.auth.uid || 
+        isSuperAdmin()
+      );
+    }
+    
+    // Teams collection
+    match /teams/{teamId} {
+      // Allow anyone to read teams (for public player registration page)
+      allow read: if true;
+      // Allow authenticated users to create (team registration)
+      // Also allow server-side historical imports
+      allow create: if isSignedIn() || 
+        (request.auth == null && request.resource.data.is_historical == true);
+      // Allow admins to update and delete
+      // Also allow server-side historical imports for updates
+      allow update: if isAdmin() || 
+        (request.auth == null && request.resource.data.is_historical == true);
+      allow delete: if isAdmin();
+    }
+    
+    // Players collection - tracks which virtual players belong to which teams
+    match /players/{playerId} {
+      // Allow any authenticated user to read players
+      // This enables "All Teams" feature where teams can see other teams' rosters
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // Football Players collection - virtual football players (like FIFA/PES)
+    match /footballplayers/{playerId} {
+      // Allow committee admins and super admins to read
+      allow read: if isAdmin();
+      
+      // Allow admins to create, update, and delete
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Seasons collection
+    match /seasons/{seasonId} {
+      // Allow anyone to read seasons (for public registration pages)
+      allow read: if true;
+      
+      // Allow admins to write (create, update, delete)
+      // Also allow server-side historical imports (when auth is null but request contains historical data)
+      allow create, delete: if isAdmin() || 
+        (request.auth == null && request.resource.data.is_historical == true);
+      
+      // Allow admins full update, or teams to only increment participant_count
+      // Also allow server-side historical imports
+      allow update: if isAdmin() || 
+        (request.auth == null && request.resource.data.is_historical == true) ||
+        (isTeam() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participant_count', 'updated_at']) &&
+        request.resource.data.participant_count > resource.data.participant_count);
+    }
+    
+    // Team Seasons collection - tracks which teams are in which seasons
+    match /team_seasons/{teamSeasonId} {
+      // Allow any authenticated user (teams/admins) to read team_seasons
+      // This enables "All Teams" feature where teams can see other teams
+      allow read: if isSignedIn();
+      
+      // Allow any authenticated user to list/query team_seasons
+      // This allows teams to see all teams in a season
+      allow list: if isSignedIn();
+      
+      // Allow teams to create their own registration, admins can create any
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (isTeam() && request.resource.data.team_id == request.auth.uid)
+      );
+      
+      // Allow admins to update, or teams to update their own data
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isTeam() && resource.data.team_id == request.auth.uid)
+      );
+      
+      // Only admins can delete
+      allow delete: if isAdmin();
+    }
+    
+    // Real Players collection - actual human players
+    match /realplayer/{playerId} {
+      // Allow anyone to read (needed for public player registration to check status)
+      allow read: if true;
+      
+      // Allow anyone to create (public player registration)
+      allow create: if true;
+      
+      // Admins can update, or players can update their own profile
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        resource.data.player_id == request.auth.uid
+      );
+      
+      // Only super admins can delete
+      allow delete: if isSuperAdmin();
+    }
+    
+    // RealPlayers master collection - source of truth for permanent player data
+    match /realplayers/{playerId} {
+      // Allow anyone to read (for player search during registration)
+      allow read: if true;
+      
+      // Only admins can create/update/delete master player records
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    
+    // RealPlayerStats collection - season-specific player statistics
+    match /realplayerstats/{statsId} {
+      // Allow anyone to read (for public player stats viewing)
+      allow read: if true;
+      
+      // Allow admins to create/update season-specific stats
+      // Also allow server-side historical imports (when auth is null but contains historical data)
+      allow create: if isAdmin() || 
+        (request.auth == null && request.resource.data.season_id != null);
+      allow update: if isAdmin() || 
+        (request.auth == null && request.resource.data.season_id != null);
+      
+      // Only super admins can delete stats records
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Password Reset Requests collection
+    match /passwordResetRequests/{requestId} {
+      // Users can read their own requests, super admins can read all
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      
+      // Any authenticated user can create a password reset request
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid;
+      
+      // Only super admins can update (approve/reject)
+      allow update: if isSuperAdmin();
+      
+      // Users can delete their own pending requests, super admins can delete any
+      allow delete: if isSignedIn() && (
+        (resource.data.userId == request.auth.uid && resource.data.status == 'pending') ||
+        isSuperAdmin()
+      );
+    }
+    
+    // Auctions collection (if you add this later)
+    match /auctions/{auctionId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // Bids collection (if you add this later)
+    match /bids/{bidId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.teamId == request.auth.uid || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+    
+    // Invites collection - for admin invitation codes
+    match /invites/{inviteCode} {
+      // Allow read for:
+      // - Super admins (to manage invites)
+      // - Anyone (to validate invite during registration)
+      // Note: Sensitive data is limited by not exposing usedBy array in queries
+      allow read: if true;
+      
+      // Only super admins can create invites
+      allow create: if isSuperAdmin() && 
+        request.resource.data.createdBy == request.auth.uid;
+      
+      // Allow update for:
+      // - Super admins (full control)
+      // - Authenticated users during registration (to increment usedCount)
+      allow update: if isSuperAdmin() || (
+        isSignedIn() && 
+        // Only allow updating usedCount and usedBy fields
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedCount', 'usedBy', 'isActive']) &&
+        // Ensure usedCount only increases
+        request.resource.data.usedCount >= resource.data.usedCount
+      );
+      
+      // Only super admins can delete invites
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Invite usages collection - tracks who used which invite
+    match /inviteUsages/{usageId} {
+      // Only super admins can read invite usages
+      allow read: if isSuperAdmin();
+      
+      // Any authenticated user can create (during registration)
+      allow create: if isSignedIn();
+      
+      // No one can update or delete invite usages (audit trail)
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Tournament Settings collection - stores tournament configuration per season
+    match /tournament_settings/{seasonId} {
+      // Allow admins to read tournament settings
+      allow read: if isAdmin();
+      
+      // Allow admins to create, update, and delete tournament settings
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Fixture Rounds collection - stores tournament round information
+    match /fixture_rounds/{roundId} {
+      // Allow all authenticated users to read fixture rounds
+      // Teams need to see round information for tournament
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete fixture rounds
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Fixtures collection - stores tournament match fixtures
+    match /fixtures/{fixtureId} {
+      // Allow all authenticated users to read fixtures
+      // This enables teams to see tournament schedule
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete fixtures
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Match Days collection - stores match day/round management with dynamic deadlines
+    match /match_days/{matchDayId} {
+      // Allow all authenticated users to read match days
+      // Teams need to see active match day and deadlines
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete match days
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Round Deadlines collection - stores deadline management for fixture rounds
+    match /round_deadlines/{roundId} {
+      // Allow all authenticated users to read round deadlines
+      // Teams need to see round deadlines for match scheduling
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete round deadlines
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Match Matchups collection - stores team matchup details (fixtures/results)
+    match /match_matchups/{matchupId} {
+      // Allow all authenticated users to read matchups
+      // Teams need to see matchup details for fixture/result entry
+      allow read: if isSignedIn();
+      
+      // Allow admins to create and delete matchups
+      // Allow teams to create matchups for their own matches
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (isTeam() && (
+          request.resource.data.home_team_id == request.auth.uid ||
+          request.resource.data.away_team_id == request.auth.uid
+        ))
+      );
+      allow delete: if isAdmin();
+      
+      // Allow teams to update matchups for their own matches (fixture/result entry)
+      // Allow admins to update any matchup
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isTeam() && (
+          resource.data.home_team_id == request.auth.uid ||
+          resource.data.away_team_id == request.auth.uid
+        ))
+      );
+    }
+    
+    // Categories collection - stores player categories/ratings
+    match /categories/{categoryId} {
+      // Allow all authenticated users to read categories
+      // Teams need to see categories for fixture entry
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete categories
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Real Players collection - tracks real players assigned to teams
+    match /real_players/{playerId} {
+      // Allow all authenticated users to read real players
+      // Teams need to see player details for fixture entry
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete real player assignments
+      // Also allow server-side historical imports
+      allow create: if isAdmin() || 
+        (request.auth == null && request.resource.data.is_historical == true);
+      allow update: if isAdmin() || 
+        (request.auth == null && request.resource.data.is_historical == true);
+      allow delete: if isAdmin();
+    }
+  }
+}

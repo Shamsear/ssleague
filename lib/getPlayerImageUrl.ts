@@ -1,0 +1,37 @@
+import fs from 'fs';
+import path from 'path';
+
+/**
+ * Server-side utility to get the correct player image URL
+ * This avoids multiple failed requests by checking file existence on the server
+ */
+export function getPlayerImageUrl(playerId: string | number): string | null {
+  if (typeof window !== 'undefined') {
+    // Client-side fallback - just return the most common extension
+    return `/images/players/${playerId}.png`;
+  }
+
+  try {
+    const publicDir = path.join(process.cwd(), 'public', 'images', 'players');
+    const extensions = ['png', 'jpg', 'jpeg', 'webp'];
+    
+    for (const ext of extensions) {
+      const imagePath = path.join(publicDir, `${playerId}.${ext}`);
+      if (fs.existsSync(imagePath)) {
+        return `/images/players/${playerId}.${ext}`;
+      }
+    }
+    
+    return null; // No image found
+  } catch (error) {
+    console.error('Error checking player image:', error);
+    return null;
+  }
+}
+
+/**
+ * Check if a player image exists
+ */
+export function hasPlayerImage(playerId: string | number): boolean {
+  return getPlayerImageUrl(playerId) !== null;
+}
