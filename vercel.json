@@ -1,8 +1,2 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/finalize-rounds",
-      "schedule": "* * * * *"
-    }
-  ]
+{}
 }
