@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
+    "dev:fresh": "powershell -Command \"Get-Process | Where-Object {$_.ProcessName -like '*node*'} | Stop-Process -Force 2>$null; npm run dev\"",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
