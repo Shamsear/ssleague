@@ -91,24 +91,20 @@ export async function GET(request: NextRequest) {
       WHERE 1=1
     `;
 
-    const params: any[] = [userId];
-    let paramIndex = 2;
-
+    // Apply filters
     if (status) {
-      query += ` AND bt.status = $${paramIndex}`;
-      params.push(status);
-      paramIndex++;
+      query += ` AND bt.status = '${status}'`;
     }
 
     if (seasonId) {
-      query += ` AND ar.season_id = $${paramIndex}`;
-      params.push(seasonId);
-      paramIndex++;
+      query += ` AND ar.season_id = '${seasonId}'`;
     }
 
     query += ` ORDER BY bt.created_at DESC`;
 
-    const tiebreakers = await sql(query, params);
+    // Replace $1 placeholder with actual userId value
+    const finalQuery = query.replace('$1', `'${userId}'`);
+    const tiebreakers = await sql.unsafe(finalQuery) as any;
 
     // Enrich data with additional info
     const enrichedTiebreakers = tiebreakers.map((tb: any) => {

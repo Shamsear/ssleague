@@ -445,7 +445,18 @@ export async function updateMatchDayDeadlines(
       return { success: false, error: 'Match day not found' };
     }
 
-    const matchDay = matchDayDoc.data() as MatchDay;
+    const data = matchDayDoc.data();
+    const matchDay = {
+      ...data,
+      id: matchDayDoc.id,
+      created_at: data.created_at?.toDate ? timestampToIST(data.created_at) : getISTNow(),
+      updated_at: data.updated_at?.toDate ? timestampToIST(data.updated_at) : getISTNow(),
+      started_at: data.started_at?.toDate ? timestampToIST(data.started_at) : undefined,
+      paused_at: data.paused_at?.toDate ? timestampToIST(data.paused_at) : undefined,
+      resumed_at: data.resumed_at?.toDate ? timestampToIST(data.resumed_at) : undefined,
+      completed_at: data.completed_at?.toDate ? timestampToIST(data.completed_at) : undefined,
+    } as MatchDay;
+    
     const updateData: any = {
       home_fixture_deadline_time: homeTime,
       away_fixture_deadline_time: awayTime,
@@ -456,7 +467,7 @@ export async function updateMatchDayDeadlines(
     // If match day is active, recalculate deadlines
     if (matchDay.is_active && matchDay.started_at) {
       const deadlines = calculateDeadlines(
-        matchDay.started_at.toDate(),
+        matchDay.started_at,
         homeTime,
         awayTime,
         resultHours

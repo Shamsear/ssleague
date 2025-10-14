@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { db, auth } from '@/lib/firebase/config'
 import { collection, addDoc, doc, getDoc, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore'
@@ -26,7 +26,7 @@ interface MasterPlayer {
   name: string
 }
 
-export default function PlayersRegistrationPage() {
+function PlayersRegistrationPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const seasonId = searchParams.get('season')
@@ -465,4 +465,19 @@ export default function PlayersRegistrationPage() {
       </div>
     </div>
   )
+}
+
+export default function PlayersRegistrationPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-[#0066FF]/5 via-white to-[#00D4FF]/5 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <PlayersRegistrationPageContent />
+    </Suspense>
+  );
 }

@@ -11,6 +11,7 @@ interface Season {
   short_name?: string;
   is_active: boolean;
   status: string;
+  starting_balance?: number;
 }
 
 function SeasonRegistrationContent() {
@@ -137,9 +138,9 @@ function SeasonRegistrationContent() {
         await setDoc(doc(db, 'team_seasons', teamSeasonId), {
           team_id: userId,
           season_id: seasonId,
-          team_name: user.teamName || user.username || 'Team',
+          team_name: (user as any).teamName || (user as any).username || 'Team',
           team_email: user.email,
-          team_logo: user.teamLogo || '',
+          team_logo: (user as any).teamLogo || '',
           status: 'registered',
           budget: startingBalance,
           starting_balance: startingBalance,
@@ -177,9 +178,9 @@ function SeasonRegistrationContent() {
         await setDoc(doc(db, 'team_seasons', teamSeasonId), {
           team_id: userId,
           season_id: seasonId,
-          team_name: user.teamName || user.username || 'Team',
+          team_name: (user as any).teamName || (user as any).username || 'Team',
           team_email: user.email,
-          team_logo: user.teamLogo || '',
+          team_logo: (user as any).teamLogo || '',
           status: 'declined',
           budget: 0,
           starting_balance: 0,

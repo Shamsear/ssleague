@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
     if (deleteAll) {
       // Delete all player photos with pagination support
       let cursor: string | undefined;
-      let allBlobs = [];
-      const results = [];
-      const errors = [];
+      let allBlobs: any[] = [];
+      const results: any[] = [];
+      const errors: any[] = [];
       
       // Fetch all blobs (with pagination)
       do {
@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = [];
-    const errors = [];
+    const results: any[] = [];
+    const errors: any[] = [];
 
     for (const playerId of playerIds) {
       try {

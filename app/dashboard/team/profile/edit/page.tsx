@@ -61,17 +61,17 @@ export default function EditTeamProfilePage() {
 
         if (!teamSeasonsSnapshot.empty) {
           const teamSeasonData = teamSeasonsSnapshot.docs[0].data();
-          setTeamName(teamSeasonData.team_name || user.teamName || '');
-          setCurrentLogoUrl(teamSeasonData.team_logo || user.logoUrl || '');
+          setTeamName(teamSeasonData.team_name || (user as any).teamName || '');
+          setCurrentLogoUrl(teamSeasonData.team_logo || (user as any).logoUrl || '');
         } else {
-          setTeamName(user.teamName || '');
-          setCurrentLogoUrl(user.logoUrl || '');
+          setTeamName((user as any).teamName || '');
+          setCurrentLogoUrl((user as any).logoUrl || '');
         }
       } catch (error) {
         console.error('Error fetching team data:', error);
         setUsername(user.username || '');
-        setTeamName(user.teamName || '');
-        setCurrentLogoUrl(user.logoUrl || '');
+        setTeamName((user as any).teamName || '');
+        setCurrentLogoUrl((user as any).logoUrl || '');
       }
     };
 

@@ -58,8 +58,8 @@ export default function TeamProfilePage() {
         const { db } = await import('@/lib/firebase/config');
         const { collection, query, where, getDocs, limit } = await import('firebase/firestore');
 
-        let teamName = user.teamName || 'My Team';
-        let logoUrl = user.logoUrl;
+        let teamName = (user as any).teamName || 'My Team';
+        let logoUrl = (user as any).logoUrl;
 
         // Get current season and team_seasons data
         const teamSeasonsQuery = query(

@@ -175,16 +175,15 @@ export async function POST(
       console.log(`\n⚔️ Creating ${conflicts.length} tiebreakers...`);
 
       // Get player details for tiebreakers
-      const playerIdsList = conflicts.join(',');
-      const playerDetails = await sql.unsafe(`
+      const playerDetails = await sql`
         SELECT 
           rp.player_id,
           rp.player_name,
           rp.position
         FROM round_players rp
         WHERE rp.round_id = ${roundId}
-        AND rp.player_id IN (${conflicts.map(id => `'${id}'`).join(',')})
-      `);
+        AND rp.player_id = ANY(${conflicts})
+      `;
 
       const playerDetailsMap = new Map();
       for (const p of playerDetails) {
@@ -252,14 +251,13 @@ export async function POST(
     // PART 3: Handle players with no bids (unsold)
     const playersWithBids = Array.from(bidsByPlayer.keys());
     if (playersWithBids.length > 0) {
-      const bidsList = playersWithBids.map(id => `'${id}'`).join(',');
-      await sql.unsafe(`
+      await sql`
         UPDATE round_players
         SET status = 'unsold'
         WHERE round_id = ${roundId}
         AND status = 'pending'
-        AND player_id NOT IN (${bidsList})
-      `);
+        AND player_id != ALL(${playersWithBids})
+      `;
     }
 
     // Update round status

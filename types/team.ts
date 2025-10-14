@@ -36,6 +36,7 @@ export interface TeamData {
   balance: number;
   initial_balance: number;
   total_spent: number;
+  spent_amount?: number; // Alias for total_spent
   
   // Season
   season_id: string;
@@ -46,6 +47,11 @@ export interface TeamData {
   football_players: string[]; // Array of FootballPlayer IDs
   real_players_count: number;
   football_players_count: number;
+  players_count?: number; // Total count of all players
+  
+  // Optional fields that may be used in various pages
+  owner_phone?: string;
+  description?: string;
   
   // Team Statistics
   stats: TeamStats;

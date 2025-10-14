@@ -21,6 +21,7 @@
     "firebase": "^12.3.0",
     "firebase-admin": "^13.5.0",
     "jose": "^6.1.0",
+    "lucide-react": "^0.545.0",
     "nanoid": "^5.1.6",
     "next": "15.5.4",
     "papaparse": "^5.5.3",

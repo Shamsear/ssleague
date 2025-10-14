@@ -1,0 +1,6 @@
+# Backup and old files
+**/page_old.tsx
+**/page_old.ts
+**/_backup.*
+**/*_backup.*
+**/*_old.*

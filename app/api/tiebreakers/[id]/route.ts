@@ -99,7 +99,7 @@ export async function GET(
     `;
 
     // Fetch team names and balances from team_seasons
-    const teamData = [];
+    const teamData: any[] = [];
     for (const tt of teamTiebreakersResult) {
       try {
         const teamSeasonId = `${tt.team_id}_${seasonId}`;

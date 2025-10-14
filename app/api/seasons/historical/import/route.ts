@@ -228,7 +228,7 @@ async function importTeams(seasonId: string, teams: ImportTeamData[], importId: 
         const teamRef = adminDb.collection('teams').doc(teamId);
         batch.set(teamRef, teamDoc);
         
-      } catch (userError) {
+      } catch (userError: any) {
         console.error(`❌ Error creating user for team ${team.team_name}:`, userError);
         
         // If user creation fails, still create the team document without user reference
@@ -377,7 +377,7 @@ async function importPlayers(seasonId: string, players: ImportPlayerData[], team
     playerIds.push(playerId);
     
     // Get current player permanent data if exists
-    let currentPlayerData = {};
+    let currentPlayerData: any = {};
     
     if (!isNewPlayer) {
       const playerDoc = await adminDb.collection('realplayers').doc(playerId).get();
@@ -426,7 +426,7 @@ async function importPlayers(seasonId: string, players: ImportPlayerData[], team
     };
     
     // 1. Create/Update permanent player document in realplayers collection
-    const permanentPlayerDoc = {
+    const permanentPlayerDoc: any = {
       player_id: playerId,
       name: player.name,
       

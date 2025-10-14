@@ -97,7 +97,7 @@ export async function cachedSetDoc<T = any>(
   const docId = docRef.id;
 
   // Write to Firebase
-  await setDoc(docRef, data, options);
+  await setDoc(docRef, data as any, options);
 
   // Invalidate cache for this document
   invalidateCache(collectionPath, docId);

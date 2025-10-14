@@ -308,7 +308,7 @@ export default function TournamentDashboardPage() {
   );
   
   const upcomingMatches = allMatches
-    .filter(m => m.status === 'scheduled' || m.status === 'pending')
+    .filter(m => m.status === 'scheduled')
     .slice(0, 5);
     
   const recentMatches = allMatches

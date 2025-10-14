@@ -22,6 +22,8 @@ interface RegisteredPlayer {
   id: string
   player_id: string
   player_name: string
+  team_id: string
+  team_name?: string
   registration_date: Timestamp
   additional_info?: string
 }
@@ -52,6 +54,9 @@ export default function PlayersRegistrationPage() {
   const [authChecking, setAuthChecking] = useState(true)
 
   const [formData, setFormData] = useState({
+    player_id: '',
+    player_name: '',
+    team_id: '',
     additional_info: ''
   })
 

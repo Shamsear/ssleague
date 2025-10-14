@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     const playersSnapshot = await getDocs(playersQuery);
 
     const playersBySeasons = new Map();
-    const playersList = [];
+    const playersList: any[] = [];
 
     playersSnapshot.docs.forEach(playerDoc => {
       const playerData = playerDoc.data();
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get season names for each season the team participated in
-    const seasonDetails = {};
+    const seasonDetails: any = {};
     for (const seasonId of teamData.seasons || []) {
       try {
         const seasonDoc = await getDoc(doc(db, 'seasons', seasonId));

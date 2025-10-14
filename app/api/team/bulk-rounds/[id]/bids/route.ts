@@ -152,7 +152,7 @@ export async function POST(
       FROM round_players
       WHERE round_id = ${roundId}
       AND player_id IN (${playerIdsString})
-    `);
+    `) as any;
     console.timeEnd('⚡ Validate players');
 
     if (validPlayers.length !== player_ids.length) {
@@ -186,7 +186,7 @@ export async function POST(
       WHERE round_id = ${roundId}
       AND team_id = '${userId}'
       AND player_id IN (${playerIdsString})
-    `);
+    `) as any;
 
     if (existingBids.length > 0) {
       const alreadyBid = existingBids.map((b: any) => b.player_id);

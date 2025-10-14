@@ -35,7 +35,7 @@ function parseSQLFile(sqlContent: string) {
   const players: any[] = [];
   
   // Match INSERT INTO statements
-  const insertRegex = /INSERT INTO\s+`?(\w+)`?\s*\((.*?)\)\s*VALUES\s*\((.*?)\);/gis;
+  const insertRegex = /INSERT INTO\s+`?(\w+)`?\s*\((.*?)\)\s*VALUES\s*\((.*?)\);/gi;
   
   let match;
   while ((match = insertRegex.exec(sqlContent)) !== null) {

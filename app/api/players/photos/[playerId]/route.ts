@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { playerId: string } }
+  { params }: { params: Promise<{ playerId: string }> }
 ) {
   try {
-    const playerId = params.playerId;
+    const { playerId } = await params;
 
     // List blobs with player_id prefix
     const { blobs } = await list({

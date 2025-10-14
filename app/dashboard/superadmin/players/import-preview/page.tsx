@@ -121,11 +121,11 @@ export default function PlayersImportPreview() {
   ) => {
     if (type === 'new') {
       const players = [...newPlayers];
-      players[index][field] = value;
+      (players[index] as any)[field] = value;
       setNewPlayers(players);
     } else {
       const players = [...updatedPlayers];
-      players[index][field] = value;
+      (players[index] as any)[field] = value;
       setUpdatedPlayers(players);
     }
     

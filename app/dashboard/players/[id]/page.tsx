@@ -181,7 +181,6 @@ export default function PlayerDetailPage() {
         
         // Combine permanent player data with season-specific stats
         return {
-          id: statsDoc.id,
           ...permanentPlayerData, // Permanent fields (name, email, phone, etc.)
           season_id: statsData.season_id,
           season_name: seasonName,
@@ -319,10 +318,20 @@ export default function PlayerDetailPage() {
 
   // Calculate overall stats from all seasons
   const calculateOverallStats = () => {
-    if (allSeasonData.length === 0) return {};
+    if (allSeasonData.length === 0) return {
+      matches_played: 0,
+      matches_won: 0,
+      matches_drawn: 0,
+      matches_lost: 0,
+      goals_scored: 0,
+      goals_conceded: 0,
+      clean_sheets: 0,
+      assists: 0,
+      points: 0,
+    };
     
     const overall = allSeasonData.reduce((acc, seasonData) => {
-      const s = seasonData.stats || {};
+      const s = (seasonData.stats || {}) as any;
       return {
         matches_played: (acc.matches_played || 0) + (s.matches_played || 0),
         matches_won: (acc.matches_won || 0) + (s.matches_won || 0),
@@ -334,7 +343,17 @@ export default function PlayerDetailPage() {
         assists: (acc.assists || 0) + (s.assists || 0),
         points: (acc.points || 0) + (s.points || 0),
       };
-    }, {} as any);
+    }, {
+      matches_played: 0,
+      matches_won: 0,
+      matches_drawn: 0,
+      matches_lost: 0,
+      goals_scored: 0,
+      goals_conceded: 0,
+      clean_sheets: 0,
+      assists: 0,
+      points: 0,
+    } as any);
     
     // Calculate derived stats
     if (overall.matches_played > 0) {
@@ -671,7 +690,7 @@ export default function PlayerDetailPage() {
                   
                   <div className="space-y-4">
                     {allSeasonData.map((seasonData, index) => {
-                      const seasonStats = seasonData.stats || {};
+                      const seasonStats = (seasonData.stats || {}) as any;
                       const isCurrentSeason = index === 0;
                       
                       return (
@@ -903,7 +922,7 @@ export default function PlayerDetailPage() {
                   </h3>
 
                   <div className="space-y-4">
-                    {Object.entries(currentSeasonData.round_performance).map(([roundKey, roundData]) => (
+                    {Object.entries(currentSeasonData.round_performance).map(([roundKey, roundData]: [string, any]) => (
                       <div key={roundKey} className="glass rounded-xl p-4 bg-white/40 hover:bg-white/50 transition-all duration-300">
                         <div className="flex justify-between items-center mb-3">
                           <h4 className="text-sm font-semibold text-gray-700 capitalize">{roundKey}</h4>

@@ -101,11 +101,11 @@ export default function CommitteeDashboard() {
           };
 
           eligible.forEach((player: any) => {
-            const pos = player.position?.toUpperCase();
+            const pos = player.position?.toUpperCase() as string;
             
             // Check each position group
             for (const [group, positions] of Object.entries(POSITION_GROUPS)) {
-              if (positions.includes(pos as any)) {
+              if ((positions as readonly string[]).includes(pos)) {
                 positionGroups[group]++;
                 break;
               }

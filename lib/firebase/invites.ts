@@ -216,7 +216,7 @@ export const validateAdminInvite = async (code: string): Promise<{
 };
 
 // Use an invite (called after user registration)
-export const useAdminInvite = async (
+export const markInviteAsUsed = async (
   code: string,
   userId: string,
   username: string,

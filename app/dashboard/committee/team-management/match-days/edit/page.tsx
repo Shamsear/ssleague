@@ -2,13 +2,13 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { getActiveSeason } from '@/lib/firebase/seasons';
 import { getRoundDeadlines, updateRoundDeadlines } from '@/lib/firebase/fixtures';
 import { getISTToday, parseISTDate, createISTDateTime, formatISTDateTime } from '@/lib/utils/timezone';
 
-export default function EditRoundDeadlinesPage() {
+function EditRoundDeadlinesContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -461,5 +461,22 @@ export default function EditRoundDeadlinesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function EditRoundDeadlinesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading deadline editor...</p>
+          </div>
+        </div>
+      }
+    >
+      <EditRoundDeadlinesContent />
+    </Suspense>
   );
 }

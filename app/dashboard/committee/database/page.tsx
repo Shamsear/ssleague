@@ -156,7 +156,7 @@ export default function DatabaseManagementPage() {
         
         players = values.map((row: any[]) => {
           const player: any = {}
-          columns.forEach((col, index) => {
+          columns.forEach((col: string, index: number) => {
             player[col] = row[index]
           })
           return player

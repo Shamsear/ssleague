@@ -265,7 +265,7 @@ export async function GET(request: NextRequest) {
     const players = playersSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-    }));
+    })) as any[];
 
     // Fetch tiebreakers from Neon (if any)
     const tiebreakersResult = await sql`

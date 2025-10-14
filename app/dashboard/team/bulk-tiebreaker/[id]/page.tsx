@@ -156,13 +156,13 @@ export default function TeamBulkTiebreakerPage() {
         ...tiebreaker,
         current_highest_bid: amount,
         highest_bidder_team_id: user?.uid,
-        highest_bidder_team_name: user?.teamName || 'Your Team',
+        highest_bidder_team_name: (user as any)?.teamName || 'Your Team',
         my_last_bid: amount,
         bid_history: [
           ...tiebreaker.bid_history,
           {
             team_id: user?.uid || '',
-            team_name: user?.teamName || 'Your Team',
+            team_name: (user as any)?.teamName || 'Your Team',
             amount,
             timestamp: new Date().toISOString(),
           },

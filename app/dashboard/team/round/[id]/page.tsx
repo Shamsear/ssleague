@@ -142,7 +142,7 @@ export default function TeamRoundPage() {
   };
 
   // Filter players
-  const filteredPlayers = players.filter(player =>
+  const filteredPlayers = players.filter((player: Player) =>
     player.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -155,12 +155,12 @@ export default function TeamRoundPage() {
 
   // Check if player has bid
   const hasBid = (playerId: string) => {
-    return myBids.some(bid => bid.player_id === playerId);
+    return myBids.some((bid: Bid) => bid.player_id === playerId);
   };
 
   // Get player bid
   const getPlayerBid = (playerId: string) => {
-    return myBids.find(bid => bid.player_id === playerId);
+    return myBids.find((bid: Bid) => bid.player_id === playerId);
   };
 
   // Get timer color
@@ -328,7 +328,7 @@ export default function TeamRoundPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white/50 divide-y divide-gray-200">
-                      {myBids.map((bid) => (
+                      {myBids.map((bid: Bid) => (
                         <tr key={bid.id} className="hover:bg-white/80">
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center">

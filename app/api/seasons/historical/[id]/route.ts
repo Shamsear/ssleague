@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
-import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase-admin/firestore';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const seasonId = params.id;
+    const { id: seasonId } = await params;
     
     if (!seasonId) {
       return NextResponse.json(
@@ -29,7 +28,7 @@ export async function GET(
       );
     }
 
-    const seasonData = { id: seasonDoc.id, ...seasonDoc.data() };
+    const seasonData = { id: seasonDoc.id, ...seasonDoc.data() } as any;
     
     if (!seasonData.is_historical) {
       return NextResponse.json(
@@ -155,27 +154,27 @@ export async function GET(
 
     // Fetch awards (if they exist)
     console.log('🏆 Fetching awards data...');
-    let awardsData = [];
+    let awardsData: any[] = [];
     try {
       const awardsQuery = adminDb.collection('awards')
         .where('season_id', '==', seasonId)
         .where('is_historical', '==', true);
       const awardsSnapshot = await awardsQuery.get();
       awardsData = awardsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (awardsError) {
+    } catch (awardsError: any) {
       console.warn('Awards collection might not exist:', awardsError.message);
     }
 
     // Fetch matches (if they exist)
     console.log('⚽ Fetching matches data...');
-    let matchesData = [];
+    let matchesData: any[] = [];
     try {
       const matchesQuery = adminDb.collection('matches')
         .where('season_id', '==', seasonId)
         .where('is_historical', '==', true);
       const matchesSnapshot = await matchesQuery.get();
       matchesData = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (matchesError) {
+    } catch (matchesError: any) {
       console.warn('Matches collection might not exist:', matchesError.message);
     }
 

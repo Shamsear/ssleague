@@ -3,8 +3,8 @@ import {
   getRealPlayerById,
   updateRealPlayer,
   deleteRealPlayer,
-  UpdateRealPlayerData,
 } from '@/lib/firebase/realPlayers';
+import { UpdateRealPlayerData } from '@/types/realPlayer';
 
 /**
  * GET /api/real-players/[id]
@@ -12,10 +12,11 @@ import {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const player = await getRealPlayerById(params.id);
+    const { id } = await params;
+    const player = await getRealPlayerById(id);
     
     if (!player) {
       return NextResponse.json(
@@ -49,9 +50,10 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     
     const updates: UpdateRealPlayerData = {};
@@ -74,10 +76,10 @@ export async function PUT(
     if (body.steam_id !== undefined) updates.steam_id = body.steam_id;
     if (body.notes !== undefined) updates.notes = body.notes;
     
-    await updateRealPlayer(params.id, updates);
+    await updateRealPlayer(id, updates);
     
     // Fetch updated player
-    const updatedPlayer = await getRealPlayerById(params.id);
+    const updatedPlayer = await getRealPlayerById(id);
     
     return NextResponse.json({
       success: true,
@@ -102,10 +104,11 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await deleteRealPlayer(params.id);
+    const { id } = await params;
+    await deleteRealPlayer(id);
     
     return NextResponse.json({
       success: true,

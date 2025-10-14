@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, FormEvent, ChangeEvent, useEffect } from 'react';
+import { Suspense, useState, FormEvent, ChangeEvent, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { uploadTeamLogo } from '@/lib/firebase/auth';
-import { validateAdminInvite, useAdminInvite } from '@/lib/firebase/invites';
+import { validateAdminInvite, markInviteAsUsed } from '@/lib/firebase/invites';
 import { AdminInvite } from '@/types/invite';
 
-export default function Register() {
+function RegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signUp, loading: authLoading } = useFirebaseAuth();
@@ -100,7 +100,7 @@ export default function Register() {
       );
       
       // Redirect immediately to role-specific dashboard for better UX
-      switch (role) {
+      switch (role as string) {
         case 'super_admin':
           router.push('/dashboard/superadmin');
           break;
@@ -118,7 +118,7 @@ export default function Register() {
       if (firebaseUser) {
         // Mark invite as used (non-blocking)
         if (isAdminInvite && inviteCode) {
-          useAdminInvite(inviteCode, firebaseUser.uid, username, email).catch((inviteError) => {
+          markInviteAsUsed(inviteCode, firebaseUser.uid, username, email).catch((inviteError) => {
             console.error('Failed to mark invite as used:', inviteError);
           });
         }
@@ -482,5 +482,20 @@ export default function Register() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function Register() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[80vh] flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <RegisterContent />
+    </Suspense>
   );
 }

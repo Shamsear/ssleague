@@ -576,13 +576,16 @@ export const updateRealPlayerStats = async (
       throw new Error('Player not found');
     }
     
+    // Initialize stats if not present
+    const currentStats = player.stats || initializeStats();
+    
     const updatedStats = {
-      ...player.stats,
+      ...currentStats,
       ...statsUpdates,
     };
     
     // Calculate win rate
-    if (updatedStats.matches_played > 0) {
+    if (updatedStats.matches_played && updatedStats.matches_played > 0 && updatedStats.matches_won !== undefined) {
       updatedStats.win_rate = (updatedStats.matches_won / updatedStats.matches_played) * 100;
     }
     

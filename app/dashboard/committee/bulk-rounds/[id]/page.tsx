@@ -114,7 +114,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
         const { success, data } = await response.json();
 
         if (success) {
-          const currentPlayerIds = round?.players.map(p => p.player_id) || [];
+          const currentPlayerIds = round?.players?.map(p => p.player_id) || [];
           const available = data.filter((p: any) => !currentPlayerIds.includes(p.id));
           setAvailablePlayers(available);
         }

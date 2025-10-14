@@ -4,10 +4,10 @@ import * as XLSX from 'xlsx';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const sessionId = params.id;
+    const { id: sessionId } = await params;
     console.log(`📤 Exporting historical season data for ID: ${sessionId}`);
 
     // Verify authentication
@@ -51,7 +51,7 @@ export async function GET(
       return NextResponse.json({ error: 'Season not found' }, { status: 404 });
     }
 
-    const season = { id: seasonDoc.id, ...seasonDoc.data() };
+    const season = { id: seasonDoc.id, ...seasonDoc.data() } as any;
 
     console.log(`📊 Fetched data counts:`);
     console.log(`  - Teams snapshot: ${teamsSnapshot.docs.length}`);

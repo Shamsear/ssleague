@@ -230,7 +230,7 @@ async function parseCSVFile(text: string): Promise<ParsedSeasonData> {
         
         resolve(result);
       },
-      error: (error) => {
+      error: (error: any) => {
         resolve({
           teams: [],
           players: [],

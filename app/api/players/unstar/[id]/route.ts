@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Get session cookie and verify authentication
@@ -23,7 +23,7 @@ export async function POST(
     const decodedClaims = await adminAuth.verifySessionCookie(session, true);
     const teamId = decodedClaims.uid;
 
-    const playerId = params.id;
+    const { id: playerId } = await params;
 
     // Delete from starred_players table
     await sql`

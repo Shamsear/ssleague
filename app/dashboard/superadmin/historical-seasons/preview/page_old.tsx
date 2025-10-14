@@ -6,13 +6,23 @@ import { useEffect, useState } from 'react';
 
 interface TeamData {
   team_name: string;
+  team_code?: string;
   owner_name: string;
+  owner_email?: string;
+  initial_balance?: string;
 }
 
 interface PlayerData {
   name: string;
+  player_name: string;
   team: string;
+  team_name?: string;
   category: string;
+  position?: string;
+  overall_rating?: number;
+  is_sold?: boolean;
+  base_price?: number;
+  final_price?: number;
   goals_scored: number;
   goals_per_game: number;
   goals_conceded: number;
@@ -61,6 +71,9 @@ export default function PreviewHistoricalSeason() {
   const [importing, setImporting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [showWarnings, setShowWarnings] = useState(false);
+
+  // Position options for player select dropdown
+  const positions = ['GK', 'DEF', 'MID', 'FWD'];
 
   useEffect(() => {
     if (!loading && !user) {
@@ -119,9 +132,9 @@ export default function PreviewHistoricalSeason() {
         field === 'conceded_per_game' || field === 'net_goals' || field === 'cleansheets' || 
         field === 'points' || field === 'win' || field === 'draw' || field === 'loss' || 
         field === 'total_matches' || field === 'total_points') {
-      newPlayers[index][field] = typeof value === 'string' ? (parseFloat(value) || 0) : value;
+      (newPlayers[index][field] as any) = typeof value === 'string' ? (parseFloat(value) || 0) : value;
     } else {
-      newPlayers[index][field] = value;
+      (newPlayers[index][field] as any) = value;
     }
     setPlayers(newPlayers);
   };
@@ -136,7 +149,7 @@ export default function PreviewHistoricalSeason() {
     // Basic team validation
     teams.forEach((team, index) => {
       if (!team.team_name.trim()) errors.add(`team-${index}-team_name`);
-      if (!team.team_code.trim()) errors.add(`team-${index}-team_code`);
+      if (team.team_code && !team.team_code.trim()) errors.add(`team-${index}-team_code`);
       
       // Check for duplicate team names
       const duplicateTeamIndex = teams.findIndex((t, i) => 
@@ -147,19 +160,21 @@ export default function PreviewHistoricalSeason() {
       }
       
       // Check for duplicate team codes
-      const duplicateCodeIndex = teams.findIndex((t, i) => 
-        i !== index && t.team_code.trim().toLowerCase() === team.team_code.trim().toLowerCase()
-      );
-      if (duplicateCodeIndex !== -1) {
-        errors.add(`team-${index}-team_code`);
+      if (team.team_code) {
+        const duplicateCodeIndex = teams.findIndex((t, i) => 
+          i !== index && t.team_code && t.team_code.trim().toLowerCase() === team.team_code!.trim().toLowerCase()
+        );
+        if (duplicateCodeIndex !== -1) {
+          errors.add(`team-${index}-team_code`);
+        }
       }
     });
     
     // Basic player validation with cross-referential checks
     players.forEach((player, index) => {
       if (!player.player_name.trim()) errors.add(`player-${index}-player_name`);
-      if (!player.position) errors.add(`player-${index}-position`);
-      if (player.overall_rating < 1 || player.overall_rating > 99) errors.add(`player-${index}-overall_rating`);
+      if (player.position && !player.position) errors.add(`player-${index}-position`);
+      if (player.overall_rating && (player.overall_rating < 1 || player.overall_rating > 99)) errors.add(`player-${index}-overall_rating`);
       
       // Check for duplicate player names
       const duplicatePlayerIndex = players.findIndex((p, i) => 
@@ -188,53 +203,53 @@ export default function PreviewHistoricalSeason() {
     });
     
     // Basic award validation with cross-referential checks
-    awards.forEach((award, index) => {
-      if (!award.award_name.trim()) errors.add(`award-${index}-award_name`);
-      if (!award.award_category.trim()) errors.add(`award-${index}-award_category`);
-      
-      // Cross-referential validation: winner team must exist
-      if (award.winner_team && award.winner_team.trim()) {
-        if (!teamNames.has(award.winner_team.trim().toLowerCase())) {
-          errors.add(`award-${index}-winner_team`);
-        }
-      }
-      
-      // Cross-referential validation: winner player must exist
-      if (award.winner_player && award.winner_player.trim()) {
-        if (!playerNames.has(award.winner_player.trim().toLowerCase())) {
-          errors.add(`award-${index}-winner_player`);
-        }
-      }
-    });
+    // awards.forEach((award, index) => {
+    //   if (!award.award_name.trim()) errors.add(`award-${index}-award_name`);
+    //   if (!award.award_category.trim()) errors.add(`award-${index}-award_category`);
+    //   
+    //   // Cross-referential validation: winner team must exist
+    //   if (award.winner_team && award.winner_team.trim()) {
+    //     if (!teamNames.has(award.winner_team.trim().toLowerCase())) {
+    //       errors.add(`award-${index}-winner_team`);
+    //     }
+    //   }
+    //   
+    //   // Cross-referential validation: winner player must exist
+    //   if (award.winner_player && award.winner_player.trim()) {
+    //     if (!playerNames.has(award.winner_player.trim().toLowerCase())) {
+    //       errors.add(`award-${index}-winner_player`);
+    //     }
+    //   }
+    // });
     
     // Basic match validation with cross-referential checks
-    matches.forEach((match, index) => {
-      if (!match.match_date.trim()) errors.add(`match-${index}-match_date`);
-      if (!match.home_team.trim()) errors.add(`match-${index}-home_team`);
-      if (!match.away_team.trim()) errors.add(`match-${index}-away_team`);
-      if (match.home_score < 0) errors.add(`match-${index}-home_score`);
-      if (match.away_score < 0) errors.add(`match-${index}-away_score`);
-      
-      // Cross-referential validation: teams must exist
-      if (!teamNames.has(match.home_team.trim().toLowerCase())) {
-        errors.add(`match-${index}-home_team`);
-      }
-      if (!teamNames.has(match.away_team.trim().toLowerCase())) {
-        errors.add(`match-${index}-away_team`);
-      }
-      
-      // Teams cannot play against themselves
-      if (match.home_team.trim().toLowerCase() === match.away_team.trim().toLowerCase()) {
-        errors.add(`match-${index}-home_team`);
-        errors.add(`match-${index}-away_team`);
-      }
-      
-      // Basic date validation (should be a valid date)
-      const matchDate = new Date(match.match_date);
-      if (isNaN(matchDate.getTime())) {
-        errors.add(`match-${index}-match_date`);
-      }
-    });
+    // matches.forEach((match, index) => {
+    //   if (!match.match_date.trim()) errors.add(`match-${index}-match_date`);
+    //   if (!match.home_team.trim()) errors.add(`match-${index}-home_team`);
+    //   if (!match.away_team.trim()) errors.add(`match-${index}-away_team`);
+    //   if (match.home_score < 0) errors.add(`match-${index}-home_score`);
+    //   if (match.away_score < 0) errors.add(`match-${index}-away_score`);
+    //   
+    //   // Cross-referential validation: teams must exist
+    //   if (!teamNames.has(match.home_team.trim().toLowerCase())) {
+    //     errors.add(`match-${index}-home_team`);
+    //   }
+    //   if (!teamNames.has(match.away_team.trim().toLowerCase())) {
+    //     errors.add(`match-${index}-away_team`);
+    //   }
+    //   
+    //   // Teams cannot play against themselves
+    //   if (match.home_team.trim().toLowerCase() === match.away_team.trim().toLowerCase()) {
+    //     errors.add(`match-${index}-home_team`);
+    //     errors.add(`match-${index}-away_team`);
+    //   }
+    //   
+    //   // Basic date validation (should be a valid date)
+    //   const matchDate = new Date(match.match_date);
+    //   if (isNaN(matchDate.getTime())) {
+    //     errors.add(`match-${index}-match_date`);
+    //   }
+    // });
     
     setValidationErrors(errors);
     return errors.size === 0;
@@ -246,7 +261,7 @@ export default function PreviewHistoricalSeason() {
       return;
     }
     
-    if (teams.length === 0 && players.length === 0 && awards.length === 0) {
+    if (teams.length === 0 && players.length === 0) {
       alert('No data to import.');
       return;
     }
@@ -264,8 +279,8 @@ export default function PreviewHistoricalSeason() {
         seasonInfo: uploadData.seasonInfo,
         teams: teams,
         players: players,
-        awards: awards,
-        matches: matches
+        // awards: awards,
+        // matches: matches
       };
       
       const response = await fetch('/api/seasons/historical/import', {
@@ -362,16 +377,16 @@ export default function PreviewHistoricalSeason() {
               <div className="text-3xl font-bold text-blue-600">{players.length}</div>
               <div className="text-sm text-gray-600">Players</div>
             </div>
-            <div className="text-center">
+            {/* <div className="text-center">
               <div className="text-3xl font-bold text-green-600">{awards.length}</div>
               <div className="text-sm text-gray-600">Awards</div>
             </div>
             <div className="text-center">
               <div className="text-3xl font-bold text-orange-600">{matches.length}</div>
               <div className="text-sm text-gray-600">Matches</div>
-            </div>
+            </div> */}
             <div className="text-center">
-              <div className="text-3xl font-bold text-[#0066FF]">{teams.length + players.length + awards.length + matches.length}</div>
+              <div className="text-3xl font-bold text-[#0066FF]">{teams.length + players.length}</div>
               <div className="text-sm text-gray-600">Total Items</div>
             </div>
           </div>
@@ -489,7 +504,7 @@ export default function PreviewHistoricalSeason() {
                 Players ({players.length})
               </div>
             </button>
-            <button
+            {/* <button
               onClick={() => setActiveTab('awards')}
               className={`flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 activeTab === 'awards'
@@ -520,7 +535,7 @@ export default function PreviewHistoricalSeason() {
                   Matches ({matches.length})
                 </div>
               </button>
-            )}
+            )} */}
           </div>
         </div>
 
@@ -725,7 +740,7 @@ export default function PreviewHistoricalSeason() {
           )}
 
           {/* Awards Table */}
-          {activeTab === 'awards' && awards.length > 0 && (
+          {/* {activeTab === 'awards' && awards.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full">
                 <thead className="bg-white/10">
@@ -797,10 +812,10 @@ export default function PreviewHistoricalSeason() {
                 </tbody>
               </table>
             </div>
-          )}
+          )} */}
 
           {/* Matches Table */}
-          {activeTab === 'matches' && matches.length > 0 && (
+          {/* {activeTab === 'matches' && matches.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full">
                 <thead className="bg-white/10">
@@ -897,13 +912,14 @@ export default function PreviewHistoricalSeason() {
                 </tbody>
               </table>
             </div>
-          )}
+          )} */}
 
           {/* Empty State */}
           {((activeTab === 'teams' && teams.length === 0) ||
-            (activeTab === 'players' && players.length === 0) ||
-            (activeTab === 'awards' && awards.length === 0) ||
-            (activeTab === 'matches' && matches.length === 0)) && (
+            (activeTab === 'players' && players.length === 0)
+            // (activeTab === 'awards' && awards.length === 0) ||
+            // (activeTab === 'matches' && matches.length === 0)
+          ) && (
             <div className="px-8 py-16 text-center">
               <p className="text-gray-500">No {activeTab} data found in the uploaded file.</p>
             </div>

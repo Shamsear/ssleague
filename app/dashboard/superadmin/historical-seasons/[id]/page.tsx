@@ -1451,7 +1451,7 @@ export default function HistoricalSeasonDetailPage() {
                             return pointsB - pointsA;
                           })
                           .map((player, index) => {
-                            const stats = player.stats || {};
+                            const stats = (player.stats || {}) as any;
                             const matchesPlayed = stats.matches_played || 0;
                             const winRate = matchesPlayed > 0 
                               ? ((stats.matches_won || 0) / matchesPlayed * 100).toFixed(1) 
@@ -1575,7 +1575,7 @@ export default function HistoricalSeasonDetailPage() {
                         return pointsB - pointsA;
                       })
                       .map((player, index) => {
-                        const stats = player.stats || {};
+                        const stats = (player.stats || {}) as any;
                         const matchesPlayed = stats.matches_played || 0;
                         const winRate = matchesPlayed > 0 
                           ? ((stats.matches_won || 0) / matchesPlayed * 100).toFixed(1) 

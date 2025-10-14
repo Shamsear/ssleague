@@ -167,13 +167,13 @@ export async function createPlayer(player: Omit<FootballPlayer, 'created_at' | '
     INSERT INTO footballplayers (
       id, player_id, name, position, position_group, overall_rating,
       nationality, age, club, team_id, team_name, is_auction_eligible,
-      is_sold, sold_price, season_id
+      is_sold, acquisition_value, season_id
     ) VALUES (
       ${player.id}, ${player.player_id}, ${player.name}, ${player.position || null},
       ${player.position_group || null}, ${player.overall_rating || null},
       ${player.nationality || null}, ${player.age || null}, ${player.club || null},
       ${player.team_id || null}, ${player.team_name || null}, ${player.is_auction_eligible || false},
-      ${player.is_sold || false}, ${player.sold_price || null}, ${player.season_id || null}
+      ${player.is_sold || false}, ${player.acquisition_value || null}, ${player.season_id || null}
     )
     RETURNING *
   `;

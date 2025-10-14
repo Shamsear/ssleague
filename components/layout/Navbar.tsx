@@ -109,7 +109,7 @@ export default function Navbar() {
               {user.role === 'super_admin' && (
                 <>
                   {/* Seasons Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['seasons'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['seasons'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('seasons')}
                       className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 flex items-center gap-1 font-medium text-sm"
@@ -138,7 +138,7 @@ export default function Navbar() {
                   </div>
                   
                   {/* Management Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['management'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['management'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('management')}
                       className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 flex items-center gap-1 font-medium text-sm"
@@ -196,7 +196,7 @@ export default function Navbar() {
               {user.role === 'committee_admin' && (
                 <>
                   {/* Teams & Players Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['teams'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['teams'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('teams')}
                       className="px-4 py-2.5 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-xl hover:bg-blue-50/80 flex items-center font-medium text-sm group"
@@ -237,7 +237,7 @@ export default function Navbar() {
                   </div>
                   
                   {/* Rounds & Matches Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['rounds'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['rounds'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('rounds')}
                       className="px-4 py-2.5 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-xl hover:bg-blue-50/80 flex items-center font-medium text-sm group"
@@ -272,7 +272,7 @@ export default function Navbar() {
                   </div>
                   
                   {/* Tournament Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['tournament'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['tournament'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('tournament')}
                       className="px-4 py-2.5 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-xl hover:bg-blue-50/80 flex items-center font-medium text-sm group"
@@ -319,7 +319,7 @@ export default function Navbar() {
                   </div>
                   
                   {/* Settings Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['settings'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['settings'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('settings')}
                       className="px-4 py-2.5 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-xl hover:bg-blue-50/80 flex items-center font-medium text-sm group"
@@ -359,7 +359,7 @@ export default function Navbar() {
               {user.role === 'team' && (
                 <>
                   {/* My Team Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['myteam'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['myteam'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('myteam')}
                       className="px-4 py-2.5 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-xl hover:bg-blue-50/80 flex items-center font-medium text-sm group"
@@ -400,7 +400,7 @@ export default function Navbar() {
                   </div>
                   
                   {/* Matches Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['matches'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['matches'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('matches')}
                       className="px-4 py-2.5 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-xl hover:bg-blue-50/80 flex items-center font-medium text-sm group"
@@ -429,7 +429,7 @@ export default function Navbar() {
                   </div>
                   
                   {/* Leaderboards Dropdown */}
-                  <div className="relative" ref={(el) => dropdownRefs.current['leaderboards'] = el}>
+                  <div className="relative" ref={(el) => { dropdownRefs.current['leaderboards'] = el; }}>
                     <button
                       onClick={() => toggleDropdown('leaderboards')}
                       className="px-4 py-2.5 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-xl hover:bg-blue-50/80 flex items-center font-medium text-sm group"
@@ -473,7 +473,7 @@ export default function Navbar() {
           {user ? (
             <>
               {/* User Profile Dropdown */}
-              <div className="relative" ref={(el) => dropdownRefs.current['profile'] = el}>
+              <div className="relative" ref={(el) => { dropdownRefs.current['profile'] = el; }}>
                 <button
                   onClick={() => toggleDropdown('profile')}
                   className="flex items-center space-x-3 px-4 py-2.5 rounded-xl hover:bg-white/70 transition-all duration-300 group border border-transparent hover:border-white/50"

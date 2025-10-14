@@ -471,7 +471,7 @@ export default function TeamDetailsPage() {
                   </div>
                   <div className="flex justify-between py-2 border-b border-gray-200">
                     <span className="text-sm text-gray-600">Total Spent:</span>
-                    <span className="text-sm font-semibold text-red-600">{formatCurrency(team.spent_amount)}</span>
+                    <span className="text-sm font-semibold text-red-600">{formatCurrency(team.spent_amount || team.total_spent)}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-gray-200">
                     <span className="text-sm text-gray-600">Squad Size:</span>

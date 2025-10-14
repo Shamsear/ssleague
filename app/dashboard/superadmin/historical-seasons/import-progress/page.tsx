@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 
 interface ImportStep {
   name: string;
@@ -27,7 +27,7 @@ interface ImportProgress {
   };
 }
 
-export default function HistoricalSeasonImportProgress() {
+function ImportProgressContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -427,5 +427,22 @@ export default function HistoricalSeasonImportProgress() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function HistoricalSeasonImportProgress() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <ImportProgressContent />
+    </Suspense>
   );
 }

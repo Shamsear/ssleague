@@ -58,7 +58,7 @@ export function getPositionGroup(position: string): string | null {
   const pos = position?.toUpperCase();
   
   for (const [group, positions] of Object.entries(POSITION_GROUPS)) {
-    if (positions.includes(pos as any)) {
+    if ((positions as readonly string[]).includes(pos)) {
       return group;
     }
   }

@@ -95,7 +95,7 @@ export default function RoundsManagementPage() {
         const playersResponse = await fetch('/api/players?is_auction_eligible=true');
         const { success, data } = await playersResponse.json();
         if (success && data.length > 0) {
-          const positions = [...new Set(data.map((p: any) => p.position).filter(Boolean))];
+          const positions = [...new Set(data.map((p: any) => p.position).filter(Boolean))] as string[];
           setAvailablePositions(positions.sort());
         }
       } catch (err) {
@@ -263,7 +263,7 @@ export default function RoundsManagementPage() {
 
     // Get next round number
     const nextRoundNumber = rounds.length > 0 
-      ? Math.max(...rounds.map(r => r.round_number)) + 1 
+      ? Math.max(...rounds.map(r => r.round_number ?? 0)) + 1 
       : 1;
 
     // Convert hours to seconds

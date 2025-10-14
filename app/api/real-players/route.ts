@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAllRealPlayers,
   createRealPlayer,
-  CreateRealPlayerData,
 } from '@/lib/firebase/realPlayers';
+import { CreateRealPlayerData } from '@/types/realPlayer';
 
 /**
  * GET /api/real-players

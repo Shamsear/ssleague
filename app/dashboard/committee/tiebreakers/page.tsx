@@ -44,7 +44,7 @@ export default function CommitteeTiebreakerPage() {
     if (!loading && !user) {
       router.push('/login');
     }
-    if (!loading && user && user.role !== 'committee_admin' && user.role !== 'admin') {
+    if (!loading && user && user.role !== 'committee_admin') {
       router.push('/dashboard');
     }
   }, [user, loading, router]);
@@ -65,7 +65,7 @@ export default function CommitteeTiebreakerPage() {
   };
 
   useEffect(() => {
-    if (user && (user.role === 'committee_admin' || user.role === 'admin')) {
+    if (user && user.role === 'committee_admin') {
       fetchTiebreakers();
       
       // Auto-refresh every 5 seconds for active tiebreakers
@@ -132,7 +132,7 @@ export default function CommitteeTiebreakerPage() {
     );
   }
 
-  if (user.role !== 'committee_admin' && user.role !== 'admin') {
+  if (user.role !== 'committee_admin') {
     return null;
   }
 
