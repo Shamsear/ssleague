@@ -333,3 +333,12 @@ export function canAffordFootballPlayer(
   
   return { canAfford: true };
 }
+
+/**
+ * Check if a round is a mid-season round
+ * Mid-season is typically at half of total rounds
+ */
+export function isMidSeasonRound(roundNumber: number, totalRounds: number): boolean {
+  const midSeasonRound = Math.floor(totalRounds / 2);
+  return roundNumber === midSeasonRound;
+}

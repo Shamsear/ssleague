@@ -91,9 +91,15 @@ export default function MatchDayManagementPage() {
       
       if (!round?.scheduled_date) {
         // Auto-set today's date in IST
-        const formattedDate = getISTToday();
+        const now = new Date();
+        const istDateString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // en-CA gives YYYY-MM-DD format
+        const formattedDate = istDateString;
         
-        // Update the scheduled date first
+        console.log('Current UTC time:', now.toISOString());
+        console.log('IST date calculated:', formattedDate);
+        console.log('Expected date: 2025-10-19');
+        
+        // Set the scheduled date AND start the round in a single call
         const response = await fetch('/api/round-deadlines', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -102,15 +108,21 @@ export default function MatchDayManagementPage() {
             round_number: roundNumber,
             leg: leg,
             scheduled_date: formattedDate,
+            status: 'active',
+            is_active: true,
           }),
         });
         
         if (!response.ok) {
-          throw new Error('Failed to set scheduled date');
+          throw new Error('Failed to start round');
         }
+        
+        // Reload rounds to show updated status
+        await loadRounds();
+        return; // Exit early since we already started the round
       }
       
-      // Start the round
+      // If scheduled_date already exists, just start the round normally
       const result = await startRound(activeSeasonId, roundNumber, leg);
       if (result.success) {
         await loadRounds();

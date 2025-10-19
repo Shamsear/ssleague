@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
     const query = `SELECT * FROM fixtures ${whereClause} ORDER BY round_number DESC, match_number ASC`;
     
-    const fixtures = await sql(query, params);
+    const fixtures = await sql.query(query, params);
     
     return NextResponse.json(
       {

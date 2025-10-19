@@ -620,6 +620,22 @@ export async function updateRoundStatus(
     }
 
     // Update with new status
+    // Ensure scheduled_date is in YYYY-MM-DD format (not ISO timestamp)
+    let scheduledDate = roundDeadline.scheduled_date;
+    console.log('Original scheduled_date from DB:', scheduledDate, typeof scheduledDate);
+    
+    if (scheduledDate) {
+      // If it's a Date object or ISO timestamp, convert to YYYY-MM-DD
+      if (typeof scheduledDate !== 'string') {
+        scheduledDate = new Date(scheduledDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      } else if (scheduledDate.includes('T')) {
+        // Parse the ISO string and format as IST date
+        scheduledDate = new Date(scheduledDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      }
+    }
+    
+    console.log('Formatted scheduled_date for update:', scheduledDate);
+    
     const updateResponse = await fetch('/api/round-deadlines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -627,7 +643,7 @@ export async function updateRoundStatus(
         season_id: seasonId,
         round_number: roundNumber,
         leg,
-        scheduled_date: roundDeadline.scheduled_date,
+        scheduled_date: scheduledDate,
         home_fixture_deadline_time: roundDeadline.home_fixture_deadline_time,
         away_fixture_deadline_time: roundDeadline.away_fixture_deadline_time,
         result_entry_deadline_day_offset: roundDeadline.result_entry_deadline_day_offset,
