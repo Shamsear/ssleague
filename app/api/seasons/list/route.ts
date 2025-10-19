@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 
+// Enable caching for seasons list (2 minutes)
+export const revalidate = 120;
+export const dynamic = 'force-static';
+
 export async function GET(request: NextRequest) {
   try {
     // Get all seasons
@@ -39,10 +43,10 @@ export async function GET(request: NextRequest) {
       
       return {
         id: seasonId,
-        name: seasonData.name || 'Unknown Season',
-        short_name: seasonData.short_name || seasonData.name?.substring(0, 8) || 'Unknown',
+        season_number: seasonData.season_number || null,
         status: seasonData.status || 'completed',
         is_active: seasonData.is_active || false,
+        is_historical: seasonData.is_historical || false,
         created_at: created_at.toISOString(),
         teams_count,
         awards_count,
@@ -53,10 +57,21 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      seasons
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        seasons,
+        cached: true,
+        timestamp: new Date().toISOString()
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=240',
+          'CDN-Cache-Control': 'public, s-maxage=120',
+          'Vercel-CDN-Cache-Control': 'public, s-maxage=120',
+        },
+      }
+    );
 
   } catch (error) {
     console.error('Error fetching seasons:', error);

@@ -5,19 +5,20 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getSeasonById, updateSeason } from '@/lib/firebase/seasons';
-import { getAllTeams, getTeamsBySeason } from '@/lib/firebase/teams';
 import { Season } from '@/types/season';
 import { TeamData } from '@/types/team';
 import Link from 'next/link';
+import { db } from '@/lib/firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export default function CommitteeRegistrationPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
   const [currentSeason, setCurrentSeason] = useState<Season | null>(null);
-  const [allTeams, setAllTeams] = useState<TeamData[]>([]);
-  const [teamsInSeason, setTeamsInSeason] = useState<TeamData[]>([]);
-  const [teamsNotInSeason, setTeamsNotInSeason] = useState<TeamData[]>([]);
+  
+  const [registeredTeamsCount, setRegisteredTeamsCount] = useState(0);
+  const [totalTeamsCount, setTotalTeamsCount] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
   const [processingTeamId, setProcessingTeamId] = useState<string | null>(null);
 
@@ -43,17 +44,21 @@ export default function CommitteeRegistrationPage() {
         // Fetch current season
         const season = await getSeasonById(userSeasonId);
         setCurrentSeason(season);
-
-        // Fetch all teams
-        const teams = await getAllTeams();
-        setAllTeams(teams);
-
-        // Separate teams in season vs not in season
-        const inSeason = teams.filter(t => t.season_id === userSeasonId);
-        const notInSeason = teams.filter(t => t.season_id !== userSeasonId);
         
-        setTeamsInSeason(inSeason);
-        setTeamsNotInSeason(notInSeason);
+        // Count registered teams for this season from team_seasons collection
+        const teamSeasonsQuery = query(
+          collection(db, 'team_seasons'),
+          where('season_id', '==', userSeasonId),
+          where('status', '==', 'registered')
+        );
+        const teamSeasonsSnapshot = await getDocs(teamSeasonsQuery);
+        setRegisteredTeamsCount(teamSeasonsSnapshot.docs.length);
+        
+        // Count total teams from teams collection
+        const teamsSnapshot = await getDocs(collection(db, 'teams'));
+        setTotalTeamsCount(teamsSnapshot.docs.length);
+        
+        console.log(`📊 Stats for ${userSeasonId}: ${teamSeasonsSnapshot.docs.length} registered teams out of ${teamsSnapshot.docs.length} total teams`);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -167,7 +172,7 @@ export default function CommitteeRegistrationPage() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Total Teams</dt>
-                    <dd className="text-lg font-medium text-gray-900">{allTeams.length}</dd>
+                    <dd className="text-lg font-medium text-gray-900">{totalTeamsCount}</dd>
                   </dl>
                 </div>
               </div>
@@ -185,7 +190,7 @@ export default function CommitteeRegistrationPage() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Registered Teams</dt>
-                    <dd className="text-lg font-medium text-gray-900">{teamsInSeason.length}</dd>
+                    <dd className="text-lg font-medium text-gray-900">{registeredTeamsCount}</dd>
                   </dl>
                 </div>
               </div>
@@ -203,7 +208,7 @@ export default function CommitteeRegistrationPage() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Available Teams</dt>
-                    <dd className="text-lg font-medium text-gray-900">{teamsNotInSeason.length}</dd>
+                    <dd className="text-lg font-medium text-gray-900">{totalTeamsCount - registeredTeamsCount}</dd>
                   </dl>
                 </div>
               </div>

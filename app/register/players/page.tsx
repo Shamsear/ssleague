@@ -3,8 +3,9 @@
 import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { db, auth } from '@/lib/firebase/config'
-import { collection, addDoc, doc, getDoc, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore'
+import { collection, addDoc, doc, getDoc, query, where, getDocs, orderBy, Timestamp, deleteDoc, updateDoc, setDoc } from 'firebase/firestore'
 import { onAuthStateChanged } from 'firebase/auth'
+import EmailVerificationRequests from './EmailVerificationRequests'
 
 interface Season {
   id: string
@@ -36,12 +37,14 @@ function PlayersRegistrationPageContent() {
   const [masterPlayers, setMasterPlayers] = useState<MasterPlayer[]>([])
   const [filteredPlayers, setFilteredPlayers] = useState<MasterPlayer[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedPlayer, setSelectedPlayer] = useState<MasterPlayer | null>(null)
+  const [selectedPlayers, setSelectedPlayers] = useState<MasterPlayer[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false)
+  const [togglingRegistration, setTogglingRegistration] = useState(false)
 
 
   // Fetch season, master players, and registered players
@@ -64,6 +67,7 @@ function PlayersRegistrationPageContent() {
 
         const seasonData = { id: seasonDoc.id, ...seasonDoc.data() } as Season
         setSeason(seasonData)
+        setIsRegistrationOpen(seasonData.is_player_registration_open || false)
 
         // Fetch all master players from realplayers collection
         const masterPlayersRef = collection(db, 'realplayers')
@@ -126,12 +130,108 @@ function PlayersRegistrationPageContent() {
   }
 
   const handlePlayerSelect = (player: MasterPlayer) => {
-    setSelectedPlayer(player)
-    setSearchTerm(player.name)
+    // Check if player is already selected
+    const isAlreadySelected = selectedPlayers.some(p => p.player_id === player.player_id)
+    
+    if (!isAlreadySelected) {
+      setSelectedPlayers([...selectedPlayers, player])
+    }
+    
+    // Clear search
+    setSearchTerm('')
     setShowDropdown(false)
     setFilteredPlayers([])
   }
 
+  const handleRemovePlayer = (playerId: string) => {
+    setSelectedPlayers(selectedPlayers.filter(p => p.player_id !== playerId))
+  }
+
+
+  const handleToggleRegistration = async () => {
+    if (!seasonId) return
+    
+    setTogglingRegistration(true)
+    setError(null)
+    setSuccess(null)
+    
+    try {
+      const response = await fetch(`/api/admin/seasons/${seasonId}/toggle-player-registration`, {
+        method: 'POST',
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setIsRegistrationOpen(data.season.is_player_registration_open)
+        setSuccess(data.message)
+        setTimeout(() => setSuccess(null), 3000)
+      } else {
+        setError(data.error || 'Failed to toggle registration')
+      }
+    } catch (err) {
+      console.error('Error toggling registration:', err)
+      setError('Failed to toggle registration status')
+    } finally {
+      setTogglingRegistration(false)
+    }
+  }
+
+  const handleDeleteRegistration = async (playerId: string) => {
+    if (!confirm('Are you sure you want to remove this player registration? This will cancel the entire 2-season contract for both the current and next season.')) {
+      return
+    }
+
+    if (!seasonId) return
+
+    try {
+      // Calculate next season ID
+      const currentSeasonNumber = parseInt(seasonId.replace(/\D/g, ''))
+      const seasonPrefix = seasonId.replace(/\d+$/, '')
+      const nextSeasonId = `${seasonPrefix}${currentSeasonNumber + 1}`
+      
+      // Construct the composite document IDs for both seasons
+      const currentRegistrationId = `${playerId}_${seasonId}`
+      const nextRegistrationId = `${playerId}_${nextSeasonId}`
+      
+      // Delete the registration from realplayer collection for CURRENT season
+      await deleteDoc(doc(db, 'realplayer', currentRegistrationId))
+      
+      // Delete the registration from realplayer collection for NEXT season
+      try {
+        await deleteDoc(doc(db, 'realplayer', nextRegistrationId))
+      } catch (nextSeasonError) {
+        console.warn('Next season registration may not exist yet:', nextSeasonError)
+      }
+
+      // Update is_registered to false in realplayers collection
+      try {
+        await fetch('/api/real-players', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            player_id: playerId,
+            is_registered: false,
+            registered_at: null,
+            season_id: null
+          })
+        })
+      } catch (updateError) {
+        console.warn('Failed to update is_registered status:', updateError)
+      }
+
+      // Remove from local state
+      setRegisteredPlayers(registeredPlayers.filter(p => p.id !== currentRegistrationId))
+      setSuccess('Player contract cancelled successfully (both seasons removed)!')
+      setTimeout(() => setSuccess(null), 3000)
+    } catch (err) {
+      console.error('Error removing registration:', err)
+      setError('Failed to remove registration. Please try again.')
+      setTimeout(() => setError(null), 3000)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -140,59 +240,140 @@ function PlayersRegistrationPageContent() {
     setSuccess(null)
 
     try {
-      if (!selectedPlayer) {
-        setError('Please select a player from the search results')
+      if (selectedPlayers.length === 0) {
+        setError('Please select at least one player to register')
         setSubmitting(false)
         return
       }
 
-      // Check if player is already registered for this season
-      const existingPlayerQuery = query(
-        collection(db, 'realplayer'),
-        where('season_id', '==', seasonId),
-        where('player_id', '==', selectedPlayer.player_id)
-      )
-      const existingPlayers = await getDocs(existingPlayerQuery)
+      let successCount = 0
+      let skipCount = 0
+      const errors: string[] = []
 
-      if (!existingPlayers.empty) {
-        setError('This player is already registered for this season')
-        setSubmitting(false)
-        return
+      // Register each selected player
+      for (const player of selectedPlayers) {
+        try {
+          // Check if player is already registered for this season
+          const existingPlayerQuery = query(
+            collection(db, 'realplayer'),
+            where('season_id', '==', seasonId),
+            where('player_id', '==', player.player_id)
+          )
+          const existingPlayers = await getDocs(existingPlayerQuery)
+
+          if (!existingPlayers.empty) {
+            skipCount++
+            continue
+          }
+
+          // Generate contract ID for 2-season contract
+          const currentSeasonNumber = parseInt(seasonId.replace(/\D/g, ''))
+          const seasonPrefix = seasonId.replace(/\d+$/, '')
+          const nextSeasonId = `${seasonPrefix}${currentSeasonNumber + 1}`
+          const contractId = `${player.player_id}_${seasonId}_${nextSeasonId}_${Date.now()}`
+          
+          // Create player registration for CURRENT season
+          const registrationId = `${player.player_id}_${seasonId}`
+          const registrationRef = doc(db, 'realplayer', registrationId)
+          
+          await setDoc(registrationRef, {
+            season_id: seasonId,
+            player_id: player.player_id,
+            player_name: player.name,
+            name: player.name,
+            registration_date: Timestamp.now(),
+            created_at: Timestamp.now(),
+            updated_at: Timestamp.now(),
+            // Contract fields for 2-season system
+            contract_id: contractId,
+            contract_start_season: seasonId,
+            contract_end_season: nextSeasonId,
+            contract_length: 2,
+            is_auto_registered: false // First season registration
+          })
+          
+          // Create player registration for NEXT season (auto-registered)
+          const nextRegistrationId = `${player.player_id}_${nextSeasonId}`
+          const nextRegistrationRef = doc(db, 'realplayer', nextRegistrationId)
+          
+          await setDoc(nextRegistrationRef, {
+            season_id: nextSeasonId,
+            player_id: player.player_id,
+            player_name: player.name,
+            name: player.name,
+            registration_date: Timestamp.now(),
+            created_at: Timestamp.now(),
+            updated_at: Timestamp.now(),
+            // Contract fields for 2-season system
+            contract_id: contractId,
+            contract_start_season: seasonId,
+            contract_end_season: nextSeasonId,
+            contract_length: 2,
+            is_auto_registered: true // Second season (auto-registered)
+          })
+
+          // Update the player's is_registered status in realplayers collection
+          try {
+            const updateResponse = await fetch('/api/real-players', {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                player_id: player.player_id,
+                is_registered: true,
+                registered_at: new Date().toISOString(),
+                season_id: seasonId
+              })
+            })
+            
+            const updateResult = await updateResponse.json()
+            if (!updateResult.success) {
+              console.error('Failed to update is_registered status:', updateResult.error)
+            }
+          } catch (updateError) {
+            console.error('Error updating is_registered status:', updateError)
+          }
+          
+          // Add to registered players list
+          setRegisteredPlayers(prev => [
+            {
+              id: registrationId,
+              player_id: player.player_id,
+              player_name: player.name,
+              registration_date: Timestamp.now()
+            },
+            ...prev
+          ])
+
+          successCount++
+        } catch (err) {
+          console.error(`Error registering player ${player.player_id}:`, err)
+          errors.push(`${player.name} (${player.player_id})`)
+        }
       }
 
-      // Create player registration
-      const newPlayer = await addDoc(collection(db, 'realplayer'), {
-        season_id: seasonId,
-        player_id: selectedPlayer.player_id,
-        player_name: selectedPlayer.name,
-        registration_date: Timestamp.now(),
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now()
-      })
-      
-      // Add to registered players list
-      setRegisteredPlayers([
-        {
-          id: newPlayer.id,
-          player_id: selectedPlayer.player_id,
-          player_name: selectedPlayer.name,
-          registration_date: Timestamp.now()
-        },
-        ...registeredPlayers
-      ])
-
-      // Reset form
-      setSelectedPlayer(null)
+      // Clear selected players
+      setSelectedPlayers([])
       setSearchTerm('')
 
-      setSuccess('Player registered successfully!')
+      // Show results
+      if (successCount > 0) {
+        setSuccess(`Successfully registered ${successCount} player${successCount > 1 ? 's' : ''}!${skipCount > 0 ? ` (${skipCount} already registered)` : ''}`)
+      }
+      if (errors.length > 0) {
+        setError(`Failed to register: ${errors.join(', ')}`)
+      }
       
-      setTimeout(() => setSuccess(null), 5000)
+      setTimeout(() => {
+        setSuccess(null)
+        setError(null)
+      }, 5000)
       
       setSubmitting(false)
     } catch (err) {
-      console.error('Error registering player:', err)
-      setError('Failed to register player. Please try again.')
+      console.error('Error registering players:', err)
+      setError('Failed to register players. Please try again.')
       setSubmitting(false)
     }
   }
@@ -225,43 +406,99 @@ function PlayersRegistrationPageContent() {
     <div className="min-h-screen bg-gradient-to-br from-[#0066FF]/5 via-white to-[#00D4FF]/5 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header with Back Button */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 sm:mb-8">
           <div className="flex-1">
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">Player Registration</h1>
-            <p className="text-gray-600">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800 mb-2">Player Registration</h1>
+            <p className="text-sm sm:text-base text-gray-600">
               Register players for <span className="font-semibold text-[#0066FF]">{season?.name}</span>
             </p>
           </div>
           <button
             onClick={() => router.push('/dashboard/committee')}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-white hover:shadow-md transition-all"
+            className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-white hover:shadow-md transition-all w-full sm:w-auto justify-center"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to Dashboard
           </button>
         </div>
 
+        {/* Player Registration Status Toggle */}
+        <div className="glass rounded-3xl p-4 sm:p-6 shadow-lg border border-white/20 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className={`p-3 rounded-xl ${
+                isRegistrationOpen 
+                  ? 'bg-gradient-to-br from-green-500/20 to-green-400/10' 
+                  : 'bg-gradient-to-br from-red-500/20 to-red-400/10'
+              }`}>
+                <svg className={`w-6 h-6 ${
+                  isRegistrationOpen ? 'text-green-600' : 'text-red-600'
+                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isRegistrationOpen 
+                    ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    : "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  } />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Public Player Registration</h3>
+                <p className={`text-sm font-medium ${
+                  isRegistrationOpen ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  Status: {isRegistrationOpen ? 'Open' : 'Closed'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleToggleRegistration}
+              disabled={togglingRegistration}
+              className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-medium transition-all flex items-center justify-center gap-2 w-full sm:w-auto ${
+                isRegistrationOpen
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {togglingRegistration ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isRegistrationOpen
+                      ? "M6 18L18 6M6 6l12 12"
+                      : "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    } />
+                  </svg>
+                  {isRegistrationOpen ? 'Close Registration' : 'Open Registration'}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
         {/* Player Registration Invite Link */}
-        <div className="glass rounded-3xl p-6 shadow-lg border border-white/20 mb-8">
-          <div className="flex items-start gap-4">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-green-500/20 to-green-400/10">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="glass rounded-3xl p-4 sm:p-6 shadow-lg border border-white/20 mb-6 sm:mb-8">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <div className="p-2 sm:p-3 rounded-xl bg-gradient-to-br from-green-500/20 to-green-400/10 flex-shrink-0">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
               </svg>
             </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Public Player Registration Link</h3>
-              <p className="text-sm text-gray-600 mb-3">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2">Public Player Registration Link</h3>
+              <p className="text-xs sm:text-sm text-gray-600 mb-3">
                 Share this link with players so they can self-register for this season:
               </p>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                 <input
                   type="text"
                   value={`${typeof window !== 'undefined' ? window.location.origin : ''}/register/player?season=${seasonId}`}
                   readOnly
-                  className="flex-1 px-4 py-2 bg-white/60 border border-gray-200 rounded-xl text-sm font-mono text-gray-700"
+                  className="flex-1 px-3 sm:px-4 py-2 bg-white/60 border border-gray-200 rounded-xl text-xs sm:text-sm font-mono text-gray-700 truncate"
                 />
                 <button
                   onClick={() => {
@@ -269,7 +506,7 @@ function PlayersRegistrationPageContent() {
                     setSuccess('Link copied to clipboard!')
                     setTimeout(() => setSuccess(null), 3000)
                   }}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap"
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors flex items-center justify-center gap-2 text-sm whitespace-nowrap"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -281,11 +518,11 @@ function PlayersRegistrationPageContent() {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
           {/* Registration Form */}
-          <div className="glass rounded-3xl p-8 shadow-lg border border-white/20 h-fit">
-            <div className="bg-gradient-to-r from-purple-600 to-purple-700 -mx-8 -mt-8 px-8 py-4 rounded-t-3xl mb-6">
-              <h2 className="text-2xl font-bold text-white flex items-center">
+          <div className="glass rounded-3xl p-4 sm:p-6 lg:p-8 shadow-lg border border-white/20 h-fit">
+            <div className="bg-gradient-to-r from-purple-600 to-purple-700 -mx-4 sm:-mx-6 lg:-mx-8 -mt-4 sm:-mt-6 lg:-mt-8 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 rounded-t-3xl mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-white flex items-center">
                 <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                 </svg>
@@ -306,7 +543,6 @@ function PlayersRegistrationPageContent() {
                       value={searchTerm}
                       onChange={handleSearchChange}
                       onFocus={() => setShowDropdown(true)}
-                      required
                       className="w-full px-4 py-2 pr-10 rounded-xl border border-gray-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all"
                       placeholder="Search by player ID or name..."
                     />
@@ -315,7 +551,6 @@ function PlayersRegistrationPageContent() {
                         type="button"
                         onClick={() => {
                           setSearchTerm('')
-                          setSelectedPlayer(null)
                           setFilteredPlayers([])
                           setShowDropdown(false)
                         }}
@@ -364,12 +599,30 @@ function PlayersRegistrationPageContent() {
                   )}
                 </div>
 
-                {/* Selected Player Display */}
-                {selectedPlayer && (
-                  <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
-                    <div className="text-sm font-medium text-purple-900 mb-1">Selected Player:</div>
-                    <div className="font-semibold text-purple-900">{selectedPlayer.name}</div>
-                    <div className="text-sm text-purple-700">ID: {selectedPlayer.player_id}</div>
+                {/* Selected Players Display */}
+                {selectedPlayers.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-purple-900 mb-2">
+                      Selected Players ({selectedPlayers.length}):
+                    </div>
+                    {selectedPlayers.map((player) => (
+                      <div key={player.player_id} className="p-3 bg-purple-50 rounded-xl border border-purple-200 flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="font-semibold text-purple-900">{player.name}</div>
+                          <div className="text-sm text-purple-700">ID: {player.player_id}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePlayer(player.player_id)}
+                          className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                          title="Remove player"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -392,10 +645,22 @@ function PlayersRegistrationPageContent() {
               <div className="mt-6">
                 <button
                   type="submit"
-                  disabled={submitting || !selectedPlayer}
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={submitting || selectedPlayers.length === 0}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {submitting ? 'Registering...' : 'Register Player'}
+                  {submitting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Registering...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Register {selectedPlayers.length > 0 ? `${selectedPlayers.length} Player${selectedPlayers.length > 1 ? 's' : ''}` : 'Players'}
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -403,8 +668,8 @@ function PlayersRegistrationPageContent() {
 
           {/* Registered Players List */}
           <div className="glass rounded-3xl shadow-lg border border-white/20 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
-              <h2 className="text-2xl font-bold text-white flex items-center justify-between">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 sm:px-6 py-3 sm:py-4">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-white flex items-center justify-between">
                 <span className="flex items-center">
                   <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -438,22 +703,37 @@ function PlayersRegistrationPageContent() {
               ) : (
                 <div className="divide-y divide-gray-200">
                   {registeredPlayers.map((player) => (
-                    <div key={player.id} className="p-4 hover:bg-blue-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
+                    <div key={player.id} className="p-3 sm:p-4 hover:bg-blue-50 transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-gray-900 text-base sm:text-lg mb-1 truncate">
                             {player.player_name || 'Unknown Player'}
                           </h3>
-                          <span className="text-sm text-gray-600 font-mono">
+                          <span className="text-xs sm:text-sm text-gray-600 font-mono">
                             ID: {player.player_id}
                           </span>
                         </div>
-                        <div className="text-right flex-shrink-0 ml-4">
-                          <p className="text-xs text-gray-500">
-                            {player.registration_date?.toDate().toLocaleDateString()}
-                          </p>
+                        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                          <div className="text-right hidden sm:block">
+                            <p className="text-xs text-gray-500">
+                              {player.registration_date?.toDate().toLocaleDateString()}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteRegistration(player.player_id)}
+                            className="p-1.5 sm:p-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                            title="Remove registration"
+                          >
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
                         </div>
                       </div>
+                      {/* Show date on mobile below the name */}
+                      <p className="text-xs text-gray-500 mt-1 sm:hidden">
+                        {player.registration_date?.toDate().toLocaleDateString()}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -461,6 +741,9 @@ function PlayersRegistrationPageContent() {
             </div>
           </div>
         </div>
+
+        {/* Email Verification Requests - Only visible if there are pending requests */}
+        {seasonId && <EmailVerificationRequests seasonId={seasonId} />}
 
       </div>
     </div>

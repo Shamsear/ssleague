@@ -2,19 +2,29 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/firebase/config';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
-import { POSITION_GROUPS } from '@/lib/constants/positions';
+import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import { getSmartCache, setSmartCache, CACHE_DURATIONS } from '@/utils/smartCache';
+import { POSITION_GROUPS } from '@/lib/constants/positions';
+import { usePermissions } from '@/hooks/usePermissions';
 
 export default function CommitteeDashboard() {
   const { user, loading } = useAuth();
+  const { userSeasonId } = usePermissions();
   const router = useRouter();
+  
+  // Debug: log user object and seasonId
+  useEffect(() => {
+    if (user) {
+      console.log('👤 User object:', user);
+      console.log('🆔 User seasonId field:', (user as any).seasonId);
+      console.log('🎯 userSeasonId from usePermissions:', userSeasonId);
+    }
+  }, [user, userSeasonId]);
   const [teams, setTeams] = useState<any[]>([]);
-  const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null);
   const [playerStats, setPlayerStats] = useState<{
     total: number;
     eligible: number;
@@ -23,6 +33,7 @@ export default function CommitteeDashboard() {
   const [activeRounds, setActiveRounds] = useState<any[]>([]);
   const [roundTiebreakers, setRoundTiebreakers] = useState<{[key: string]: any[]}>({});
   const [loadingRounds, setLoadingRounds] = useState(false);
+  const [currentSeason, setCurrentSeason] = useState<any>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -33,58 +44,64 @@ export default function CommitteeDashboard() {
     }
   }, [user, loading, router]);
 
-  // Fetch current season
-  useEffect(() => {
-    const fetchCurrentSeason = async () => {
-      if (!user || user.role !== 'committee_admin') {
-        console.log('Skipping season fetch - user not committee admin');
+  // Fetch season details for the committee admin's assigned season
+  const fetchCurrentSeason = useCallback(async () => {
+      if (!user || user.role !== 'committee_admin' || !userSeasonId) {
+        console.log('Skipping season fetch - user not committee admin or no season assigned');
         return;
       }
 
       try {
-        console.log('Fetching active season...');
-        // Get the active season
-        const seasonsQuery = query(
-          collection(db, 'seasons'),
-          where('isActive', '==', true),
-          limit(1)
-        );
-        const seasonsSnapshot = await getDocs(seasonsQuery);
+        // Check cache first
+        const cacheKey = `committee_season_${userSeasonId}`;
+        const cachedSeason = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
         
-        console.log('Active seasons found:', seasonsSnapshot.docs.length);
+        if (cachedSeason) {
+          console.log('📋 Using cached season data');
+          setCurrentSeason(cachedSeason);
+          return;
+        }
         
-        if (!seasonsSnapshot.empty) {
-          const seasonId = seasonsSnapshot.docs[0].id;
-          const seasonData = seasonsSnapshot.docs[0].data();
-          console.log('Active season ID:', seasonId);
-          console.log('Active season data:', seasonData);
-          setCurrentSeasonId(seasonId);
+        console.log('🔥 Fetching season from Firebase:', userSeasonId);
+        // Fetch the assigned season
+        const seasonRef = doc(db, 'seasons', userSeasonId);
+        const seasonSnapshot = await getDoc(seasonRef);
+        
+        if (seasonSnapshot.exists()) {
+          const seasonData = { id: seasonSnapshot.id, ...seasonSnapshot.data() };
+          console.log('Season data:', seasonData);
+          
+          // Cache the season data
+          setSmartCache(cacheKey, seasonData, CACHE_DURATIONS.MEDIUM);
+          setCurrentSeason(seasonData);
         } else {
-          console.log('No active season found in database');
-          // Fallback: Get any season if no active season
-          console.log('Trying to fetch any season as fallback...');
-          const allSeasonsRef = collection(db, 'seasons');
-          const allSeasonsSnapshot = await getDocs(allSeasonsRef);
-          if (!allSeasonsSnapshot.empty) {
-            const seasonId = allSeasonsSnapshot.docs[0].id;
-            console.log('Fallback season ID:', seasonId);
-            setCurrentSeasonId(seasonId);
-          }
+          console.log('Season not found:', userSeasonId);
         }
       } catch (err) {
         console.error('Error fetching season:', err);
       }
-    };
+    }, [user, userSeasonId]);
 
-    fetchCurrentSeason();
-  }, [user]);
-
-  // Fetch player statistics
   useEffect(() => {
-    const fetchPlayerStats = async () => {
+    fetchCurrentSeason();
+  }, [fetchCurrentSeason]);
+
+  // Fetch player statistics with smart caching
+  const fetchPlayerStats = useCallback(async () => {
       if (!user || user.role !== 'committee_admin') return;
 
       try {
+        // Check cache first
+        const cacheKey = 'committee_player_stats';
+        const cachedStats = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
+        
+        if (cachedStats) {
+          console.log('📋 Using cached player stats');
+          setPlayerStats(cachedStats);
+          return;
+        }
+        
+        console.log('🔥 Fetching player stats from API...');
         // Fetch all players to calculate stats
         const response = await fetch('/api/players');
         const { data: players, success } = await response.json();
@@ -112,27 +129,31 @@ export default function CommitteeDashboard() {
             }
           });
 
-          setPlayerStats({
+          const stats = {
             total: players.length,
             eligible: eligible.length,
             byPosition: positionGroups
-          });
+          };
+          
+          // Cache the calculated stats
+          setSmartCache(cacheKey, stats, CACHE_DURATIONS.MEDIUM);
+          setPlayerStats(stats);
         }
       } catch (err) {
         console.error('Error fetching player stats:', err);
       }
-    };
+    }, [user]);
 
+  useEffect(() => {
     fetchPlayerStats();
-  }, [user]);
+  }, [fetchPlayerStats]);
 
   // Fetch teams for current season
-  useEffect(() => {
-    const fetchTeams = async () => {
-      if (!currentSeasonId || !user || user.role !== 'committee_admin') return;
+  const fetchTeams = useCallback(async () => {
+      if (!userSeasonId || !user || user.role !== 'committee_admin') return;
 
       try {
-        const response = await fetchWithTokenRefresh(`/api/team/all?season_id=${currentSeasonId}`);
+        const response = await fetchWithTokenRefresh(`/api/team/all?season_id=${userSeasonId}`);
         const data = await response.json();
 
         if (data.success && data.data?.teams) {
@@ -145,20 +166,20 @@ export default function CommitteeDashboard() {
       } catch (err) {
         console.error('Error fetching teams:', err);
       }
-    };
+    }, [userSeasonId, user]);
 
+  useEffect(() => {
     fetchTeams();
-  }, [currentSeasonId, user]);
+  }, [fetchTeams]);
 
   // Fetch active rounds and tiebreakers
-  useEffect(() => {
-    const fetchActiveRounds = async () => {
-      if (!currentSeasonId || !user || user.role !== 'committee_admin') return;
+  const fetchActiveRounds = useCallback(async () => {
+      if (!userSeasonId || !user || user.role !== 'committee_admin') return;
 
       setLoadingRounds(true);
       try {
         // Fetch active rounds
-        const roundsResponse = await fetchWithTokenRefresh(`/api/admin/rounds?season_id=${currentSeasonId}&status=active`, {
+        const roundsResponse = await fetchWithTokenRefresh(`/api/admin/rounds?season_id=${userSeasonId}&status=active`, {
           headers: { 'Cache-Control': 'no-cache' },
         });
         const roundsData = await roundsResponse.json();
@@ -168,7 +189,7 @@ export default function CommitteeDashboard() {
         }
 
         // Fetch tiebreakers for active rounds
-        const tbResponse = await fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${currentSeasonId}&status=active`);
+        const tbResponse = await fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${userSeasonId}&status=active`);
         const tbData = await tbResponse.json();
 
         if (tbData.success && tbData.data?.tiebreakers) {
@@ -187,14 +208,15 @@ export default function CommitteeDashboard() {
       } finally {
         setLoadingRounds(false);
       }
-    };
+    }, [userSeasonId, user]);
 
+  useEffect(() => {
     fetchActiveRounds();
     
     // Refresh every 5 seconds
     const interval = setInterval(fetchActiveRounds, 5000);
     return () => clearInterval(interval);
-  }, [currentSeasonId, user]);
+  }, [fetchActiveRounds]);
 
   if (loading) {
     return (
@@ -228,8 +250,8 @@ export default function CommitteeDashboard() {
             
             <div className="bg-[#0066FF]/10 text-[#0066FF] px-4 py-2 rounded-lg border border-[#0066FF]/20">
               <div className="text-sm font-medium">Current Season</div>
-              <div className="font-bold">Season 2024</div>
-              <div className="text-xs opacity-75">12 teams</div>
+              <div className="font-bold">{currentSeason?.name || 'Loading...'}</div>
+              <div className="text-xs opacity-75">{teams.length} teams</div>
             </div>
           </div>
         </header>
@@ -269,7 +291,7 @@ export default function CommitteeDashboard() {
                       <p className="text-sm text-gray-600">Manage team registration for season</p>
                     </Link>
                     
-                    <Link href={currentSeasonId ? `/register/players?season=${currentSeasonId}` : '#'} className="glass group rounded-2xl p-4 border border-white/10 hover:border-purple-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+                    <Link href={userSeasonId ? `/register/players?season=${userSeasonId}` : '#'} className="glass group rounded-2xl p-4 border border-white/10 hover:border-purple-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
                       <div className="flex items-center">
                         <div className="p-3 rounded-xl bg-gradient-to-br from-purple-600/20 to-purple-500/10 text-purple-600 group-hover:from-purple-600/30 group-hover:to-purple-500/20 transition-all">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -291,6 +313,54 @@ export default function CommitteeDashboard() {
                         <h4 className="ml-3 text-base font-semibold text-gray-800 group-hover:text-[#0066FF] transition-colors">All Players</h4>
                       </div>
                       <p className="text-sm text-gray-600">Browse all players in database</p>
+                    </Link>
+                    
+                    <Link href="/dashboard/committee/contracts" className="glass group rounded-2xl p-4 border border-white/10 hover:border-orange-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+                      <div className="flex items-center">
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-orange-600/20 to-orange-500/10 text-orange-600 group-hover:from-orange-600/30 group-hover:to-orange-500/20 transition-all">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <h4 className="ml-3 text-base font-semibold text-gray-800 group-hover:text-orange-600 transition-colors">Player Contracts</h4>
+                      </div>
+                      <p className="text-sm text-gray-600">Manage 2-season player contracts</p>
+                    </Link>
+                    
+                    <Link href="/dashboard/committee/team-contracts" className="glass group rounded-2xl p-4 border border-white/10 hover:border-purple-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+                      <div className="flex items-center">
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-purple-600/20 to-purple-500/10 text-purple-600 group-hover:from-purple-600/30 group-hover:to-purple-500/20 transition-all">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <h4 className="ml-3 text-base font-semibold text-gray-800 group-hover:text-purple-600 transition-colors">Team Contracts</h4>
+                      </div>
+                      <p className="text-sm text-gray-600">Manage team 2-season contracts & penalties</p>
+                    </Link>
+                    
+                    <Link href="/dashboard/committee/player-ratings" className="glass group rounded-2xl p-4 border border-white/10 hover:border-amber-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+                      <div className="flex items-center">
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-amber-600/20 to-amber-500/10 text-amber-600 group-hover:from-amber-600/30 group-hover:to-amber-500/20 transition-all">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                          </svg>
+                        </div>
+                        <h4 className="ml-3 text-base font-semibold text-gray-800 group-hover:text-amber-600 transition-colors">Player Ratings</h4>
+                      </div>
+                      <p className="text-sm text-gray-600">Assign star ratings & auto-distribute categories</p>
+                    </Link>
+                    
+                    <Link href="/dashboard/committee/real-players" className="glass group rounded-2xl p-4 border border-white/10 hover:border-emerald-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+                      <div className="flex items-center">
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-600/20 to-emerald-500/10 text-emerald-600 group-hover:from-emerald-600/30 group-hover:to-emerald-500/20 transition-all">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                        </div>
+                        <h4 className="ml-3 text-base font-semibold text-gray-800 group-hover:text-emerald-600 transition-colors">SS Members (Real Players)</h4>
+                      </div>
+                      <p className="text-sm text-gray-600">Assign teams & auction values for SS Members</p>
                     </Link>
                   </div>
                 </div>

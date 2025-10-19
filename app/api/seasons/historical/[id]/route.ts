@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
+
+// Enable caching for historical data (1 hour)
+export const revalidate = 3600;
 
 export async function GET(
   request: NextRequest,
@@ -15,7 +19,13 @@ export async function GET(
       );
     }
 
-    console.log(`🔍 Fetching historical season data for ID: ${seasonId}`);
+    // Get pagination parameters
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '50');
+    const loadAll = searchParams.get('loadAll') === 'true';
+
+    console.log(`🔍 Fetching historical season data for ID: ${seasonId} (page: ${page}, pageSize: ${pageSize}, loadAll: ${loadAll})`);
 
     // Fetch season data
     console.log('📋 Fetching season document...');
@@ -39,21 +49,59 @@ export async function GET(
 
     console.log('✅ Season document loaded successfully');
 
-    // Fetch teams using correct field structure
-    console.log('👥 Fetching teams data...');
+    // Fetch teams - only permanent data
+    console.log('👥 Fetching teams permanent data...');
     const teamsQuery = adminDb.collection('teams')
       .where('seasons', 'array-contains', seasonId)
       .where('is_historical', '==', true);
     const teamsSnapshot = await teamsQuery.get();
     const teamsData = teamsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Fetch team stats for this season from teamstats collection
+    console.log('📊 Fetching team stats data from teamstats...');
+    const teamStatsQuery = adminDb.collection('teamstats')
+      .where('season_id', '==', seasonId);
+    const teamStatsSnapshot = await teamStatsQuery.get();
+    const teamStatsData = teamStatsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    console.log(`✅ Found ${teamStatsData.length} team stats records for this season`);
+    
+    // Merge permanent team data with season-specific stats
+    const teamsWithStats = teamsData.map(team => {
+      const seasonStats = teamStatsData.find(stats => stats.team_id === team.id);
+      return {
+        ...team,
+        season_stats: seasonStats || null
+      };
+    });
 
     // NEW ARCHITECTURE: Fetch season-specific stats from realplayerstats collection
     console.log('⚽ Fetching player stats data from realplayerstats...');
-    const playerStatsQuery = adminDb.collection('realplayerstats')
+    
+    // Get total count first (for pagination)
+    const playerStatsCountQuery = adminDb.collection('realplayerstats')
       .where('season_id', '==', seasonId);
+    const countSnapshot = await playerStatsCountQuery.count().get();
+    const totalPlayers = countSnapshot.data().count;
+    
+    console.log(`📊 Total players in season: ${totalPlayers}`);
+    
+    // Apply pagination if not loading all
+    let playerStatsQuery = adminDb.collection('realplayerstats')
+      .where('season_id', '==', seasonId)
+      .orderBy('player_name'); // Order by name for consistent pagination
+    
+    if (!loadAll) {
+      const offset = (page - 1) * pageSize;
+      playerStatsQuery = playerStatsQuery.limit(pageSize).offset(offset);
+      console.log(`📖 Loading page ${page} (${pageSize} players, offset ${offset})`);
+    } else {
+      console.log(`📚 Loading all ${totalPlayers} players`);
+    }
+    
     const playerStatsSnapshot = await playerStatsQuery.get();
     
-    console.log(`📊 Found ${playerStatsSnapshot.docs.length} player stats records for this season`);
+    console.log(`📊 Loaded ${playerStatsSnapshot.docs.length} player stats records for this page`);
     
     // Collect unique player IDs to fetch their permanent data
     const playerIds = playerStatsSnapshot.docs.map(doc => doc.data().player_id).filter(Boolean);
@@ -64,30 +112,56 @@ export async function GET(
     // Fetch permanent player data for all players in this season
     const playerDataMap = new Map();
     if (uniquePlayerIds.length > 0) {
-      // Firestore 'in' queries are limited to 10 items, so batch if needed
-      const batchSize = 10;
-      for (let i = 0; i < uniquePlayerIds.length; i += batchSize) {
-        const batch = uniquePlayerIds.slice(i, i + batchSize);
-        const playersQuery = adminDb.collection('realplayers')
-          .where('player_id', 'in', batch);
-        const playersSnapshot = await playersQuery.get();
-        playersSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          playerDataMap.set(data.player_id, {
-            id: doc.id,
-            player_id: data.player_id,
-            name: data.name,
-            display_name: data.display_name,
-            email: data.email,
-            phone: data.phone,
-            role: data.role,
-            psn_id: data.psn_id,
-            xbox_id: data.xbox_id,
-            steam_id: data.steam_id,
-            is_registered: data.is_registered,
-            notes: data.notes,
-          });
+      // OPTIMIZED: Use larger batch size (Firestore 'in' limit is 30)
+      const batchSize = 30;
+      
+      // OPTIMIZATION 1: Use getAll for direct document fetches when possible
+      // This is more efficient than 'where...in' queries
+      if (uniquePlayerIds.length <= 30) {
+        // Single batch - use getAll for maximum efficiency
+        const docRefs = uniquePlayerIds.map(playerId => 
+          adminDb.collection('realplayers').doc(playerId)
+        );
+        const playerDocs = await adminDb.getAll(...docRefs);
+        
+        playerDocs.forEach(doc => {
+          if (doc.exists) {
+            const data = doc.data();
+            playerDataMap.set(doc.id, {
+              id: doc.id,
+              player_id: data?.player_id,
+              name: data?.name,
+              display_name: data?.display_name,
+              // Only fetch essential fields to reduce read size
+              psn_id: data?.psn_id,
+              is_registered: data?.is_registered,
+            });
+          }
         });
+        console.log(`✅ Fetched ${playerDocs.length} players in single getAll batch`);
+      } else {
+        // Multiple batches needed - use where...in queries
+        const numBatches = Math.ceil(uniquePlayerIds.length / batchSize);
+        console.log(`📦 Fetching ${uniquePlayerIds.length} players in ${numBatches} batches of ${batchSize}`);
+        
+        for (let i = 0; i < uniquePlayerIds.length; i += batchSize) {
+          const batch = uniquePlayerIds.slice(i, i + batchSize);
+          const playersQuery = adminDb.collection('realplayers')
+            .where('player_id', 'in', batch);
+          const playersSnapshot = await playersQuery.get();
+          
+          playersSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            playerDataMap.set(data.player_id, {
+              id: doc.id,
+              player_id: data.player_id,
+              name: data.name,
+              display_name: data.display_name,
+              psn_id: data.psn_id,
+              is_registered: data.is_registered,
+            });
+          });
+        }
       }
     }
     
@@ -101,17 +175,13 @@ export async function GET(
       return {
         id: statsDoc.id,
         player_id: statsData.player_id,
-        // Permanent player info from realplayers
-        name: permanentData.name || statsData.name || 'Unknown Player',
-        display_name: permanentData.display_name,
-        email: permanentData.email,
-        phone: permanentData.phone,
-        role: permanentData.role,
-        psn_id: permanentData.psn_id,
-        xbox_id: permanentData.xbox_id,
-        steam_id: permanentData.steam_id,
-        is_registered: permanentData.is_registered,
-        notes: permanentData.notes,
+        // Permanent player info from realplayers (optimized - only essential fields)
+        name: permanentData.name || statsData.player_name || statsData.name || 'Unknown Player',
+        display_name: permanentData.display_name || statsData.display_name,
+        psn_id: permanentData.psn_id || statsData.psn_id,
+        is_registered: permanentData.is_registered || statsData.is_registered || false,
+        // Note: Other fields (email, phone, role, xbox_id, steam_id, notes) are not needed for display
+        // They can be fetched individually when viewing player detail page
         // Season-specific data from realplayerstats
         season_id: statsData.season_id,
         category: statsData.category,
@@ -133,6 +203,7 @@ export async function GET(
           clean_sheets: statsData.clean_sheets || statsData.stats?.clean_sheets || 0,
           points: statsData.points || statsData.stats?.points || 0,
           total_points: statsData.total_points || statsData.stats?.total_points || 0,
+          potm: statsData.potm || statsData.stats?.potm || null,
           win_rate: statsData.win_rate || statsData.stats?.win_rate || 0,
           average_rating: statsData.average_rating || statsData.stats?.average_rating || 0,
           current_season_matches: statsData.current_season_matches || statsData.stats?.current_season_matches || 0,
@@ -180,24 +251,51 @@ export async function GET(
 
     console.log('✅ All data loaded successfully!');
     console.log(`  - Season: ${seasonData.name}`);
-    console.log(`  - Teams: ${teamsData.length}`);
+    console.log(`  - Teams: ${teamsWithStats.length}`);
+    console.log(`  - Team Stats: ${teamStatsData.length}`);
     console.log(`  - Players: ${playersData.length}`);
     console.log(`  - Awards: ${awardsData.length}`);
     console.log(`  - Matches: ${matchesData.length}`);
     
-    // Debug: Show sample player data structure
+    // Debug: Show sample team and player data structure
+    if (teamsWithStats.length > 0) {
+      console.log('🔍 Sample team data:', JSON.stringify({
+        team_id: teamsWithStats[0].id,
+        team_name: teamsWithStats[0].team_name,
+        has_season_stats: !!teamsWithStats[0].season_stats,
+        season_stats_sample: teamsWithStats[0].season_stats ? {
+          rank: teamsWithStats[0].season_stats.rank,
+          points: teamsWithStats[0].season_stats.points,
+          matches_played: teamsWithStats[0].season_stats.matches_played
+        } : null
+      }, null, 2));
+    }
     if (playersData.length > 0) {
       console.log('🔍 Sample player data:', JSON.stringify(playersData[0], null, 2));
     }
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(totalPlayers / pageSize);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
 
     return NextResponse.json({
       success: true,
       data: {
         season: seasonData,
-        teams: teamsData,
+        teams: teamsWithStats,
         players: playersData,
         awards: awardsData,
         matches: matchesData
+      },
+      pagination: {
+        currentPage: page,
+        pageSize: pageSize,
+        totalPlayers: totalPlayers,
+        totalPages: totalPages,
+        hasNextPage: hasNextPage,
+        hasPrevPage: hasPrevPage,
+        loadedAll: loadAll
       }
     });
 
@@ -207,6 +305,269 @@ export async function GET(
       { 
         success: false, 
         error: 'Failed to fetch season data',
+        details: error.message 
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH endpoint to update historical season metadata
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: seasonId } = await params;
+    
+    if (!seasonId) {
+      return NextResponse.json(
+        { success: false, error: 'Season ID is required' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`✏️ Updating historical season metadata for ID: ${seasonId}`);
+
+    // Verify season exists and is historical
+    const seasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
+    
+    if (!seasonDoc.exists) {
+      return NextResponse.json(
+        { success: false, error: 'Season not found' },
+        { status: 404 }
+      );
+    }
+
+    const seasonData = seasonDoc.data();
+    if (!seasonData?.is_historical) {
+      return NextResponse.json(
+        { success: false, error: 'This is not a historical season' },
+        { status: 400 }
+      );
+    }
+
+    // Parse request body
+    const body = await request.json();
+    
+    // Define allowed fields for update
+    const allowedFields = [
+      'name',
+      'short_name',
+      'description',
+      'season_start',
+      'season_end',
+      'champion_team_id',
+      'champion_team_name',
+      'runner_up_team_id',
+      'runner_up_team_name',
+      'top_scorer_player_id',
+      'top_scorer_player_name',
+      'top_scorer_goals',
+      'best_goalkeeper_player_id',
+      'best_goalkeeper_player_name',
+      'best_goalkeeper_clean_sheets',
+      'most_assists_player_id',
+      'most_assists_player_name',
+      'most_assists_count',
+      'mvp_player_id',
+      'mvp_player_name',
+      'total_teams',
+      'total_players',
+      'total_matches',
+      'notes'
+    ];
+
+    // Filter and prepare update data
+    const updateData: any = {};
+    
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field];
+      }
+    }
+
+    // Ensure at least one field is being updated
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No valid fields provided for update' },
+        { status: 400 }
+      );
+    }
+
+    // Add updated timestamp
+    updateData.updated_at = new Date();
+
+    console.log(`📝 Updating fields:`, Object.keys(updateData));
+
+    // Update the season document
+    await adminDb.collection('seasons').doc(seasonId).update(updateData);
+
+    console.log(`✅ Successfully updated historical season: ${seasonId}`);
+
+    // Fetch and return updated season data
+    const updatedDoc = await adminDb.collection('seasons').doc(seasonId).get();
+    const updatedData = { id: updatedDoc.id, ...updatedDoc.data() };
+
+    return NextResponse.json({
+      success: true,
+      message: 'Season metadata updated successfully',
+      data: updatedData
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error updating historical season:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Failed to update season',
+        details: error.message 
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE - Delete a historical season and all its associated data
+ * Deletes:
+ * - Season document
+ * - Player stats (realplayerstats)
+ * - Team stats (teamstats)
+ * - Awards
+ * - Removes season from teams' seasons array
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: seasonId } = await params;
+    
+    if (!seasonId) {
+      return NextResponse.json(
+        { success: false, error: 'Season ID is required' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`🗑️ Deleting historical season: ${seasonId}`);
+
+    // Verify season exists and is historical
+    const seasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
+    
+    if (!seasonDoc.exists) {
+      return NextResponse.json(
+        { success: false, error: 'Season not found' },
+        { status: 404 }
+      );
+    }
+
+    const seasonData = seasonDoc.data();
+    if (!seasonData?.is_historical) {
+      return NextResponse.json(
+        { success: false, error: 'Can only delete historical seasons' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`✅ Season verified as historical, proceeding with deletion`);
+
+    // Get counts before deletion for logging
+    const [playerStatsCount, teamStatsCount, awardsCount] = await Promise.all([
+      adminDb.collection('realplayerstats').where('season_id', '==', seasonId).count().get(),
+      adminDb.collection('teamstats').where('season_id', '==', seasonId).count().get(),
+      adminDb.collection('awards').where('season_id', '==', seasonId).count().get(),
+    ]);
+
+    console.log(`📊 Data to delete:`);
+    console.log(`   - Player stats: ${playerStatsCount.data().count}`);
+    console.log(`   - Team stats: ${teamStatsCount.data().count}`);
+    console.log(`   - Awards: ${awardsCount.data().count}`);
+
+    // Step 1: Delete all player stats for this season
+    console.log(`🗑️ Deleting player stats...`);
+    const playerStatsSnapshot = await adminDb
+      .collection('realplayerstats')
+      .where('season_id', '==', seasonId)
+      .get();
+    
+    const playerStatsBatch = adminDb.batch();
+    playerStatsSnapshot.docs.forEach(doc => {
+      playerStatsBatch.delete(doc.ref);
+    });
+    await playerStatsBatch.commit();
+    console.log(`✅ Deleted ${playerStatsSnapshot.size} player stats records`);
+
+    // Step 2: Delete all team stats for this season
+    console.log(`🗑️ Deleting team stats...`);
+    const teamStatsSnapshot = await adminDb
+      .collection('teamstats')
+      .where('season_id', '==', seasonId)
+      .get();
+    
+    const teamStatsBatch = adminDb.batch();
+    teamStatsSnapshot.docs.forEach(doc => {
+      teamStatsBatch.delete(doc.ref);
+    });
+    await teamStatsBatch.commit();
+    console.log(`✅ Deleted ${teamStatsSnapshot.size} team stats records`);
+
+    // Step 3: Delete all awards for this season
+    console.log(`🗑️ Deleting awards...`);
+    const awardsSnapshot = await adminDb
+      .collection('awards')
+      .where('season_id', '==', seasonId)
+      .get();
+    
+    const awardsBatch = adminDb.batch();
+    awardsSnapshot.docs.forEach(doc => {
+      awardsBatch.delete(doc.ref);
+    });
+    await awardsBatch.commit();
+    console.log(`✅ Deleted ${awardsSnapshot.size} awards records`);
+
+    // Step 4: Remove season from teams' seasons array
+    console.log(`🗑️ Removing season from teams...`);
+    const teamsSnapshot = await adminDb
+      .collection('teams')
+      .where('seasons', 'array-contains', seasonId)
+      .get();
+    
+    const teamsBatch = adminDb.batch();
+    teamsSnapshot.docs.forEach(doc => {
+      teamsBatch.update(doc.ref, {
+        seasons: FieldValue.arrayRemove(seasonId)
+      });
+    });
+    await teamsBatch.commit();
+    console.log(`✅ Removed season from ${teamsSnapshot.size} teams`);
+
+    // Step 5: Delete the season document itself
+    console.log(`🗑️ Deleting season document...`);
+    await adminDb.collection('seasons').doc(seasonId).delete();
+    console.log(`✅ Deleted season document`);
+
+    console.log(`✅ Successfully deleted historical season: ${seasonId}`);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Historical season deleted successfully',
+      deleted: {
+        seasonId,
+        playerStats: playerStatsSnapshot.size,
+        teamStats: teamStatsSnapshot.size,
+        awards: awardsSnapshot.size,
+        teamsUpdated: teamsSnapshot.size
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error deleting historical season:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Failed to delete season',
         details: error.message 
       },
       { status: 500 }

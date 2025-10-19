@@ -2,29 +2,51 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { findMatches, MatchResult } from '@/lib/utils/fuzzyMatch';
 
 interface TeamData {
-  team_name: string;
+  rank: number;
+  team: string;
   owner_name: string;
+  p: number; // Points
+  mp: number; // Matches Played
+  w: number; // Wins
+  d: number; // Draws
+  l: number; // Losses
+  f: number; // Goals For
+  a: number; // Goals Against
+  gd: number; // Goal Difference
+  percentage: number; // Win percentage
+  cups?: string[]; // Multiple cup achievements
+  cup_1?: string; // For display/editing
+  cup_2?: string;
+  cup_3?: string;
+  linked_team_id?: string; // Optional: link to existing team
 }
 
 interface PlayerData {
   name: string;
   team: string;
   category: string;
-  goals_scored: number;
-  goals_per_game: number;
-  goals_conceded: number;
-  conceded_per_game: number;
-  net_goals: number;
-  cleansheets: number;
-  points: number;
+  goals_scored: number | null;
+  goals_per_game: number | null;
+  goals_conceded: number | null;
+  conceded_per_game: number | null;
+  net_goals: number | null;
+  cleansheets: number | null;
+  potm: number | null; // Player of the Match
+  points: number | null;
   win: number;
   draw: number;
   loss: number;
   total_matches: number;
-  total_points: number;
+  total_points: number | null;
+  // Trophy/Award fields (optional)
+  category_wise_trophy_1?: string;
+  category_wise_trophy_2?: string;
+  individual_wise_trophy_1?: string;
+  individual_wise_trophy_2?: string;
 }
 
 interface SeasonUploadData {
@@ -47,6 +69,17 @@ interface SeasonUploadData {
   };
 }
 
+interface DuplicateMatch {
+  inputName: string;
+  matches: MatchResult[];
+  type: 'player' | 'team';
+}
+
+interface ExistingEntities {
+  players: Array<{ id: string; name: string; player_id?: string }>;
+  teams: Array<{ id: string; name: string; team_name?: string; teamId?: string; owner_name?: string }>;
+}
+
 export default function PreviewHistoricalSeason() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -62,6 +95,16 @@ export default function PreviewHistoricalSeason() {
   const [showErrors, setShowErrors] = useState(false);
   const [showWarnings, setShowWarnings] = useState(false);
   const [showValidationDetails, setShowValidationDetails] = useState(false);
+  
+  // Duplicate detection state
+  const [existingEntities, setExistingEntities] = useState<ExistingEntities | null>(null);
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatch[]>([]);
+  const [loadingDuplicates, setLoadingDuplicates] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(true);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Map<string, string>>(new Map());
+  const [showBulkReplace, setShowBulkReplace] = useState(false);
+  const [bulkFindText, setBulkFindText] = useState('');
+  const [bulkReplaceText, setBulkReplaceText] = useState('');
 
   useEffect(() => {
     if (!loading && !user) {
@@ -72,26 +115,197 @@ export default function PreviewHistoricalSeason() {
     }
   }, [user, loading, router]);
 
+  // Sync player team names to match linked team names
+  const syncPlayerTeamNames = useCallback((playersData: PlayerData[], oldTeams: TeamData[], newTeams: TeamData[], existingTeamsData: ExistingEntities['teams']) => {
+    return playersData.map(player => {
+      // Find which team this player belongs to based on the old team name
+      const teamIndex = oldTeams.findIndex(t => 
+        t.team.trim().toLowerCase() === player.team.trim().toLowerCase()
+      );
+      
+      if (teamIndex === -1) {
+        return player; // Team not found, keep as-is
+      }
+      
+      const newTeam = newTeams[teamIndex];
+      
+      // If the team is linked, update player's team name to the existing team name
+      if (newTeam.linked_team_id) {
+        const existingTeam = existingTeamsData.find(t => t.teamId === newTeam.linked_team_id);
+        if (existingTeam?.name && existingTeam.name !== player.team) {
+          console.log(`  🔄 Updated player "${player.name}" team from "${player.team}" to "${existingTeam.name}"`);
+          return { ...player, team: existingTeam.name };
+        }
+      }
+      
+      return player;
+    });
+  }, []);
+  
+  // Auto-link teams based on owner name or similar team name
+  const autoLinkTeams = useCallback((teamsData: TeamData[], existingTeamsData: ExistingEntities['teams']) => {
+    return teamsData.map(team => {
+      // Priority 1: Exact name match
+      const exactNameMatch = existingTeamsData.find(
+        et => et.name && team.team && et.name.toLowerCase() === team.team.toLowerCase()
+      );
+      
+      if (exactNameMatch) {
+        console.log(`🔗 Auto-linked "${team.team}" to existing team "${exactNameMatch.name}" (exact name match)`);
+        return { ...team, linked_team_id: exactNameMatch.teamId };
+      }
+      
+      // Priority 2: Normalized name match (removes FC, SC, etc.)
+      const normalizedMatch = existingTeamsData.find(et => {
+        if (!team.team || !et.name) return false;
+        const normalized1 = normalizeTeamName(team.team);
+        const normalized2 = normalizeTeamName(et.name);
+        return normalized1 === normalized2 && normalized1.length > 0;
+      });
+      
+      if (normalizedMatch) {
+        console.log(`🔗 Auto-linked "${team.team}" to existing team "${normalizedMatch.name}" (normalized match - FC/SC removed)`);
+        return { ...team, linked_team_id: normalizedMatch.teamId };
+      }
+      
+      // Priority 3: Exact owner match
+      const exactOwnerMatch = existingTeamsData.find(
+        et => et.owner_name && team.owner_name && et.owner_name.toLowerCase() === team.owner_name.toLowerCase()
+      );
+      
+      if (exactOwnerMatch) {
+        console.log(`🔗 Auto-linked "${team.team}" to existing team "${exactOwnerMatch.name}" (same owner: ${team.owner_name})`);
+        return { ...team, linked_team_id: exactOwnerMatch.teamId };
+      }
+      
+      // Priority 4: High similarity match (>90% for auto-linking)
+      const similarNameMatch = existingTeamsData.find(et => {
+        if (!team.team || !et.name) return false;
+        const similarity = calculateSimilarity(team.team.toLowerCase(), et.name.toLowerCase());
+        return similarity > 0.9; // Higher threshold for auto-linking
+      });
+      
+      if (similarNameMatch) {
+        console.log(`🔗 Auto-linked "${team.team}" to existing team "${similarNameMatch.name}" (high similarity: ${(calculateSimilarity(team.team.toLowerCase(), similarNameMatch.name.toLowerCase()) * 100).toFixed(0)}%)`);
+        return { ...team, linked_team_id: similarNameMatch.teamId };
+      }
+      
+      console.log(`ℹ️  "${team.team}" not auto-linked - will create as new team unless manually linked`);
+      return team; // No match, keep as new team
+    });
+  }, []);
+  
+  // Normalize team name by removing common prefixes/suffixes
+  const normalizeTeamName = (name: string): string => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/\b(fc|sc|ac|rc|cf|club)\b/gi, '') // Remove FC, SC, AC, RC, CF, Club
+      .replace(/\s+/g, ' ') // Normalize spaces
+      .trim();
+  };
+  
+  // Simple string similarity calculation
+  const calculateSimilarity = (str1: string, str2: string): number => {
+    // First try normalized comparison (without FC, SC, etc.)
+    const normalized1 = normalizeTeamName(str1);
+    const normalized2 = normalizeTeamName(str2);
+    
+    // If normalized names match exactly, return perfect score
+    if (normalized1 === normalized2 && normalized1.length > 0) {
+      return 1.0;
+    }
+    
+    // Otherwise use edit distance on original names
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    if (longer.length === 0) return 1.0;
+    return (longer.length - editDistance(longer, shorter)) / longer.length;
+  };
+  
+  const editDistance = (str1: string, str2: string): number => {
+    const matrix = [];
+    for (let i = 0; i <= str2.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= str1.length; j++) {
+      matrix[0][j] = j;
+    }
+    for (let i = 1; i <= str2.length; i++) {
+      for (let j = 1; j <= str1.length; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    return matrix[str2.length][str1.length];
+  };
+  
   // Load uploaded data from localStorage
   useEffect(() => {
     const savedData = localStorage.getItem('seasonUploadData');
     if (savedData) {
       try {
-        const data: SeasonUploadData = JSON.parse(savedData);
+        const data: any = JSON.parse(savedData);
+        
+        // Transform players data: convert trophy arrays to individual fields
+        const transformedPlayers = data.players.map((player: any) => {
+          const transformed: any = { ...player };
+          
+          // Convert category_trophies array to individual fields
+          if (player.category_trophies && Array.isArray(player.category_trophies)) {
+            transformed.category_wise_trophy_1 = player.category_trophies[0] || undefined;
+            transformed.category_wise_trophy_2 = player.category_trophies[1] || undefined;
+            delete transformed.category_trophies;
+          }
+          
+          // Convert individual_trophies array to individual fields
+          if (player.individual_trophies && Array.isArray(player.individual_trophies)) {
+            transformed.individual_wise_trophy_1 = player.individual_trophies[0] || undefined;
+            transformed.individual_wise_trophy_2 = player.individual_trophies[1] || undefined;
+            delete transformed.individual_trophies;
+          }
+          
+          return transformed;
+        });
+        
+        // Transform teams data: convert cups array to individual fields for display
+        const transformedTeams = data.teams.map((team: any) => {
+          const transformed: any = { ...team };
+          
+          // Convert cups array to individual fields
+          if (team.cups && Array.isArray(team.cups)) {
+            transformed.cup_1 = team.cups[0] || undefined;
+            transformed.cup_2 = team.cups[1] || undefined;
+            transformed.cup_3 = team.cups[2] || undefined;
+            delete transformed.cups;
+          }
+          
+          return transformed;
+        });
+        
         setUploadData(data);
-        setTeams(data.teams);
-        setPlayers(data.players);
+        setTeams(transformedTeams);
+        setPlayers(transformedPlayers);
         
         // Set initial active tab based on available data
         if (data.teams.length > 0) setActiveTab('teams');
         else if (data.players.length > 0) setActiveTab('players');
         
-        // Auto-run validation to show initial errors
+        // Auto-run validation and duplicate check
         setTimeout(() => {
           const hasNoErrors = validateAll();
           if (!hasNoErrors) {
             setShowValidationDetails(true); // Show errors if validation failed
           }
+          // Load existing entities and check for duplicates
+          loadExistingEntitiesAndCheckDuplicates();
         }, 100);
       } catch (error) {
         console.error('Error parsing upload data:', error);
@@ -104,54 +318,219 @@ export default function PreviewHistoricalSeason() {
     }
   }, [router]);
 
-  const handleRemoveTeam = (index: number) => {
+  // Load existing entities from database and check for duplicates
+  const loadExistingEntitiesAndCheckDuplicates = useCallback(async () => {
+    setLoadingDuplicates(true);
+    try {
+      const response = await fetch('/api/seasons/historical/check-duplicates');
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setExistingEntities(result.data);
+        
+        // Auto-link teams based on existing data
+        const autoLinkedTeams = autoLinkTeams(teams, result.data.teams);
+        if (JSON.stringify(autoLinkedTeams) !== JSON.stringify(teams)) {
+          setTeams(autoLinkedTeams);
+          console.log('✅ Auto-linked teams based on owner/name matching');
+          
+          // Update player team names to match linked teams
+          const updatedPlayers = syncPlayerTeamNames(players, teams, autoLinkedTeams, result.data.teams);
+          if (JSON.stringify(updatedPlayers) !== JSON.stringify(players)) {
+            setPlayers(updatedPlayers);
+            console.log('✅ Updated player team names to match linked teams');
+          }
+        }
+        
+        // Check for duplicates using fuzzy matching
+        const matches: DuplicateMatch[] = [];
+        const threshold = 70; // 70% similarity threshold
+        
+        // Check players
+        const existingPlayerNames = result.data.players.map((p: any) => p.name);
+        players.forEach((player) => {
+          const playerMatches = findMatches(player.name, existingPlayerNames, threshold, 3);
+          if (playerMatches.length > 0) {
+            matches.push({
+              inputName: player.name,
+              matches: playerMatches,
+              type: 'player'
+            });
+          }
+        });
+        
+        // Check teams
+        const existingTeamNames = result.data.teams.map((t: any) => t.name);
+        teams.forEach((team) => {
+          const teamMatches = findMatches(team.team, existingTeamNames, threshold, 3);
+          if (teamMatches.length > 0) {
+            matches.push({
+              inputName: team.team,
+              matches: teamMatches,
+              type: 'team'
+            });
+          }
+        });
+        
+        setDuplicateMatches(matches);
+      }
+    } catch (error) {
+      console.error('Error loading existing entities:', error);
+    } finally {
+      setLoadingDuplicates(false);
+    }
+  }, [players, teams, autoLinkTeams, syncPlayerTeamNames]);
+  
+  const handleRemoveTeam = useCallback((index: number) => {
     if (confirm('Remove this team from the import?')) {
-      setTeams(teams.filter((_, i) => i !== index));
+      setTeams(prev => prev.filter((_, i) => i !== index));
     }
-  };
+  }, []);
 
-  const handleRemovePlayer = (index: number) => {
+  const handleRemovePlayer = useCallback((index: number) => {
     if (confirm('Remove this player from the import?')) {
-      setPlayers(players.filter((_, i) => i !== index));
+      setPlayers(prev => prev.filter((_, i) => i !== index));
     }
-  };
+  }, []);
 
-  const handleTeamChange = (index: number, field: keyof TeamData, value: string) => {
+  const handleTeamChange = useCallback((index: number, field: keyof TeamData, value: string) => {
+    const oldTeams = [...teams];
     const newTeams = [...teams];
     newTeams[index][field] = value;
     setTeams(newTeams);
-  };
+    
+    // When linked_team_id changes, update all player team names for this team
+    if (field === 'linked_team_id' && existingEntities?.teams) {
+      const updatedPlayers = syncPlayerTeamNames(players, oldTeams, newTeams, existingEntities.teams);
+      if (JSON.stringify(updatedPlayers) !== JSON.stringify(players)) {
+        setPlayers(updatedPlayers);
+        console.log(`🔄 Updated player team names after linking team at index ${index}`);
+      }
+    }
+    
+    // Re-check duplicates when team name changes (debounced)
+    if (field === 'team_name' && existingEntities) {
+      const timeoutId = setTimeout(() => loadExistingEntitiesAndCheckDuplicates(), 500);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [teams, players, existingEntities, syncPlayerTeamNames, loadExistingEntitiesAndCheckDuplicates]);
 
-  const handlePlayerChange = (index: number, field: keyof PlayerData, value: any) => {
+  const handlePlayerChange = useCallback((index: number, field: keyof PlayerData, value: any) => {
     const newPlayers = [...players];
     if (field === 'goals_scored' || field === 'goals_per_game' || field === 'goals_conceded' || 
         field === 'conceded_per_game' || field === 'net_goals' || field === 'cleansheets' || 
-        field === 'points' || field === 'win' || field === 'draw' || field === 'loss' || 
+        field === 'potm' || field === 'points' || field === 'win' || field === 'draw' || field === 'loss' || 
         field === 'total_matches' || field === 'total_points') {
-      newPlayers[index][field] = typeof value === 'string' ? (parseFloat(value) || 0) : value;
+      // Allow null/empty for optional fields
+      if (value === '' || value === null) {
+        newPlayers[index][field] = null;
+      } else {
+        newPlayers[index][field] = typeof value === 'string' ? (parseFloat(value) || 0) : value;
+      }
     } else {
       newPlayers[index][field] = value;
     }
     setPlayers(newPlayers);
-  };
+    
+    // Re-check duplicates when player name changes (debounced)
+    if (field === 'name' && existingEntities) {
+      const timeoutId = setTimeout(() => loadExistingEntitiesAndCheckDuplicates(), 500);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [existingEntities, loadExistingEntitiesAndCheckDuplicates]);
+  
+  const handleBulkReplaceTeamNames = useCallback(() => {
+    if (!bulkFindText.trim() || !bulkReplaceText.trim()) {
+      alert('Please enter both find and replace text');
+      return;
+    }
+    
+    const findLower = bulkFindText.trim().toLowerCase();
+    const replaceText = bulkReplaceText.trim();
+    let replacedCount = 0;
+    
+    // Replace in players
+    const updatedPlayers = players.map(player => {
+      if (player.team && player.team.toLowerCase() === findLower) {
+        replacedCount++;
+        return { ...player, team: replaceText };
+      }
+      return player;
+    });
+    
+    setPlayers(updatedPlayers);
+    alert(`✅ Replaced ${replacedCount} occurrences of "${bulkFindText}" with "${replaceText}"`);
+    setBulkFindText('');
+    setBulkReplaceText('');
+    setShowBulkReplace(false);
+  }, [bulkFindText, bulkReplaceText, players]);
+  
+  const applySuggestion = useCallback((inputName: string, suggestedName: string, type: 'player' | 'team') => {
+    if (type === 'player') {
+      const playerIndex = players.findIndex(p => p.name === inputName);
+      if (playerIndex !== -1) {
+        handlePlayerChange(playerIndex, 'name', suggestedName);
+      }
+    } else {
+      const teamIndex = teams.findIndex(t => t.team === inputName);
+      if (teamIndex !== -1) {
+        handleTeamChange(teamIndex, 'team', suggestedName);
+      }
+    }
+    
+    // Remove from duplicate matches after applying
+    setDuplicateMatches(prev => prev.filter(m => m.inputName !== inputName));
+  }, [players, teams]);
 
-  const validateAll = () => {
+  const validateAll = useCallback(() => {
     const errors = new Set<string>();
     
     // Get team names for cross-referential validation
-    const teamNames = new Set(teams.map(team => team.team_name.trim().toLowerCase()));
+    // For linked teams, use the actual existing team name; for new teams, use the uploaded name
+    const validTeamNames = new Set<string>();
+    
+    teams.forEach(team => {
+      if (team.linked_team_id && existingEntities?.teams) {
+        // Find the actual existing team name for linked teams
+        const existingTeam = existingEntities.teams.find(t => t.teamId === team.linked_team_id);
+        if (existingTeam?.name) {
+          validTeamNames.add(existingTeam.name.trim().toLowerCase());
+        }
+      } else {
+        // For new teams (not linked), use the uploaded team name
+        validTeamNames.add(team.team.trim().toLowerCase());
+      }
+    });
     
     // Basic team validation
     teams.forEach((team, index) => {
-      if (!team.team_name.trim()) errors.add(`team-${index}-team_name`);
+      // Required string fields
+      if (!team.team.trim()) errors.add(`team-${index}-team`);
       if (!team.owner_name.trim()) errors.add(`team-${index}-owner_name`);
+      
+      // Required numeric fields
+      const numericFields = ['rank', 'p', 'mp', 'w', 'd', 'l', 'f', 'a', 'gd', 'percentage'];
+      numericFields.forEach(field => {
+        const value = team[field as keyof TeamData];
+        if (value === undefined || value === null || (typeof value === 'number' && isNaN(value))) {
+          errors.add(`team-${index}-${field}`);
+        }
+      });
+      
+      // W + D + L = MP validation removed - matches can be nulled/voided
+      // If you need to check this, it should be a warning only
+      
+      // Validate Goal Difference
+      if (team.f - team.a !== team.gd) {
+        errors.add(`team-${index}-gd`);
+      }
       
       // Check for duplicate team names
       const duplicateTeamIndex = teams.findIndex((t, i) => 
-        i !== index && t.team_name.trim().toLowerCase() === team.team_name.trim().toLowerCase()
+        i !== index && t.team.trim().toLowerCase() === team.team.trim().toLowerCase()
       );
       if (duplicateTeamIndex !== -1) {
-        errors.add(`team-${index}-team_name`);
+        errors.add(`team-${index}-team`);
       }
     });
     
@@ -161,19 +540,21 @@ export default function PreviewHistoricalSeason() {
       if (!player.team.trim()) errors.add(`player-${index}-team`);
       if (!player.category.trim()) errors.add(`player-${index}-category`);
       
-      // Validate numeric fields (check for valid numbers, negative values are allowed)
-      if (player.goals_scored === undefined || player.goals_scored === null || isNaN(player.goals_scored)) errors.add(`player-${index}-goals_scored`);
-      if (player.goals_per_game === undefined || player.goals_per_game === null || isNaN(player.goals_per_game)) errors.add(`player-${index}-goals_per_game`);
-      if (player.goals_conceded === undefined || player.goals_conceded === null || isNaN(player.goals_conceded)) errors.add(`player-${index}-goals_conceded`);
-      if (player.conceded_per_game === undefined || player.conceded_per_game === null || isNaN(player.conceded_per_game)) errors.add(`player-${index}-conceded_per_game`);
-      if (player.net_goals === undefined || player.net_goals === null || isNaN(player.net_goals)) errors.add(`player-${index}-net_goals`);
-      if (player.cleansheets === undefined || player.cleansheets === null || isNaN(player.cleansheets)) errors.add(`player-${index}-cleansheets`);
-      if (player.points === undefined || player.points === null || isNaN(player.points)) errors.add(`player-${index}-points`);
+      // Validate required numeric fields
       if (player.win === undefined || player.win === null || isNaN(player.win)) errors.add(`player-${index}-win`);
       if (player.draw === undefined || player.draw === null || isNaN(player.draw)) errors.add(`player-${index}-draw`);
       if (player.loss === undefined || player.loss === null || isNaN(player.loss)) errors.add(`player-${index}-loss`);
       if (player.total_matches === undefined || player.total_matches === null || isNaN(player.total_matches)) errors.add(`player-${index}-total_matches`);
-      if (player.total_points === undefined || player.total_points === null || isNaN(player.total_points)) errors.add(`player-${index}-total_points`);
+      
+      // Optional numeric fields - only validate if provided (null is OK)
+      if (player.goals_scored !== null && player.goals_scored !== undefined && isNaN(player.goals_scored)) errors.add(`player-${index}-goals_scored`);
+      if (player.goals_per_game !== null && player.goals_per_game !== undefined && isNaN(player.goals_per_game)) errors.add(`player-${index}-goals_per_game`);
+      if (player.goals_conceded !== null && player.goals_conceded !== undefined && isNaN(player.goals_conceded)) errors.add(`player-${index}-goals_conceded`);
+      if (player.conceded_per_game !== null && player.conceded_per_game !== undefined && isNaN(player.conceded_per_game)) errors.add(`player-${index}-conceded_per_game`);
+      if (player.net_goals !== null && player.net_goals !== undefined && isNaN(player.net_goals)) errors.add(`player-${index}-net_goals`);
+      if (player.cleansheets !== null && player.cleansheets !== undefined && isNaN(player.cleansheets)) errors.add(`player-${index}-cleansheets`);
+      if (player.points !== null && player.points !== undefined && isNaN(player.points)) errors.add(`player-${index}-points`);
+      if (player.total_points !== null && player.total_points !== undefined && isNaN(player.total_points)) errors.add(`player-${index}-total_points`);
       
       // Special validation: match-related fields should be non-negative
       if (typeof player.total_matches === 'number' && !isNaN(player.total_matches) && player.total_matches < 0) {
@@ -189,10 +570,8 @@ export default function PreviewHistoricalSeason() {
         errors.add(`player-${index}-loss`);
       }
       
-      // Validate match calculations
-      if (player.win + player.draw + player.loss !== player.total_matches) {
-        errors.add(`player-${index}-total_matches`);
-      }
+      // Match calculations validation removed - matches can be nulled/voided
+      // If you need to check this, it should be a warning only
       
       // Check for duplicate player names
       const duplicatePlayerIndex = players.findIndex((p, i) => 
@@ -202,17 +581,16 @@ export default function PreviewHistoricalSeason() {
         errors.add(`player-${index}-name`);
       }
       
-      // Cross-referential validation: player team must exist in teams list
-      if (player.team && player.team.trim()) {
-        if (!teamNames.has(player.team.trim().toLowerCase())) {
-          errors.add(`player-${index}-team`);
-        }
+      // Cross-referential validation: player team must exist in valid team names
+      // Valid team names include both linked existing teams and new teams from the upload
+      if (!player.team || !player.team.trim() || !validTeamNames.has(player.team.trim().toLowerCase())) {
+        errors.add(`player-${index}-team`);
       }
     });
     
     setValidationErrors(errors);
     return errors.size === 0;
-  };
+  }, [teams, players, existingEntities]);
 
   const handleStartImport = async () => {
     if (!validateAll()) {
@@ -233,11 +611,65 @@ export default function PreviewHistoricalSeason() {
     setImporting(true);
     
     try {
-      // Prepare the data for import
+      // Prepare the data for import - map frontend field names to backend expected names
       const importData = {
         seasonInfo: uploadData.seasonInfo,
-        teams: teams,
-        players: players
+        teams: teams.map(t => {
+          // Transform individual cup fields back to array
+          const cups: string[] = [];
+          if (t.cup_1) cups.push(t.cup_1);
+          if (t.cup_2) cups.push(t.cup_2);
+          if (t.cup_3) cups.push(t.cup_3);
+          
+          return {
+            team_name: t.team,
+            owner_name: t.owner_name,
+            linked_team_id: t.linked_team_id,
+            // Team standings data
+            rank: t.rank,
+            p: t.p,
+            mp: t.mp,
+            w: t.w,
+            d: t.d,
+            l: t.l,
+            f: t.f,
+            a: t.a,
+            gd: t.gd,
+            percentage: t.percentage,
+            cups: cups.length > 0 ? cups : undefined
+          };
+        }),
+        players: players.map(p => {
+          // Transform individual trophy fields back to arrays
+          const category_trophies: string[] = [];
+          if (p.category_wise_trophy_1) category_trophies.push(p.category_wise_trophy_1);
+          if (p.category_wise_trophy_2) category_trophies.push(p.category_wise_trophy_2);
+          
+          const individual_trophies: string[] = [];
+          if (p.individual_wise_trophy_1) individual_trophies.push(p.individual_wise_trophy_1);
+          if (p.individual_wise_trophy_2) individual_trophies.push(p.individual_wise_trophy_2);
+          
+          return {
+            name: p.name,
+            team: p.team,
+            category: p.category,
+            goals_scored: p.goals_scored,
+            goals_per_game: p.goals_per_game,
+            goals_conceded: p.goals_conceded,
+            conceded_per_game: p.conceded_per_game,
+            net_goals: p.net_goals,
+            cleansheets: p.cleansheets,
+            potm: p.potm,
+            points: p.points,
+            win: p.win,
+            draw: p.draw,
+            loss: p.loss,
+            total_matches: p.total_matches,
+            total_points: p.total_points,
+            category_trophies: category_trophies.length > 0 ? category_trophies : undefined,
+            individual_trophies: individual_trophies.length > 0 ? individual_trophies : undefined
+          };
+        })
       };
       
       const response = await fetch('/api/seasons/historical/import', {
@@ -299,9 +731,9 @@ export default function PreviewHistoricalSeason() {
               {uploadData && (
                 <div className="mt-2 text-sm space-y-1">
                   <div>
-                    <span className="font-semibold text-[#0066FF]">{uploadData.seasonInfo.name}</span>
+                    <span className="font-semibold text-[#0066FF]">Season {uploadData.seasonInfo.seasonNumber}</span>
                     <span className="mx-2 text-gray-400">•</span>
-                    <span className="text-gray-600">{uploadData.seasonInfo.shortName}</span>
+                    <span className="text-gray-600">ID: SSPSLS{uploadData.seasonInfo.seasonNumber}</span>
                   </div>
                   <div className="text-xs text-gray-500">
                     📄 {uploadData.seasonInfo.fileName} ({(uploadData.seasonInfo.fileSize / 1024).toFixed(1)} KB)
@@ -406,6 +838,138 @@ export default function PreviewHistoricalSeason() {
           </div>
         )}
         
+        {/* Potential Duplicates Section */}
+        {duplicateMatches.length > 0 && (
+          <div className="glass rounded-3xl p-6 mb-6 shadow-lg backdrop-blur-md border border-white/20 bg-orange-50/30">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-orange-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-1.964-1.333-2.732 0L3.732 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <span className="text-sm font-semibold text-orange-800">⚠️ {duplicateMatches.length} Potential Duplicate(s) Found</span>
+                  <p className="text-xs text-orange-600 mt-1">These names are similar to existing database entries. Review and correct them before importing.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowDuplicates(!showDuplicates)}
+                className="text-xs text-orange-600 hover:text-orange-800 underline"
+              >
+                {showDuplicates ? 'Hide' : 'Show'} Duplicates
+              </button>
+            </div>
+            
+            {loadingDuplicates && (
+              <div className="text-center py-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+                <p className="text-xs text-orange-600 mt-2">Checking for duplicates...</p>
+              </div>
+            )}
+            
+            {showDuplicates && !loadingDuplicates && (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {duplicateMatches.map((match, idx) => (
+                  <div key={idx} className="bg-white/60 rounded-lg p-4 border border-orange-200">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-semibold text-gray-500 uppercase">
+                            {match.type === 'player' ? '👤 Player' : '👥 Team'}
+                          </span>
+                          <span className="text-sm font-semibold text-gray-800">{match.inputName}</span>
+                        </div>
+                        <p className="text-xs text-gray-600">Found {match.matches.length} similar {match.type === 'player' ? 'player' : 'team'}(s) in database</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {match.matches.map((suggestion, sidx) => (
+                        <div key={sidx} className="flex items-center justify-between bg-white/80 rounded px-3 py-2 border border-gray-200">
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className="flex items-center gap-2">
+                              {suggestion.isExactMatch ? (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded">EXACT</span>
+                              ) : (
+                                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-semibold rounded">
+                                  {suggestion.similarity.toFixed(0)}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-800">{suggestion.name}</div>
+                              {suggestion.isFuzzyMatch && (
+                                <div className="text-xs text-gray-500">Similar to your input (edit distance: {suggestion.distance})</div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => applySuggestion(match.inputName, suggestion.name, match.type)}
+                            className="ml-3 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
+                          >
+                            Use This
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="mt-3 pt-3 border-t border-orange-200">
+                      <p className="text-xs text-gray-600">
+                        💡 <strong>Tip:</strong> Click "Use This" to replace your input with the existing database name, or edit your name in the table below to keep it as-is.
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Bulk Replace Tool */}
+        <div className="glass rounded-3xl p-4 mb-6 shadow-lg backdrop-blur-md border border-white/20">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-800">🔧 Bulk Fix Team Names</h3>
+            <button
+              onClick={() => setShowBulkReplace(!showBulkReplace)}
+              className="text-xs text-blue-600 hover:text-blue-800 underline"
+            >
+              {showBulkReplace ? 'Hide' : 'Show'} Tool
+            </button>
+          </div>
+          {showBulkReplace && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-600">Find and replace team names in all player records at once:</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Find team name:</label>
+                  <input
+                    type="text"
+                    value={bulkFindText}
+                    onChange={(e) => setBulkFindText(e.target.value)}
+                    placeholder="e.g., KATTU KOMBANS"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Replace with:</label>
+                  <input
+                    type="text"
+                    value={bulkReplaceText}
+                    onChange={(e) => setBulkReplaceText(e.target.value)}
+                    placeholder="e.g., Kattu Kombans"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleBulkReplaceTeamNames}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Replace All
+              </button>
+            </div>
+          )}
+        </div>
+        
         {/* Validation Status */}
         <div className={`glass rounded-3xl p-4 mb-6 shadow-lg backdrop-blur-md border border-white/20 ${validationErrors.size > 0 ? 'bg-red-50/30' : 'bg-blue-50/30'}`}>
           <div className="flex items-start justify-between">
@@ -438,13 +1002,38 @@ export default function PreviewHistoricalSeason() {
                   let errorMessage = '';
                   
                   if (type === 'team') {
-                    errorMessage = `Team Row ${rowNum}: ${field.replace('_', ' ')} is required`;
+                    if (field === 'mp') {
+                      const team = teams[parseInt(indexStr)];
+                      errorMessage = `Team Row ${rowNum} (${team?.team || 'Unknown'}): W (${team?.w || 0}) + D (${team?.d || 0}) + L (${team?.l || 0}) = ${(team?.w || 0) + (team?.d || 0) + (team?.l || 0)} must equal MP (${team?.mp || 0})`;
+                    } else if (field === 'gd') {
+                      const team = teams[parseInt(indexStr)];
+                      errorMessage = `Team Row ${rowNum} (${team?.team || 'Unknown'}): GD (${team?.gd || 0}) must equal F (${team?.f || 0}) - A (${team?.a || 0}) = ${(team?.f || 0) - (team?.a || 0)}`;
+                    } else {
+                      errorMessage = `Team Row ${rowNum}: ${field.toUpperCase()} is required`;
+                    }
                   } else if (type === 'player') {
                     if (field === 'total_matches') {
                       const player = players[parseInt(indexStr)];
                       errorMessage = `Player Row ${rowNum} (${player?.name || 'Unknown'}): Win (${player?.win || 0}) + Draw (${player?.draw || 0}) + Loss (${player?.loss || 0}) = ${(player?.win || 0) + (player?.draw || 0) + (player?.loss || 0)} must equal Total Matches (${player?.total_matches || 0})`;
                     } else if (field === 'team') {
-                      errorMessage = `Player Row ${rowNum}: Team name "${players[parseInt(indexStr)]?.team || ''}" must match an existing team`;
+                      const player = players[parseInt(indexStr)];
+                      const playerTeam = player?.team || '(empty)';
+                      const playerName = player?.name || 'Unknown';
+                      
+                      // Build list of valid team names (including linked teams)
+                      const validTeamNames: string[] = [];
+                      teams.forEach(team => {
+                        if (team.linked_team_id && existingEntities?.teams) {
+                          const existingTeam = existingEntities.teams.find(t => t.teamId === team.linked_team_id);
+                          if (existingTeam?.name) {
+                            validTeamNames.push(existingTeam.name);
+                          }
+                        } else {
+                          validTeamNames.push(team.team);
+                        }
+                      });
+                      
+                      errorMessage = `Player Row ${rowNum} (${playerName}): Team name "${playerTeam}" must match an existing team. Available teams: ${Array.from(new Set(validTeamNames)).join(', ')}`;
                     } else if (field === 'name') {
                       errorMessage = `Player Row ${rowNum}: Player name is required`;
                     } else if (field === 'category') {
@@ -513,40 +1102,266 @@ export default function PreviewHistoricalSeason() {
           {/* Teams Table */}
           {activeTab === 'teams' && teams.length > 0 && (
             <div className="overflow-x-auto">
-              <table className="min-w-full">
+              <table className="min-w-full text-sm">
                 <thead className="bg-white/10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Team Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Owner Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Actions</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Rank</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Team</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Owner</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Link To</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">P</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">MP</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">W</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">D</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">L</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">F</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">A</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">GD</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">%</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Cup 1</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Cup 2</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Cup 3</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white/20 divide-y divide-gray-200">
                   {teams.map((team, index) => (
                     <tr key={index} className="hover:bg-white/30 transition-colors">
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.rank}
+                          onChange={(e) => handleTeamChange(index, 'rank', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-rank`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
                         <input
                           type="text"
-                          value={team.team_name}
-                          onChange={(e) => handleTeamChange(index, 'team_name', e.target.value)}
-                          className={`w-full bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
-                            validationErrors.has(`team-${index}-team_name`) ? 'border-red-500 bg-red-50' : ''
+                          value={team.team}
+                          onChange={(e) => handleTeamChange(index, 'team', e.target.value)}
+                          className={`w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-team`) ? 'border-red-500 bg-red-50' : ''
                           }`}
                           placeholder="Team name"
                         />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
                         <input
                           type="text"
-                          value={team.owner_name || ''}
+                          value={team.owner_name}
                           onChange={(e) => handleTeamChange(index, 'owner_name', e.target.value)}
-                          className={`w-full bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                          className={`w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`team-${index}-owner_name`) ? 'border-red-500 bg-red-50' : ''
                           }`}
                           placeholder="Owner name"
                         />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
+                        <select
+                          value={team.linked_team_id || ''}
+                          onChange={(e) => handleTeamChange(index, 'linked_team_id', e.target.value)}
+                          className={`w-48 border outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 text-xs ${
+                            team.linked_team_id ? 'bg-blue-50 border-blue-300' : 'bg-transparent border-gray-300'
+                          }`}
+                        >
+                          <option value="">➕ New Team</option>
+                          {existingEntities?.teams && existingEntities.teams.length > 0 && (
+                            <>
+                              {/* Suggested matches (same owner or similar name) */}
+                              {(() => {
+                                const suggested = existingEntities.teams.filter(existingTeam => {
+                                  const sameOwner = existingTeam.owner_name && team.owner_name && existingTeam.owner_name.toLowerCase() === team.owner_name.toLowerCase();
+                                  
+                                  // Check for similar names (improved matching)
+                                  if (existingTeam.name && team.team) {
+                                    // Exact match
+                                    if (existingTeam.name.toLowerCase() === team.team.toLowerCase()) {
+                                      return true;
+                                    }
+                                    
+                                    // Normalized match (removes FC, SC, etc.)
+                                    if (normalizeTeamName(existingTeam.name) === normalizeTeamName(team.team)) {
+                                      return true;
+                                    }
+                                    
+                                    // Substring match
+                                    const similarName = existingTeam.name.toLowerCase().includes(team.team.toLowerCase().substring(0, 5)) ||
+                                                       team.team.toLowerCase().includes(existingTeam.name.toLowerCase().substring(0, 5));
+                                    if (similarName) {
+                                      return true;
+                                    }
+                                  }
+                                  
+                                  return sameOwner;
+                                });
+                                
+                                if (suggested.length > 0) {
+                                  return (
+                                    <>
+                                      <optgroup label="🎯 Suggested Matches">
+                                        {suggested.map(existingTeam => (
+                                          <option key={existingTeam.teamId} value={existingTeam.teamId}>
+                                            {existingTeam.name} ({existingTeam.owner_name || 'No owner'})
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                      <optgroup label="📋 All Other Teams">
+                                        {existingEntities.teams
+                                          .filter(t => !suggested.some(s => s.teamId === t.teamId))
+                                          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                                          .map(existingTeam => (
+                                            <option key={existingTeam.teamId} value={existingTeam.teamId}>
+                                              {existingTeam.name} ({existingTeam.owner_name || 'No owner'})
+                                            </option>
+                                          ))}
+                                      </optgroup>
+                                    </>
+                                  );
+                                } else {
+                                  // No suggested matches, show all teams
+                                  return existingEntities.teams
+                                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                                    .map(existingTeam => (
+                                      <option key={existingTeam.teamId} value={existingTeam.teamId}>
+                                        {existingTeam.name} ({existingTeam.owner_name || 'No owner'})
+                                      </option>
+                                    ));
+                                }
+                              })()}
+                            </>
+                          )}
+                          {(!existingEntities?.teams || existingEntities.teams.length === 0) && (
+                            <option disabled>No existing teams</option>
+                          )}
+                        </select>
+                        {team.linked_team_id && (
+                          <div className="text-xs text-green-600 mt-1 font-medium">
+                            ✅ Linked • Change if needed
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.p}
+                          onChange={(e) => handleTeamChange(index, 'p', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-p`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.mp}
+                          onChange={(e) => handleTeamChange(index, 'mp', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-mp`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.w}
+                          onChange={(e) => handleTeamChange(index, 'w', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-w`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.d}
+                          onChange={(e) => handleTeamChange(index, 'd', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-d`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.l}
+                          onChange={(e) => handleTeamChange(index, 'l', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-l`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.f}
+                          onChange={(e) => handleTeamChange(index, 'f', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-f`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.a}
+                          onChange={(e) => handleTeamChange(index, 'a', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-a`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.gd}
+                          onChange={(e) => handleTeamChange(index, 'gd', parseInt(e.target.value) || 0)}
+                          className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-gd`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          value={team.percentage}
+                          onChange={(e) => handleTeamChange(index, 'percentage', parseFloat(e.target.value) || 0)}
+                          step="0.1"
+                          className={`w-16 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`team-${index}-percentage`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={team.cup_1 || ''}
+                          onChange={(e) => handleTeamChange(index, 'cup_1', e.target.value)}
+                          className="w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1"
+                          placeholder="Optional"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={team.cup_2 || ''}
+                          onChange={(e) => handleTeamChange(index, 'cup_2', e.target.value)}
+                          className="w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1"
+                          placeholder="Optional"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={team.cup_3 || ''}
+                          onChange={(e) => handleTeamChange(index, 'cup_3', e.target.value)}
+                          className="w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1"
+                          placeholder="Optional"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
                         <button
                           type="button"
                           onClick={() => handleRemoveTeam(index)}
@@ -580,12 +1395,17 @@ export default function PreviewHistoricalSeason() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">C/Game</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Net Goals</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Clean</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">POTM</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Points</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">W</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">D</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">L</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Total M</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Total P</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Cat Trophy 1</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Cat Trophy 2</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Ind Trophy 1</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Ind Trophy 2</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -628,9 +1448,10 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.goals_scored}
-                          onChange={(e) => handlePlayerChange(index, 'goals_scored', parseFloat(e.target.value) || 0)}
+                          value={player.goals_scored ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'goals_scored', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-goals_scored`) ? 'border-red-500 bg-red-50' : ''
                           }`}
@@ -639,9 +1460,10 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.goals_per_game}
-                          onChange={(e) => handlePlayerChange(index, 'goals_per_game', parseFloat(e.target.value) || 0)}
+                          value={player.goals_per_game ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'goals_per_game', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-goals_per_game`) ? 'border-red-500 bg-red-50' : ''
                           }`}
@@ -650,9 +1472,10 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.goals_conceded}
-                          onChange={(e) => handlePlayerChange(index, 'goals_conceded', parseFloat(e.target.value) || 0)}
+                          value={player.goals_conceded ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'goals_conceded', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-goals_conceded`) ? 'border-red-500 bg-red-50' : ''
                           }`}
@@ -661,9 +1484,10 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.conceded_per_game}
-                          onChange={(e) => handlePlayerChange(index, 'conceded_per_game', parseFloat(e.target.value) || 0)}
+                          value={player.conceded_per_game ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'conceded_per_game', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-conceded_per_game`) ? 'border-red-500 bg-red-50' : ''
                           }`}
@@ -672,9 +1496,10 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.net_goals}
-                          onChange={(e) => handlePlayerChange(index, 'net_goals', parseFloat(e.target.value) || 0)}
+                          value={player.net_goals ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'net_goals', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-net_goals`) ? 'border-red-500 bg-red-50' : ''
                           }`}
@@ -683,9 +1508,10 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.cleansheets}
-                          onChange={(e) => handlePlayerChange(index, 'cleansheets', parseFloat(e.target.value) || 0)}
+                          value={player.cleansheets ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'cleansheets', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-cleansheets`) ? 'border-red-500 bg-red-50' : ''
                           }`}
@@ -694,9 +1520,21 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.points}
-                          onChange={(e) => handlePlayerChange(index, 'points', parseFloat(e.target.value) || 0)}
+                          value={player.potm ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'potm', e.target.value === '' ? null : parseInt(e.target.value))}
+                          placeholder="N/A"
+                          className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                            validationErrors.has(`player-${index}-potm`) ? 'border-red-500 bg-red-50' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number"
+                          value={player.points ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'points', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-points`) ? 'border-red-500 bg-red-50' : ''
                           }`}
@@ -745,12 +1583,49 @@ export default function PreviewHistoricalSeason() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={player.total_points}
-                          onChange={(e) => handlePlayerChange(index, 'total_points', parseFloat(e.target.value) || 0)}
+                          value={player.total_points ?? ''}
+                          onChange={(e) => handlePlayerChange(index, 'total_points', e.target.value === '' ? null : parseFloat(e.target.value))}
                           step="0.1"
+                          placeholder="N/A"
                           className={`w-20 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-total_points`) ? 'border-red-500 bg-red-50' : ''
                           }`}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="text"
+                          value={player.category_wise_trophy_1 || ''}
+                          onChange={(e) => handlePlayerChange(index, 'category_wise_trophy_1', e.target.value)}
+                          className="w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1"
+                          placeholder="Optional"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="text"
+                          value={player.category_wise_trophy_2 || ''}
+                          onChange={(e) => handlePlayerChange(index, 'category_wise_trophy_2', e.target.value)}
+                          className="w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1"
+                          placeholder="Optional"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="text"
+                          value={player.individual_wise_trophy_1 || ''}
+                          onChange={(e) => handlePlayerChange(index, 'individual_wise_trophy_1', e.target.value)}
+                          className="w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1"
+                          placeholder="Optional"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="text"
+                          value={player.individual_wise_trophy_2 || ''}
+                          onChange={(e) => handlePlayerChange(index, 'individual_wise_trophy_2', e.target.value)}
+                          className="w-32 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1"
+                          placeholder="Optional"
                         />
                       </td>
                       <td className="px-4 py-3">

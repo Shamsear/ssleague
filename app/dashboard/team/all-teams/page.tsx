@@ -5,12 +5,22 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useCachedTeamSeasons, useCachedSeasons } from '@/hooks/useCachedFirebase';
+import ContractInfo from '@/components/ContractInfo';
 
 interface Team {
   id: string;
   name: string;
   logoUrl?: string;
   balance: number;
+  // Contract fields
+  skipped_seasons?: number;
+  penalty_amount?: number;
+  last_played_season?: string;
+  contract_id?: string;
+  contract_start_season?: string;
+  contract_end_season?: string;
+  is_auto_registered?: boolean;
 }
 
 interface TeamStats {
@@ -28,8 +38,23 @@ export default function AllTeamsPage() {
   const router = useRouter();
   const [teams, setTeams] = useState<TeamStats[]>([]);
   const [seasonName, setSeasonName] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [seasonId, setSeasonId] = useState<string | null>(null);
   const [error, setError] = useState('');
+
+  // Fetch user's team season to get seasonId (cached)
+  const { data: userTeamSeasons, loading: userTeamLoading } = useCachedTeamSeasons(
+    user?.role === 'team' ? { teamId: user.uid } : undefined
+  );
+
+  // Fetch all team seasons for the season (cached, only after we have seasonId)
+  const { data: allTeamSeasons, loading: allTeamsLoading } = useCachedTeamSeasons(
+    seasonId ? { seasonId } : undefined
+  );
+
+  // Fetch season details (cached)
+  const { data: seasons, loading: seasonsLoading } = useCachedSeasons(
+    seasonId ? { seasonId } : undefined
+  );
 
   useEffect(() => {
     if (!loading && !user) {
@@ -40,111 +65,74 @@ export default function AllTeamsPage() {
     }
   }, [user, loading, router]);
 
+  // Extract seasonId from user's team season
   useEffect(() => {
-    const fetchTeams = async () => {
-      if (!user) return;
+    if (!user || userTeamLoading || !userTeamSeasons) return;
 
-      try {
-        setIsLoading(true);
-        
-        // Get season ID directly from Firebase
-        const { db } = await import('@/lib/firebase/config');
-        const { collection, query, where, getDocs, limit, doc, getDoc } = await import('firebase/firestore');
+    const registeredSeason = userTeamSeasons.find(
+      (ts: any) => ts.team_id === user.uid && ts.status === 'registered'
+    );
 
-        // Check if user is registered for any season
-        const teamSeasonsQuery = query(
-          collection(db, 'team_seasons'),
-          where('team_id', '==', user.uid),
-          where('status', '==', 'registered'),
-          limit(1)
-        );
-        const teamSeasonsSnapshot = await getDocs(teamSeasonsQuery);
+    if (!registeredSeason) {
+      setError('You are not registered for any season');
+      return;
+    }
 
-        if (teamSeasonsSnapshot.empty) {
-          setError('You are not registered for any season');
-          setIsLoading(false);
-          return;
-        }
+    setSeasonId(registeredSeason.season_id);
+  }, [user, userTeamSeasons, userTeamLoading]);
 
-        // Get season ID from team registration
-        const teamSeasonData = teamSeasonsSnapshot.docs[0].data();
-        const seasonId = teamSeasonData.season_id;
+  // Set season name from cached season data
+  useEffect(() => {
+    if (!seasons || seasonsLoading) return;
 
-        // Get season details
-        const seasonDoc = await getDoc(doc(db, 'seasons', seasonId));
-        if (seasonDoc.exists()) {
-          const seasonData = seasonDoc.data();
-          setSeasonName(seasonData.name || 'Current Season');
-        }
-        
-        // Fetch all teams for this season directly from Firebase
-        const allTeamsQuery = query(
-          collection(db, 'team_seasons'),
-          where('season_id', '==', seasonId),
-          where('status', '==', 'registered')
-        );
-        const allTeamsSnapshot = await getDocs(allTeamsQuery);
-        
-        const teamsData: TeamStats[] = [];
-        
-        for (const teamSeasonDoc of allTeamsSnapshot.docs) {
-          const teamSeasonData = teamSeasonDoc.data();
-          const teamId = teamSeasonData.team_id;
-          
-          // Get team details from users collection (only for name and logo)
-          const teamDoc = await getDoc(doc(db, 'users', teamId));
-          if (!teamDoc.exists()) continue;
-          
-          const teamInfo = teamDoc.data();
-          
-          // Get team's players for THIS season (to calculate avg rating only)
-          const playersQuery = query(
-            collection(db, 'players'),
-            where('team_id', '==', teamId),
-            where('season_id', '==', seasonId)
-          );
-          const playersSnapshot = await getDocs(playersQuery);
-          
-          // Calculate average rating from players
-          let totalRating = 0;
-          playersSnapshot.docs.forEach((playerDoc) => {
-            const player = playerDoc.data();
-            const rating = player.overall_rating || 0;
-            totalRating += rating;
-          });
-          
+    const season = Array.isArray(seasons) ? seasons[0] : seasons;
+    if (season) {
+      setSeasonName(season.name || 'Current Season');
+    }
+  }, [seasons, seasonsLoading]);
+
+  // Process all team seasons into TeamStats
+  useEffect(() => {
+    if (!allTeamSeasons || allTeamsLoading || !seasonId) return;
+
+    try {
+      const teamsData: TeamStats[] = allTeamSeasons
+        .filter((ts: any) => ts.status === 'registered')
+        .map((teamSeasonData: any) => {
           const totalPlayers = teamSeasonData.players_count || 0;
-          const avgRating = totalPlayers > 0 ? totalRating / totalPlayers : 0;
-          
-          // Read stats from team_seasons
-          teamsData.push({
+          const avgRating = teamSeasonData.average_rating || 0;
+
+          return {
             team: {
-              id: teamId,
-              name: teamSeasonData.team_name || teamInfo?.teamName || 'Unknown Team',
-              logoUrl: teamSeasonData.team_logo || teamInfo?.logoUrl || undefined,
+              id: teamSeasonData.team_id,
+              name: teamSeasonData.team_name || 'Unknown Team',
+              logoUrl: teamSeasonData.team_logo || undefined,
               balance: teamSeasonData.budget || 0,
+              // Contract fields
+              skipped_seasons: teamSeasonData.skipped_seasons,
+              penalty_amount: teamSeasonData.penalty_amount,
+              last_played_season: teamSeasonData.last_played_season,
+              contract_id: teamSeasonData.contract_id,
+              contract_start_season: teamSeasonData.contract_start_season,
+              contract_end_season: teamSeasonData.contract_end_season,
+              is_auto_registered: teamSeasonData.is_auto_registered,
             },
             totalPlayers,
             totalValue: teamSeasonData.total_spent || 0,
             avgRating: Math.round(avgRating * 10) / 10,
             positionBreakdown: teamSeasonData.position_counts || {},
-          });
-        }
-        
-        // Sort teams by total value (descending)
-        teamsData.sort((a, b) => b.totalValue - a.totalValue);
-        
-        setTeams(teamsData);
-      } catch (err) {
-        console.error('Error fetching teams:', err);
-        setError('An error occurred while loading teams');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+          };
+        });
 
-    fetchTeams();
-  }, [user]);
+      // Sort teams by total value (descending)
+      teamsData.sort((a, b) => b.totalValue - a.totalValue);
+
+      setTeams(teamsData);
+    } catch (err) {
+      console.error('Error processing teams:', err);
+      setError('An error occurred while loading teams');
+    }
+  }, [allTeamSeasons, allTeamsLoading, seasonId]);
 
   const getPositionColor = (position: string) => {
     const colors: { [key: string]: string } = {
@@ -164,6 +152,9 @@ export default function AllTeamsPage() {
     };
     return colors[position] || 'bg-gray-100 text-gray-800';
   };
+
+
+  const isLoading = userTeamLoading || allTeamsLoading || seasonsLoading;
 
   if (loading || isLoading) {
     return (
@@ -294,6 +285,20 @@ export default function AllTeamsPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Contract Information */}
+                  <div className="mb-4">
+                    <ContractInfo
+                      skippedSeasons={teamData.team.skipped_seasons}
+                      penaltyAmount={teamData.team.penalty_amount}
+                      lastPlayedSeason={teamData.team.last_played_season}
+                      contractId={teamData.team.contract_id}
+                      contractStartSeason={teamData.team.contract_start_season}
+                      contractEndSeason={teamData.team.contract_end_season}
+                      isAutoRegistered={teamData.team.is_auto_registered}
+                      compact
+                    />
+                  </div>
 
                   {/* Squad Composition */}
                   <div className="mb-4">

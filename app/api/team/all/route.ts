@@ -58,11 +58,28 @@ export async function GET(request: NextRequest) {
     const seasonName = seasonData?.name || 'Current Season';
 
     // Get all teams registered for this season
+    console.log('🔍 Fetching team_seasons for season:', seasonId);
     const teamSeasonsSnapshot = await adminDb
       .collection('team_seasons')
       .where('season_id', '==', seasonId)
       .where('status', '==', 'registered')
       .get();
+    
+    console.log('📊 Team seasons found:', teamSeasonsSnapshot.docs.length);
+    teamSeasonsSnapshot.docs.forEach(doc => {
+      console.log('  - Doc ID:', doc.id, '| Status:', doc.data().status, '| Team ID:', doc.data().team_id);
+    });
+    
+    // Also check without status filter to see all team_seasons for this season
+    const allTeamSeasonsSnapshot = await adminDb
+      .collection('team_seasons')
+      .where('season_id', '==', seasonId)
+      .get();
+    console.log('📊 Total team_seasons for this season (no status filter):', allTeamSeasonsSnapshot.docs.length);
+    allTeamSeasonsSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      console.log('  - Doc ID:', doc.id, '| Status:', data.status, '| Team ID:', data.team_id);
+    });
 
     console.time('⚡ Batch fetch team details');
     
@@ -70,56 +87,118 @@ export async function GET(request: NextRequest) {
     const teamSeasonDocs = teamSeasonsSnapshot.docs;
     const teamIds = teamSeasonDocs.map(doc => doc.data().team_id).filter(Boolean);
     
-    // Step 2: Batch fetch team details from users collection
-    const teamsInfoMap = await batchGetFirebaseFields<{ teamName: string; logoUrl: string; logoURL: string; logo_url: string; balance: number }>(
-      'users',
+    console.log('📋 Team IDs to fetch:', teamIds);
+    
+    // Step 2: Batch fetch team details from teams collection
+    const teamsInfoMap = await batchGetFirebaseFields<{ team_name: string; logoUrl: string; logoURL: string; logo_url: string; balance: number }>(
+      'teams',
       teamIds,
-      ['teamName', 'logoUrl', 'logoURL', 'logo_url', 'balance']
+      ['team_name', 'logoUrl', 'logoURL', 'logo_url', 'balance']
     );
+    
+    console.log('📋 Teams info fetched:', teamsInfoMap.size, 'teams');
+    teamsInfoMap.forEach((info, teamId) => {
+      console.log('  - Team:', teamId, '| Name:', info?.team_name, '| Logo:', info?.logoUrl || info?.logoURL || info?.logo_url);
+    });
     
     console.timeEnd('⚡ Batch fetch team details');
     
-    console.time('⚡ Batch fetch all players');
+    // If no teams registered for this season, return empty result
+    if (teamIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          teams: [],
+          seasonName,
+          seasonId,
+        },
+      });
+    }
     
-    // Step 3: Batch fetch all players for all teams in one query
-    const allPlayersSnapshot = await adminDb
-      .collection('players')
+    console.time('⚡ Batch fetch all football players');
+    
+    // Step 3a: Batch fetch all football players for all teams
+    const allFootballPlayersSnapshot = await adminDb
+      .collection('footballplayers')
       .where('season_id', '==', seasonId)
       .where('team_id', 'in', teamIds.slice(0, 10)) // Firebase 'in' query limit is 10
       .get();
     
     // If there are more than 10 teams, fetch additional batches
-    const additionalPlayersBatches = [];
+    const additionalFootballPlayersBatches = [];
     for (let i = 10; i < teamIds.length; i += 10) {
       const batch = teamIds.slice(i, i + 10);
-      additionalPlayersBatches.push(
+      additionalFootballPlayersBatches.push(
         adminDb
-          .collection('players')
+          .collection('footballplayers')
           .where('season_id', '==', seasonId)
           .where('team_id', 'in', batch)
           .get()
       );
     }
     
-    const additionalPlayersSnapshots = await Promise.all(additionalPlayersBatches);
+    const additionalFootballPlayersSnapshots = await Promise.all(additionalFootballPlayersBatches);
     
-    // Combine all player documents
-    const allPlayerDocs = [
-      ...allPlayersSnapshot.docs,
-      ...additionalPlayersSnapshots.flatMap(snapshot => snapshot.docs)
+    // Combine all football player documents
+    const allFootballPlayerDocs = [
+      ...allFootballPlayersSnapshot.docs,
+      ...additionalFootballPlayersSnapshots.flatMap(snapshot => snapshot.docs)
     ];
     
-    console.timeEnd('⚡ Batch fetch all players');
+    console.timeEnd('⚡ Batch fetch all football players');
+    console.log('📋 Total football players fetched:', allFootballPlayerDocs.length);
+    
+    console.time('⚡ Batch fetch all real players');
+    
+    // Step 3b: Batch fetch all real players for all teams
+    const allRealPlayersSnapshot = await adminDb
+      .collection('realplayer')
+      .where('season_id', '==', seasonId)
+      .where('team_id', 'in', teamIds.slice(0, 10))
+      .get();
+    
+    const additionalRealPlayersBatches = [];
+    for (let i = 10; i < teamIds.length; i += 10) {
+      const batch = teamIds.slice(i, i + 10);
+      additionalRealPlayersBatches.push(
+        adminDb
+          .collection('realplayer')
+          .where('season_id', '==', seasonId)
+          .where('team_id', 'in', batch)
+          .get()
+      );
+    }
+    
+    const additionalRealPlayersSnapshots = await Promise.all(additionalRealPlayersBatches);
+    
+    // Combine all real player documents
+    const allRealPlayerDocs = [
+      ...allRealPlayersSnapshot.docs,
+      ...additionalRealPlayersSnapshots.flatMap(snapshot => snapshot.docs)
+    ];
+    
+    console.timeEnd('⚡ Batch fetch all real players');
+    console.log('📋 Total real players fetched:', allRealPlayerDocs.length);
     
     // Step 4: Group players by team_id
-    const playersByTeam = new Map<string, any[]>();
-    allPlayerDocs.forEach(doc => {
+    const footballPlayersByTeam = new Map<string, any[]>();
+    allFootballPlayerDocs.forEach(doc => {
       const player = doc.data();
       const teamId = player.team_id;
-      if (!playersByTeam.has(teamId)) {
-        playersByTeam.set(teamId, []);
+      if (!footballPlayersByTeam.has(teamId)) {
+        footballPlayersByTeam.set(teamId, []);
       }
-      playersByTeam.get(teamId)!.push(player);
+      footballPlayersByTeam.get(teamId)!.push(player);
+    });
+    
+    const realPlayersByTeam = new Map<string, any[]>();
+    allRealPlayerDocs.forEach(doc => {
+      const player = doc.data();
+      const teamId = player.team_id;
+      if (!realPlayersByTeam.has(teamId)) {
+        realPlayersByTeam.set(teamId, []);
+      }
+      realPlayersByTeam.get(teamId)!.push(player);
     });
     
     // Step 5: Build teams data
@@ -132,13 +211,22 @@ export async function GET(request: NextRequest) {
 
       // Get team details from batch-fetched data
       const teamInfo = teamsInfoMap.get(teamId);
-      if (!teamInfo) continue;
+      if (!teamInfo) {
+        console.log('⚠️ No team info found for team ID:', teamId);
+        continue;
+      }
 
       // Get team's players from grouped data
-      const teamPlayers = playersByTeam.get(teamId) || [];
+      const teamFootballPlayers = footballPlayersByTeam.get(teamId) || [];
+      const teamRealPlayers = realPlayersByTeam.get(teamId) || [];
 
       // Calculate statistics
-      let totalValue = 0;
+      // Note: Football players are in Neon DB, not Firebase
+      // So we use budget data from team_seasons instead
+      const footballSpent = teamSeasonData?.football_spent || 0; // € spent on football players
+      const realPlayerSpent = teamSeasonData?.real_player_spent || 0; // $ spent on real players
+      
+      let totalRealPlayerValue = 0;
       let totalRating = 0;
       const positionBreakdown: { [key: string]: number } = {
         GK: 0,
@@ -156,23 +244,34 @@ export async function GET(request: NextRequest) {
         CF: 0,
       };
 
-      teamPlayers.forEach((player) => {
-        // Sum acquisition values
-        const acquisitionValue = player.acquisition_value || 0;
-        totalValue += acquisitionValue;
-
-        // Count positions
-        const position = player.position || 'Unknown';
+      // Process football players (from Neon DB - not fetched here)
+      teamFootballPlayers.forEach((player) => {
+        // Count positions (use primary_position)
+        const position = player.primary_position || 'Unknown';
         if (position in positionBreakdown) {
           positionBreakdown[position]++;
         }
 
-        // Sum ratings
-        const rating = player.overall_rating || 0;
-        totalRating += rating;
+        // Sum ratings from attributes
+        if (player.attributes && player.attributes.overall) {
+          totalRating += player.attributes.overall;
+        }
+      });
+      
+      // Process real players (from Firebase)
+      teamRealPlayers.forEach((player) => {
+        // Sum real player auction values (in dollars)
+        const playerValue = player.auction_value || 0;
+        totalRealPlayerValue += playerValue;
+        
+        // Real players might have star ratings
+        if (player.star_rating) {
+          totalRating += player.star_rating * 20; // Convert 1-5 stars to 20-100 scale
+        }
       });
 
-      const totalPlayers = teamPlayers.length;
+      const totalPlayers = teamRealPlayers.length; // Only count real players fetched from Firebase
+      const footballPlayerCount = teamSeasonData?.players_count || 0; // Total from team_seasons
       const avgRating = totalPlayers > 0 ? totalRating / totalPlayers : 0;
 
       // Try different logo field names
@@ -183,12 +282,27 @@ export async function GET(request: NextRequest) {
       teamsData.push({
         team: {
           id: teamId,
-          name: teamInfo?.teamName || 'Unknown Team',
+          name: teamInfo?.team_name || 'Unknown Team',
           logoUrl: logoUrl,
           balance: teamInfo?.balance || 0,
+          // Dual currency (Season 16+) - map from team_seasons fields
+          dollar_balance: teamSeasonData?.real_player_budget,
+          euro_balance: teamSeasonData?.football_budget,
+          dollar_spent: teamSeasonData?.real_player_spent,
+          euro_spent: teamSeasonData?.football_spent,
+          // Contract fields
+          skipped_seasons: teamSeasonData?.skipped_seasons,
+          penalty_amount: teamSeasonData?.penalty_amount,
+          last_played_season: teamSeasonData?.last_played_season,
+          contract_id: teamSeasonData?.contract_id,
+          contract_start_season: teamSeasonData?.contract_start_season,
+          contract_end_season: teamSeasonData?.contract_end_season,
+          is_auto_registered: teamSeasonData?.is_auto_registered,
         },
-        totalPlayers,
-        totalValue,
+        totalPlayers: footballPlayerCount,
+        totalValue: totalRealPlayerValue, // Real player value in $
+        footballSpent: footballSpent, // € spent on football players
+        realPlayerSpent: realPlayerSpent, // $ spent on real players
         avgRating: Math.round(avgRating * 10) / 10,
         positionBreakdown,
       });

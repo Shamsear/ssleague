@@ -9,9 +9,16 @@ export default function CreateSeason() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [formData, setFormData] = useState({
-    name: '',
+    seasonNumber: '',
     year: new Date().getFullYear().toString(),
     description: '',
+    type: 'single' as 'single' | 'multi',
+    dollar_budget: 1000,
+    euro_budget: 10000,
+    min_real_players: 5,
+    max_real_players: 7,
+    max_football_players: 25,
+    category_fine_amount: 20,
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +35,8 @@ export default function CreateSeason() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name.trim()) {
-      setError('Season name is required');
+    if (!formData.seasonNumber.trim()) {
+      setError('Season number is required');
       return;
     }
 
@@ -42,9 +49,21 @@ export default function CreateSeason() {
       setSubmitting(true);
       setError(null);
 
+      const seasonNumber = parseInt(formData.seasonNumber);
+      
       await createSeason({
-        name: formData.name.trim(),
+        name: `Season ${seasonNumber}`,
+        season_number: seasonNumber,
         year: formData.year.trim(),
+        type: formData.type,
+        ...(formData.type === 'multi' && {
+          dollar_budget: formData.dollar_budget,
+          euro_budget: formData.euro_budget,
+          min_real_players: formData.min_real_players,
+          max_real_players: formData.max_real_players,
+          max_football_players: formData.max_football_players,
+          category_fine_amount: formData.category_fine_amount,
+        }),
       });
 
       // Redirect to seasons page after successful creation
@@ -120,25 +139,27 @@ export default function CreateSeason() {
             </div>
 
             <div className="p-8 space-y-8">
-              {/* Season Name */}
+              {/* Season Number */}
               <div className="group">
-                <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-3 group-focus-within:text-[#9580FF] transition-colors">
+                <label htmlFor="seasonNumber" className="block text-sm font-semibold text-gray-700 mb-3 group-focus-within:text-[#9580FF] transition-colors">
                   <span className="flex items-center">
                     <svg className="w-4 h-4 mr-2 text-gray-400 group-focus-within:text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                     </svg>
-                    Season Name *
+                    Season Number *
                   </span>
                 </label>
                 <div className="relative">
                   <input
-                    type="text"
-                    name="name"
-                    id="name"
-                    value={formData.name}
+                    type="number"
+                    name="seasonNumber"
+                    id="seasonNumber"
+                    value={formData.seasonNumber}
                     onChange={handleChange}
+                    min="1"
+                    max="999"
                     className="block w-full px-4 py-3 rounded-2xl border-2 border-gray-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all duration-200 focus:ring-4 focus:ring-[#9580FF]/20 focus:border-[#9580FF] focus:bg-white hover:border-gray-300 sm:text-sm"
-                    placeholder="e.g., Premier League Season 2024"
+                    placeholder="e.g., 16"
                     required
                   />
                 </div>
@@ -146,7 +167,7 @@ export default function CreateSeason() {
                   <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  The full name of the season as it will appear throughout the system
+                  {formData.seasonNumber ? `Season will be named "Season ${formData.seasonNumber}"` : 'Season will be automatically named based on the number you enter'}
                 </p>
               </div>
 
@@ -179,6 +200,139 @@ export default function CreateSeason() {
                   A short identifier used in URLs and compact displays
                 </p>
               </div>
+
+              {/* Season Type */}
+              <div className="group">
+                <label htmlFor="type" className="block text-sm font-semibold text-gray-700 mb-3 group-focus-within:text-[#9580FF] transition-colors">
+                  <span className="flex items-center">
+                    <svg className="w-4 h-4 mr-2 text-gray-400 group-focus-within:text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                    </svg>
+                    Season Type *
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div
+                    onClick={() => setFormData({ ...formData, type: 'single' })}
+                    className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-200 ${
+                      formData.type === 'single'
+                        ? 'border-[#9580FF] bg-[#9580FF]/10'
+                        : 'border-gray-200 bg-white/50 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Single Season</h4>
+                      {formData.type === 'single' && (
+                        <svg className="w-5 h-5 text-[#9580FF]" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600">Traditional season (Seasons 1-15)</p>
+                  </div>
+                  <div
+                    onClick={() => setFormData({ ...formData, type: 'multi' })}
+                    className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-200 ${
+                      formData.type === 'multi'
+                        ? 'border-[#9580FF] bg-[#9580FF]/10'
+                        : 'border-gray-200 bg-white/50 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Multi-Season</h4>
+                      {formData.type === 'multi' && (
+                        <svg className="w-5 h-5 text-[#9580FF]" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600">Contract system (Season 16+)</p>
+                  </div>
+                </div>
+                <p className="mt-2 text-sm text-gray-500 flex items-center">
+                  <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Multi-season enables 2-season contracts, dual currency, and dynamic player categories
+                </p>
+              </div>
+
+              {/* Multi-Season Configuration */}
+              {formData.type === 'multi' && (
+                <div className="space-y-6 p-6 rounded-2xl bg-gradient-to-br from-[#9580FF]/5 to-[#0066FF]/5 border border-[#9580FF]/20">
+                  <div className="flex items-center mb-4">
+                    <svg className="w-5 h-5 mr-2 text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h4 className="font-semibold text-gray-900">Multi-Season Configuration</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Dollar Budget ($)</label>
+                      <input
+                        type="number"
+                        value={formData.dollar_budget}
+                        onChange={(e) => setFormData({ ...formData, dollar_budget: parseInt(e.target.value) || 0 })}
+                        className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Budget for real players (SS Members)</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Euro Budget (€)</label>
+                      <input
+                        type="number"
+                        value={formData.euro_budget}
+                        onChange={(e) => setFormData({ ...formData, euro_budget: parseInt(e.target.value) || 0 })}
+                        className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Budget for football players</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Min Real Players</label>
+                      <input
+                        type="number"
+                        value={formData.min_real_players}
+                        onChange={(e) => setFormData({ ...formData, min_real_players: parseInt(e.target.value) || 0 })}
+                        className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Max Real Players</label>
+                      <input
+                        type="number"
+                        value={formData.max_real_players}
+                        onChange={(e) => setFormData({ ...formData, max_real_players: parseInt(e.target.value) || 0 })}
+                        className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Max Football Players</label>
+                      <input
+                        type="number"
+                        value={formData.max_football_players}
+                        onChange={(e) => setFormData({ ...formData, max_football_players: parseInt(e.target.value) || 0 })}
+                        className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Category Fine ($)</label>
+                      <input
+                        type="number"
+                        value={formData.category_fine_amount}
+                        onChange={(e) => setFormData({ ...formData, category_fine_amount: parseInt(e.target.value) || 0 })}
+                        className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Fine for lineup violations</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Description (Optional) */}
               <div className="group">

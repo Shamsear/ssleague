@@ -227,7 +227,8 @@ export async function POST(
     const teamsCache = new Map<string, any>();
     if (teamsToImport.length > 0) {
       console.log('📊 Pre-loading teams...');
-      const teamIds = teamsToImport.map(t => t.id).filter(Boolean);
+      // Use linked_team_id if available, otherwise fallback to id
+      const teamIds = teamsToImport.map(t => t.linked_team_id || t.id).filter(Boolean);
       
       if (teamIds.length > 0) {
         // Batch read teams (Firestore allows up to 10 per batch, but we'll read individually in batch)
@@ -249,38 +250,51 @@ export async function POST(
 
       for (const row of teamsToImport) {
         try {
-          if (!row.id) continue;
-
-          // OPTIMIZED: Use cached team data
-          const currentData = teamsCache.get(row.id);
-          if (!currentData) {
-            stats.teams.errors.push(`Team with ID ${row.id} not found`);
+          // Use linked_team_id if available (from preview), otherwise skip
+          const teamId = row.linked_team_id || row.id;
+          
+          if (!teamId) {
+            console.log(`  ⚠️  Skipping team "${row.team_name || row.team}" - no linked team ID`);
             continue;
           }
 
-          const updatedData: any = {
+          // OPTIMIZED: Use cached team data
+          const currentData = teamsCache.get(teamId);
+          if (!currentData) {
+            stats.teams.errors.push(`Team with ID ${teamId} not found`);
+            continue;
+          }
+
+          // Write team stats to teamstats collection ONLY (new architecture)
+          const teamStatsDocId = `${teamId}_${seasonId}`;
+          const teamStatsDoc = {
+            team_id: teamId,
             team_name: row.team_name || currentData?.team_name || '',
-            team_code: row.team_code || currentData?.team_code || '',
+            season_id: seasonId,
             owner_name: row.owner_name || currentData?.owner_name || '',
-            owner_email: row.owner_email || currentData?.owner_email || '',
+            
+            // Team standings data from Excel
+            rank: parseInt(row.rank) || 0,
+            points: parseInt(row.p || row.points) || 0,
+            matches_played: parseInt(row.mp || row.matches_played) || 0,
+            wins: parseInt(row.w || row.wins) || 0,
+            draws: parseInt(row.d || row.draws) || 0,
+            losses: parseInt(row.l || row.losses) || 0,
+            goals_for: parseInt(row.f || row.goals_for) || 0,
+            goals_against: parseInt(row.a || row.goals_against) || 0,
+            goal_difference: parseInt(row.gd || row.goal_difference) || 0,
+            win_percentage: parseFloat(row.percentage || row.win_percentage) || 0,
+            cup_achievement: row.cup || row.cup_achievement || '',
+            
             updated_at: FieldValue.serverTimestamp()
           };
-
-          // Check if data has changed
-          const hasChanged = Object.keys(updatedData).some(key => {
-            if (key === 'updated_at') return false;
-            return updatedData[key] !== currentData?.[key];
-          });
-
-          if (hasChanged) {
-            await adminDb.collection('teams').doc(row.id).update(updatedData);
-            stats.teams.updated++;
-            console.log(`  ✅ Updated team: ${updatedData.team_name}`);
-          } else {
-            stats.teams.unchanged++;
-          }
+          
+          await adminDb.collection('teamstats').doc(teamStatsDocId).set(teamStatsDoc, { merge: true });
+          stats.teams.updated++;
+          console.log(`  ✅ Updated teamstats for: ${teamStatsDoc.team_name}`);
+        
         } catch (error: any) {
-          stats.teams.errors.push(`Error updating team ${row.id}: ${error.message}`);
+          stats.teams.errors.push(`Error updating team ${teamId}: ${error.message}`);
         }
       }
     }
@@ -360,6 +374,9 @@ export async function POST(
             win_rate: matchesPlayed > 0 ? parseFloat(((matchesWon / matchesPlayed) * 100).toFixed(2)) : 0,
             average_rating: parseFloat(row.average_rating) || 0,
             
+            // Player of the Match (POTM) - nullable
+            potm: row.potm ? parseInt(row.potm) : (row.POTM ? parseInt(row.POTM) : null),
+            
             // Current season tracking
             current_season_matches: matchesPlayed,
             current_season_wins: matchesWon
@@ -396,20 +413,95 @@ export async function POST(
           const statsDocId = adminDb.collection('realplayerstats').doc().id;
           console.log(`  🆕 Creating stats for ${row.name} in season ${seasonId}`);
           
+          // Parse all category and individual trophies dynamically
+          const categoryTrophies: string[] = [];
+          const individualTrophies: string[] = [];
+          
+          // Check all possible column names for trophies
+          Object.keys(row).forEach(key => {
+            const lowerKey = key.toLowerCase();
+            const value = row[key];
+            
+            if (value && typeof value === 'string' && value.trim()) {
+              // Match: category_wise_trophy_N, Category Trophy N, etc.
+              if (lowerKey.includes('category') && lowerKey.includes('trophy')) {
+                categoryTrophies.push(value.trim());
+              }
+              // Match: individual_wise_trophy_N, Individual Trophy N, etc.
+              else if (lowerKey.includes('individual') && lowerKey.includes('trophy')) {
+                individualTrophies.push(value.trim());
+              }
+            }
+          });
+          
+          // Also handle if trophies come as arrays (from preview)
+          if (Array.isArray(row.category_trophies)) {
+            row.category_trophies.forEach((trophy: string) => {
+              if (trophy && trophy.trim()) categoryTrophies.push(trophy.trim());
+            });
+          }
+          if (Array.isArray(row.individual_trophies)) {
+            row.individual_trophies.forEach((trophy: string) => {
+              if (trophy && trophy.trim()) individualTrophies.push(trophy.trim());
+            });
+          }
+          
+          // Normalize team name: if it's a previous name, use the current name
+          let normalizedTeamName = row.team || row.team_name || '';
+          let teamNameMatched = false;
+          
+          if (normalizedTeamName) {
+            const teamNameLower = normalizedTeamName.trim().toLowerCase();
+            
+            // Check if this team name matches any current or previous team name
+            for (const [teamId, teamData] of teamsCache.entries()) {
+              const currentNameLower = teamData.team_name?.trim().toLowerCase();
+              const previousNames = teamData.previous_names || teamData.name_history || [];
+              
+              // Check if it matches the current team name
+              if (currentNameLower === teamNameLower) {
+                teamNameMatched = true;
+                normalizedTeamName = teamData.team_name; // Use exact casing from database
+                break;
+              }
+              
+              // Check if it matches any previous name
+              const matchesPreviousName = previousNames.some((oldName: string) => 
+                oldName && oldName.trim().toLowerCase() === teamNameLower
+              );
+              
+              if (matchesPreviousName) {
+                // Use the current team name instead
+                console.log(`  🔄 Normalizing team name: "${normalizedTeamName}" → "${teamData.team_name}"`);
+                normalizedTeamName = teamData.team_name;
+                teamNameMatched = true;
+                break;
+              }
+            }
+            
+            // If no match found, add a warning
+            if (!teamNameMatched) {
+              const warningMsg = `⚠️ Player "${row.name}" has team "${normalizedTeamName}" which does not match any current or previous team names`;
+              console.warn(warningMsg);
+              stats.players.errors.push(warningMsg);
+            }
+          }
+          
           const statsData: any = {
             player_id: playerId,
             player_name: row.name || currentPlayerData?.name || '',
             season_id: seasonId,
             season_name: seasonName, // OPTIMIZED: Denormalized for faster reads
             category: row.category || '', // Season-specific
-            team: row.team || row.team_name || '', // Season-specific
+            team: normalizedTeamName, // Season-specific (normalized to current name)
             team_id: row.team_id || null,
             is_active: row.is_active !== false,
             is_available: row.is_available !== false,
             // Flatten stats at document level for easier querying
             ...updatedStats,
-            // Also keep nested for backward compatibility
-            stats: updatedStats,
+            // Trophy/Award fields (optional) - now as arrays
+            category_trophies: categoryTrophies,
+            individual_trophies: individualTrophies,
             created_at: FieldValue.serverTimestamp(),
             updated_at: FieldValue.serverTimestamp()
           };

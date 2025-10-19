@@ -10,7 +10,7 @@ export default function NewCategoryPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: '',
-    color: 'red',
+    icon: '⭐',
     priority: '1',
     points_same_category: '8',
     points_one_level_diff: '7',
@@ -26,6 +26,9 @@ export default function NewCategoryPage() {
     loss_three_level_diff: '0',
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
@@ -34,55 +37,6 @@ export default function NewCategoryPage() {
       router.push('/dashboard');
     }
   }, [user, loading, router]);
-
-  useEffect(() => {
-    // Auto-select color based on name
-    if (formData.name) {
-      const color = selectColorBasedOnName(formData.name);
-      if (color) {
-        setFormData(prev => ({ ...prev, color }));
-      }
-    }
-  }, [formData.name]);
-
-  const selectColorBasedOnName = (name: string): string => {
-    const lowerName = name.toLowerCase();
-    const colorKeywords: { [key: string]: string[] } = {
-      red: ['red', 'crimson', 'scarlet', 'ruby', 'fire', 'flame', 'blood', 'cherry'],
-      blue: ['blue', 'azure', 'sky', 'ocean', 'sea', 'navy', 'sapphire', 'indigo', 'teal', 'water'],
-      black: ['black', 'dark', 'night', 'shadow', 'obsidian', 'onyx', 'coal', 'ebony', 'midnight'],
-      white: ['white', 'light', 'snow', 'cloud', 'pearl', 'ivory', 'diamond', 'crystal', 'silver'],
-    };
-
-    for (const [color, keywords] of Object.entries(colorKeywords)) {
-      for (const keyword of keywords) {
-        if (lowerName.includes(keyword)) {
-          return color;
-        }
-      }
-    }
-
-    if (name.length > 0) {
-      const colors = ['red', 'blue', 'black', 'white'];
-      const hashIndex = name.charCodeAt(0) % colors.length;
-      return colors[hashIndex];
-    }
-
-    return 'red';
-  };
-
-  const getColorStyles = (color: string) => {
-    const styles: { [key: string]: string } = {
-      red: 'bg-red-600',
-      blue: 'bg-blue-600',
-      black: 'bg-black',
-      white: 'bg-white border-2 border-gray-300',
-    };
-    return styles[color] || 'bg-gray-200';
-  };
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +58,6 @@ export default function NewCategoryPage() {
         throw new Error(result.error || 'Failed to create category');
       }
 
-      // Success - redirect to categories list
       router.push('/dashboard/committee/team-management/categories?success=created');
     } catch (err: any) {
       console.error('Error creating category:', err);
@@ -121,10 +74,10 @@ export default function NewCategoryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mx-auto"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
         </div>
       </div>
     );
@@ -135,487 +88,376 @@ export default function NewCategoryPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-        <div className="mb-2 sm:mb-0">
-          <h1 className="text-3xl md:text-4xl font-bold gradient-text">Create New Category</h1>
-          <p className="text-gray-500 mt-1">Configure a new player category for your tournament</p>
-        </div>
-        <Link 
-          href="/dashboard/committee/team-management/categories" 
-          className="glass rounded-xl px-4 py-3 text-gray-700 font-medium hover:bg-white/60 transition-all duration-300 shadow-sm flex items-center"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Back to Categories
-        </Link>
-      </div>
-
-      {/* Form Container */}
-      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl overflow-hidden border border-gray-100/20">
-        <form onSubmit={handleSubmit} className="space-y-0">
-          {/* Form Header with gradient */}
-          <div className="bg-gradient-to-r from-[#0066FF]/5 to-[#0052CC]/5 px-6 sm:px-8 py-5 border-b border-gray-200/50">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center">
-              <svg className="w-6 h-6 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-              Category Information
-            </h2>
-            <p className="text-sm text-gray-600 mt-1 ml-8">Configure category details and point system</p>
-          </div>
-
-          <div className="p-6 sm:p-8 space-y-8">
-            {/* Basic Info Section */}
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                  <div className="p-2 bg-[#0066FF]/10 rounded-lg mr-3">
-                    <svg className="w-5 h-5 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  Basic Information
-                </h3>
-                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full">Step 1 of 2</span>
-              </div>
-            
-            {/* Category Name */}
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-4 sm:py-8 px-3 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Category Name
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                   </svg>
                 </div>
-                <input
-                  type="text"
-                  name="name"
-                  id="name"
-                  required
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className="pl-10 block w-full rounded-xl bg-white/60 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70 transition-all duration-200"
-                  placeholder="e.g., Red, Blue, Black, White"
-                />
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  Create New Category
+                </h1>
+              </div>
+              <p className="text-gray-600 text-sm sm:text-base ml-14">Define player tiers and point distribution rules</p>
+            </div>
+            <Link 
+              href="/dashboard/committee/team-management/categories" 
+              className="inline-flex items-center px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span className="hidden sm:inline">Back to Categories</span>
+              <span className="sm:hidden">Back</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-50 border-l-4 border-red-500 rounded-xl p-4 shadow-sm animate-fade-in">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-red-800 mb-1">Error Creating Category</h4>
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+              <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Step 1: Basic Information */}
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-lg backdrop-blur">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Basic Information</h2>
+                </div>
+                <span className="text-xs font-semibold text-white/80 bg-white/20 px-3 py-1 rounded-full backdrop-blur">Step 1/2</span>
               </div>
             </div>
 
-              {/* Category Color */}
+            <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+              {/* Category Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-                  <svg className="w-4 h-4 mr-1.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                  </svg>
-                  Category Color
+                <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Category Name <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <div className="p-4 bg-gradient-to-br from-white to-gray-50 rounded-xl border-2 border-gray-200 hover:border-[#0066FF]/30 transition-all duration-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className={`h-12 w-12 rounded-xl mr-4 shadow-lg transform transition-transform hover:scale-110 ${getColorStyles(formData.color)}`}></div>
-                        <div>
-                          <span className="block text-base font-semibold capitalize text-gray-900">{formData.color}</span>
-                          <span className="text-xs text-gray-500 flex items-center mt-1">
-                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            Auto-assigned
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-1.5">
-                        {['red', 'blue', 'black', 'white'].map((color) => (
-                          <div
-                            key={color}
-                            className={`h-6 w-6 rounded-lg shadow-sm border-2 transition-all ${
-                              formData.color === color ? 'border-[#0066FF] scale-110' : 'border-transparent opacity-40'
-                            } ${getColorStyles(color)}`}
-                          ></div>
-                        ))}
+                  <input
+                    type="text"
+                    name="name"
+                    id="name"
+                    required
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 pl-11 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none text-base"
+                    placeholder="e.g., Legend, Classic, Superstar"
+                  />
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-500 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Choose a descriptive name that reflects the skill tier
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Icon Selector */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Category Icon <span className="text-red-500">*</span>
+                  </label>
+                  
+                  {/* Selected Icon Preview */}
+                  <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
+                    <div className="flex items-center gap-4">
+                      <div className="text-5xl">{formData.icon}</div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">Selected Icon</p>
+                        <p className="text-xs text-gray-500">Tap any icon below to change</p>
                       </div>
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-gray-500 flex items-center">
-                    <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Color is automatically selected based on keywords in the category name
-                  </p>
-                </div>
-              </div>
 
-              {/* Priority */}
-              <div>
-                <label htmlFor="priority" className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-                  <svg className="w-4 h-4 mr-1.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                  Priority Level
-                </label>
-                <div className="grid grid-cols-4 gap-3">
-                  {[1, 2, 3, 4].map((priority) => (
-                    <button
-                      key={priority}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, priority: String(priority) }))}
-                      className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
-                        formData.priority === String(priority)
-                          ? 'border-[#0066FF] bg-[#0066FF]/5 shadow-md'
-                          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-                      }`}
-                    >
-                      <div className="text-center">
-                        <div className={`text-2xl font-bold mb-1 ${
-                          formData.priority === String(priority) ? 'text-[#0066FF]' : 'text-gray-700'
-                        }`}>
-                          {priority}
-                        </div>
-                        <div className="text-xs font-medium text-gray-500">
-                          {priority === 1 && 'Highest'}
-                          {priority === 2 && 'High'}
-                          {priority === 3 && 'Medium'}
-                          {priority === 4 && 'Lowest'}
-                        </div>
-                      </div>
-                      {formData.priority === String(priority) && (
-                        <div className="absolute -top-2 -right-2 bg-[#0066FF] rounded-full p-1">
-                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                  {/* Icon Grid */}
+                  <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                    {['⭐', '🏆', '👑', '💎', '🔥', '⚡', '🎯', '🌟', '💫', '✨', '🥇', '🥈', '🥉', '🎖️', '🏅', '🔰'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, icon: emoji }))}
+                        className={`text-2xl sm:text-3xl p-2 sm:p-3 rounded-lg transition-all ${
+                          formData.icon === emoji
+                            ? 'bg-blue-600 scale-110 shadow-lg ring-4 ring-blue-100'
+                            : 'bg-white hover:bg-blue-50 hover:scale-105 shadow-sm'
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Emoji Input */}
+                  <div className="mt-3">
+                    <input
+                      type="text"
+                      maxLength={2}
+                      value={formData.icon}
+                      onChange={(e) => setFormData(prev => ({ ...prev, icon: e.target.value }))}
+                      className="w-full px-4 py-2 text-center text-2xl rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
+                      placeholder="Custom emoji"
+                    />
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-gray-500 flex items-center">
-                  <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Priority determines the skill level hierarchy (1 = Top tier, 4 = Entry level)
-                </p>
+
+                {/* Priority Selector */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Priority Level <span className="text-red-500">*</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mb-4 flex items-start gap-1">
+                    <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                    <span>Priority defines skill hierarchy: 1 = Elite, 4 = Beginner</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { num: 1, label: 'Elite', gradient: 'from-yellow-400 to-orange-500' },
+                      { num: 2, label: 'Advanced', gradient: 'from-blue-400 to-cyan-500' },
+                      { num: 3, label: 'Intermediate', gradient: 'from-green-400 to-emerald-500' },
+                      { num: 4, label: 'Beginner', gradient: 'from-purple-400 to-pink-500' }
+                    ].map(({ num, label, gradient }) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, priority: String(num) }))}
+                        className={`relative p-4 rounded-xl border-2 transition-all ${
+                          formData.priority === String(num)
+                            ? 'border-blue-500 bg-blue-50 shadow-lg scale-105'
+                            : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                        }`}
+                      >
+                        <div className={`text-3xl font-bold bg-gradient-to-r ${gradient} bg-clip-text text-transparent mb-1`}>
+                          {num}
+                        </div>
+                        <div className="text-sm font-semibold text-gray-700">{label}</div>
+                        {formData.priority === String(num) && (
+                          <div className="absolute -top-2 -right-2 bg-blue-600 rounded-full p-1 shadow-lg">
+                            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Points Configuration */}
-            <div className="border-t-2 border-gray-200 pt-8">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                  <div className="p-2 bg-[#0066FF]/10 rounded-lg mr-3">
-                    <svg className="w-5 h-5 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Step 2: Points Configuration */}
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-lg backdrop-blur">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 11V9a2 2 0 00-2-2m2 4v4a2 2 0 104 0v-1m-4-3H9m2 0h4m6 1a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  Points Configuration
-                </h3>
-                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full">Step 2 of 2</span>
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Points Configuration</h2>
+                </div>
+                <span className="text-xs font-semibold text-white/80 bg-white/20 px-3 py-1 rounded-full backdrop-blur">Step 2/2</span>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-                <div className="flex items-start">
-                  <svg className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            </div>
+
+            <div className="p-4 sm:p-6 lg:p-8">
+              {/* Info Banner */}
+              <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <div className="text-sm text-blue-800">
-                    <p className="font-medium mb-1">How Points Work</p>
-                    <p className="text-blue-700">Configure points awarded based on match results and opponent strength. Points range from -20 to +20.</p>
+                  <div className="text-sm">
+                    <p className="font-semibold text-blue-900 mb-1">Points System Explained</p>
+                    <p className="text-blue-700">Configure points awarded based on match results and opponent strength. Range: -20 to +20 points.</p>
                   </div>
                 </div>
               </div>
-            
-            {/* Points for Wins */}
-            <div className="mb-8 bg-white/60 rounded-xl p-4 shadow-sm border border-gray-100">
-              <h4 className="text-md font-medium text-gray-800 mb-3 flex items-center">
-                <svg className="w-4 h-4 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Points for Wins
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="points_same_category" className="block text-sm font-medium text-gray-700 mb-1">
-                    Same Category Match Points
-                  </label>
-                  <input
-                    type="number"
-                    name="points_same_category"
-                    id="points_same_category"
-                    min="-20"
-                    max="20"
-                    value={formData.points_same_category}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for wins between players of the same category</p>
+
+              <div className="space-y-6">
+                {/* Wins Section */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 sm:p-6 border-2 border-green-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-green-600 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-green-900">Win Points</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { name: 'points_same_category', label: 'Same Level' },
+                      { name: 'points_one_level_diff', label: '1 Level Up' },
+                      { name: 'points_two_level_diff', label: '2 Levels Up' },
+                      { name: 'points_three_level_diff', label: '3 Levels Up' }
+                    ].map(({ name, label }) => (
+                      <div key={name}>
+                        <label htmlFor={name} className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          {label}
+                        </label>
+                        <input
+                          type="number"
+                          name={name}
+                          id={name}
+                          min="-20"
+                          max="20"
+                          value={formData[name as keyof typeof formData]}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-center text-lg font-bold"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div>
-                  <label htmlFor="points_one_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    One Level Difference Points
-                  </label>
-                  <input
-                    type="number"
-                    name="points_one_level_diff"
-                    id="points_one_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.points_one_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for wins between players with 1 level difference</p>
+                {/* Draws Section */}
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 sm:p-6 border-2 border-blue-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-blue-600 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-blue-900">Draw Points</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { name: 'draw_same_category', label: 'Same Level' },
+                      { name: 'draw_one_level_diff', label: '1 Level Up' },
+                      { name: 'draw_two_level_diff', label: '2 Levels Up' },
+                      { name: 'draw_three_level_diff', label: '3 Levels Up' }
+                    ].map(({ name, label }) => (
+                      <div key={name}>
+                        <label htmlFor={name} className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          {label}
+                        </label>
+                        <input
+                          type="number"
+                          name={name}
+                          id={name}
+                          min="-20"
+                          max="20"
+                          value={formData[name as keyof typeof formData]}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none text-center text-lg font-bold"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div>
-                  <label htmlFor="points_two_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    Two Level Difference Points
-                  </label>
-                  <input
-                    type="number"
-                    name="points_two_level_diff"
-                    id="points_two_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.points_two_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for wins between players with 2 level difference</p>
-                </div>
-
-                <div>
-                  <label htmlFor="points_three_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    Three Level Difference Points
-                  </label>
-                  <input
-                    type="number"
-                    name="points_three_level_diff"
-                    id="points_three_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.points_three_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for wins between players with 3 level difference</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Points for Draws */}
-            <div className="mb-8 bg-white/60 rounded-xl p-4 shadow-sm border border-gray-100">
-              <h4 className="text-md font-medium text-gray-800 mb-3 flex items-center">
-                <svg className="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Points for Draws
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="draw_same_category" className="block text-sm font-medium text-gray-700 mb-1">
-                    Same Category Draw Points
-                  </label>
-                  <input
-                    type="number"
-                    name="draw_same_category"
-                    id="draw_same_category"
-                    min="-20"
-                    max="20"
-                    value={formData.draw_same_category}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for draws between players of the same category</p>
-                </div>
-
-                <div>
-                  <label htmlFor="draw_one_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    One Level Difference Draw Points
-                  </label>
-                  <input
-                    type="number"
-                    name="draw_one_level_diff"
-                    id="draw_one_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.draw_one_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for draws between players with 1 level difference</p>
-                </div>
-
-                <div>
-                  <label htmlFor="draw_two_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    Two Level Difference Draw Points
-                  </label>
-                  <input
-                    type="number"
-                    name="draw_two_level_diff"
-                    id="draw_two_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.draw_two_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for draws between players with 2 level difference</p>
-                </div>
-
-                <div>
-                  <label htmlFor="draw_three_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    Three Level Difference Draw Points
-                  </label>
-                  <input
-                    type="number"
-                    name="draw_three_level_diff"
-                    id="draw_three_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.draw_three_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for draws between players with 3 level difference</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Points for Losses */}
-            <div className="bg-white/60 rounded-xl p-4 shadow-sm border border-gray-100">
-              <h4 className="text-md font-medium text-gray-800 mb-3 flex items-center">
-                <svg className="w-4 h-4 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Points for Losses
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="loss_same_category" className="block text-sm font-medium text-gray-700 mb-1">
-                    Same Category Loss Points
-                  </label>
-                  <input
-                    type="number"
-                    name="loss_same_category"
-                    id="loss_same_category"
-                    min="-20"
-                    max="20"
-                    value={formData.loss_same_category}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for losses between players of the same category</p>
-                </div>
-
-                <div>
-                  <label htmlFor="loss_one_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    One Level Difference Loss Points
-                  </label>
-                  <input
-                    type="number"
-                    name="loss_one_level_diff"
-                    id="loss_one_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.loss_one_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for losses between players with 1 level difference</p>
-                </div>
-
-                <div>
-                  <label htmlFor="loss_two_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    Two Level Difference Loss Points
-                  </label>
-                  <input
-                    type="number"
-                    name="loss_two_level_diff"
-                    id="loss_two_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.loss_two_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for losses between players with 2 level difference</p>
-                </div>
-
-                <div>
-                  <label htmlFor="loss_three_level_diff" className="block text-sm font-medium text-gray-700 mb-1">
-                    Three Level Difference Loss Points
-                  </label>
-                  <input
-                    type="number"
-                    name="loss_three_level_diff"
-                    id="loss_three_level_diff"
-                    min="-20"
-                    max="20"
-                    value={formData.loss_three_level_diff}
-                    onChange={handleInputChange}
-                    className="block w-full rounded-lg bg-white/70 border-gray-300 shadow-sm focus:ring-[#0066FF]/40 focus:border-[#0066FF]/70"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Points awarded for losses between players with 3 level difference</p>
-                </div>
-              </div>
-            </div>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 animate-fade-in">
-                <div className="flex items-start">
-                  <svg className="w-5 h-5 text-red-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div>
-                    <h4 className="text-sm font-medium text-red-800">Error Creating Category</h4>
-                    <p className="text-sm text-red-700 mt-1">{error}</p>
+                {/* Losses Section */}
+                <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-4 sm:p-6 border-2 border-red-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-red-600 rounded-lg">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-red-900">Loss Points</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { name: 'loss_same_category', label: 'Same Level' },
+                      { name: 'loss_one_level_diff', label: '1 Level Down' },
+                      { name: 'loss_two_level_diff', label: '2 Levels Down' },
+                      { name: 'loss_three_level_diff', label: '3 Levels Down' }
+                    ].map(({ name, label }) => (
+                      <div key={name}>
+                        <label htmlFor={name} className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          {label}
+                        </label>
+                        <input
+                          type="number"
+                          name={name}
+                          id={name}
+                          min="-20"
+                          max="20"
+                          value={formData[name as keyof typeof formData]}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 rounded-lg border-2 border-gray-200 focus:border-red-500 focus:ring-4 focus:ring-red-100 transition-all outline-none text-center text-lg font-bold"
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Submit Button Area */}
-          <div className="bg-gray-50 px-6 sm:px-8 py-4 border-t border-gray-200">
-            <div className="flex justify-between items-center">
-              <Link 
-                href="/dashboard/committee/team-management/categories"
-                className="inline-flex items-center px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Cancel
-              </Link>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center px-6 py-2.5 bg-gradient-to-r from-[#0066FF] to-[#0052CC] text-white font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0066FF]/50 focus:ring-offset-2 transition-all duration-300 hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {isSubmitting ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Creating Category...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Create Category
-                  </>
-                )}
-              </button>
-            </div>
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-white rounded-2xl shadow-lg border border-gray-100 p-4 sticky bottom-4">
+            <Link 
+              href="/dashboard/committee/team-management/categories"
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            >
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Create Category
+                </>
+              )}
+            </button>
           </div>
         </form>
       </div>

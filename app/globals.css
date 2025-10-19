@@ -17,7 +17,7 @@
   --radius-4xl: 2rem;
 }
 
-/* Vision OS Background */
+/* Vision OS Background - Performance optimized */
 body {
   background: linear-gradient(135deg, rgba(245, 245, 247, 0.4) 0%, rgba(255, 255, 255, 0.4) 100%);
   background-image: 
@@ -28,6 +28,9 @@ body {
   background-size: 100% 100%, 100% 100%;
   background-attachment: fixed;
   min-height: 100vh;
+  /* Performance optimization */
+  will-change: auto;
+  transform: translateZ(0);
 }
 
 /* Logo watermark overlay */
@@ -74,13 +77,16 @@ html {
   background: rgba(0, 0, 0, 0.25);
 }
 
-/* Vision OS Glass morphism */
+/* Vision OS Glass morphism - GPU accelerated */
 .glass {
   background: rgba(255, 255, 255, 0.4);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.3);
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+  /* GPU acceleration */
+  transform: translateZ(0);
+  will-change: transform, opacity;
 }
 
 .nav-glass {
@@ -102,12 +108,14 @@ html {
   letter-spacing: -0.02em;
 }
 
-/* Animations */
+/* Animations - Optimized for 60fps */
 .hover-float {
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+              box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
 }
 .hover-float:hover {
-  transform: translateY(-4px);
+  transform: translateY(-4px) translateZ(0);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
 }
 
@@ -136,17 +144,19 @@ html {
   -webkit-text-fill-color: transparent;
 }
 
-/* Vision OS style button */
+/* Vision OS style button - Performance optimized */
 .vision-button {
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1),
+              box-shadow 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  will-change: transform;
 }
 .vision-button:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) translateZ(0);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 .vision-button:active {
-  transform: translateY(0);
+  transform: translateY(0) translateZ(0);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
@@ -186,5 +196,36 @@ html {
   }
   50% {
     opacity: 0.8;
+  }
+}
+
+/* Performance optimization utilities */
+.gpu-accelerate {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Smooth transitions */
+.smooth-transition {
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+  will-change: transform, opacity;
+}
+
+/* Content visibility for better rendering performance */
+.optimize-render {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
+}
+
+/* Reduce motion for accessibility and performance */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

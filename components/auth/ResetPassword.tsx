@@ -40,14 +40,25 @@ function ResetPasswordContent() {
       }
 
       try {
-        const request = await validateResetToken(token);
-        if (!request) {
-          setError('Invalid or expired reset link. Please request a new password reset.');
+        // Call API to validate token
+        const response = await fetch('/api/auth/validate-reset-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.valid) {
+          setError(data.error || 'Invalid or expired reset link. Please request a new password reset.');
           setValidatingToken(false);
           return;
         }
 
-        setResetRequest(request);
+        // Set request data from API response
+        setResetRequest(data.request as any);
         setValidatingToken(false);
       } catch (error) {
         console.error('Error validating token:', error);
@@ -81,8 +92,24 @@ function ResetPasswordContent() {
       setIsLoading(true);
 
       try {
-        // Mark the reset request as completed
-        await completeResetRequest(token);
+        // Call API to reset password using admin-approved token
+        const response = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            token: token,
+            newPassword: newPassword,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to reset password');
+        }
+
         setSuccess(true);
         
         alert('Password reset successful! You can now log in with your new password.');

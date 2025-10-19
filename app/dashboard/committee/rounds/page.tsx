@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
@@ -73,8 +73,7 @@ export default function RoundsManagementPage() {
   }, [user, loading, router]);
 
   // Fetch current season and available positions
-  useEffect(() => {
-    const fetchData = async () => {
+  const fetchData = useCallback(async () => {
       if (!user || user.role !== 'committee_admin') return;
 
       try {
@@ -101,10 +100,11 @@ export default function RoundsManagementPage() {
       } catch (err) {
         console.error('Error fetching data:', err);
       }
-    };
+    }, [user]);
 
+  useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [fetchData]);
 
   // Fetch rounds with optimized live updates
   useEffect(() => {

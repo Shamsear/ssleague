@@ -175,8 +175,8 @@ service cloud.firestore {
         resource.data.player_id == request.auth.uid
       );
       
-      // Only super admins can delete
-      allow delete: if isSuperAdmin();
+      // Super admins and committee admins can delete (for managing registrations)
+      allow delete: if isAdmin();
     }
     
     // RealPlayers master collection - source of truth for permanent player data
@@ -397,6 +397,38 @@ service cloud.firestore {
       allow update: if isAdmin() || 
         (request.auth == null && request.resource.data.is_historical == true);
       allow delete: if isAdmin();
+    }
+    
+    // TeamStats collection - season-specific team standings and statistics
+    match /teamstats/{statsId} {
+      // Allow anyone to read (for public standings viewing)
+      allow read: if true;
+      
+      // Allow admins to create/update season-specific team stats
+      // Also allow server-side historical imports
+      allow create: if isAdmin() || 
+        (request.auth == null && request.resource.data.season_id != null);
+      allow update: if isAdmin() || 
+        (request.auth == null && request.resource.data.season_id != null);
+      
+      // Only super admins can delete stats records
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Awards collection - season-specific awards and achievements
+    match /awards/{awardId} {
+      // Allow anyone to read (for public awards viewing)
+      allow read: if true;
+      
+      // Allow admins to create/update awards
+      // Also allow server-side historical imports
+      allow create: if isAdmin() || 
+        (request.auth == null && request.resource.data.is_historical == true);
+      allow update: if isAdmin() || 
+        (request.auth == null && request.resource.data.is_historical == true);
+      
+      // Only super admins can delete awards
+      allow delete: if isSuperAdmin();
     }
   }
 }

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run Migration - Remove Duplicate Stats</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4285f4;
+      padding-bottom: 10px;
+    }
+    button {
+      background-color: #4285f4;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #357ae8;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 4px;
+      display: none;
+    }
+    .info { background-color: #e3f2fd; color: #1565c0; }
+    .success { background-color: #e8f5e9; color: #2e7d32; }
+    .error { background-color: #ffebee; color: #c62828; }
+    .warning { background-color: #fff3e0; color: #ef6c00; }
+    pre {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .stat-card {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .stat-card .number {
+      font-size: 32px;
+      font-weight: bold;
+      color: #4285f4;
+    }
+    .stat-card .label {
+      color: #666;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Database Migration: Remove Duplicate Stats</h1>
+    
+    <p><strong>What this does:</strong></p>
+    <ul>
+      <li>Removes the nested <code>stats</code> object from <code>realplayerstats</code> documents</li>
+      <li>Keeps all stats at the root level for cleaner data structure</li>
+      <li>Processes all documents in batches for efficiency</li>
+    </ul>
+
+    <div id="authStatus" style="margin-top: 20px; padding: 10px; background: #fff3e0; border-radius: 4px;">
+      <strong>⏳ Checking authentication...</strong>
+    </div>
+
+    <button id="loginButton" onclick="loginWithGoogle()" style="display: none; background-color: #db4437;">
+      🔐 Login with Google
+    </button>
+
+    <button id="runMigration" onclick="runMigration()" disabled>
+      Run Migration
+    </button>
+
+    <button id="cleanupLegacy" onclick="cleanupLegacyFields()" disabled style="background-color: #f57c00; margin-left: 10px;">
+      Cleanup Legacy Fields
+    </button>
+
+    <div id="status"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCERFgJcwl0gHFQXhTPMavt26q0RaKDHF8",
+      authDomain: "sixstreetleague.firebaseapp.com",
+      projectId: "sixstreetleague",
+      storageBucket: "sixstreetleague.firebasestorage.app",
+      messagingSenderId: "423019686969",
+      appId: "1:423019686969:web:3f66b5cd4e37d36d0a9148",
+      measurementId: "G-7W7KEZP41Q"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    let currentUser = null;
+
+    onAuthStateChanged(auth, (user) => {
+      const authStatus = document.getElementById('authStatus');
+      const runButton = document.getElementById('runMigration');
+      const cleanupButton = document.getElementById('cleanupLegacy');
+      const loginButton = document.getElementById('loginButton');
+      
+      if (user) {
+        currentUser = user;
+        authStatus.innerHTML = `<strong>✅ Authenticated as:</strong> ${user.email}`;
+        authStatus.style.background = '#e8f5e9';
+        runButton.disabled = false;
+        cleanupButton.disabled = false;
+        loginButton.style.display = 'none';
+      } else {
+        authStatus.innerHTML = '<strong>❌ Not authenticated.</strong> Please login below.';
+        authStatus.style.background = '#ffebee';
+        runButton.disabled = true;
+        cleanupButton.disabled = true;
+        loginButton.style.display = 'inline-block';
+      }
+    });
+
+    window.loginWithGoogle = async function() {
+      const provider = new GoogleAuthProvider();
+      const loginButton = document.getElementById('loginButton');
+      
+      try {
+        loginButton.disabled = true;
+        loginButton.textContent = '⏳ Logging in...';
+        await signInWithPopup(auth, provider);
+      } catch (error) {
+        alert('Login failed: ' + error.message);
+        loginButton.disabled = false;
+        loginButton.textContent = '🔐 Login with Google';
+      }
+    };
+
+    window.runMigration = async function() {
+      const statusDiv = document.getElementById('status');
+      const runButton = document.getElementById('runMigration');
+      
+      if (!currentUser) {
+        alert('Please login first');
+        return;
+      }
+
+      runButton.disabled = true;
+      statusDiv.style.display = 'block';
+      statusDiv.className = 'info';
+      statusDiv.innerHTML = '<strong>⏳ Running migration...</strong><br>Please wait, this may take a minute.';
+
+      try {
+        const token = await currentUser.getIdToken();
+        
+        const response = await fetch('/api/admin/migrate-duplicate-stats', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          statusDiv.className = 'success';
+          statusDiv.innerHTML = `
+            <h3>✅ Migration Completed Successfully!</h3>
+            <div class="stats">
+              <div class="stat-card">
+                <div class="number">${result.stats.total}</div>
+                <div class="label">Total Documents</div>
+              </div>
+              <div class="stat-card">
+                <div class="number">${result.stats.updated}</div>
+                <div class="label">Updated</div>
+              </div>
+              <div class="stat-card">
+                <div class="number">${result.stats.skipped}</div>
+                <div class="label">Skipped</div>
+              </div>
+              <div class="stat-card">
+                <div class="number">${result.stats.errors}</div>
+                <div class="label">Errors</div>
+              </div>
+            </div>
+            ${result.stats.errorDetails && result.stats.errorDetails.length > 0 ? 
+              `<div style="margin-top: 15px;"><strong>Error Details:</strong><pre>${result.stats.errorDetails.join('\n')}</pre></div>` : 
+              ''}
+          `;
+        } else {
+          statusDiv.className = 'error';
+          statusDiv.innerHTML = `
+            <strong>❌ Migration Failed</strong><br>
+            <pre>${JSON.stringify(result, null, 2)}</pre>
+          `;
+        }
+      } catch (error) {
+        statusDiv.className = 'error';
+        statusDiv.innerHTML = `
+          <strong>❌ Error</strong><br>
+          <pre>${error.message}</pre>
+        `;
+      } finally {
+        runButton.disabled = false;
+      }
+    };
+
+    window.cleanupLegacyFields = async function() {
+      const statusDiv = document.getElementById('status');
+      const cleanupButton = document.getElementById('cleanupLegacy');
+      
+      if (!currentUser) {
+        alert('Please login first');
+        return;
+      }
+
+      if (!confirm('This will remove legacy balance/budget fields from dual currency teams. Continue?')) {
+        return;
+      }
+
+      cleanupButton.disabled = true;
+      statusDiv.style.display = 'block';
+      statusDiv.className = 'info';
+      statusDiv.innerHTML = '<strong>⏳ Cleaning up legacy fields...</strong><br>Please wait.';
+
+      try {
+        const token = await currentUser.getIdToken();
+        
+        const response = await fetch('/api/admin/cleanup-dual-currency-legacy-fields', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          statusDiv.className = 'success';
+          statusDiv.innerHTML = `
+            <h3>✅ Cleanup Completed Successfully!</h3>
+            <div class="stats">
+              <div class="stat-card">
+                <div class="number">${result.stats.total}</div>
+                <div class="label">Total Documents</div>
+              </div>
+              <div class="stat-card">
+                <div class="number">${result.stats.updated}</div>
+                <div class="label">Cleaned</div>
+              </div>
+              <div class="stat-card">
+                <div class="number">${result.stats.skipped}</div>
+                <div class="label">Skipped</div>
+              </div>
+              <div class="stat-card">
+                <div class="number">${result.stats.errors}</div>
+                <div class="label">Errors</div>
+              </div>
+            </div>
+            ${result.stats.errorDetails && result.stats.errorDetails.length > 0 ? 
+              `<div style="margin-top: 15px;"><strong>Error Details:</strong><pre>${result.stats.errorDetails.join('\n')}</pre></div>` : 
+              ''}
+          `;
+        } else {
+          statusDiv.className = 'error';
+          statusDiv.innerHTML = `
+            <strong>❌ Cleanup Failed</strong><br>
+            <pre>${JSON.stringify(result, null, 2)}</pre>
+          `;
+        }
+      } catch (error) {
+        statusDiv.className = 'error';
+        statusDiv.innerHTML = `
+          <strong>❌ Error</strong><br>
+          <pre>${error.message}</pre>
+        `;
+      } finally {
+        cleanupButton.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

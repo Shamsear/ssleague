@@ -102,24 +102,43 @@ interface Match {
 interface PreviewTeamData {
   team_name: string;
   owner_name: string;
+  linked_team_id?: string; // Link to existing database team
+  // Team standings data
+  rank?: number;
+  p?: number;
+  mp?: number;
+  w?: number;
+  d?: number;
+  l?: number;
+  f?: number;
+  a?: number;
+  gd?: number;
+  percentage?: number;
+  cup?: string;
 }
 
 interface PreviewPlayerData {
   name: string;
   team: string;
   category: string;
-  goals_scored: number;
-  goals_per_game: number;
-  goals_conceded: number;
-  conceded_per_game: number;
-  net_goals: number;
-  cleansheets: number;
-  points: number;
+  goals_scored: number | null;
+  goals_per_game: number | null;
+  goals_conceded: number | null;
+  conceded_per_game: number | null;
+  net_goals: number | null;
+  cleansheets: number | null;
+  points: number | null;
   win: number;
   draw: number;
   loss: number;
   total_matches: number;
-  total_points: number;
+  total_points: number | null;
+  // Optional fields
+  assists?: number;
+  average_rating?: number;
+  // Trophy arrays (unlimited trophies)
+  category_trophies?: string[];
+  individual_trophies?: string[];
 }
 
 interface PreviewData {
@@ -146,7 +165,7 @@ export default function HistoricalSeasonDetailPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [awards, setAwards] = useState<Award[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'teams' | 'players' | 'stats' | 'import'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'teams' | 'players' | 'stats' | 'standings' | 'import'>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -164,6 +183,10 @@ export default function HistoricalSeasonDetailPage() {
   const [validationErrors, setValidationErrors] = useState<Set<string>>(new Set());
   const [showValidationDetails, setShowValidationDetails] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [showBulkReplace, setShowBulkReplace] = useState(false);
+  const [bulkFindText, setBulkFindText] = useState('');
+  const [bulkReplaceText, setBulkReplaceText] = useState('');
+  const [existingEntities, setExistingEntities] = useState<{teams: {teamId: string; name: string; owner_name: string}[]} | null>(null);
   
   // Category filter state
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -200,14 +223,15 @@ export default function HistoricalSeasonDetailPage() {
 
         // Use server-side API route to bypass client-side permission issues
         console.log('📞 Making API call to /api/seasons/historical/${seasonId}...');
-        const response = await fetch(`/api/seasons/historical/${seasonId}`);
+        const url = `/api/seasons/historical/${seasonId}?loadAll=true`;
+        const response = await fetch(url);
         
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
         
-        const { success, data, error } = await response.json();
+        const { success, data, pagination, error } = await response.json();
         
         if (!success) {
           throw new Error(error || 'Failed to fetch season data');
@@ -223,7 +247,7 @@ export default function HistoricalSeasonDetailPage() {
         console.log('✅ All data loaded successfully via API!');
         console.log(`  - Season: ${data.season.name}`);
         console.log(`  - Teams: ${data.teams.length}`);
-        console.log(`  - Players: ${data.players.length}`);
+        console.log(`  - Players: ${data.players.length} (ALL LOADED)`);
         console.log(`  - Awards: ${data.awards.length}`);
         console.log(`  - Matches: ${data.matches.length}`);
         setIsLoading(false);
@@ -255,7 +279,7 @@ export default function HistoricalSeasonDetailPage() {
     setTimeout(() => {
       fetchSeasonData();
     }, 200);
-  }, [seasonId, loading, router, user]);
+  }, [seasonId, loading, router, user]); // Removed pagination dependencies
 
   // Calculate statistics (no financial data for historical seasons)
   // Category/Position distribution
@@ -281,45 +305,67 @@ export default function HistoricalSeasonDetailPage() {
     return total + (player.stats?.goals_scored || 0);
   }, 0);
 
-  // Team statistics 
+  // Team statistics - use season_stats from teamstats collection
   const teamStats = teams.map(team => {
-    const teamPlayers = players.filter(p => 
-      p.team === team.team_name
-    );
+    const teamPlayers = players.filter(p => p.team === team.team_name);
     
-    // Calculate team performance from matches
-    const teamWins = matches.filter(m => 
-      (m.home_team === team.team_name && m.home_score > m.away_score) ||
-      (m.away_team === team.team_name && m.away_score > m.home_score)
-    ).length;
-    const teamLosses = matches.filter(m => 
-      (m.home_team === team.team_name && m.home_score < m.away_score) ||
-      (m.away_team === team.team_name && m.away_score < m.home_score)
-    ).length;
-    const teamDraws = matches.filter(m => 
-      (m.home_team === team.team_name || m.away_team === team.team_name) && m.home_score === m.away_score
-    ).length;
-
-    // Calculate team's total goals and wins from player stats
-    const teamGoals = teamPlayers.reduce((total, player) => {
-      return total + (player.stats?.goals_scored || 0);
-    }, 0);
+    // Use season_stats from the new teamstats collection structure
+    const seasonStats = (team as any).season_stats;
     
-    const teamPlayerWins = teamPlayers.reduce((total, player) => {
-      return total + (player.stats?.matches_won || 0);
-    }, 0);
-
-    return {
-      ...team,
-      playerCount: teamPlayers.length,
-      wins: teamWins,
-      losses: teamLosses,
-      draws: teamDraws,
-      matchesPlayed: teamWins + teamLosses + teamDraws,
-      totalPoints: teamGoals, // Use goals as points for display
-      totalGoals: teamGoals,
-      totalPlayerWins: teamPlayerWins
-    };
+    if (seasonStats) {
+      // Use actual team standings data from Excel import
+      return {
+        ...team,
+        id: team.id,
+        team_name: seasonStats.team_name || team.team_name,
+        team_code: team.team_code,
+        owner_name: seasonStats.owner_name || team.owner_name,
+        playerCount: seasonStats.players_count || teamPlayers.length,
+        rank: seasonStats.rank || 0,
+        wins: seasonStats.wins || 0,
+        losses: seasonStats.losses || 0,
+        draws: seasonStats.draws || 0,
+        matchesPlayed: seasonStats.matches_played || 0,
+        points: seasonStats.points || 0,
+        totalGoals: seasonStats.goals_for || 0,
+        goalsAgainst: seasonStats.goals_against || 0,
+        goalDifference: seasonStats.goal_difference || 0,
+        winPercentage: seasonStats.win_percentage || 0,
+        cupAchievement: seasonStats.cup_achievement || ''
+      };
+    } else {
+      // Fallback: Calculate from matches if season_stats not available (old data)
+      const teamWins = matches.filter(m => 
+        (m.home_team === team.team_name && m.home_score > m.away_score) ||
+        (m.away_team === team.team_name && m.away_score > m.home_score)
+      ).length;
+      const teamLosses = matches.filter(m => 
+        (m.home_team === team.team_name && m.home_score < m.away_score) ||
+        (m.away_team === team.team_name && m.away_score < m.home_score)
+      ).length;
+      const teamDraws = matches.filter(m => 
+        (m.home_team === team.team_name || m.away_team === team.team_name) && m.home_score === m.away_score
+      ).length;
+      
+      const teamGoals = teamPlayers.reduce((total, player) => {
+        return total + (player.stats?.goals_scored || 0);
+      }, 0);
+      
+      return {
+        ...team,
+        playerCount: teamPlayers.length,
+        wins: teamWins,
+        losses: teamLosses,
+        draws: teamDraws,
+        matchesPlayed: teamWins + teamLosses + teamDraws,
+        points: (teamWins * 3) + teamDraws,
+        totalGoals: teamGoals,
+        goalsAgainst: 0,
+        goalDifference: 0,
+        winPercentage: 0,
+        cupAchievement: ''
+      };
+    }
   });
 
   // Excel export function
@@ -423,8 +469,6 @@ export default function HistoricalSeasonDetailPage() {
       
       // Set preview data
       setPreviewData(result.data);
-      setPreviewTeams(result.data.teams || []);
-      setPreviewPlayers(result.data.players || []);
       
       // Set initial preview tab based on available data
       if (result.data.teams.length > 0) setPreviewTab('teams');
@@ -432,6 +476,9 @@ export default function HistoricalSeasonDetailPage() {
       
       // Enter preview mode
       setPreviewMode(true);
+      
+      // Load existing teams for linking and auto-link
+      await loadExistingTeams(result.data.teams || [], result.data.players || []);
       
       // Auto-run validation
       setTimeout(() => {
@@ -476,13 +523,86 @@ export default function HistoricalSeasonDetailPage() {
     e.preventDefault();
     setDragOver(false);
   };
+  
+  // Load existing teams from database for linking
+  const loadExistingTeams = async (teamsData: PreviewTeamData[], playersData: PreviewPlayerData[]) => {
+    try {
+      // Use the existing teams state (already loaded from database)
+      const existingTeamsData = teams.map(team => ({
+        teamId: team.id,
+        name: team.team_name,
+        owner_name: team.owner_name || ''
+      }));
+      
+      setExistingEntities({ teams: existingTeamsData });
+      
+      // Auto-link teams based on name matching
+      const autoLinkedTeams = teamsData.map(previewTeam => {
+        // Find exact name match
+        const exactMatch = existingTeamsData.find(
+          et => et.name.trim().toLowerCase() === previewTeam.team_name.trim().toLowerCase()
+        );
+        
+        if (exactMatch) {
+          console.log(`🔗 Auto-linked "${previewTeam.team_name}" to existing team "${exactMatch.name}"`);
+          return { ...previewTeam, linked_team_id: exactMatch.teamId };
+        }
+        
+        // Find owner match
+        const ownerMatch = existingTeamsData.find(
+          et => et.owner_name && previewTeam.owner_name && 
+               et.owner_name.trim().toLowerCase() === previewTeam.owner_name.trim().toLowerCase()
+        );
+        
+        if (ownerMatch) {
+          console.log(`🔗 Auto-linked "${previewTeam.team_name}" to "${ownerMatch.name}" (same owner)`);
+          return { ...previewTeam, linked_team_id: ownerMatch.teamId };
+        }
+        
+        return previewTeam;
+      });
+      
+      // Set both teams and players after auto-linking
+      setPreviewTeams(autoLinkedTeams);
+      setPreviewPlayers(playersData);
+    } catch (error) {
+      console.error('Error loading existing teams:', error);
+    }
+  };
 
   // Preview validation function
   const validatePreviewData = () => {
     const errors = new Set<string>();
     
     // Get team names for cross-referential validation
-    const teamNames = new Set(previewTeams.map(team => team.team_name.trim().toLowerCase()));
+    // Use linked team names (if teams are linked) or existing database team names
+    const validTeamNames = new Set<string>();
+    
+    // Add linked team names
+    previewTeams.forEach(previewTeam => {
+      if (previewTeam.linked_team_id && existingEntities?.teams) {
+        const linkedTeam = existingEntities.teams.find(t => t.teamId === previewTeam.linked_team_id);
+        if (linkedTeam?.name) {
+          validTeamNames.add(linkedTeam.name.trim().toLowerCase());
+        }
+      }
+    });
+    
+    // Add all existing database team names AND their previous names
+    teams.forEach(team => {
+      // Add current name
+      validTeamNames.add(team.team_name.trim().toLowerCase());
+      
+      // Add previous names from name_history or previous_names array
+      const previousNames = (team as any).previous_names || (team as any).name_history || [];
+      previousNames.forEach((oldName: string) => {
+        if (oldName && oldName.trim()) {
+          validTeamNames.add(oldName.trim().toLowerCase());
+        }
+      });
+    });
+    
+    console.log('✅ Valid team names for validation:', Array.from(validTeamNames));
     
     // Validate teams
     previewTeams.forEach((team, index) => {
@@ -504,19 +624,21 @@ export default function HistoricalSeasonDetailPage() {
       if (!player.team.trim()) errors.add(`player-${index}-team`);
       if (!player.category.trim()) errors.add(`player-${index}-category`);
       
-      // Validate numeric fields
-      if (player.goals_scored === undefined || player.goals_scored === null || isNaN(player.goals_scored)) errors.add(`player-${index}-goals_scored`);
-      if (player.goals_per_game === undefined || player.goals_per_game === null || isNaN(player.goals_per_game)) errors.add(`player-${index}-goals_per_game`);
-      if (player.goals_conceded === undefined || player.goals_conceded === null || isNaN(player.goals_conceded)) errors.add(`player-${index}-goals_conceded`);
-      if (player.conceded_per_game === undefined || player.conceded_per_game === null || isNaN(player.conceded_per_game)) errors.add(`player-${index}-conceded_per_game`);
-      if (player.net_goals === undefined || player.net_goals === null || isNaN(player.net_goals)) errors.add(`player-${index}-net_goals`);
-      if (player.cleansheets === undefined || player.cleansheets === null || isNaN(player.cleansheets)) errors.add(`player-${index}-cleansheets`);
-      if (player.points === undefined || player.points === null || isNaN(player.points)) errors.add(`player-${index}-points`);
+      // Validate numeric fields (null is allowed for nullable fields, but not undefined or NaN)
+      // Nullable fields: goals_scored, goals_per_game, goals_conceded, conceded_per_game, net_goals, cleansheets, points, total_points
+      if (player.goals_scored !== null && (player.goals_scored === undefined || isNaN(player.goals_scored))) errors.add(`player-${index}-goals_scored`);
+      if (player.goals_per_game !== null && (player.goals_per_game === undefined || isNaN(player.goals_per_game))) errors.add(`player-${index}-goals_per_game`);
+      if (player.goals_conceded !== null && (player.goals_conceded === undefined || isNaN(player.goals_conceded))) errors.add(`player-${index}-goals_conceded`);
+      if (player.conceded_per_game !== null && (player.conceded_per_game === undefined || isNaN(player.conceded_per_game))) errors.add(`player-${index}-conceded_per_game`);
+      if (player.net_goals !== null && (player.net_goals === undefined || isNaN(player.net_goals))) errors.add(`player-${index}-net_goals`);
+      if (player.cleansheets !== null && (player.cleansheets === undefined || isNaN(player.cleansheets))) errors.add(`player-${index}-cleansheets`);
+      if (player.points !== null && (player.points === undefined || isNaN(player.points))) errors.add(`player-${index}-points`);
+      if (player.total_points !== null && (player.total_points === undefined || isNaN(player.total_points))) errors.add(`player-${index}-total_points`);
+      // Required numeric fields: win, draw, loss, total_matches
       if (player.win === undefined || player.win === null || isNaN(player.win)) errors.add(`player-${index}-win`);
       if (player.draw === undefined || player.draw === null || isNaN(player.draw)) errors.add(`player-${index}-draw`);
       if (player.loss === undefined || player.loss === null || isNaN(player.loss)) errors.add(`player-${index}-loss`);
       if (player.total_matches === undefined || player.total_matches === null || isNaN(player.total_matches)) errors.add(`player-${index}-total_matches`);
-      if (player.total_points === undefined || player.total_points === null || isNaN(player.total_points)) errors.add(`player-${index}-total_points`);
       
       // Validate non-negative values
       if (typeof player.total_matches === 'number' && !isNaN(player.total_matches) && player.total_matches < 0) {
@@ -545,9 +667,9 @@ export default function HistoricalSeasonDetailPage() {
         errors.add(`player-${index}-name`);
       }
       
-      // Cross-referential validation: player team must exist in teams list
+      // Cross-referential validation: player team must exist in valid teams (linked or database)
       if (player.team && player.team.trim()) {
-        if (!teamNames.has(player.team.trim().toLowerCase())) {
+        if (!validTeamNames.has(player.team.trim().toLowerCase())) {
           errors.add(`player-${index}-team`);
         }
       }
@@ -616,6 +738,37 @@ export default function HistoricalSeasonDetailPage() {
     if (confirm('Remove this match from the import?')) {
       setPreviewMatches(previewMatches.filter((_, i) => i !== index));
     }
+  };
+  
+  // Bulk team name replacement
+  const handleBulkReplaceTeamNames = () => {
+    if (!bulkFindText.trim() || !bulkReplaceText.trim()) {
+      alert('Please enter both find and replace text');
+      return;
+    }
+    
+    const findLower = bulkFindText.trim().toLowerCase();
+    const replaceText = bulkReplaceText.trim();
+    let replacedCount = 0;
+    
+    // Replace in preview players
+    const updatedPlayers = previewPlayers.map(player => {
+      if (player.team && player.team.toLowerCase() === findLower) {
+        replacedCount++;
+        return { ...player, team: replaceText };
+      }
+      return player;
+    });
+    
+    setPreviewPlayers(updatedPlayers);
+    
+    // Re-validate after bulk change
+    setTimeout(() => validatePreviewData(), 100);
+    
+    alert(`✅ Replaced ${replacedCount} occurrences of "${bulkFindText}" with "${replaceText}"`);
+    setBulkFindText('');
+    setBulkReplaceText('');
+    setShowBulkReplace(false);
   };
 
   // Final import after preview approval
@@ -758,8 +911,30 @@ export default function HistoricalSeasonDetailPage() {
                 </div>
               </div>
               
-              {/* Enhanced Export Button */}
+              {/* Action Buttons */}
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => router.push(`/dashboard/superadmin/historical-seasons/${seasonId}/edit`)}
+                  className="group flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 bg-gradient-to-r from-[#0066FF] to-purple-600 text-white hover:from-[#0066FF]/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl"
+                >
+                  <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span className="hidden sm:inline">Edit Season</span>
+                  <span className="sm:hidden">Edit</span>
+                </button>
+                
+                <button
+                  onClick={() => router.push(`/dashboard/superadmin/historical-seasons/${seasonId}/edit-data`)}
+                  className="group flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 shadow-lg hover:shadow-xl"
+                >
+                  <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                  </svg>
+                  <span className="hidden sm:inline">📊 Excel Editor</span>
+                  <span className="sm:hidden">Excel</span>
+                </button>
+                
                 <button
                   onClick={handleExportToExcel}
                   disabled={isExporting}
@@ -864,6 +1039,7 @@ export default function HistoricalSeasonDetailPage() {
               { id: 'teams', name: `Teams (${teams.length})`, icon: '🏆', color: 'from-orange-500 to-orange-600' },
               { id: 'players', name: `Players (${players.length})`, icon: '👤', color: 'from-blue-500 to-blue-600' },
               { id: 'stats', name: 'Player Stats', icon: '📈', color: 'from-green-500 to-green-600' },
+              { id: 'standings', name: 'Standings & Awards', icon: '🏅', color: 'from-yellow-500 to-yellow-600' },
               { id: 'import', name: 'Import/Export', icon: '📥', color: 'from-indigo-500 to-indigo-600' },
             ].map(tab => (
               <button
@@ -1090,20 +1266,20 @@ export default function HistoricalSeasonDetailPage() {
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-green-500"></div>
                                 <span className="text-lg font-bold text-green-600">
-                                  {team.totalPoints.toLocaleString()}
+                                  {team.season_stats?.goals_scored || team.season_stats?.f || 0}
                                 </span>
                               </div>
                             </td>
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-2">
                                 <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800">
-                                  {team.wins}W
+                                  {team.season_stats?.wins || team.season_stats?.w || 0}W
                                 </span>
                                 <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-yellow-100 text-yellow-800">
-                                  {team.draws}D
+                                  {team.season_stats?.draws || team.season_stats?.d || 0}D
                                 </span>
                                 <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">
-                                  {team.losses}L
+                                  {team.season_stats?.losses || team.season_stats?.l || 0}L
                                 </span>
                               </div>
                             </td>
@@ -1137,11 +1313,11 @@ export default function HistoricalSeasonDetailPage() {
                             <div className="text-xs text-purple-700 font-medium">Players</div>
                           </div>
                           <div className="text-center bg-green-50 rounded-lg p-3">
-                            <div className="text-lg font-bold text-green-600">{team.totalPoints.toLocaleString()}</div>
+                            <div className="text-lg font-bold text-green-600">{team.season_stats?.goals_scored || team.season_stats?.f || 0}</div>
                             <div className="text-xs text-green-700 font-medium">Goals</div>
                           </div>
                           <div className="text-center bg-blue-50 rounded-lg p-3">
-                            <div className="text-sm font-bold text-blue-600">{team.wins}-{team.draws}-{team.losses}</div>
+                            <div className="text-sm font-bold text-blue-600">{team.season_stats?.wins || team.season_stats?.w || 0}-{team.season_stats?.draws || team.season_stats?.d || 0}-{team.season_stats?.losses || team.season_stats?.l || 0}</div>
                             <div className="text-xs text-blue-700 font-medium">W-D-L</div>
                           </div>
                         </div>
@@ -1440,6 +1616,7 @@ export default function HistoricalSeasonDetailPage() {
                           <th className="px-3 py-4 text-center text-xs font-semibold text-gray-800 uppercase tracking-wider" title="Conceded Per Game">C/Game</th>
                           <th className="px-3 py-4 text-center text-xs font-semibold text-gray-800 uppercase tracking-wider" title="Net Goals">Net</th>
                           <th className="px-3 py-4 text-center text-xs font-semibold text-gray-800 uppercase tracking-wider" title="Clean Sheets">Clean</th>
+                          <th className="px-3 py-4 text-center text-xs font-semibold text-gray-800 uppercase tracking-wider" title="Player of the Match">POTM</th>
                           <th className="px-3 py-4 text-center text-xs font-semibold text-gray-800 uppercase tracking-wider" title="Points">Points</th>
                         </tr>
                       </thead>
@@ -1548,6 +1725,16 @@ export default function HistoricalSeasonDetailPage() {
                                 </td>
                                 <td className="px-3 py-4 text-center">
                                   <span className="text-sm font-medium text-purple-600">{stats.clean_sheets || 0}</span>
+                                </td>
+                                <td className="px-3 py-4 text-center">
+                                  {stats.potm ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">
+                                      <span className="text-sm">🌟</span>
+                                      {stats.potm}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400 text-xs">—</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-4 text-center">
                                   <div className="flex items-center justify-center gap-2">
@@ -1680,12 +1867,357 @@ export default function HistoricalSeasonDetailPage() {
                                 <div className="text-lg font-bold text-purple-600">{stats.clean_sheets || 0}</div>
                                 <div className="text-xs text-purple-700 font-medium">Clean Sheets</div>
                               </div>
+                              {stats.potm && (
+                                <div className="text-center bg-orange-50 rounded-lg p-2.5 col-span-2 sm:col-span-1">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <span className="text-lg">🌟</span>
+                                    <div className="text-lg font-bold text-orange-600">{stats.potm}</div>
+                                  </div>
+                                  <div className="text-xs text-orange-700 font-medium">POTM</div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
                       })}
                   </div>
                 </>
+              )}
+            </div>
+          )}
+
+          {/* Standings & Awards Tab */}
+          {activeTab === 'standings' && (
+            <div className="p-6 lg:p-8">
+              {/* Standings Header */}
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-3 bg-yellow-100 rounded-xl">
+                  <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">🏅 Team Standings & Awards</h3>
+                  <p className="text-sm text-gray-600">Final standings, league winners, and cup champions</p>
+                </div>
+              </div>
+
+              {/* Awards/Winners Section */}
+              {awards.length > 0 && (
+                <div className="mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {awards.filter(a => a.award_category?.toLowerCase().includes('league') || a.award_category?.toLowerCase().includes('champion')).map((award, index) => (
+                      <div key={award.id} className="glass rounded-2xl p-6 border border-yellow-200/50 bg-gradient-to-br from-yellow-50/50 to-amber-50/30 hover:shadow-xl transition-all duration-300">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="p-3 bg-yellow-100 rounded-xl">
+                            <svg className="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-yellow-800">{award.award_name}</h4>
+                            <p className="text-xs text-yellow-600">{award.award_category}</p>
+                          </div>
+                        </div>
+                        <div className="bg-white/60 rounded-xl p-4 border border-white/50">
+                          <p className="text-sm font-medium text-gray-600 mb-1">Winner</p>
+                          <p className="text-lg font-bold text-gray-900">{award.winner_team || award.winner_player || 'N/A'}</p>
+                          {award.description && (
+                            <p className="text-xs text-gray-500 mt-2">{award.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Team Standings Table */}
+              <div className="glass rounded-2xl p-6 lg:p-8 border border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-indigo-50/30">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-blue-100 rounded-xl">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <h4 className="text-xl font-bold text-gray-800">📋 Final Team Standings</h4>
+                </div>
+
+                {teamStats.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-600">No team standings available</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Desktop Table */}
+                    <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200/50">
+                      <table className="min-w-full bg-white/50">
+                        <thead className="bg-gradient-to-r from-blue-50 to-indigo-100/80">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-800 uppercase tracking-wider">Pos</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-800 uppercase tracking-wider">Team</th>
+                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">MP</th>
+                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">W</th>
+                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">D</th>
+                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">L</th>
+                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Goals</th>
+                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Pts</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {teamStats
+                            .sort((a, b) => {
+                              // Use rank from teamstats if available, otherwise sort by points, GD, GF
+                              if (a.rank && b.rank) return a.rank - b.rank;
+                              
+                              // Fallback: Sort by points, then by goal difference, then by goals scored
+                              const pointsA = a.points || 0;
+                              const pointsB = b.points || 0;
+                              if (pointsB !== pointsA) return pointsB - pointsA;
+                              
+                              // Goal difference
+                              const gdA = a.goalDifference || 0;
+                              const gdB = b.goalDifference || 0;
+                              if (gdB !== gdA) return gdB - gdA;
+                              
+                              // Goals scored
+                              return (b.totalGoals || 0) - (a.totalGoals || 0);
+                            })
+                            .map((team, index) => {
+                              const points = team.points || 0;
+                              const isChampion = index === 0;
+                              const isTopThree = index < 3;
+                              
+                              return (
+                                <tr key={team.id} className={`hover:bg-blue-50/50 transition-all duration-200 ${
+                                  index % 2 === 0 ? 'bg-white/30' : 'bg-white/50'
+                                } ${isChampion ? 'ring-2 ring-yellow-400 ring-inset' : ''}`}>
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                                        isChampion ? 'bg-yellow-500' : isTopThree ? 'bg-blue-500' : 'bg-gray-400'
+                                      }`}>
+                                        {index + 1}
+                                      </div>
+                                      {isChampion && (
+                                        <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                        </svg>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs">
+                                        {team.team_code || team.team_name.substring(0, 2).toUpperCase()}
+                                      </div>
+                                      <div>
+                                        <div className={`font-semibold ${isChampion ? 'text-yellow-700' : 'text-gray-900'}`}>
+                                          {team.team_name}
+                                          {isChampion && <span className="ml-2 text-yellow-600">👑</span>}
+                                        </div>
+                                        <div className="text-xs text-gray-500">{team.owner_name || 'N/A'}</div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <span className="text-sm font-medium text-gray-900">{team.matchesPlayed}</span>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800">
+                                      {team.wins}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                      {team.draws}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">
+                                      {team.losses}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <span className="text-lg font-bold text-blue-600">{team.totalGoals}</span>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <span className={`text-xl font-bold ${
+                                      isChampion ? 'text-yellow-600' : 'text-indigo-600'
+                                    }`}>
+                                      {points}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile Cards */}
+                    <div className="md:hidden space-y-4">
+                      {teamStats
+                        .sort((a, b) => {
+                          // Use rank from teamstats if available
+                          if (a.rank && b.rank) return a.rank - b.rank;
+                          
+                          // Fallback: Sort by points, then goals
+                          const pointsA = a.points || 0;
+                          const pointsB = b.points || 0;
+                          if (pointsB !== pointsA) return pointsB - pointsA;
+                          return (b.totalGoals || 0) - (a.totalGoals || 0);
+                        })
+                        .map((team, index) => {
+                          const points = team.points || 0;
+                          const isChampion = index === 0;
+                          
+                          return (
+                            <div key={team.id} className={`bg-white/70 rounded-xl p-5 border shadow-sm hover:shadow-md transition-all duration-300 ${
+                              isChampion ? 'border-yellow-400 ring-2 ring-yellow-200' : 'border-white/50'
+                            }`}>
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-bold ${
+                                  isChampion ? 'bg-yellow-500' : 'bg-blue-500'
+                                }`}>
+                                  {index + 1}
+                                </div>
+                                <div className="flex-1">
+                                  <div className={`font-bold ${isChampion ? 'text-yellow-700' : 'text-gray-900'}`}>
+                                    {team.team_name}
+                                    {isChampion && <span className="ml-1">👑</span>}
+                                  </div>
+                                  <div className="text-xs text-gray-500">{team.owner_name || 'N/A'}</div>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="bg-gray-50 rounded-lg p-2">
+                                  <div className="text-lg font-bold text-gray-900">{team.matchesPlayed}</div>
+                                  <div className="text-xs text-gray-600">MP</div>
+                                </div>
+                                <div className="bg-blue-50 rounded-lg p-2">
+                                  <div className="text-lg font-bold text-blue-600">{team.totalGoals}</div>
+                                  <div className="text-xs text-blue-700">Goals</div>
+                                </div>
+                                <div className={`rounded-lg p-2 ${
+                                  isChampion ? 'bg-yellow-50' : 'bg-indigo-50'
+                                }`}>
+                                  <div className={`text-lg font-bold ${
+                                    isChampion ? 'text-yellow-600' : 'text-indigo-600'
+                                  }`}>
+                                    {points}
+                                  </div>
+                                  <div className={`text-xs ${
+                                    isChampion ? 'text-yellow-700' : 'text-indigo-700'
+                                  }`}>
+                                    Points
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-center gap-2 mt-3">
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800">
+                                  {team.wins}W
+                                </span>
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                  {team.draws}D
+                                </span>
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">
+                                  {team.losses}L
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Cup Winners Section - from team standings cup achievement data */}
+              {teamStats.filter(t => t.cupAchievement && t.cupAchievement.trim() !== '').length > 0 && (
+                <div className="mt-8 glass rounded-2xl p-6 lg:p-8 border border-orange-200/50 bg-gradient-to-br from-orange-50/50 to-red-50/30">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-orange-100 rounded-xl">
+                      <svg className="w-6 h-6 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-.5a1.5 1.5 0 00-3 0v.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-3a1 1 0 00-1-1h-.5a1.5 1.5 0 010-3H4a1 1 0 001-1V6a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
+                      </svg>
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-800">🏆 Cup Competition Results</h4>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {teamStats
+                      .filter(t => t.cupAchievement && t.cupAchievement.trim() !== '')
+                      .map((team) => {
+                        const achievement = team.cupAchievement || '';
+                        const isWinner = achievement.toLowerCase().includes('winner') || achievement.toLowerCase().includes('champion');
+                        const isRunnerUp = achievement.toLowerCase().includes('runner') || achievement.toLowerCase().includes('finalist');
+                        
+                        return (
+                          <div key={team.id} className={`bg-white/70 rounded-xl p-5 border hover:shadow-md transition-all duration-300 ${
+                            isWinner ? 'border-yellow-400 ring-2 ring-yellow-200' : 'border-white/50'
+                          }`}>
+                            <div className="flex items-center gap-2 mb-3">
+                              {isWinner && (
+                                <svg className="w-6 h-6 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                </svg>
+                              )}
+                              {isRunnerUp && (
+                                <svg className="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                </svg>
+                              )}
+                              <h5 className={`font-bold ${
+                                isWinner ? 'text-yellow-700' : isRunnerUp ? 'text-gray-600' : 'text-orange-700'
+                              }`}>
+                                {achievement}
+                              </h5>
+                            </div>
+                            <div className={`rounded-lg p-3 border ${
+                              isWinner ? 'bg-yellow-50 border-yellow-200' : 'bg-orange-50 border-orange-200'
+                            }`}>
+                              <p className={`text-xs font-medium mb-1 ${
+                                isWinner ? 'text-yellow-600' : 'text-orange-600'
+                              }`}>
+                                {isWinner ? '🏆 Winner' : isRunnerUp ? '🥈 Runner-up' : 'Achievement'}
+                              </p>
+                              <p className="text-base font-bold text-gray-900">{team.team_name}</p>
+                              {team.owner_name && (
+                                <p className="text-xs text-gray-500 mt-1">{team.owner_name}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+              
+              {/* Cup Awards Section - from awards collection (if available) */}
+              {awards.filter(a => a.award_category?.toLowerCase().includes('cup')).length > 0 && (
+                <div className="mt-8 glass rounded-2xl p-6 lg:p-8 border border-orange-200/50 bg-gradient-to-br from-orange-50/50 to-red-50/30">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-orange-100 rounded-xl">
+                      <svg className="w-6 h-6 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-.5a1.5 1.5 0 00-3 0v.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-3a1 1 0 00-1-1h-.5a1.5 1.5 0 010-3H4a1 1 0 001-1V6a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
+                      </svg>
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-800">🏆 Additional Cup Awards</h4>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {awards.filter(a => a.award_category?.toLowerCase().includes('cup')).map((award) => (
+                      <div key={award.id} className="bg-white/70 rounded-xl p-5 border border-white/50 hover:shadow-md transition-all duration-300">
+                        <h5 className="font-bold text-orange-700 mb-2">{award.award_name}</h5>
+                        <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                          <p className="text-xs font-medium text-orange-600 mb-1">
+                            {award.award_name.toLowerCase().includes('runner') ? 'Runner-up' : 'Winner'}
+                          </p>
+                          <p className="text-base font-bold text-gray-900">{award.winner_team || award.winner_player || 'N/A'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -1998,6 +2530,55 @@ export default function HistoricalSeasonDetailPage() {
                       </div>
                     )}
                     
+                    {/* Bulk Replace Tool */}
+                    <div className="rounded-xl p-4 mb-6 bg-white/20 border border-gray-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-gray-800">🔧 Bulk Fix Team Names</h3>
+                        <button
+                          onClick={() => setShowBulkReplace(!showBulkReplace)}
+                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          {showBulkReplace ? 'Hide' : 'Show'} Tool
+                        </button>
+                      </div>
+                      {showBulkReplace && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-gray-600">Find and replace team names in all player records at once:</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Find team name:</label>
+                              <input
+                                type="text"
+                                value={bulkFindText}
+                                onChange={(e) => setBulkFindText(e.target.value)}
+                                placeholder="e.g., Old Team Name"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Replace with:</label>
+                              <input
+                                type="text"
+                                value={bulkReplaceText}
+                                onChange={(e) => setBulkReplaceText(e.target.value)}
+                                placeholder="e.g., New Team Name"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                          </div>
+                          <button
+                            onClick={handleBulkReplaceTeamNames}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                          >
+                            Replace All
+                          </button>
+                          <p className="text-xs text-gray-500 mt-2">
+                            💡 This will update the team name for all players with matching team name (case-insensitive)
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    
                     {/* Validation Status */}
                     <div className={`rounded-xl p-4 mb-6 border ${
                       validationErrors.size > 0 
@@ -2107,37 +2688,180 @@ export default function HistoricalSeasonDetailPage() {
                           <table className="min-w-full">
                             <thead className="bg-white/10">
                               <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Team Name</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Owner Name</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Team Name</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Owner</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Link to Team</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rank</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Points</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">MP</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">W</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">D</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">L</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">GF</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">GA</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">GD</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">%</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Cup</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="bg-white/20 divide-y divide-gray-200">
                               {previewTeams.map((team, index) => (
                                 <tr key={index} className="hover:bg-white/30 transition-colors">
-                                  <td className="px-4 py-3">
+                                  <td className="px-2 py-3">
                                     <input
                                       type="text"
                                       value={team.team_name}
                                       onChange={(e) => handlePreviewTeamChange(index, 'team_name', e.target.value)}
-                                      className={`w-full bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                                      className={`w-24 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs ${
                                         validationErrors.has(`team-${index}-team_name`) ? 'border-red-500 bg-red-50' : ''
                                       }`}
                                       placeholder="Team name"
                                     />
                                   </td>
-                                  <td className="px-4 py-3">
+                                  <td className="px-2 py-3">
                                     <input
                                       type="text"
                                       value={team.owner_name || ''}
                                       onChange={(e) => handlePreviewTeamChange(index, 'owner_name', e.target.value)}
-                                      className={`w-full bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                                      className={`w-24 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs ${
                                         validationErrors.has(`team-${index}-owner_name`) ? 'border-red-500 bg-red-50' : ''
                                       }`}
                                       placeholder="Owner name"
                                     />
                                   </td>
-                                  <td className="px-4 py-3">
+                                  <td className="px-2 py-3">
+                                    <select
+                                      value={team.linked_team_id || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'linked_team_id', e.target.value)}
+                                      className={`w-48 border outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1 text-xs ${
+                                        team.linked_team_id ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-300'
+                                      }`}
+                                    >
+                                      <option value="">❌ Not Linked</option>
+                                      {existingEntities?.teams && existingEntities.teams.length > 0 && (
+                                        <>
+                                          {existingEntities.teams
+                                            .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                                            .map(existingTeam => (
+                                              <option key={existingTeam.teamId} value={existingTeam.teamId}>
+                                                {existingTeam.name} {existingTeam.owner_name ? `(${existingTeam.owner_name})` : ''}
+                                              </option>
+                                            ))}
+                                        </>
+                                      )}
+                                    </select>
+                                    {team.linked_team_id && (
+                                      <div className="text-xs text-green-600 mt-1 font-medium">
+                                        ✅ Linked
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.rank || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'rank', parseInt(e.target.value) || 0)}
+                                      className={`w-12 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="Rank"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.p || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'p', parseFloat(e.target.value) || 0)}
+                                      step="0.1"
+                                      className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="Points"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.mp || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'mp', parseInt(e.target.value) || 0)}
+                                      className={`w-12 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="MP"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.w || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'w', parseInt(e.target.value) || 0)}
+                                      className={`w-12 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="W"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.d || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'd', parseInt(e.target.value) || 0)}
+                                      className={`w-12 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="D"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.l || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'l', parseInt(e.target.value) || 0)}
+                                      className={`w-12 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="L"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.f || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'f', parseFloat(e.target.value) || 0)}
+                                      step="0.1"
+                                      className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="GF"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.a || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'a', parseFloat(e.target.value) || 0)}
+                                      step="0.1"
+                                      className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="GA"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.gd || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'gd', parseFloat(e.target.value) || 0)}
+                                      step="0.1"
+                                      className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="GD"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="number"
+                                      value={team.percentage || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'percentage', parseFloat(e.target.value) || 0)}
+                                      step="0.01"
+                                      className={`w-14 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="%"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <input
+                                      type="text"
+                                      value={team.cup || ''}
+                                      onChange={(e) => handlePreviewTeamChange(index, 'cup', e.target.value)}
+                                      className={`w-16 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-1 py-1 text-xs`}
+                                      placeholder="Cup"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-3">
                                     <button
                                       type="button"
                                       onClick={() => handleRemovePreviewTeam(index)}
@@ -2177,6 +2901,8 @@ export default function HistoricalSeasonDetailPage() {
                                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">L</th>
                                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Total M</th>
                                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Total P</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Category Trophies</th>
+                                <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Individual Trophies</th>
                                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
                               </tr>
                             </thead>
@@ -2343,6 +3069,24 @@ export default function HistoricalSeasonDetailPage() {
                                         validationErrors.has(`player-${index}-total_points`) ? 'border-red-500 bg-red-50' : ''
                                       }`}
                                     />
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <div className="w-32 text-xs">
+                                      {player.category_trophies && player.category_trophies.length > 0 ? (
+                                        <span className="text-gray-700">{player.category_trophies.join(', ')}</span>
+                                      ) : (
+                                        <span className="text-gray-400">None</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <div className="w-32 text-xs">
+                                      {player.individual_trophies && player.individual_trophies.length > 0 ? (
+                                        <span className="text-gray-700">{player.individual_trophies.join(', ')}</span>
+                                      ) : (
+                                        <span className="text-gray-400">None</span>
+                                      )}
+                                    </div>
                                   </td>
                                   <td className="px-2 py-3">
                                     <button

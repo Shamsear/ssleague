@@ -76,24 +76,21 @@ const initializeTeamStats = (): TeamStats => ({
 // Get all teams
 export const getAllTeams = async (): Promise<TeamData[]> => {
   try {
-    // Use team_seasons collection instead of teams
-    const teamsRef = collection(db, 'team_seasons');
+    const teams: TeamData[] = [];
     
-    // Query with orderBy using joined_at field
-    let querySnapshot;
+    // Query team_seasons collection (current/active seasons)
+    const teamSeasonsRef = collection(db, 'team_seasons');
+    let teamSeasonsSnapshot;
     try {
-      const q = query(teamsRef, orderBy('joined_at', 'desc'));
-      querySnapshot = await getDocs(q);
+      const q = query(teamSeasonsRef, orderBy('joined_at', 'desc'));
+      teamSeasonsSnapshot = await getDocs(q);
     } catch (orderByError) {
-      // Fallback to simple query without orderBy if index doesn't exist
-      querySnapshot = await getDocs(teamsRef);
+      teamSeasonsSnapshot = await getDocs(teamSeasonsRef);
     }
     
-    const teams: TeamData[] = [];
-    for (const docSnap of querySnapshot.docs) {
+    for (const docSnap of teamSeasonsSnapshot.docs) {
       const data = docSnap.data();
       
-      // Fetch season name if season_id exists
       let seasonName = '';
       if (data.season_id) {
         try {
@@ -104,15 +101,11 @@ export const getAllTeams = async (): Promise<TeamData[]> => {
         }
       }
       
-      // Map team_seasons data structure to TeamData structure
-      // Calculate total spent: Initial Budget - Current Budget
-      // TODO: Get initial budget from season settings or team creation data
-      // For now, assuming 15000 based on current team budgets (14925, 14827 suggest 15000 start)
       const initialBudget = data.initial_budget || 15000;
       const currentBudget = data.budget || 0;
       const totalSpent = initialBudget - currentBudget;
       
-      const teamData = {
+      teams.push({
         id: docSnap.id,
         team_id: docSnap.id,
         team_name: data.team_name || 'Unknown Team',
@@ -129,26 +122,46 @@ export const getAllTeams = async (): Promise<TeamData[]> => {
         real_players_count: data.players_count || 0,
         football_players_count: data.football_players_count || 0,
         players_count: data.players_count || 0,
-        stats: data.stats || {
-          matches_played: 0,
-          matches_won: 0,
-          matches_lost: 0,
-          matches_drawn: 0,
-          points: 0,
-          goals_scored: 0,
-          goals_conceded: 0,
-          goal_difference: 0,
-          clean_sheets: 0,
-          win_rate: 0,
-        },
+        stats: data.stats || initializeTeamStats(),
         is_active: data.status === 'registered' || data.is_active !== false,
         logo: data.team_logo || data.logo || null,
         team_color: data.team_color || null,
         created_at: convertTimestamp(data.joined_at || data.created_at),
         updated_at: convertTimestamp(data.updated_at || data.joined_at),
-      } as TeamData;
+      } as TeamData);
+    }
+    
+    // Also query teams collection (historical teams)
+    const teamsRef = collection(db, 'teams');
+    const teamsSnapshot = await getDocs(teamsRef);
+    
+    for (const docSnap of teamsSnapshot.docs) {
+      const data = docSnap.data();
       
-      teams.push(teamData);
+      teams.push({
+        id: docSnap.id,
+        team_id: docSnap.id,
+        team_name: data.team_name || 'Unknown Team',
+        team_code: data.team_code || data.team_name?.substring(0, 3).toUpperCase() || 'UNK',
+        owner_name: data.owner_name || '',
+        owner_email: data.owner_email || '',
+        balance: 0,
+        initial_balance: 0,
+        total_spent: 0,
+        season_id: '',
+        season_name: '',
+        real_players: [],
+        football_players: [],
+        real_players_count: 0,
+        football_players_count: 0,
+        players_count: 0,
+        stats: initializeTeamStats(),
+        is_active: data.is_active !== false,
+        logo: data.team_logo || data.logo || null,
+        team_color: data.team_color || null,
+        created_at: convertTimestamp(data.created_at),
+        updated_at: convertTimestamp(data.updated_at),
+      } as TeamData);
     }
     
     return teams;
@@ -242,68 +255,87 @@ export const getTeamsBySeason = async (seasonId: string): Promise<TeamData[]> =>
 // Get team by ID
 export const getTeamById = async (teamId: string): Promise<TeamData | null> => {
   try {
-    // Use team_seasons collection instead of teams
-    const teamRef = doc(db, 'team_seasons', teamId);
-    const teamDoc = await getDoc(teamRef);
+    // Try team_seasons collection first (current/active seasons)
+    const teamSeasonsRef = doc(db, 'team_seasons', teamId);
+    const teamSeasonsDoc = await getDoc(teamSeasonsRef);
     
-    if (!teamDoc.exists()) {
+    if (teamSeasonsDoc.exists()) {
+      const data = teamSeasonsDoc.data();
+      
+      let seasonName = '';
+      if (data.season_id) {
+        try {
+          const season = await getSeasonById(data.season_id);
+          seasonName = season?.name || '';
+        } catch (error) {
+          console.error('Error fetching season:', error);
+        }
+      }
+      
+      const initialBudget = data.initial_budget || 15000;
+      const currentBudget = data.budget || 0;
+      const totalSpent = initialBudget - currentBudget;
+      
+      return {
+        id: teamSeasonsDoc.id,
+        team_id: teamSeasonsDoc.id,
+        team_name: data.team_name || 'Unknown Team',
+        team_code: data.team_code || data.team_name?.substring(0, 3).toUpperCase() || 'UNK',
+        owner_name: data.username || data.owner_name || '',
+        owner_email: data.team_email || data.owner_email || '',
+        balance: currentBudget,
+        initial_balance: initialBudget,
+        total_spent: totalSpent,
+        season_id: data.season_id || '',
+        season_name: seasonName,
+        real_players: data.real_players || [],
+        football_players: data.football_players || [],
+        real_players_count: data.players_count || 0,
+        football_players_count: data.football_players_count || 0,
+        players_count: data.players_count || 0,
+        stats: data.stats || initializeTeamStats(),
+        is_active: data.status === 'registered' || data.is_active !== false,
+        logo: data.team_logo || data.logo || null,
+        team_color: data.team_color || null,
+        created_at: convertTimestamp(data.joined_at || data.created_at),
+        updated_at: convertTimestamp(data.updated_at || data.joined_at),
+      } as TeamData;
+    }
+    
+    // If not found in team_seasons, try teams collection (historical teams)
+    const teamsRef = doc(db, 'teams', teamId);
+    const teamsDoc = await getDoc(teamsRef);
+    
+    if (!teamsDoc.exists()) {
       return null;
     }
     
-    const data = teamDoc.data();
-    
-    // Fetch season name
-    let seasonName = '';
-    if (data.season_id) {
-      try {
-        const season = await getSeasonById(data.season_id);
-        seasonName = season?.name || '';
-      } catch (error) {
-        console.error('Error fetching season:', error);
-      }
-    }
-    
-    // Map team_seasons data structure to TeamData structure (same as getAllTeams)
-    // Calculate total spent: Initial Budget - Current Budget
-    // TODO: Get initial budget from season settings or team creation data
-    const initialBudget = data.initial_budget || 15000;
-    const currentBudget = data.budget || 0;
-    const totalSpent = initialBudget - currentBudget;
+    const data = teamsDoc.data();
     
     return {
-      id: teamDoc.id,
-      team_id: teamDoc.id,
+      id: teamsDoc.id,
+      team_id: teamsDoc.id,
       team_name: data.team_name || 'Unknown Team',
       team_code: data.team_code || data.team_name?.substring(0, 3).toUpperCase() || 'UNK',
-      owner_name: data.username || data.owner_name || '',
-      owner_email: data.team_email || data.owner_email || '',
-      balance: currentBudget,
-      initial_balance: initialBudget,
-      total_spent: totalSpent,
-      season_id: data.season_id || '',
-      season_name: seasonName,
-      real_players: data.real_players || [],
-      football_players: data.football_players || [],
-      real_players_count: data.players_count || 0,
-      football_players_count: data.football_players_count || 0,
-      players_count: data.players_count || 0,
-      stats: data.stats || {
-        matches_played: 0,
-        matches_won: 0,
-        matches_lost: 0,
-        matches_drawn: 0,
-        points: 0,
-        goals_scored: 0,
-        goals_conceded: 0,
-        goal_difference: 0,
-        clean_sheets: 0,
-        win_rate: 0,
-      },
-      is_active: data.status === 'registered' || data.is_active !== false,
+      owner_name: data.owner_name || '',
+      owner_email: data.owner_email || '',
+      balance: 0,
+      initial_balance: 0,
+      total_spent: 0,
+      season_id: '',
+      season_name: '',
+      real_players: [],
+      football_players: [],
+      real_players_count: 0,
+      football_players_count: 0,
+      players_count: 0,
+      stats: initializeTeamStats(),
+      is_active: data.is_active !== false,
       logo: data.team_logo || data.logo || null,
       team_color: data.team_color || null,
-      created_at: convertTimestamp(data.joined_at || data.created_at),
-      updated_at: convertTimestamp(data.updated_at || data.joined_at),
+      created_at: convertTimestamp(data.created_at),
+      updated_at: convertTimestamp(data.updated_at),
+      performance_history: data.performance_history || {}, // Include historical stats
     } as TeamData;
   } catch (error) {
     console.error('Error getting team:', error);
@@ -350,7 +382,11 @@ export const createTeam = async (teamData: CreateTeamData): Promise<TeamData> =>
     // Create document with team_id as the document ID
     const teamRef = doc(db, 'teams', teamId);
     
-    const newTeam = {
+    // Fetch season to check if it's multi-season type
+    const season = await getSeasonById(teamData.season_id);
+    const isMultiSeason = season?.type === 'multi';
+    
+    const newTeam: any = {
       team_id: teamId,
       team_name: teamData.team_name,
       team_code: teamData.team_code.toUpperCase(),
@@ -373,6 +409,12 @@ export const createTeam = async (teamData: CreateTeamData): Promise<TeamData> =>
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
     };
+    
+    // Add multi-season specific fields if season is multi-season type
+    if (isMultiSeason && season) {
+      newTeam.dollarBalance = season.dollar_budget || 1000;
+      newTeam.euroBalance = season.euro_budget || 10000;
+    }
     
     await setDoc(teamRef, newTeam);
     

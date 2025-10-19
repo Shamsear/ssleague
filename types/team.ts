@@ -32,11 +32,19 @@ export interface TeamData {
   owner_name?: string;
   owner_email?: string;
   
-  // Financial
-  balance: number;
+  // Financial (Legacy for single-season)
+  balance: number; // Legacy: single currency for single-season type
   initial_balance: number;
   total_spent: number;
   spent_amount?: number; // Alias for total_spent
+  
+  // Multi-season dual currency (Season 16+)
+  dollar_balance?: number; // $ for real players (initial: 1000)
+  euro_balance?: number; // € for football players (initial: 10000)
+  dollar_spent?: number; // Total $ spent on real players
+  euro_spent?: number; // Total € spent on football players
+  dollar_salaries_committed?: number; // Total $ salary per match
+  euro_salaries_committed?: number; // Total € salary per half-season
   
   // Season
   season_id: string;
@@ -62,6 +70,23 @@ export interface TeamData {
   // Metadata
   logo?: string; // Base64 or URL
   team_color?: string;
+  
+  // Historical Performance (for teams with history across multiple seasons)
+  performance_history?: {
+    [seasonId: string]: {
+      players_count?: number;
+      season_stats?: {
+        matches_played?: number;
+        matches_won?: number;
+        matches_drawn?: number;
+        matches_lost?: number;
+        total_points?: number;
+        total_goals?: number;
+        total_conceded?: number;
+        goal_difference?: number;
+      };
+    };
+  };
   
   created_at: Date;
   updated_at: Date;

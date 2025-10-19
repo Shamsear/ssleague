@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Enable React strict mode for better development experience
+  reactStrictMode: true,
+  
+  // Compress responses
+  compress: true,
+  
+  // Performance optimizations
+  poweredByHeader: false,
+  
   eslint: {
     // During builds, only run ESLint on specific directories
     dirs: ['app', 'components', 'lib'],
@@ -11,6 +20,9 @@ const nextConfig: NextConfig = {
     // Don't fail the build if there are TypeScript errors during production build
     ignoreBuildErrors: true,
   },
+  
+  // Optimize production builds
+  productionBrowserSourceMaps: false,
   images: {
     // Enable image optimization
     formats: ['image/avif', 'image/webp'],
@@ -36,7 +48,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
     // Exclude sql.js from server-side bundling
     if (!isServer) {
       config.resolve.fallback = {
@@ -46,7 +58,24 @@ const nextConfig: NextConfig = {
         crypto: false,
       };
     }
+    
+    // Production optimizations
+    if (!dev && !isServer) {
+      // Enable tree shaking
+      config.optimization = {
+        ...config.optimization,
+        usedExports: true,
+        sideEffects: true,
+      };
+    }
+    
     return config;
+  },
+  
+  // Experimental features for better performance
+  experimental: {
+    // Enable optimized package imports
+    optimizePackageImports: ['lucide-react', '@tanstack/react-query'],
   },
 };
 

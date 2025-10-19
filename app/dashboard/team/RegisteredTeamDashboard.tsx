@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import ContractInfo from '@/components/ContractInfo';
 
 // Position constants
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -14,6 +15,33 @@ interface TeamData {
   name: string;
   balance: number;
   logo_url?: string;
+  currency_system?: string; // 'single' | 'dual'
+  // Multi-season fields
+  dollarBalance?: number;
+  euroBalance?: number;
+  // Dual currency fields (Season 16+)
+  football_budget?: number;  // Euro for football players
+  real_player_budget?: number; // Dollar for real players
+  football_spent?: number;
+  real_player_spent?: number;
+  real_players?: Array<{
+    name: string;
+    auctionValue: number;
+    starRating: number;
+    category: 'legend' | 'classic';
+    points: number;
+    salaryPerMatch: number;
+    startSeason: string;
+    endSeason: string;
+  }>;
+  // Contract fields
+  skipped_seasons?: number;
+  penalty_amount?: number;
+  last_played_season?: string;
+  contract_id?: string;
+  contract_start_season?: string;
+  contract_end_season?: string;
+  is_auto_registered?: boolean;
 }
 
 interface RoundTiebreaker {
@@ -143,29 +171,9 @@ interface Props {
 }
 
 export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>({
-    team: {
-      id: user?.uid || '',
-      name: user?.teamName || 'My Team',
-      balance: 15000,
-    },
-    activeRounds: [],
-    activeBids: [],
-    players: [],
-    tiebreakers: [],
-    bulkTiebreakers: [],
-    activeBulkRounds: [],
-    roundResults: [],
-    stats: {
-      playerCount: 0,
-      balance: 15000,
-      totalSpent: 0,
-      avgRating: 0,
-      activeBidsCount: 0,
-      positionBreakdown: {},
-    },
-  });
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<{ [key: string]: number }>({});
   const [bulkTimeRemaining, setBulkTimeRemaining] = useState<{ [key: number]: number }>({});
   const [showYourTeam, setShowYourTeam] = useState(true);
@@ -190,6 +198,24 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
         const response = await fetchWithTokenRefresh(`/api/team/dashboard?${params}`, {
           headers: { 'Cache-Control': 'no-cache' },
         });
+        
+        if (!response.ok) {
+          // Handle non-200 responses
+          let errorMessage = `Server error (${response.status})`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            // Response is not JSON
+            errorMessage = response.status === 404 
+              ? 'Team not registered for this season' 
+              : `Unable to load dashboard (${response.status})`;
+          }
+          setError(errorMessage);
+          console.error('Dashboard API error:', errorMessage);
+          return;
+        }
+
         const { success, data } = await response.json();
 
         if (success) {
@@ -207,33 +233,16 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
           if (dataString !== previousDataRef.current) {
             previousDataRef.current = dataString;
             setDashboardData(data);
+            setError(null);
             console.log('🔄 Dashboard data updated');
           }
+        } else {
+          console.error('Dashboard API returned error:', data);
+          setError(data?.error || 'Failed to load dashboard data');
         }
       } catch (err) {
         console.error('Error fetching dashboard:', err);
-        setDashboardData({
-          team: {
-            id: user?.uid || '',
-            name: user?.teamName || 'My Team',
-            balance: 15000,
-          },
-          activeRounds: [],
-          activeBids: [],
-          players: [],
-          tiebreakers: [],
-          bulkTiebreakers: [],
-          activeBulkRounds: [],
-          roundResults: [],
-          stats: {
-            playerCount: 0,
-            balance: 15000,
-            totalSpent: 0,
-            avgRating: 0,
-            activeBidsCount: 0,
-            positionBreakdown: {},
-          },
-        });
+        setError('Unable to connect to the server. Please check your internet connection.');
       } finally {
         if (showLoader) setIsLoading(false);
       }
@@ -436,7 +445,25 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   }
 
   if (!dashboardData) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-4">
+          <div className="inline-flex items-center justify-center p-3 bg-red-100 rounded-full mb-4">
+            <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-700 mb-2">Unable to load dashboard</h3>
+          <p className="text-gray-500 text-sm mb-4">{error || 'There was an error loading your team data.'}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-[#0066FF] text-white rounded-lg hover:bg-[#0052CC] transition-colors text-sm"
+          >
+            Refresh Page
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const { team, activeRounds, players, tiebreakers, bulkTiebreakers, activeBulkRounds, stats, activeBids, roundResults, seasonParticipation } = dashboardData;
@@ -505,6 +532,12 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
           Leaderboard
+        </Link>
+        <Link href="/dashboard/team/contracts" className="inline-flex items-center px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm font-medium">
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          My Contracts
         </Link>
         <Link href="/dashboard/team/budget-planner" className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium">
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -830,16 +863,128 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               </Link>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="px-4 py-2 rounded-xl bg-white/60 text-[#0066FF] font-medium shadow-sm flex items-center">
-              <svg className="w-5 h-5 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Balance: £{stats.balance.toLocaleString()}
-            </span>
+          <div className="flex items-center gap-2">
+            {team.currency_system === 'dual' ? (
+              <>
+                <span className="px-4 py-2 rounded-xl bg-white/60 text-[#0066FF] font-medium shadow-sm flex items-center">
+                  <span className="mr-2">⚽ €</span>
+                  {(team.football_budget || 0).toLocaleString()}
+                </span>
+                <span className="px-4 py-2 rounded-xl bg-white/60 text-[#0066FF] font-medium shadow-sm flex items-center">
+                  <span className="mr-2">🎮 $</span>
+                  {(team.real_player_budget || 0).toLocaleString()}
+                </span>
+              </>
+            ) : (
+              <span className="px-4 py-2 rounded-xl bg-white/60 text-[#0066FF] font-medium shadow-sm flex items-center">
+                <svg className="w-5 h-5 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Balance: £{stats.balance.toLocaleString()}
+              </span>
+            )}
           </div>
         </div>
         
+        {/* Multi-Season Balance Display */}
+        {(team.dollarBalance !== undefined || team.euroBalance !== undefined) && (
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+              <svg className="w-4 h-4 mr-2 text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Multi-Season Budgets
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="glass-card p-4 rounded-2xl border-2 border-[#9580FF]/20">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-600">Dollar Balance</span>
+                  <span className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-700">Real Players</span>
+                </div>
+                <p className="text-2xl font-bold text-[#9580FF]">${team.dollarBalance?.toLocaleString() || 0}</p>
+                <p className="text-xs text-gray-500 mt-1">For SS Members</p>
+              </div>
+              <div className="glass-card p-4 rounded-2xl border-2 border-[#0066FF]/20">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-600">Euro Balance</span>
+                  <span className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-700">Football Players</span>
+                </div>
+                <p className="text-2xl font-bold text-[#0066FF]">€{team.euroBalance?.toLocaleString() || 0}</p>
+                <p className="text-xs text-gray-500 mt-1">For In-App Auction</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Multi-Season Real Players (SS Members) Contracts */}
+        {team.real_players && team.real_players.length > 0 && (
+          <div className="mb-6 glass-card p-6 rounded-2xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <svg className="w-5 h-5 mr-2 text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Real Players (SS Members)
+              <span className="ml-2 px-2 py-1 rounded-lg bg-[#9580FF]/10 text-[#9580FF] text-xs font-medium">
+                {team.real_players.length} Active
+              </span>
+            </h3>
+            <div className="space-y-3">
+              {team.real_players.map((player, idx) => (
+                <div key={idx} className="p-4 rounded-xl bg-gradient-to-r from-white/50 to-white/30 border border-gray-200/50 hover:shadow-md transition-all">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{player.name}</h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                          player.category === 'legend' 
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {player.category === 'legend' ? '⭐ Legend' : 'Classic'}
+                        </span>
+                        <span className="text-xs text-gray-600">
+                          {'★'.repeat(player.starRating)}{'☆'.repeat(10 - player.starRating)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-700">${player.salaryPerMatch}/match</p>
+                      <p className="text-xs text-gray-500">Salary</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-200/50">
+                    <div>
+                      <p className="text-xs text-gray-600">Auction</p>
+                      <p className="text-sm font-medium text-gray-900">${player.auctionValue}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Points</p>
+                      <p className="text-sm font-medium text-gray-900">{player.points}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Contract</p>
+                      <p className="text-sm font-medium text-gray-900">{player.startSeason}-{player.endSeason}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Contract Information */}
+        <div className="mb-6">
+          <ContractInfo
+            skippedSeasons={team.skipped_seasons}
+            penaltyAmount={team.penalty_amount}
+            lastPlayedSeason={team.last_played_season}
+            contractId={team.contract_id}
+            contractStartSeason={team.contract_start_season}
+            contractEndSeason={team.contract_end_season}
+            isAutoRegistered={team.is_auto_registered}
+          />
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           {/* Team Stats */}
           <div className="glass-card p-4 sm:p-5 rounded-2xl hover:shadow-md transition-all duration-300 hover:translate-y-[-4px]">

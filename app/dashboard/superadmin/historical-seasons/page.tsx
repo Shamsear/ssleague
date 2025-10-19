@@ -6,10 +6,10 @@ import { useEffect, useState } from 'react';
 
 interface Season {
   id: string;
-  name: string;
-  short_name: string;
+  season_number: number | null;
   status: 'active' | 'completed' | 'archived';
   is_active: boolean;
+  is_historical: boolean;
   created_at: string; // ISO string from API
   teams_count: number;
   awards_count: number;
@@ -24,6 +24,8 @@ export default function HistoricalSeasons() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [seasonsLoading, setSeasonsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Fetch seasons data from API
   useEffect(() => {
@@ -102,6 +104,36 @@ export default function HistoricalSeasons() {
     } catch (error) {
       console.error('Error downloading template:', error);
       alert('Failed to download template. Please try again.');
+    }
+  };
+
+  const handleDeleteSeason = async (seasonId: string) => {
+    if (deleteConfirm !== seasonId) {
+      setDeleteConfirm(seasonId);
+      return;
+    }
+
+    try {
+      setDeleting(seasonId);
+      const response = await fetch(`/api/seasons/historical/${seasonId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete season');
+      }
+
+      // Remove from local state
+      setSeasons(seasons.filter(s => s.id !== seasonId));
+      alert(`Season deleted successfully!\n\nDeleted:\n- ${data.deleted.playerStats} player stats\n- ${data.deleted.teamStats} team stats\n- ${data.deleted.awards} awards\n- Updated ${data.deleted.teamsUpdated} teams`);
+    } catch (error) {
+      console.error('Error deleting season:', error);
+      alert(`Failed to delete season: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeleting(null);
+      setDeleteConfirm(null);
     }
   };
 
@@ -258,13 +290,13 @@ export default function HistoricalSeasons() {
                               className="text-lg font-semibold text-gray-900 group-hover:text-[#0066FF] transition-colors cursor-pointer hover:underline"
                               onClick={() => router.push(`/dashboard/superadmin/historical-seasons/${season.id}`)}
                             >
-                              {season.name}
+                              Season {season.season_number || 'N/A'}
                             </h3>
                             <div className="flex items-center gap-3">
                               <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${getStatusBadge(season.status)}`}>
                                 {season.status.charAt(0).toUpperCase() + season.status.slice(1)}
                               </span>
-                              <span className="text-sm text-gray-500">{season.short_name}</span>
+                              <span className="text-sm text-gray-500">ID: {season.id}</span>
                               {season.is_active && (
                                 <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
                                   Current Active
@@ -329,6 +361,41 @@ export default function HistoricalSeasons() {
                         </svg>
                         View Details
                       </button>
+                      {season.is_historical && (
+                        <button
+                          onClick={() => handleDeleteSeason(season.id)}
+                          disabled={deleting === season.id}
+                          className={
+                            deleteConfirm === season.id
+                              ? "inline-flex items-center px-3 py-2 rounded-xl bg-red-600 text-white text-xs font-medium border border-red-700 hover:bg-red-700 transition-all"
+                              : "inline-flex items-center px-3 py-2 rounded-xl bg-red-50 text-red-700 text-xs font-medium border border-red-200 hover:bg-red-100 hover:border-red-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          }
+                        >
+                          {deleting === season.id ? (
+                            <>
+                              <svg className="w-3 h-3 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Deleting...
+                            </>
+                          ) : deleteConfirm === season.id ? (
+                            <>
+                              <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                              Click Again to Confirm
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Delete
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

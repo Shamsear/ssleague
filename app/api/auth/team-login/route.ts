@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import bcrypt from 'bcryptjs';
+import { signInWithEmailAndPassword, getAuth } from 'firebase/auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,26 +26,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if password matches (should be team_name)
+    // Authenticate using Firebase Auth
     let authenticatedTeam = null;
     
     for (const docSnapshot of querySnapshot.docs) {
       const teamData = docSnapshot.data();
-      const isPasswordValid = await bcrypt.compare(password, teamData.password);
+      const email = teamData.userEmail || teamData.email;
       
-      if (isPasswordValid) {
+      if (!email) {
+        console.log(`No email found for team ${username}, skipping Firebase Auth`);
+        continue;
+      }
+      
+      try {
+        const auth = getAuth();
+        await signInWithEmailAndPassword(auth, email, password);
+        
         authenticatedTeam = {
           id: teamData.id,
           team_name: teamData.team_name,
           owner_name: teamData.owner_name,
           username: teamData.username,
+          email: email,
           role: teamData.role,
           current_season_id: teamData.current_season_id,
           seasons: teamData.seasons || [],
           is_active: teamData.is_active,
+          is_historical: teamData.is_historical || false,
           performance_history: teamData.performance_history || {}
         };
         break;
+      } catch (authError: any) {
+        console.log(`Firebase auth failed for ${username}:`, authError.code);
+        continue; // Try next team with same username (if any)
       }
     }
 

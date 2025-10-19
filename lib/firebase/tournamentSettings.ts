@@ -41,25 +41,25 @@ const convertTimestamp = (timestamp: any): Date => {
   return new Date();
 };
 
-// Get tournament settings for a season
+// Get tournament settings for a season from Neon
 export const getTournamentSettings = async (seasonId: string): Promise<TournamentSettings | null> => {
   try {
-    const settingsRef = collection(db, 'tournament_settings');
-    const q = query(settingsRef, where('season_id', '==', seasonId));
-    const querySnapshot = await getDocs(q);
+    const response = await fetch(`/api/tournament-settings?season_id=${seasonId}`);
     
-    if (querySnapshot.empty) {
+    if (!response.ok) {
+      throw new Error('Failed to fetch tournament settings');
+    }
+    
+    const { settings } = await response.json();
+    
+    if (!settings) {
       return null;
     }
     
-    const doc = querySnapshot.docs[0];
-    const data = doc.data();
-    
     return {
-      id: doc.id,
-      ...data,
-      created_at: data.created_at ? convertTimestamp(data.created_at) : undefined,
-      updated_at: data.updated_at ? convertTimestamp(data.updated_at) : undefined,
+      ...settings,
+      created_at: settings.created_at ? new Date(settings.created_at) : undefined,
+      updated_at: settings.updated_at ? new Date(settings.updated_at) : undefined,
     } as TournamentSettings;
   } catch (error: any) {
     console.error('Error getting tournament settings:', error);
@@ -67,32 +67,24 @@ export const getTournamentSettings = async (seasonId: string): Promise<Tournamen
   }
 };
 
-// Create or update tournament settings for a season
+// Create or update tournament settings for a season in Neon
 export const saveTournamentSettings = async (
   seasonId: string,
   settings: Omit<TournamentSettings, 'id' | 'season_id' | 'created_at' | 'updated_at'>
 ): Promise<void> => {
   try {
-    // Check if settings already exist for this season
-    const existing = await getTournamentSettings(seasonId);
+    const response = await fetch('/api/tournament-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        season_id: seasonId,
+        ...settings,
+      }),
+    });
     
-    const settingsData = {
-      season_id: seasonId,
-      ...settings,
-      updated_at: serverTimestamp(),
-    };
-    
-    if (existing && existing.id) {
-      // Update existing settings
-      const settingsRef = doc(db, 'tournament_settings', existing.id);
-      await updateDoc(settingsRef, settingsData);
-    } else {
-      // Create new settings
-      const settingsRef = doc(collection(db, 'tournament_settings'));
-      await setDoc(settingsRef, {
-        ...settingsData,
-        created_at: serverTimestamp(),
-      });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to save tournament settings');
     }
   } catch (error: any) {
     console.error('Error saving tournament settings:', error);
@@ -100,17 +92,16 @@ export const saveTournamentSettings = async (
   }
 };
 
-// Delete tournament settings for a season
+// Delete tournament settings for a season from Neon
 export const deleteTournamentSettings = async (seasonId: string): Promise<void> => {
   try {
-    const existing = await getTournamentSettings(seasonId);
+    const response = await fetch(`/api/tournament-settings?season_id=${seasonId}`, {
+      method: 'DELETE',
+    });
     
-    if (existing && existing.id) {
-      const settingsRef = doc(db, 'tournament_settings', existing.id);
-      await updateDoc(settingsRef, {
-        deleted: true,
-        updated_at: serverTimestamp(),
-      });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete tournament settings');
     }
   } catch (error: any) {
     console.error('Error deleting tournament settings:', error);

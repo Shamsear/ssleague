@@ -8,7 +8,7 @@ import Link from 'next/link';
 interface Category {
   id: string;
   name: string;
-  color: string;
+  icon?: string;
   priority: number;
   points_same_category: number;
   points_one_level_diff: number;
@@ -42,7 +42,6 @@ function CategoriesPageContent() {
     }
   }, [user, loading, router]);
 
-  // Fetch categories
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -64,7 +63,6 @@ function CategoriesPageContent() {
     }
   }, [user]);
 
-  // Check for success messages
   useEffect(() => {
     const success = searchParams.get('success');
     if (success === 'created') {
@@ -102,22 +100,12 @@ function CategoriesPageContent() {
     }
   };
 
-  const getColorClass = (color: string) => {
-    const colorMap: { [key: string]: string } = {
-      red: 'bg-red-600',
-      blue: 'bg-blue-600',
-      black: 'bg-black',
-      white: 'bg-white border-2 border-gray-300',
-    };
-    return colorMap[color] || 'bg-gray-200';
-  };
-
   if (loading || isLoadingCategories) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mx-auto"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading categories...</p>
         </div>
       </div>
     );
@@ -128,269 +116,222 @@ function CategoriesPageContent() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Success Message */}
-      {successMessage && (
-        <div className="mb-6 bg-green-50 border border-green-200 rounded-xl p-4 flex items-start animate-fade-in">
-          <svg className="w-5 h-5 text-green-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <h4 className="text-sm font-medium text-green-800">Success</h4>
-            <p className="text-sm text-green-700 mt-1">{successMessage}</p>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-4 sm:py-8 px-3 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  Categories
+                </h1>
+              </div>
+              <p className="text-gray-600 text-sm sm:text-base ml-14">Manage player tiers and point distribution</p>
+              <Link 
+                href="/dashboard/committee/team-management" 
+                className="inline-flex items-center ml-14 mt-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Dashboard
+              </Link>
+            </div>
+            <Link 
+              href="/dashboard/committee/team-management/categories/new" 
+              className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span className="hidden sm:inline">New Category</span>
+              <span className="sm:hidden">New</span>
+            </Link>
           </div>
         </div>
-      )}
 
-      {/* Header - hidden on mobile */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 hidden sm:flex">
-        <div className="mb-2 sm:mb-0">
-          <h1 className="text-3xl md:text-4xl font-bold gradient-text">Categories</h1>
-          <p className="text-gray-500 mt-1">Manage your match categories and point system</p>
-          <Link 
-            href="/dashboard/committee/team-management" 
-            className="inline-flex items-center mt-2 text-[#0066FF] hover:text-[#0052CC]"
-          >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Dashboard
-          </Link>
-        </div>
-        <Link 
-          href="/dashboard/committee/team-management/categories/new"
-          className="bg-gradient-to-r from-[#0066FF] to-[#0052CC] text-white font-bold py-3 px-6 rounded-xl focus:outline-none shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          New Category
-        </Link>
-      </div>
-
-      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl overflow-hidden border border-gray-100/20">
-        {/* Desktop Table (hidden on mobile) */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200/50">
-            <thead className="bg-gray-50/50">
-              <tr>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Name
-                </th>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Color
-                </th>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Priority
-                </th>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Points Configuration
-                </th>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white/60 divide-y divide-gray-200/50">
-              {categories.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 whitespace-nowrap text-center text-sm text-gray-500">
-                    <svg 
-                      xmlns="http://www.w3.org/2000/svg" 
-                      className="h-12 w-12 mx-auto mb-4 text-gray-300" 
-                      fill="none" 
-                      viewBox="0 0 24 24" 
-                      stroke="currentColor"
-                    >
-                      <path 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        strokeWidth="1.5" 
-                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" 
-                      />
-                    </svg>
-                    <p className="font-medium">No categories found</p>
-                    <Link
-                      href="/dashboard/committee/team-management/categories/new"
-                      className="inline-flex items-center mt-4 text-[#0066FF] hover:text-[#0052CC] font-medium"
-                    >
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      Create your first category
-                    </Link>
-                  </td>
-                </tr>
-              ) : (
-                categories.map((category) => (
-                  <tr key={category.id} className="hover:bg-gray-50/80 transition-colors duration-200">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-base font-medium text-gray-900">{category.name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className={`h-6 w-6 rounded-full mr-2 shadow-sm ${getColorClass(category.color)}`}></div>
-                        <div className="text-sm text-gray-900 capitalize">{category.color}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                        {category.priority}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="flex items-center">
-                            <span className="w-2 h-2 bg-[#0066FF] rounded-full mr-2"></span>
-                            <span>Same: {category.points_same_category}</span>
-                          </div>
-                          <div className="flex items-center">
-                            <span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
-                            <span>One Level: {category.points_one_level_diff}</span>
-                          </div>
-                          <div className="flex items-center">
-                            <span className="w-2 h-2 bg-purple-400 rounded-full mr-2"></span>
-                            <span>Two Levels: {category.points_two_level_diff}</span>
-                          </div>
-                          <div className="flex items-center">
-                            <span className="w-2 h-2 bg-pink-400 rounded-full mr-2"></span>
-                            <span>Three Levels: {category.points_three_level_diff}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <Link
-                          href={`/dashboard/committee/team-management/categories/${category.id}/edit`}
-                          className="inline-flex items-center px-3 py-1.5 rounded-lg bg-[#0066FF]/10 text-[#0066FF] hover:bg-[#0066FF]/20 transition-colors"
-                        >
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Edit
-                        </Link>
-                        {deleteConfirm === category.id ? (
-                          <div className="flex space-x-1">
-                            <button
-                              onClick={() => handleDelete(category.id)}
-                              className="inline-flex items-center px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors text-xs"
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(null)}
-                              className="inline-flex items-center px-3 py-1.5 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors text-xs"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setDeleteConfirm(category.id)}
-                            className="inline-flex items-center px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        
-        {/* Mobile Cards (shown only on small screens) */}
-        <div className="md:hidden divide-y divide-gray-200/50">
-          {categories.length === 0 ? (
-            <div className="p-6 text-center">
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className="h-12 w-12 mx-auto mb-3 text-gray-300" 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth="1.5" 
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" 
-                />
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-6 bg-green-50 border-l-4 border-green-500 rounded-xl p-4 shadow-sm animate-fade-in">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-gray-500 mb-4 font-medium">No categories found</p>
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-green-800">Success</h4>
+                <p className="text-sm text-green-700 mt-1">{successMessage}</p>
+              </div>
+              <button onClick={() => setSuccessMessage(null)} className="text-green-400 hover:text-green-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Categories Grid/List */}
+        {categories.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-12 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="bg-gradient-to-br from-blue-100 to-indigo-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">No Categories Yet</h3>
+              <p className="text-gray-600 mb-6">Create your first category to start organizing players into skill tiers.</p>
               <Link
                 href="/dashboard/committee/team-management/categories/new"
-                className="inline-flex items-center text-[#0066FF] hover:text-[#0052CC] font-medium"
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all"
               >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                Create your first category
+                Create First Category
               </Link>
             </div>
-          ) : (
-            categories.map((category) => (
-              <div key={category.id} className="p-4 bg-white/70 hover:bg-white/90 transition-colors">
-                <div className="flex justify-between mb-2">
-                  <div className="flex items-center">
-                    <div className={`h-8 w-8 rounded-full mr-2 shadow-sm flex-shrink-0 ${getColorClass(category.color)}`}></div>
-                    <h3 className="font-medium text-gray-900">{category.name}</h3>
-                  </div>
-                  <div className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                    Priority: {category.priority}
-                  </div>
-                </div>
-
-                <div className="mb-4 bg-white/80 rounded-xl p-3 shadow-sm">
-                  <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Points Configuration</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="flex items-center">
-                      <span className="w-2 h-2 bg-[#0066FF] rounded-full mr-2"></span>
-                      <span>Same: {category.points_same_category}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
-                      <span>One Level: {category.points_one_level_diff}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="w-2 h-2 bg-purple-400 rounded-full mr-2"></span>
-                      <span>Two Levels: {category.points_two_level_diff}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="w-2 h-2 bg-pink-400 rounded-full mr-2"></span>
-                      <span>Three: {category.points_three_level_diff}</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+            {categories.map((category) => (
+              <div key={category.id} className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+                {/* Card Header */}
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="text-4xl">{category.icon || '⭐'}</div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">{category.name}</h3>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 mt-1">
+                          Priority {category.priority}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-end space-x-2">
+                {/* Card Body */}
+                <div className="p-6 space-y-4">
+                  {/* Win Points */}
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 bg-green-600 rounded-md">
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <h4 className="text-xs font-bold text-green-900 uppercase">Win Points</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">Same:</span>
+                        <span className="font-bold text-green-700">{category.points_same_category}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">+1:</span>
+                        <span className="font-bold text-green-700">{category.points_one_level_diff}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">+2:</span>
+                        <span className="font-bold text-green-700">{category.points_two_level_diff}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">+3:</span>
+                        <span className="font-bold text-green-700">{category.points_three_level_diff}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Draw Points */}
+                  <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg p-3 border border-blue-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 bg-blue-600 rounded-md">
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <h4 className="text-xs font-bold text-blue-900 uppercase">Draw Points</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">Same:</span>
+                        <span className="font-bold text-blue-700">{category.draw_same_category}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">+1:</span>
+                        <span className="font-bold text-blue-700">{category.draw_one_level_diff}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">+2:</span>
+                        <span className="font-bold text-blue-700">{category.draw_two_level_diff}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">+3:</span>
+                        <span className="font-bold text-blue-700">{category.draw_three_level_diff}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Loss Points */}
+                  <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-lg p-3 border border-red-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 bg-red-600 rounded-md">
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <h4 className="text-xs font-bold text-red-900 uppercase">Loss Points</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">Same:</span>
+                        <span className="font-bold text-red-700">{category.loss_same_category}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">-1:</span>
+                        <span className="font-bold text-red-700">{category.loss_one_level_diff}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">-2:</span>
+                        <span className="font-bold text-red-700">{category.loss_two_level_diff}</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/60 rounded px-2 py-1">
+                        <span className="text-gray-600">-3:</span>
+                        <span className="font-bold text-red-700">{category.loss_three_level_diff}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card Footer */}
+                <div className="bg-gray-50 px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
                   <Link
                     href={`/dashboard/committee/team-management/categories/${category.id}/edit`}
-                    className="inline-flex items-center px-3 py-1.5 rounded-lg bg-[#0066FF]/10 text-[#0066FF] text-sm font-medium hover:bg-[#0066FF]/20 transition-colors"
+                    className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all"
                   >
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                     Edit
                   </Link>
                   {deleteConfirm === category.id ? (
-                    <div className="flex space-x-1">
+                    <div className="flex gap-1">
                       <button
                         onClick={() => handleDelete(category.id)}
-                        className="inline-flex items-center px-2 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors text-xs"
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all"
                       >
                         Confirm
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(null)}
-                        className="inline-flex items-center px-2 py-1.5 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors text-xs"
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-all"
                       >
                         Cancel
                       </button>
@@ -398,9 +339,9 @@ function CategoriesPageContent() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirm(category.id)}
-                      className="inline-flex items-center px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 transition-colors"
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-all"
                     >
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       Delete
@@ -408,9 +349,9 @@ function CategoriesPageContent() {
                   )}
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -420,10 +361,10 @@ export default function CategoriesPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading categories...</p>
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mx-auto"></div>
+            <p className="mt-4 text-gray-600 font-medium">Loading categories...</p>
           </div>
         </div>
       }

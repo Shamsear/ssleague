@@ -1,6 +1,8 @@
 // RealPlayer represents actual human players who register and play for seasons
 // Combines SQLAlchemy RealPlayer model structure with existing stats system
 
+import { PlayerCategory } from './season';
+
 export interface RealPlayerStats {
   // Match Statistics
   matches_played: number;
@@ -12,6 +14,7 @@ export interface RealPlayerStats {
   goals_scored: number;
   assists: number;
   clean_sheets: number;
+  potm?: number; // Player of the Match (nullable)
   
   // Win Rate
   win_rate: number; // Calculated percentage
@@ -72,6 +75,16 @@ export interface RealPlayerData {
   joined_date?: Date;
   assigned_by?: string; // UID of committee admin who assigned
   notes?: string; // Admin notes about the player
+  
+  // Multi-season contract fields (Season 16+)
+  star_rating?: number; // 3-10 stars (initially assigned, auto-updates based on points)
+  points?: number; // Performance points (auto-calculated from matches)
+  category?: PlayerCategory; // 'legend' or 'classic' (auto-assigned based on league-wide points ranking)
+  auction_value?: number; // $ amount from WhatsApp auction
+  salary_per_match?: number; // Calculated: (auction_value ÷ 100) × star_rating ÷ 10
+  contract_start_season?: string; // Season ID when contract starts (e.g., "16")
+  contract_end_season?: string; // Season ID when contract ends (e.g., "17") - 2 seasons total
+  contract_status?: 'active' | 'expired'; // Contract status
 }
 
 export interface CreateRealPlayerData {

@@ -436,7 +436,7 @@ export const createRealPlayer = async (
         xbox_id: playerData.xbox_id || existingData.xbox_id,
         steam_id: playerData.steam_id || existingData.steam_id,
         notes: playerData.notes || existingData.notes,
-        is_registered: playerData.is_registered ?? existingData.is_registered,
+        is_registered: playerData.is_registered !== undefined ? playerData.is_registered : existingData.is_registered,
         updated_at: serverTimestamp()
       };
       
@@ -481,7 +481,7 @@ export const createRealPlayer = async (
       season_id: playerData.season_id || null,
       category_id: playerData.category_id || null,
       team_id: playerData.team_id || null, // Assigned team reference
-      is_registered: playerData.is_registered || false,
+      is_registered: playerData.is_registered !== undefined ? playerData.is_registered : false,
       registered_at: playerData.is_registered ? serverTimestamp() : null,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),

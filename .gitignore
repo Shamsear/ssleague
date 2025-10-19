@@ -47,3 +47,5 @@ next-env.d.ts
 # player photos (uploaded images)
 /public/images/players/
 !public/images/players/.gitkeep
+
+/lib/generated/prisma

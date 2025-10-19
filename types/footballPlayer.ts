@@ -81,6 +81,13 @@ export interface FootballPlayerData {
   added_by?: string; // UID of admin who added
   notes?: string;
   
+  // Multi-season contract fields (Season 16+)
+  auction_value?: number; // € amount from in-app auction (same as sold_price, kept for clarity)
+  salary_per_half_season?: number; // Calculated: auction_value × 10%
+  contract_start_season?: string; // Season ID when contract starts (e.g., "16")
+  contract_end_season?: string; // Season ID when contract ends (e.g., "17") - 2 seasons total
+  contract_status?: 'active' | 'expired'; // Contract status
+  
   created_at: Date;
   updated_at: Date;
 }

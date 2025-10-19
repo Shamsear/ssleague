@@ -4,10 +4,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getActiveSeason } from '@/lib/firebase/seasons';
+import { getActiveSeason, getSeasonById } from '@/lib/firebase/seasons';
 import { getTournamentSettings, saveTournamentSettings } from '@/lib/firebase/tournamentSettings';
 import { generateSeasonFixtures, getFixturesByRounds, deleteSeasonFixtures, TournamentRound } from '@/lib/firebase/fixtures';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface Match {
   id: string;
@@ -42,6 +43,7 @@ type TabType = 'overview' | 'fixtures' | 'standings' | 'schedule' | 'settings';
 
 export default function TournamentDashboardPage() {
   const { user, loading } = useAuth();
+  const { userSeasonId } = usePermissions();
   const router = useRouter();
   
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -87,14 +89,23 @@ export default function TournamentDashboardPage() {
       try {
         setIsLoading(true);
         
-        // Get active season first
-        const activeSeason = await getActiveSeason();
+        // Get season - use committee admin's assigned season or active season
+        let seasonId = userSeasonId;
+        let season = null;
         
-        if (activeSeason) {
-          setActiveSeasonId(activeSeason.id);
+        if (seasonId) {
+          season = await getSeasonById(seasonId);
+        } else {
+          // Fallback to active season for super admins
+          season = await getActiveSeason();
+          seasonId = season?.id || null;
+        }
+        
+        if (season && seasonId) {
+          setActiveSeasonId(seasonId);
           
-          // Fetch teams for active season to get participants count
-          const teamsRes = await fetch(`/api/team/all?season_id=${activeSeason.id}`);
+          // Fetch teams for season to get participants count
+          const teamsRes = await fetch(`/api/team/all?season_id=${seasonId}`);
           const teamsData = await teamsRes.json();
           
           if (teamsData.success && teamsData.data && teamsData.data.teams) {
@@ -103,7 +114,7 @@ export default function TournamentDashboardPage() {
           
           // Load existing tournament settings
           try {
-            const settings = await getTournamentSettings(activeSeason.id);
+            const settings = await getTournamentSettings(seasonId);
             if (settings) {
               setTournamentName(settings.tournament_name);
               setSquadSize(settings.squad_size.toString());
@@ -123,7 +134,7 @@ export default function TournamentDashboardPage() {
           }
           
           // Load fixtures
-          await loadFixtures(activeSeason.id);
+          await loadFixtures(seasonId);
         }
         
         // TODO: Fetch real match data from API
@@ -150,7 +161,7 @@ export default function TournamentDashboardPage() {
   
   const handleGenerateFixtures = async () => {
     if (!activeSeasonId) {
-      alert('No active season found');
+      alert('No season available. Please refresh the page.');
       return;
     }
     
@@ -159,16 +170,29 @@ export default function TournamentDashboardPage() {
       return;
     }
     
-    const confirm = window.confirm(
-      `Generate fixtures for ${participantsCount} teams? This will create ${participantsCount - 1} rounds with ${Math.floor(participantsCount / 2)} matches per round for both legs (total ${2 * (participantsCount - 1)} rounds).`
-    );
+    const isRegenerate = fixtureRounds.length > 0;
+    const confirmMessage = isRegenerate
+      ? `Regenerate fixtures for ${participantsCount} teams? This will DELETE all existing fixtures, matchups, and round deadlines, then create new ones.`
+      : `Generate fixtures for ${participantsCount} teams? This will create ${participantsCount - 1} rounds with ${Math.floor(participantsCount / 2)} matches per round for both legs (total ${2 * (participantsCount - 1)} rounds).`;
+    
+    const confirm = window.confirm(confirmMessage);
     
     if (!confirm) return;
     
     setIsGeneratingFixtures(true);
     
     try {
-      // Fetch teams for active season (with automatic token refresh)
+      // If regenerating, delete existing fixtures first
+      if (isRegenerate) {
+        console.log('Deleting existing fixtures before regenerating...');
+        const deleteSuccess = await deleteSeasonFixtures(activeSeasonId);
+        if (!deleteSuccess) {
+          throw new Error('Failed to delete existing fixtures');
+        }
+        console.log('Existing fixtures deleted successfully');
+      }
+      
+      // Fetch teams for season (with automatic token refresh)
       const teamsRes = await fetchWithTokenRefresh(`/api/team/all?season_id=${activeSeasonId}`, {
         credentials: 'include'
       });
@@ -244,7 +268,7 @@ export default function TournamentDashboardPage() {
     e.preventDefault();
     
     if (!activeSeasonId) {
-      alert('No active season found. Please create and activate a season first.');
+      alert('No season available. Please refresh the page.');
       return;
     }
     
@@ -593,6 +617,14 @@ export default function TournamentDashboardPage() {
                   ? `${fixtureRounds.length} rounds • ${fixtureRounds.reduce((acc, r) => acc + r.total_matches, 0)} total matches`
                   : 'No fixtures generated yet'}
               </p>
+              {!settingsLoaded && fixtureRounds.length === 0 && (
+                <p className="text-xs text-orange-600 mt-1 flex items-center">
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Please save tournament settings first in the Settings tab
+                </p>
+              )}
             </div>
             <div className="flex gap-2">
               {fixtureRounds.length > 0 && (
@@ -606,7 +638,12 @@ export default function TournamentDashboardPage() {
               )}
               <button
                 onClick={handleGenerateFixtures}
-                disabled={isGeneratingFixtures || participantsCount < 2}
+                disabled={isGeneratingFixtures || participantsCount < 2 || !settingsLoaded}
+                title={
+                  !settingsLoaded ? 'Save tournament settings first (go to Settings tab)' :
+                  participantsCount < 2 ? `Need at least 2 teams (currently ${participantsCount})` : 
+                  'Generate fixtures for all teams'
+                }
                 className="px-4 py-2 bg-[#0066FF] text-white rounded-xl hover:bg-[#0052CC] transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {isGeneratingFixtures ? (

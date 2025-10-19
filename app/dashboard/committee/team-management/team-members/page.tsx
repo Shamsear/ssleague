@@ -4,6 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
+import { usePermissions } from '@/hooks/usePermissions';
+import { db } from '@/lib/firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface RealPlayer {
   id: string;
@@ -30,6 +33,7 @@ interface Category {
 
 export default function TeamMembersPage() {
   const { user, loading } = useAuth();
+  const { userSeasonId } = usePermissions();
   const router = useRouter();
   const [realPlayers, setRealPlayers] = useState<RealPlayer[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<RealPlayer[]>([]);
@@ -77,21 +81,75 @@ export default function TeamMembersPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!userSeasonId) {
+        console.log('No season assigned to committee admin');
+        setIsLoading(false);
+        return;
+      }
+      
       try {
-        const [playersRes, teamsRes, categoriesRes] = await Promise.all([
-          fetch('/api/real-players'),
-          fetch('/api/team/all'),
-          fetch('/api/categories'),
-        ]);
-
-        const [playersData, teamsData, categoriesData] = await Promise.all([
-          playersRes.json(),
-          teamsRes.json(),
-          categoriesRes.json(),
-        ]);
-
-        if (playersData.success) setRealPlayers(playersData.data);
-        if (teamsData.success) setTeams(teamsData.data);
+        // Fetch registered players for this season from realplayer collection
+        const realplayerQuery = query(
+          collection(db, 'realplayer'),
+          where('season_id', '==', userSeasonId)
+        );
+        const realplayerSnapshot = await getDocs(realplayerQuery);
+        
+        console.log(`📋 Fetched ${realplayerSnapshot.docs.length} registered players for season ${userSeasonId}`);
+        
+        const registeredPlayers = realplayerSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            player_id: data.player_id || '',
+            name: data.name || '',
+            team_id: data.team_id || null,
+            team_name: data.team_name || '',
+            category_id: data.category_id || null,
+            category_name: data.category_name || '',
+            season_id: data.season_id || null,
+            season_name: data.season_name || '',
+          };
+        });
+        
+        setRealPlayers(registeredPlayers);
+        
+        // Fetch teams registered for this season from team_seasons collection
+        const teamSeasonsQuery = query(
+          collection(db, 'team_seasons'),
+          where('season_id', '==', userSeasonId),
+          where('status', '==', 'registered')
+        );
+        const teamSeasonsSnapshot = await getDocs(teamSeasonsQuery);
+        
+        console.log(`📋 Fetched ${teamSeasonsSnapshot.docs.length} registered teams for season ${userSeasonId}`);
+        
+        // Get team IDs from team_seasons
+        const teamIds = teamSeasonsSnapshot.docs.map(doc => doc.data().team_id).filter(Boolean);
+        
+        // Fetch team details from teams collection
+        const teamsData: Team[] = [];
+        for (const teamId of teamIds) {
+          const teamQuery = query(
+            collection(db, 'teams'),
+            where('id', '==', teamId)
+          );
+          const teamSnapshot = await getDocs(teamQuery);
+          if (!teamSnapshot.empty) {
+            const teamDoc = teamSnapshot.docs[0];
+            teamsData.push({
+              id: teamDoc.id,
+              team_name: teamDoc.data().team_name || 'Unknown Team',
+            });
+          }
+        }
+        
+        console.log(`📋 Fetched ${teamsData.length} team details`);
+        setTeams(teamsData);
+        
+        // Fetch categories
+        const categoriesRes = await fetch('/api/categories');
+        const categoriesData = await categoriesRes.json();
         if (categoriesData.success) setCategories(categoriesData.data);
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -100,10 +158,10 @@ export default function TeamMembersPage() {
       }
     };
 
-    if (user?.role === 'committee_admin') {
+    if (user?.role === 'committee_admin' && userSeasonId) {
       fetchData();
     }
-  }, [user]);
+  }, [user, userSeasonId]);
 
   useEffect(() => {
     let filtered = realPlayers;
@@ -835,6 +893,9 @@ export default function TeamMembersPage() {
                   Category
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contract
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -842,7 +903,7 @@ export default function TeamMembersPage() {
             <tbody className="bg-white/60 divide-y divide-gray-200/50">
               {filteredPlayers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                     No players found
                   </td>
                 </tr>
@@ -887,6 +948,31 @@ export default function TeamMembersPage() {
                         </div>
                       ) : (
                         <span className="text-gray-400 italic">Not assigned</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {(player as any).contract_id ? (
+                        <div className="text-sm">
+                          <div className="flex items-center">
+                            {(player as any).is_auto_registered ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Auto (S{(player as any).contract_start_season?.replace(/\D/g, '')})
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                2-Season Contract
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            S{(player as any).contract_start_season?.replace(/\D/g, '')} - S{(player as any).contract_end_season?.replace(/\D/g, '')}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 italic text-sm">No contract</span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">

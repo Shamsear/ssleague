@@ -74,6 +74,9 @@ export const useRealtimeSeasons = (user?: any, userLoading?: boolean) => {
           seasonsData.push({
             id: doc.id,
             ...data,
+            // Generate name from season_number if name doesn't exist
+            name: data.name || (data.season_number ? `Season ${data.season_number}` : data.year || 'Unnamed Season'),
+            year: data.year || (data.season_number ? `${data.season_number}` : 'N/A'),
             startDate: data.startDate ? convertTimestamp(data.startDate) : undefined,
             endDate: data.endDate ? convertTimestamp(data.endDate) : undefined,
             createdAt: convertTimestamp(data.created_at || data.createdAt),

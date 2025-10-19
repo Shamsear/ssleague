@@ -37,6 +37,15 @@ interface PlayerData {
   ranking?: number;
   round_performance?: any;
   
+  // Trophy/Award fields (arrays for unlimited trophies)
+  category_trophies?: string[];
+  individual_trophies?: string[];
+  
+  // Team trophy fields
+  has_league_trophy?: boolean;
+  team_rank?: number;
+  cup_achievement?: string;
+  
   // Direct stats (may be at root level)
   played?: number;
   points?: number;
@@ -170,6 +179,33 @@ export default function PlayerDetailPage() {
         }
       }
       
+      // 3. Fetch team standings for all seasons to check for league winners
+      // Get unique season IDs from player stats
+      const uniqueSeasonIds = [...new Set(
+        statsSnapshot.docs.map(doc => doc.data().season_id).filter(Boolean)
+      )];
+      
+      // Fetch teamstats for each season to check rankings
+      const teamStandingsMap = new Map<string, any>(); // Map of team_id+season_id -> teamstats data
+      
+      if (uniqueSeasonIds.length > 0) {
+        const teamStatsPromises = uniqueSeasonIds.map(async (seasonId) => {
+          const teamStatsRef = collection(db, 'teamstats');
+          const teamStatsQuery = query(teamStatsRef, where('season_id', '==', seasonId));
+          const teamStatsSnapshot = await getDocs(teamStatsQuery);
+          return { seasonId, docs: teamStatsSnapshot.docs };
+        });
+        
+        const teamStatsResults = await Promise.all(teamStatsPromises);
+        teamStatsResults.forEach(result => {
+          result.docs.forEach(doc => {
+            const data = doc.data();
+            const key = `${data.team_id}_${result.seasonId}`;
+            teamStandingsMap.set(key, data);
+          });
+        });
+      }
+      
       // Combine permanent data with each season's stats
       const allData = statsSnapshot.docs.map((statsDoc) => {
         const statsData = statsDoc.data();
@@ -179,6 +215,13 @@ export default function PlayerDetailPage() {
           seasonNamesMap.get(statsData.season_id) || 
           statsData.season_id;
         
+        // Check if this team won the league (has a ranking in standings)
+        const teamStatsKey = `${statsData.team_id}_${statsData.season_id}`;
+        const teamStats = teamStandingsMap.get(teamStatsKey);
+        const hasLeagueTrophy = teamStats && teamStats.season_stats && 
+          teamStats.season_stats.rank !== undefined && 
+          teamStats.season_stats.rank !== null;
+        
         // Combine permanent player data with season-specific stats
         return {
           ...permanentPlayerData, // Permanent fields (name, email, phone, etc.)
@@ -187,7 +230,14 @@ export default function PlayerDetailPage() {
           team: statsData.team, // Season-specific
           team_id: statsData.team_id, // Season-specific
           category: statsData.category, // Season-specific
-          stats: statsData.stats // Season-specific stats
+          stats: statsData.stats, // Season-specific stats
+          // Trophy/Award fields from this season (new array format)
+          category_trophies: statsData.category_trophies || [],
+          individual_trophies: statsData.individual_trophies || [],
+          // Team trophy fields
+          has_league_trophy: hasLeagueTrophy,
+          team_rank: teamStats?.season_stats?.rank,
+          cup_achievement: teamStats?.cup_achievement
         } as PlayerData;
       });
       
@@ -812,17 +862,22 @@ export default function PlayerDetailPage() {
                     <p className="text-2xl font-bold text-primary">{stats.goals_scored || 0}</p>
                   </div>
                   <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
-                    <p className="text-xs text-gray-500 mb-1">Assists</p>
-                    <p className="text-2xl font-bold text-purple-600">{stats.assists || 0}</p>
-                  </div>
-                  <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
                     <p className="text-xs text-gray-500 mb-1">Clean Sheets</p>
                     <p className="text-2xl font-bold text-blue-600">{stats.clean_sheets || 0}</p>
+                  </div>
+                  <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
+                    <p className="text-xs text-gray-500 mb-1">Net Goals</p>
+                    <p className={`text-2xl font-bold ${
+                      (stats.net_goals || 0) > 0 ? 'text-green-600' : 
+                      (stats.net_goals || 0) < 0 ? 'text-red-600' : 'text-gray-600'
+                    }`}>
+                      {(stats.net_goals || 0) > 0 ? '+' : ''}{stats.net_goals || 0}
+                    </p>
                   </div>
                 </div>
 
                 {/* Secondary Stats Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                   <div className="bg-white/40 rounded-xl p-4 text-center">
                     <p className="text-xs text-gray-500 mb-1">Win Rate</p>
                     <p className="text-2xl font-bold text-green-600">{winRate}%</p>
@@ -830,6 +885,10 @@ export default function PlayerDetailPage() {
                   <div className="bg-white/40 rounded-xl p-4 text-center">
                     <p className="text-xs text-gray-500 mb-1">Goals/Game</p>
                     <p className="text-2xl font-bold text-orange-600">{goalsPerGame}</p>
+                  </div>
+                  <div className="bg-white/40 rounded-xl p-4 text-center">
+                    <p className="text-xs text-gray-500 mb-1">Conceded/Game</p>
+                    <p className="text-2xl font-bold text-red-600">{typeof stats.conceded_per_game === 'number' ? stats.conceded_per_game.toFixed(2) : (stats.conceded_per_game || '0.00')}</p>
                   </div>
                   {stats.average_rating > 0 && (
                     <div className="bg-white/40 rounded-xl p-4 text-center">
@@ -911,8 +970,122 @@ export default function PlayerDetailPage() {
               </div>
               )}
 
+              {/* Trophies & Achievements - Only for Individual Season View with trophies */}
+              {selectedView === 'season' && selectedSeasonId && (
+                (() => {
+                  const trophies = [];
+                  const teamName = currentSeasonData.team || 'Team';
+                  
+                  // Team trophies (League & Cup)
+                  if (currentSeasonData.has_league_trophy) {
+                    const rankText = currentSeasonData.team_rank === 1 ? '🏆 League Champion' :
+                                    currentSeasonData.team_rank === 2 ? '🥈 League Runner-up' :
+                                    currentSeasonData.team_rank === 3 ? '🥉 League 3rd Place' :
+                                    `League Finalist (Rank ${currentSeasonData.team_rank})`;
+                    trophies.push({ 
+                      type: 'team', 
+                      name: rankText,
+                      team: teamName
+                    });
+                  }
+                  
+                  if (currentSeasonData.cup_achievement) {
+                    trophies.push({ 
+                      type: 'team', 
+                      name: currentSeasonData.cup_achievement,
+                      team: teamName
+                    });
+                  }
+                  
+                  // Category trophies (support unlimited)
+                  if (currentSeasonData.category_trophies && currentSeasonData.category_trophies.length > 0) {
+                    currentSeasonData.category_trophies.forEach(trophy => {
+                      if (trophy && trophy.trim()) {
+                        trophies.push({ 
+                          type: 'category', 
+                          name: trophy.trim(),
+                          team: teamName
+                        });
+                      }
+                    });
+                  }
+                  
+                  // Individual trophies (support unlimited)
+                  if (currentSeasonData.individual_trophies && currentSeasonData.individual_trophies.length > 0) {
+                    currentSeasonData.individual_trophies.forEach(trophy => {
+                      if (trophy && trophy.trim()) {
+                        trophies.push({ 
+                          type: 'individual', 
+                          name: trophy.trim(),
+                          team: teamName
+                        });
+                      }
+                    });
+                  }
+                  
+                  return trophies.length > 0 ? (
+                    <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                      <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                        <svg className="w-5 h-5 mr-2 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                        🏆 Trophies & Achievements
+                      </h3>
+                      <p className="text-xs text-gray-500 mb-4">{currentSeasonData.season_name || 'This Season'}</p>
+
+                      <div className="space-y-3">
+                        {trophies.map((trophy, index) => (
+                          <div key={index} className={`glass rounded-xl p-4 border-2 ${
+                            trophy.type === 'team'
+                              ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300'
+                              : trophy.type === 'category' 
+                              ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300' 
+                              : 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300'
+                          }`}>
+                            <div className="flex items-start gap-3">
+                              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                trophy.type === 'team' ? 'bg-green-500' :
+                                trophy.type === 'category' ? 'bg-blue-500' : 'bg-yellow-500'
+                              }`}>
+                                {trophy.type === 'team' ? (
+                                  <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-.5a1.5 1.5 0 00-3 0v.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-3a1 1 0 00-1-1h-.5a1.5 1.5 0 010-3H4a1 1 0 001-1V6a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <p className={`text-xs font-semibold mb-1 ${
+                                  trophy.type === 'team' ? 'text-green-700' :
+                                  trophy.type === 'category' ? 'text-blue-600' : 'text-yellow-700'
+                                }`}>
+                                  {trophy.type === 'team' ? '🏆 Team Trophy' :
+                                   trophy.type === 'category' ? '🏅 Category Award' : '⭐ Individual Award'}
+                                </p>
+                                <p className="text-sm font-bold text-gray-900">{trophy.name}</p>
+                                {trophy.team && (
+                                  <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                                    </svg>
+                                    with {trophy.team}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()
+              )}
+
               {/* Round Performance - Only for Individual Season View */}
-              {selectedView === 'season' && selectedSeasonId && currentSeasonData.round_performance && Object.keys(currentSeasonData.round_performance).length > 0 ? (
+              {selectedView === 'season' && selectedSeasonId && currentSeasonData.round_performance && Object.keys(currentSeasonData.round_performance).length > 0 && (
                 <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
                   <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
                     <svg className="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -980,17 +1153,10 @@ export default function PlayerDetailPage() {
                     ))}
                   </div>
                 </div>
-              ) : selectedView === 'season' && selectedSeasonId ? (
-                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20 text-center">
-                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-gray-500">No round statistics available yet</p>
-                </div>
-              ) : null}
+              )}
 
               {/* Match History - Only for Individual Season View */}
-              {selectedView === 'season' && selectedSeasonId && matchHistory && matchHistory.length > 0 ? (
+              {selectedView === 'season' && selectedSeasonId && matchHistory && matchHistory.length > 0 && (
                 <div className="bg-white/60 rounded-2xl shadow-md border border-white/20 overflow-hidden">
                   <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-200/50">
                     <h3 className="text-lg font-semibold text-gray-800">Match History</h3>
@@ -1047,19 +1213,7 @@ export default function PlayerDetailPage() {
                     </table>
                   </div>
                 </div>
-              ) : selectedView === 'season' && selectedSeasonId ? (
-                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20 text-center">
-                  <div className="py-8">
-                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <h3 className="text-lg font-semibold text-gray-700 mb-2">No Match History</h3>
-                    <p className="text-sm text-gray-500 max-w-md mx-auto">
-                      This player hasn't participated in any matches yet. Check back later for their match history and performance statistics.
-                    </p>
-                  </div>
-                </div>
-              ) : null}
+              )}
             </div>
           </div>
         </div>

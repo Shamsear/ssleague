@@ -9,8 +9,7 @@ export default function ImportHistoricalSeason() {
   const router = useRouter();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [seasonName, setSeasonName] = useState('');
-  const [seasonShortName, setSeasonShortName] = useState('');
+  const [seasonNumber, setSeasonNumber] = useState('');
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
 
   useEffect(() => {
@@ -36,13 +35,8 @@ export default function ImportHistoricalSeason() {
       return;
     }
 
-    if (!seasonName.trim()) {
-      alert('Please enter a season name');
-      return;
-    }
-
-    if (!seasonShortName.trim()) {
-      alert('Please enter a season short name');
+    if (!seasonNumber.trim() || isNaN(parseInt(seasonNumber))) {
+      alert('Please enter a valid season number (e.g., 12)');
       return;
     }
 
@@ -60,8 +54,7 @@ export default function ImportHistoricalSeason() {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      formData.append('seasonName', seasonName.trim());
-      formData.append('seasonShortName', seasonShortName.trim());
+      formData.append('seasonNumber', seasonNumber.trim());
       
       const response = await fetch('/api/seasons/historical/upload', {
         method: 'POST',
@@ -165,11 +158,11 @@ export default function ImportHistoricalSeason() {
               <div>
                 <p className="text-sm text-blue-800 mb-2"><strong>File Format Requirements:</strong></p>
                 <ul className="text-xs text-blue-700 list-disc list-inside space-y-1">
-                  <li><strong>Teams Sheet:</strong> team_name, owner_name</li>
+                  <li><strong>Teams Sheet (League Table):</strong> rank, team, owner_name, p (points), mp (matches played), w (wins), d (draws), l (losses), f (goals for), a (goals against), gd (goal difference), percentage, cup (optional)</li>
                   <li><strong>Players Sheet:</strong> name, team, category, goals_scored, goals_per_game, goals_conceded, conceded_per_game, net_goals, cleansheets, points, win, draw, loss, total_matches, total_points</li>
                   <li><strong>Supported formats:</strong> Excel (.xlsx, .xls) with exactly two sheets: Teams and Players</li>
-                  <li><strong>Season Info:</strong> Season name and short name will be used to create the season record</li>
-                  <li><strong>Note:</strong> Download the template below for correct format and sample data</li>
+                  <li><strong>Season ID:</strong> Only season number is needed (e.g., 12 → creates ID: SSPSLS12)</li>
+                  <li><strong>Note:</strong> All fields are mandatory except CUP in Teams sheet. Download the template below for correct format and sample data</li>
                 </ul>
               </div>
             </div>
@@ -199,38 +192,27 @@ export default function ImportHistoricalSeason() {
 
         {/* Season Details Form */}
         <div className="glass rounded-3xl p-4 sm:p-6 mb-8 shadow-lg backdrop-blur-md border border-white/20">
-          <h2 className="text-xl font-bold gradient-text mb-6">Season Details</h2>
+          <h2 className="text-xl font-bold gradient-text mb-6">Season Number</h2>
           
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="season_name" className="block text-sm font-medium text-gray-700 mb-2">
-                Season Name *
-              </label>
-              <input
-                type="text"
-                id="season_name"
-                value={seasonName}
-                onChange={(e) => setSeasonName(e.target.value)}
-                required
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all"
-                placeholder="e.g., Premier League 2023"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="season_short_name" className="block text-sm font-medium text-gray-700 mb-2">
-                Season Short Name *
-              </label>
-              <input
-                type="text"
-                id="season_short_name"
-                value={seasonShortName}
-                onChange={(e) => setSeasonShortName(e.target.value)}
-                required
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all"
-                placeholder="e.g., PL2023"
-              />
-            </div>
+          <div>
+            <label htmlFor="season_number" className="block text-sm font-medium text-gray-700 mb-2">
+              Season Number *
+              <span className="text-xs text-gray-500 ml-2">(will create ID: SSPSLS##)</span>
+            </label>
+            <input
+              type="number"
+              id="season_number"
+              value={seasonNumber}
+              onChange={(e) => setSeasonNumber(e.target.value)}
+              required
+              min="1"
+              max="999"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all"
+              placeholder="e.g., 12 (will create ID: SSPSLS12)"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              💡 This number will be used to create the season ID (e.g., 12 → SSPSLS12)
+            </p>
           </div>
         </div>
 
@@ -261,7 +243,7 @@ export default function ImportHistoricalSeason() {
               <div className="flex-shrink-0 w-full sm:w-auto">
                 <button
                   type="submit"
-                  disabled={uploading || !selectedFile || !seasonName.trim() || !seasonShortName.trim()}
+                  disabled={uploading || !selectedFile || !seasonNumber.trim()}
                   className="w-full sm:w-auto px-6 py-3 bg-[#0066FF] text-white rounded-xl hover:bg-[#0066FF]/90 transition-colors duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? (

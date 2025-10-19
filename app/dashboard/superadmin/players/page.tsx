@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getAllRealPlayers, getRealPlayerStatistics, createRealPlayer } from '@/lib/firebase/realPlayers';
 import { RealPlayerData } from '@/types/realPlayer';
+import { db } from '@/lib/firebase/config';
+import { collection, getDocs } from 'firebase/firestore';
 
 export default function PlayersManagement() {
   const { user, loading } = useAuth();
@@ -66,26 +68,45 @@ export default function PlayersManagement() {
           unregisteredPlayers: allPlayers.filter(p => !p.is_registered).length,
         });
 
-        // Calculate players by season
-        const seasonMap = new Map<string, { name: string; count: number }>();
-        allPlayers.forEach(player => {
-          if (player.season_id && player.season_name) {
-            const existing = seasonMap.get(player.season_id);
+        // Calculate players by season from realplayer collection (actual registrations)
+        const [realPlayerRegistrations, seasonsSnapshot] = await Promise.all([
+          getDocs(collection(db, 'realplayer')),
+          getDocs(collection(db, 'seasons'))
+        ]);
+        
+        // Create a map of season IDs to names
+        const seasonNames = new Map<string, string>();
+        seasonsSnapshot.docs.forEach(doc => {
+          seasonNames.set(doc.id, doc.data().name || `Season ${doc.id.replace('SSPSLS', '')}`);
+        });
+        
+        const seasonMap = new Map<string, { name: string; players: Set<string> }>();
+        
+        realPlayerRegistrations.docs.forEach(doc => {
+          const data = doc.data();
+          const seasonId = data.season_id;
+          const playerId = data.player_id;
+          
+          if (seasonId && playerId) {
+            const seasonName = seasonNames.get(seasonId) || `Season ${seasonId.replace('SSPSLS', '')}`;
+            
+            const existing = seasonMap.get(seasonId);
             if (existing) {
-              existing.count++;
+              existing.players.add(playerId);
             } else {
-              seasonMap.set(player.season_id, {
-                name: player.season_name,
-                count: 1
+              seasonMap.set(seasonId, {
+                name: seasonName,
+                players: new Set([playerId])
               });
             }
           }
         });
-
+        
+        // Convert player sets to counts
         const seasonsArray = Array.from(seasonMap.entries()).map(([id, data]) => ({
           id,
           name: data.name,
-          playerCount: data.count
+          playerCount: data.players.size
         }));
         setSeasonsWithPlayers(seasonsArray);
 

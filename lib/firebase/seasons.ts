@@ -13,7 +13,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './config';
-import { Season, CreateSeasonData, SeasonStatus } from '@/types/season';
+import { Season, CreateSeasonData, SeasonStatus, SeasonType } from '@/types/season';
 import { getISTNow, timestampToIST } from '../utils/timezone';
 
 // Convert Firestore timestamp to IST Date
@@ -40,6 +40,9 @@ export const getAllSeasons = async (): Promise<Season[]> => {
       seasons.push({
         id: doc.id,
         ...data,
+        // Generate name from season_number if name doesn't exist
+        name: data.name || (data.season_number ? `Season ${data.season_number}` : data.year || 'Unnamed Season'),
+        year: data.year || (data.season_number ? `${data.season_number}` : 'N/A'),
         startDate: data.startDate ? convertTimestamp(data.startDate) : undefined,
         endDate: data.endDate ? convertTimestamp(data.endDate) : undefined,
         createdAt: convertTimestamp(data.createdAt),
@@ -71,6 +74,9 @@ export const getActiveSeason = async (): Promise<Season | null> => {
     return {
       id: doc.id,
       ...data,
+      // Generate name from season_number if name doesn't exist
+      name: data.name || (data.season_number ? `Season ${data.season_number}` : data.year || 'Unnamed Season'),
+      year: data.year || (data.season_number ? `${data.season_number}` : 'N/A'),
       startDate: data.startDate ? convertTimestamp(data.startDate) : undefined,
       endDate: data.endDate ? convertTimestamp(data.endDate) : undefined,
       createdAt: convertTimestamp(data.createdAt),
@@ -96,6 +102,9 @@ export const getSeasonById = async (seasonId: string): Promise<Season | null> =>
     return {
       id: seasonDoc.id,
       ...data,
+      // Generate name from season_number if name doesn't exist
+      name: data.name || (data.season_number ? `Season ${data.season_number}` : data.year || 'Unnamed Season'),
+      year: data.year || (data.season_number ? `${data.season_number}` : 'N/A'),
       startDate: data.startDate ? convertTimestamp(data.startDate) : undefined,
       endDate: data.endDate ? convertTimestamp(data.endDate) : undefined,
       createdAt: convertTimestamp(data.createdAt),
@@ -110,11 +119,30 @@ export const getSeasonById = async (seasonId: string): Promise<Season | null> =>
 // Create new season
 export const createSeason = async (seasonData: CreateSeasonData): Promise<Season> => {
   try {
-    const seasonRef = doc(collection(db, 'seasons'));
+    // Use provided season_number or extract from name if it exists (e.g., "Season 16" -> 16)
+    let seasonNumber: number | undefined = seasonData.season_number;
+    if (!seasonNumber) {
+      const match = seasonData.name?.match(/\d+/);
+      if (match) {
+        seasonNumber = parseInt(match[0]);
+      }
+    }
     
-    const newSeason = {
+    // Generate season ID in format SSPSLS## (e.g., SSPSLS01, SSPSLS15)
+    const seasonId = seasonNumber 
+      ? `SSPSLS${seasonNumber.toString().padStart(2, '0')}`
+      : doc(collection(db, 'seasons')).id; // Fallback to auto-generated ID if no number
+    
+    const seasonRef = doc(db, 'seasons', seasonId);
+    
+    // Determine season type (default to 'single' if not specified)
+    const seasonType: SeasonType = seasonData.type || 'single';
+    
+    const newSeason: any = {
       name: seasonData.name,
       year: seasonData.year,
+      season_number: seasonNumber,
+      type: seasonType,
       isActive: false,
       status: 'draft' as SeasonStatus,
       registrationOpen: false,
@@ -124,9 +152,22 @@ export const createSeason = async (seasonData: CreateSeasonData): Promise<Season
       totalRounds: seasonData.totalRounds || 0,
       purseAmount: seasonData.purseAmount || 0,
       maxPlayersPerTeam: seasonData.maxPlayersPerTeam || 11,
+      // Store both formats for consistency
       createdAt: serverTimestamp(),
+      created_at: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      updated_at: serverTimestamp(),
     };
+    
+    // Add multi-season specific fields if type is 'multi'
+    if (seasonType === 'multi') {
+      newSeason.dollar_budget = seasonData.dollar_budget || 1000;
+      newSeason.euro_budget = seasonData.euro_budget || 10000;
+      newSeason.min_real_players = seasonData.min_real_players || 5;
+      newSeason.max_real_players = seasonData.max_real_players || 7;
+      newSeason.max_football_players = seasonData.max_football_players || 25;
+      newSeason.category_fine_amount = seasonData.category_fine_amount || 20;
+    }
     
     await setDoc(seasonRef, newSeason);
     
@@ -153,6 +194,7 @@ export const updateSeason = async (
     await updateDoc(seasonRef, {
       ...updates,
       updatedAt: serverTimestamp(),
+      updated_at: serverTimestamp(),
     });
   } catch (error: any) {
     console.error('Error updating season:', error);
@@ -171,6 +213,7 @@ export const activateSeason = async (seasonId: string): Promise<void> => {
       updateDoc(doc(db, 'seasons', document.id), {
         isActive: false,
         updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
       })
     );
     
@@ -182,6 +225,7 @@ export const activateSeason = async (seasonId: string): Promise<void> => {
       isActive: true,
       status: 'active',
       updatedAt: serverTimestamp(),
+      updated_at: serverTimestamp(),
     });
   } catch (error: any) {
     console.error('Error activating season:', error);
@@ -198,6 +242,7 @@ export const completeSeason = async (seasonId: string): Promise<void> => {
       isActive: false,
       registrationOpen: false,
       updatedAt: serverTimestamp(),
+      updated_at: serverTimestamp(),
     });
   } catch (error: any) {
     console.error('Error completing season:', error);

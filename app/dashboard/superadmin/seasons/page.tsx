@@ -18,6 +18,13 @@ export default function SeasonsManagement() {
   // Real-time seasons data - only start listening when user is authenticated
   const { seasons, loading: loadingSeasons, error } = useRealtimeSeasons(user, loading);
 
+  // Debug logging
+  useEffect(() => {
+    if (seasons.length > 0) {
+      console.log('Seasons data:', seasons);
+    }
+  }, [seasons]);
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
@@ -190,7 +197,7 @@ export default function SeasonsManagement() {
                               {season.name}
                             </h3>
                             <span className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${getStatusBadgeClasses(season.status)}`}>
-                              {season.year}
+                              {season.status.charAt(0).toUpperCase() + season.status.slice(1)}
                             </span>
                             {season.isActive && (
                               <span className="inline-flex items-center px-3 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full group-hover:bg-blue-200 transition-all duration-200">
@@ -205,7 +212,7 @@ export default function SeasonsManagement() {
                           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-2">
                             <span className="flex items-center">
                               <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 0 0-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 0 1 9.288 0M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6 3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM7 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
                               </svg>
                               {season.totalTeams} teams
                             </span>

@@ -2,13 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-import { createPasswordResetRequest } from '@/lib/firebase/passwordResetRequests';
 import Link from 'next/link';
 
 export default function ResetPasswordRequest() {
-  const { user } = useAuth();
   const router = useRouter();
+  const [username, setUsername] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -17,8 +15,8 @@ export default function ResetPasswordRequest() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user) {
-      setError('You must be logged in to request a password reset');
+    if (!username.trim()) {
+      setError('Username is required');
       return;
     }
 
@@ -26,13 +24,23 @@ export default function ResetPasswordRequest() {
       setSubmitting(true);
       setError(null);
 
-      await createPasswordResetRequest({
-        userId: user.uid,
-        userEmail: user.email,
-        username: user.username,
-        teamName: user.role === 'team' ? (user as any).teamName : undefined,
-        reason: reason.trim() || undefined,
+      // Call API to create password reset request
+      const response = await fetch('/api/auth/request-password-reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          reason: reason.trim() || undefined,
+        }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to submit request');
+      }
 
       setSuccess(true);
     } catch (error) {
@@ -62,10 +70,10 @@ export default function ResetPasswordRequest() {
               You will receive further instructions once your request is reviewed.
             </p>
             <Link
-              href="/dashboard"
+              href="/login"
               className="inline-flex items-center px-6 py-3 bg-[#0066FF] text-white rounded-xl hover:bg-[#0066FF]/90 transition-colors"
             >
-              Return to Dashboard
+              Return to Login
             </Link>
           </div>
         </div>
@@ -111,48 +119,22 @@ export default function ResetPasswordRequest() {
             </div>
           )}
 
-          {user ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Your Email
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  value={user.email}
-                  disabled
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-                  Your Username
-                </label>
-                <input
-                  type="text"
-                  id="username"
-                  value={user.username}
-                  disabled
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
-                />
-              </div>
-
-              {user.role === 'team' && (user as any).teamName && (
-                <div>
-                  <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-2">
-                    Team Name
-                  </label>
-                  <input
-                    type="text"
-                    id="teamName"
-                    value={(user as any).teamName}
-                    disabled
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
-                  />
-                </div>
-              )}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+                Username
+              </label>
+              <input
+                type="text"
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                disabled={submitting}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                placeholder="Enter your username"
+              />
+            </div>
 
               <div>
                 <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-2">
@@ -192,26 +174,15 @@ export default function ResetPasswordRequest() {
                 )}
               </button>
 
-              <div className="text-center">
-                <Link
-                  href="/dashboard"
-                  className="text-sm text-[#0066FF] hover:underline"
-                >
-                  Cancel and return to dashboard
-                </Link>
-              </div>
-            </form>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-600 mb-4">You must be logged in to request a password reset.</p>
+            <div className="text-center">
               <Link
                 href="/login"
-                className="inline-flex items-center px-6 py-3 bg-[#0066FF] text-white rounded-xl hover:bg-[#0066FF]/90 transition-colors"
+                className="text-sm text-[#0066FF] hover:underline"
               >
-                Go to Login
+                Remember your password? Sign in
               </Link>
             </div>
-          )}
+          </form>
         </div>
       </div>
     </div>

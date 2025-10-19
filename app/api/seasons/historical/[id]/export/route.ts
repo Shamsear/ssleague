@@ -36,14 +36,16 @@ export async function GET(
     
     console.log('✅ Super admin access confirmed');
 
-    // NEW ARCHITECTURE: Fetch all season data from both collections
+    // NEW ARCHITECTURE: Fetch all season data from collections
     console.log('🔍 Fetching data with queries:');
-    console.log('  - Teams: seasons array-contains', sessionId, 'AND is_historical == true');
+    console.log('  - Teams: seasons array-contains', sessionId);
+    console.log('  - Team Stats: season_id ==', sessionId, '(from teamstats)');
     console.log('  - Player Stats: season_id ==', sessionId, '(from realplayerstats)');
     
-    const [seasonDoc, teamsSnapshot, playerStatsSnapshot] = await Promise.all([
+    const [seasonDoc, teamsSnapshot, teamStatsSnapshot, playerStatsSnapshot] = await Promise.all([
       adminDb.collection('seasons').doc(sessionId).get(),
-      adminDb.collection('teams').where('seasons', 'array-contains', sessionId).where('is_historical', '==', true).get(),
+      adminDb.collection('teams').where('seasons', 'array-contains', sessionId).get(),
+      adminDb.collection('teamstats').where('season_id', '==', sessionId).get(),
       adminDb.collection('realplayerstats').where('season_id', '==', sessionId).get()
     ]);
 
@@ -55,6 +57,7 @@ export async function GET(
 
     console.log(`📊 Fetched data counts:`);
     console.log(`  - Teams snapshot: ${teamsSnapshot.docs.length}`);
+    console.log(`  - Team stats snapshot: ${teamStatsSnapshot.docs.length}`);
     console.log(`  - Player stats snapshot: ${playerStatsSnapshot.docs.length}`);
     
     // Collect unique player IDs to fetch their permanent data
@@ -63,18 +66,55 @@ export async function GET(
     
     console.log(`👤 Fetching permanent data for ${uniquePlayerIds.length} unique players...`);
     
-    // Fetch permanent player data (batch if needed)
+    // OPTIMIZED: Fetch permanent player data in larger batches
     const playerDataMap = new Map();
     if (uniquePlayerIds.length > 0) {
-      const batchSize = 10;
-      for (let i = 0; i < uniquePlayerIds.length; i += batchSize) {
-        const batch = uniquePlayerIds.slice(i, i + batchSize);
-        const playersQuery = adminDb.collection('realplayers').where('player_id', 'in', batch);
-        const playersSnapshot = await playersQuery.get();
-        playersSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          playerDataMap.set(data.player_id, data);
-        });
+      const batchSize = 30; // Increased from 10 to 30 (Firestore limit)
+      
+      // For export, we can use pagination to load all data efficiently
+      if (uniquePlayerIds.length <= 100) {
+        // Small dataset - batch with getAll or where...in
+        const numBatches = Math.ceil(uniquePlayerIds.length / batchSize);
+        console.log(`📦 Fetching ${uniquePlayerIds.length} players in ${numBatches} batches`);
+        
+        for (let i = 0; i < uniquePlayerIds.length; i += batchSize) {
+          const batch = uniquePlayerIds.slice(i, i + batchSize);
+          const playersQuery = adminDb.collection('realplayers').where('player_id', 'in', batch);
+          const playersSnapshot = await playersQuery.get();
+          playersSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            playerDataMap.set(data.player_id, data);
+          });
+        }
+      } else {
+        // Large dataset - use pagination for better performance
+        console.log(`📚 Large dataset detected (${uniquePlayerIds.length} players), using optimized pagination...`);
+        
+        let lastDoc = null;
+        const fetchBatchSize = 100; // Fetch 100 at a time for export
+        let totalFetched = 0;
+        
+        while (totalFetched < uniquePlayerIds.length) {
+          let query = adminDb.collection('realplayers')
+            .where('player_id', 'in', uniquePlayerIds.slice(totalFetched, totalFetched + batchSize))
+            .limit(fetchBatchSize);
+          
+          if (lastDoc) {
+            query = query.startAfter(lastDoc);
+          }
+          
+          const snapshot = await query.get();
+          if (snapshot.empty) break;
+          
+          snapshot.docs.forEach(doc => {
+            const data = doc.data();
+            playerDataMap.set(data.player_id, data);
+          });
+          
+          lastDoc = snapshot.docs[snapshot.docs.length - 1];
+          totalFetched += snapshot.docs.length;
+          console.log(`  ✅ Fetched ${totalFetched} / ${uniquePlayerIds.length} players`);
+        }
       }
     }
     
@@ -105,17 +145,46 @@ export async function GET(
       });
     }
 
-    // Process teams data
-    const teams = teamsSnapshot.docs.map(doc => {
+    // Create a map of team stats by team_id
+    const teamStatsMap = new Map();
+    teamStatsSnapshot.docs.forEach(doc => {
       const data = doc.data();
+      if (data.team_id) {
+        teamStatsMap.set(data.team_id, data);
+      }
+    });
+    
+    console.log(`🎯 Team stats map size: ${teamStatsMap.size}`);
+    
+    // Process teams data - merge team info with stats from teamstats collection
+    const teams = teamsSnapshot.docs.map(doc => {
+      const teamData = doc.data();
+      const teamStats = teamStatsMap.get(doc.id) || {};
+      
+      console.log(`Team: ${teamData.team_name}, Stats found:`, {
+        rank: teamStats.rank,
+        points: teamStats.points,
+        wins: teamStats.wins
+      });
+      
       return {
         id: doc.id,
-        team_name: data.team_name || '',
-        team_code: data.team_code || '',
-        owner_name: data.owner_name || '',
-        owner_email: data.owner_email || '',
-        seasons: data.seasons || [],
-        is_historical: data.is_historical || false
+        team_name: teamData.team_name || '',
+        team_code: teamData.team_code || '',
+        owner_name: teamData.owner_name || '',
+        owner_email: teamData.owner_email || '',
+        // Team standings data from teamstats collection
+        rank: teamStats.rank || 0,
+        p: teamStats.points || 0,
+        mp: teamStats.matches_played || 0,
+        w: teamStats.wins || 0,
+        d: teamStats.draws || 0,
+        l: teamStats.losses || 0,
+        f: teamStats.goals_for || 0,
+        a: teamStats.goals_against || 0,
+        gd: teamStats.goal_difference || 0,
+        percentage: teamStats.win_percentage || 0,
+        cup: teamStats.cup_achievement || ''
       };
     });
     
@@ -155,29 +224,55 @@ export async function GET(
         clean_sheets: statsData.clean_sheets || statsData.stats?.clean_sheets || 0,
         win_rate: statsData.win_rate || statsData.stats?.win_rate || 0,
         average_rating: statsData.average_rating || statsData.stats?.average_rating || 0,
+        potm: statsData.potm || statsData.stats?.potm || null, // Player of the Match (nullable)
         current_season_matches: statsData.current_season_matches || statsData.stats?.current_season_matches || 0,
-        current_season_wins: statsData.current_season_wins || statsData.stats?.current_season_wins || 0
+        current_season_wins: statsData.current_season_wins || statsData.stats?.current_season_wins || 0,
+        // Trophy arrays
+        category_trophies: statsData.category_trophies || [],
+        individual_trophies: statsData.individual_trophies || []
       };
     });
 
     // Create Excel workbook
     const workbook = XLSX.utils.book_new();
 
-    // Teams Sheet (same structure as template)
+    // Teams Sheet (full structure with standings)
     const teamsSheetData = teams.map(team => ({
-      team_name: team.team_name || '',
-      owner_name: team.owner_name || ''
+      rank: team.rank,
+      team: team.team_name || '',
+      owner_name: team.owner_name || '',
+      p: team.p,
+      mp: team.mp,
+      w: team.w,
+      d: team.d,
+      l: team.l,
+      f: team.f,
+      a: team.a,
+      gd: team.gd,
+      percentage: team.percentage,
+      cup: team.cup
     }));
     
     // Always create Teams sheet, even if empty
     const teamsSheet = teamsSheetData.length > 0 
       ? XLSX.utils.json_to_sheet(teamsSheetData)
-      : XLSX.utils.aoa_to_sheet([['team_name', 'owner_name']]);
+      : XLSX.utils.aoa_to_sheet([['rank', 'team', 'owner_name', 'p', 'mp', 'w', 'd', 'l', 'f', 'a', 'gd', 'percentage', 'cup']]);
     
     // Set column widths
     teamsSheet['!cols'] = [
-      { width: 25 }, // team_name
-      { width: 20 }  // owner_name
+      { width: 8 },  // rank
+      { width: 25 }, // team
+      { width: 20 }, // owner_name
+      { width: 8 },  // p
+      { width: 8 },  // mp
+      { width: 8 },  // w
+      { width: 8 },  // d
+      { width: 8 },  // l
+      { width: 8 },  // f
+      { width: 8 },  // a
+      { width: 8 },  // gd
+      { width: 10 }, // percentage
+      { width: 15 }  // cup
     ];
     
     XLSX.utils.book_append_sheet(workbook, teamsSheet, 'Teams');
@@ -191,7 +286,8 @@ export async function GET(
       const losses = player.matches_lost || 0;
       const cleansheets = player.clean_sheets || 0;
       
-      return {
+      // Build the base player data
+      const playerRow: any = {
         name: player.name || '',
         team: player.team_name || '',
         category: player.category || '',
@@ -202,12 +298,40 @@ export async function GET(
         net_goals: goalsScored, // Simplified calculation
         cleansheets: cleansheets,
         points: wins * 3 + draws * 1, // Standard points calculation
+        potm: player.potm || '', // Player of the Match (nullable)
         win: wins,
         draw: draws,
         loss: losses,
         total_matches: totalMatches,
         total_points: wins * 3 + draws * 1
       };
+      
+      // Always add at least 5 trophy columns for each type (for editing capability)
+      // Fill existing trophies first, then add empty placeholders
+      for (let i = 1; i <= 5; i++) {
+        const catTrophy = player.category_trophies?.[i - 1] || '';
+        playerRow[`Cat Trophy ${i}`] = catTrophy;
+      }
+      
+      for (let i = 1; i <= 5; i++) {
+        const indTrophy = player.individual_trophies?.[i - 1] || '';
+        playerRow[`Ind Trophy ${i}`] = indTrophy;
+      }
+      
+      // If player has MORE than 5 trophies, add additional columns
+      if (player.category_trophies && player.category_trophies.length > 5) {
+        for (let i = 6; i <= player.category_trophies.length; i++) {
+          playerRow[`Cat Trophy ${i}`] = player.category_trophies[i - 1];
+        }
+      }
+      
+      if (player.individual_trophies && player.individual_trophies.length > 5) {
+        for (let i = 6; i <= player.individual_trophies.length; i++) {
+          playerRow[`Ind Trophy ${i}`] = player.individual_trophies[i - 1];
+        }
+      }
+      
+      return playerRow;
     });
     
     // Always create Players sheet, even if empty
@@ -216,7 +340,9 @@ export async function GET(
       : XLSX.utils.aoa_to_sheet([[
           'name', 'team', 'category', 'goals_scored', 'goals_per_game',
           'goals_conceded', 'conceded_per_game', 'net_goals', 'cleansheets',
-          'points', 'win', 'draw', 'loss', 'total_matches', 'total_points'
+          'points', 'potm', 'win', 'draw', 'loss', 'total_matches', 'total_points',
+          'Cat Trophy 1', 'Cat Trophy 2', 'Cat Trophy 3', 'Cat Trophy 4', 'Cat Trophy 5',
+          'Ind Trophy 1', 'Ind Trophy 2', 'Ind Trophy 3', 'Ind Trophy 4', 'Ind Trophy 5'
         ]]);
     
     // Set column widths (same as template)

@@ -45,11 +45,23 @@ export default function Login() {
     setAlerts([]);
 
     try {
+      // Trim inputs to avoid whitespace issues
+      const trimmedUsername = username.trim();
+      const trimmedPassword = password.trim();
+
+      if (!trimmedUsername || !trimmedPassword) {
+        setAlerts([{ 
+          type: 'error', 
+          message: 'Username and password are required.' 
+        }]);
+        return;
+      }
+
       // Username-only login - look up email from username using API
       const lookupResponse = await fetch('/api/auth/username-to-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username: trimmedUsername }),
       });
 
       const lookupData = await lookupResponse.json();
@@ -63,7 +75,7 @@ export default function Login() {
       }
 
       // Sign in with email
-      const { user } = await signIn(lookupData.email, password);
+      const { user } = await signIn(lookupData.email, trimmedPassword);
       
       // Use router.replace for faster navigation (no page reload)
       // Redirect to role-specific dashboard
@@ -237,7 +249,7 @@ export default function Login() {
                   <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                     Password
                   </label>
-                  <Link href="/reset-password" className="text-xs text-[#0066FF] hover:text-[#9580FF] transition-colors">
+                  <Link href="/reset-password-request" className="text-xs text-[#0066FF] hover:text-[#9580FF] transition-colors">
                     Forgot password?
                   </Link>
                 </div>

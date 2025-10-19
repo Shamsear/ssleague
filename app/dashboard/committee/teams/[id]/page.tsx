@@ -8,6 +8,7 @@ import { db } from '@/lib/firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import Image from 'next/image';
+import ContractInfo from '@/components/ContractInfo';
 
 interface TeamData {
   id: string;
@@ -16,6 +17,11 @@ interface TeamData {
   balance: number;
   initial_balance: number;
   total_spent: number;
+  // Dual currency (Season 16+)
+  dollar_balance?: number;
+  euro_balance?: number;
+  dollar_spent?: number;
+  euro_spent?: number;
   logo: string | null;
   is_active: boolean;
   real_players_count: number;
@@ -30,6 +36,14 @@ interface TeamData {
     points: number;
   };
   season_id: string;
+  // Contract fields
+  skipped_seasons?: number;
+  penalty_amount?: number;
+  last_played_season?: string;
+  contract_id?: string;
+  contract_start_season?: string;
+  contract_end_season?: string;
+  is_auto_registered?: boolean;
 }
 
 export default function CommitteeTeamDetailsPage() {
@@ -120,6 +134,11 @@ export default function CommitteeTeamDetailsPage() {
           balance: currentBalance,
           initial_balance: initialBalance,
           total_spent: totalValue || (initialBalance - currentBalance),
+          // Dual currency (Season 16+) - map from team_seasons fields
+          dollar_balance: teamSeasonData.real_player_budget,
+          euro_balance: teamSeasonData.football_budget,
+          dollar_spent: teamSeasonData.real_player_spent,
+          euro_spent: teamSeasonData.football_spent,
           logo: teamSeasonData.team_logo || userData.logoUrl || userData.logoURL || userData.logo_url || null,
           is_active: teamSeasonData.status === 'registered',
           real_players_count: 0, // Real players not implemented yet
@@ -134,6 +153,14 @@ export default function CommitteeTeamDetailsPage() {
             points: 0,
           },
           season_id: userSeasonId,
+          // Contract fields
+          skipped_seasons: teamSeasonData.skipped_seasons,
+          penalty_amount: teamSeasonData.penalty_amount,
+          last_played_season: teamSeasonData.last_played_season,
+          contract_id: teamSeasonData.contract_id,
+          contract_start_season: teamSeasonData.contract_start_season,
+          contract_end_season: teamSeasonData.contract_end_season,
+          is_auto_registered: teamSeasonData.is_auto_registered,
         };
         
         setTeam(teamData);
@@ -243,7 +270,7 @@ export default function CommitteeTeamDetailsPage() {
 
               {/* Team Info */}
               <div className="flex-1">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className={`grid grid-cols-1 ${team.dollar_balance !== undefined || team.euro_balance !== undefined ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Team Name</label>
                     <div className="relative">
@@ -278,22 +305,55 @@ export default function CommitteeTeamDetailsPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Current Balance</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </span>
-                      <input
-                        type="text"
-                        value={`£${team.balance.toLocaleString()}`}
-                        readOnly
-                        className="pl-10 w-full py-2.5 bg-gray-100/60 border border-gray-200 rounded-xl outline-none shadow-sm text-gray-600 font-semibold text-[#0066FF]"
-                      />
+                  {team.dollar_balance !== undefined || team.euro_balance !== undefined ? (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">$ Balance (Real Players)</label>
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400 text-green-600">
+                            <span className="font-bold">$</span>
+                          </span>
+                          <input
+                            type="number"
+                            value={team.dollar_balance ?? 0}
+                            onChange={(e) => setTeam({ ...team, dollar_balance: parseFloat(e.target.value) || 0 })}
+                            className="pl-10 w-full py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 shadow-sm text-gray-600 font-semibold text-green-700"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">€ Balance (Football Players)</label>
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400 text-blue-600">
+                            <span className="font-bold">€</span>
+                          </span>
+                          <input
+                            type="number"
+                            value={team.euro_balance ?? 0}
+                            onChange={(e) => setTeam({ ...team, euro_balance: parseFloat(e.target.value) || 0 })}
+                            className="pl-10 w-full py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 shadow-sm text-gray-600 font-semibold text-blue-700"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Current Balance</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </span>
+                        <input
+                          type="text"
+                          value={`£${team.balance.toLocaleString()}`}
+                          readOnly
+                          className="pl-10 w-full py-2.5 bg-gray-100/60 border border-gray-200 rounded-xl outline-none shadow-sm text-gray-600 font-semibold text-[#0066FF]"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Status</label>
@@ -327,24 +387,74 @@ export default function CommitteeTeamDetailsPage() {
             Financial Overview
           </h2>
 
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-            <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Current Balance</h3>
-              <p className="text-base sm:text-xl font-bold text-[#0066FF]">£{team.balance.toLocaleString()}</p>
+          {/* Dual Currency Display (Season 16+) */}
+          {(team.dollar_balance !== undefined || team.euro_balance !== undefined) ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className="glass p-3 sm:p-5 rounded-xl bg-gradient-to-br from-green-50 to-white shadow-sm border border-green-200/50 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-600 mb-1 flex items-center">
+                  <span className="text-green-700 font-bold mr-1">$</span> Balance (Real)
+                </h3>
+                <p className="text-base sm:text-xl font-bold text-green-700">${team.dollar_balance?.toLocaleString?.() ?? '-'}</p>
+              </div>
+              <div className="glass p-3 sm:p-5 rounded-xl bg-gradient-to-br from-blue-50 to-white shadow-sm border border-blue-200/50 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-600 mb-1 flex items-center">
+                  <span className="text-blue-700 font-bold mr-1">€</span> Balance (Football)
+                </h3>
+                <p className="text-base sm:text-xl font-bold text-blue-700">€{team.euro_balance?.toLocaleString?.() ?? '-'}</p>
+              </div>
+              <div className="glass p-3 sm:p-5 rounded-xl bg-gradient-to-br from-red-50 to-white shadow-sm border border-red-200/50 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-600 mb-1 flex items-center">
+                  <span className="text-red-700 font-bold mr-1">$</span> Spent
+                </h3>
+                <p className="text-base sm:text-xl font-bold text-red-700">${team.dollar_spent?.toLocaleString?.() ?? '0'}</p>
+              </div>
+              <div className="glass p-3 sm:p-5 rounded-xl bg-gradient-to-br from-purple-50 to-white shadow-sm border border-purple-200/50 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-600 mb-1 flex items-center">
+                  <span className="text-purple-700 font-bold mr-1">€</span> Spent
+                </h3>
+                <p className="text-base sm:text-xl font-bold text-purple-700">€{team.euro_spent?.toLocaleString?.() ?? '0'}</p>
+              </div>
             </div>
-            <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Initial Balance</h3>
-              <p className="text-base sm:text-xl font-bold text-[#0066FF]">£{team.initial_balance.toLocaleString()}</p>
+          ) : (
+            // Legacy single currency display
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Current Balance</h3>
+                <p className="text-base sm:text-xl font-bold text-[#0066FF]">£{team.balance.toLocaleString()}</p>
+              </div>
+              <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Initial Balance</h3>
+                <p className="text-base sm:text-xl font-bold text-[#0066FF]">£{team.initial_balance.toLocaleString()}</p>
+              </div>
+              <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Total Spent</h3>
+                <p className="text-base sm:text-xl font-bold text-red-500">£{team.total_spent.toLocaleString()}</p>
+              </div>
+              <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Avg. Player Value</h3>
+                <p className="text-base sm:text-xl font-bold text-green-600">£{avgPlayerValue.toLocaleString()}</p>
+              </div>
             </div>
-            <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Total Spent</h3>
-              <p className="text-base sm:text-xl font-bold text-red-500">£{team.total_spent.toLocaleString()}</p>
-            </div>
-            <div className="glass p-3 sm:p-5 rounded-xl bg-white/10 shadow-sm border border-gray-100/20 hover:shadow-md transition-shadow">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Avg. Player Value</h3>
-              <p className="text-base sm:text-xl font-bold text-green-600">£{avgPlayerValue.toLocaleString()}</p>
-            </div>
-          </div>
+          )}
+        </div>
+
+        {/* Contract Information */}
+        <div className="glass rounded-3xl p-6 mb-8 shadow-lg border border-gray-100/30">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Contract Information
+          </h2>
+          <ContractInfo
+            skippedSeasons={team.skipped_seasons}
+            penaltyAmount={team.penalty_amount}
+            lastPlayedSeason={team.last_played_season}
+            contractId={team.contract_id}
+            contractStartSeason={team.contract_start_season}
+            contractEndSeason={team.contract_end_season}
+            isAutoRegistered={team.is_auto_registered}
+          />
         </div>
 
         {/* Squad Overview */}

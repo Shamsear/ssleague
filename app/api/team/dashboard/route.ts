@@ -8,6 +8,11 @@ import { getCached, setCached } from '@/lib/firebase/cache';
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
+  // Add cache headers for client-side caching
+  const headers = new Headers({
+    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300', // 1 min cache, 5 min stale
+    'CDN-Cache-Control': 'public, s-maxage=60',
+  });
   try {
     // Get Firebase ID token from cookie
     const cookieStore = await cookies();
@@ -44,8 +49,8 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // OPTIMIZED: Check cache first for user data
-    let userData = getCached<any>('users', userId, 5 * 60 * 1000); // 5 min TTL
+    // OPTIMIZED: Check cache first for user data (extended cache duration)
+    let userData = getCached<any>('users', userId, 30 * 60 * 1000); // 30 min TTL
     if (!userData) {
       const userDoc = await adminDb.collection('users').doc(userId).get();
       if (!userDoc.exists) {
@@ -58,28 +63,76 @@ export async function GET(request: NextRequest) {
       setCached('users', userId, userData);
     }
 
-    // OPTIMIZED: Check cache first for team_season data
-    const teamSeasonId = `${userId}_${seasonId}`;
-    let teamSeasonData = getCached<any>('team_seasons', teamSeasonId, 5 * 60 * 1000);
+    // Find team_season by querying with user_id or team_id + season_id
+    // The document ID might be either userId_seasonId OR teamId_seasonId
+    let teamSeasonData = null;
+    let teamSeasonId = `${userId}_${seasonId}`;
+    
+    // First try with userId_seasonId (direct lookup)
+    teamSeasonData = getCached<any>('team_seasons', teamSeasonId, 15 * 60 * 1000);
+    
     if (!teamSeasonData) {
       const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
       
-      if (!teamSeasonDoc.exists) {
-        return NextResponse.json({
-          success: false,
-          error: 'Team not registered for this season',
-        }, { status: 404 });
+      if (teamSeasonDoc.exists) {
+        teamSeasonData = teamSeasonDoc.data();
+        setCached('team_seasons', teamSeasonId, teamSeasonData);
+      } else {
+        // Fallback: Query by user_id field (for teams where document ID uses team_id)
+        console.log(`Document ${teamSeasonId} not found, querying by user_id field`);
+        const teamSeasonQuery = await adminDb.collection('team_seasons')
+          .where('user_id', '==', userId)
+          .where('season_id', '==', seasonId)
+          .where('status', '==', 'registered')
+          .limit(1)
+          .get();
+        
+        if (teamSeasonQuery.empty) {
+          return NextResponse.json({
+            success: false,
+            error: 'Team not registered for this season',
+          }, { status: 404 });
+        }
+        
+        const doc = teamSeasonQuery.docs[0];
+        teamSeasonData = doc.data();
+        teamSeasonId = doc.id; // Use the actual document ID
+        setCached('team_seasons', teamSeasonId, teamSeasonData);
+        console.log(`Found team_season with ID: ${teamSeasonId}`);
       }
-      
-      teamSeasonData = teamSeasonDoc.data();
-      setCached('team_seasons', teamSeasonId, teamSeasonData);
     }
-    const teamData = {
+    // Determine currency system (dual or single)
+    const currencySystem = teamSeasonData?.currency_system || 'single';
+    const isDualCurrency = currencySystem === 'dual';
+    
+    const teamData: any = {
       id: userId,
       name: teamSeasonData?.team_name || userData?.teamName || 'Team',
-      balance: teamSeasonData?.budget || 15000,
       logo_url: teamSeasonData?.team_logo || userData?.logoUrl || null,
+      currency_system: currencySystem,
     };
+    
+    // Add budget fields based on currency system
+    if (isDualCurrency) {
+      teamData.football_budget = teamSeasonData?.football_budget || 10000;
+      teamData.real_player_budget = teamSeasonData?.real_player_budget || 5000;
+      teamData.football_spent = teamSeasonData?.football_spent || 0;
+      teamData.real_player_spent = teamSeasonData?.real_player_spent || 0;
+      // Legacy balance field for backward compatibility
+      teamData.balance = teamData.football_budget + teamData.real_player_budget;
+    } else {
+      teamData.balance = teamSeasonData?.budget || 15000;
+      teamData.total_spent = teamSeasonData?.total_spent || 0;
+    }
+    
+    // Add contract fields
+    teamData.skipped_seasons = teamSeasonData?.skipped_seasons || 0;
+    teamData.penalty_amount = teamSeasonData?.penalty_amount || 0;
+    teamData.last_played_season = teamSeasonData?.last_played_season || null;
+    teamData.contract_id = teamSeasonData?.contract_id || null;
+    teamData.contract_start_season = teamSeasonData?.contract_start_season || null;
+    teamData.contract_end_season = teamSeasonData?.contract_end_season || null;
+    teamData.is_auto_registered = teamSeasonData?.is_auto_registered || false;
 
     // Fetch active rounds for this season from Neon
     console.log('🔍 Fetching active rounds for season:', seasonId);
@@ -367,7 +420,7 @@ export async function GET(request: NextRequest) {
           positionBreakdown: teamSeasonData?.position_counts || {},
         },
       },
-    });
+    }, { headers });
 
   } catch (error) {
     console.error('Error fetching team dashboard data:', error);

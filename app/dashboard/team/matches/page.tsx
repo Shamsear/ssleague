@@ -59,91 +59,143 @@ export default function TeamMatchesPage() {
       try {
         setIsLoading(true);
 
-        // Fetch active season
+        // Fetch team's registered season from team_seasons collection
         const { db } = await import('@/lib/firebase/config');
-        const { collection, query, where, getDocs, limit } = await import('firebase/firestore');
+        const { collection, query, where, getDocs, limit, orderBy, doc, getDoc } = await import('firebase/firestore');
 
-        console.log('🔍 Fetching active season...');
-        const seasonsSnapshot = await getDocs(
+        console.log('🔍 Fetching team registration...');
+        // Get team's registered season(s)
+        const teamSeasonsSnapshot = await getDocs(
           query(
-            collection(db, 'seasons'),
-            where('isActive', '==', true),
-            limit(1)
+            collection(db, 'team_seasons'),
+            where('user_id', '==', user.uid),
+            where('status', '==', 'registered'),
+            orderBy('joined_at', 'desc')
           )
         );
 
-        if (seasonsSnapshot.empty) {
-          console.log('❌ No active season found');
+        if (teamSeasonsSnapshot.empty) {
+          console.log('❌ No registered season found for team');
           setIsLoading(false);
           return;
         }
 
-        const season = seasonsSnapshot.docs[0];
-        const currentSeasonId = season.id;
+        // Find the current/ongoing season the team is registered for
+        let currentSeasonId: string | null = null;
+        let teamId: string | null = null;
+        
+        console.log('🔍 Checking registered seasons status...');
+        // Check each registered season and find one that's not completed
+        for (const teamSeasonDoc of teamSeasonsSnapshot.docs) {
+          const teamSeasonData = teamSeasonDoc.data();
+          const seasonId = teamSeasonData.season_id;
+          
+          // Store team_id from the first registration
+          if (!teamId) {
+            teamId = teamSeasonData.team_id;
+            console.log('🎯 Team ID:', teamId);
+          }
+          
+          // Get season details
+          const seasonRef = doc(db, 'seasons', seasonId);
+          const seasonDoc = await getDoc(seasonRef);
+          
+          if (seasonDoc.exists()) {
+            const seasonData = seasonDoc.data();
+            const seasonStatus = seasonData.status || 'draft';
+            
+            console.log(`  Season ${seasonId}: status = ${seasonStatus}`);
+            
+            // Use this season if it's not completed (active, draft, ongoing, etc.)
+            if (seasonStatus !== 'completed') {
+              currentSeasonId = seasonId;
+              console.log('✅ Using ongoing season:', currentSeasonId, `(${seasonStatus})`);
+              break;
+            }
+          }
+        }
+
+        // Fallback: use most recent if all are completed
+        if (!currentSeasonId) {
+          const latestTeamSeason = teamSeasonsSnapshot.docs[0].data();
+          currentSeasonId = latestTeamSeason.season_id;
+          console.log('⚠️ All seasons completed, using latest:', currentSeasonId);
+        }
+
         setSeasonId(currentSeasonId);
-        console.log('✅ Active season:', currentSeasonId);
 
-        // Fetch fixtures directly from the fixtures collection
-        console.log('🔍 Fetching fixtures for season:', currentSeasonId);
-        const fixturesSnapshot = await getDocs(
-          query(
-            collection(db, 'fixtures'),
-            where('season_id', '==', currentSeasonId)
-          )
-        );
-
-        console.log('📊 Found fixtures:', fixturesSnapshot.docs.length);
+        // Fetch fixtures from Neon database
+        console.log('🔍 Fetching fixtures from Neon for season:', currentSeasonId, 'team:', teamId);
+        
+        const fixturesResponse = await fetch(`/api/fixtures/team?team_id=${teamId}&season_id=${currentSeasonId}`);
+        
+        if (!fixturesResponse.ok) {
+          console.error('Failed to fetch fixtures from Neon');
+          setIsLoading(false);
+          return;
+        }
+        
+        const { fixtures: fixturesList } = await fixturesResponse.json();
+        console.log('📊 Found fixtures from Neon:', fixturesList.length);
 
         const allMatches: Match[] = [];
 
         // Build a map of fixture data first
         const fixturesByRound = new Map<string, any[]>();
-        fixturesSnapshot.forEach(fixtureDoc => {
-          const fixture = fixtureDoc.data();
-          if (fixture.home_team_id === user.uid || fixture.away_team_id === user.uid) {
-            const roundKey = `${fixture.round_number}_${fixture.leg || 'first'}`;
-            if (!fixturesByRound.has(roundKey)) {
-              fixturesByRound.set(roundKey, []);
-            }
-            fixturesByRound.get(roundKey)!.push({
-              fixtureDoc,
-              fixture
-            });
+        fixturesList.forEach((fixture: any) => {
+          const roundKey = `${fixture.round_number}_${fixture.leg || 'first'}`;
+          if (!fixturesByRound.has(roundKey)) {
+            fixturesByRound.set(roundKey, []);
           }
+          fixturesByRound.get(roundKey)!.push({
+            fixtureDoc: { id: fixture.id },
+            fixture
+          });
         });
 
-        // Fetch round statuses and deadlines for all relevant rounds
+        // Fetch round statuses and deadlines from Neon for all relevant rounds
         const roundDataMap = new Map<string, any>();
         for (const [roundKey, fixtures] of fixturesByRound.entries()) {
           const firstFixture = fixtures[0].fixture;
-          const roundId = `${currentSeasonId}_r${firstFixture.round_number}_${firstFixture.leg || 'first'}`;
+          const roundNumber = firstFixture.round_number;
+          const leg = firstFixture.leg || 'first';
           
           try {
-            const { doc, getDoc } = await import('firebase/firestore');
-            const roundRef = doc(db, 'round_deadlines', roundId);
-            const roundDoc = await getDoc(roundRef);
+            const response = await fetch(`/api/round-deadlines?season_id=${currentSeasonId}&round_number=${roundNumber}&leg=${leg}`);
             
-            if (roundDoc.exists()) {
-              const roundData = roundDoc.data();
-              roundDataMap.set(roundKey, {
-                status: roundData.status || 'pending',
-                home_fixture_deadline_time: roundData.home_fixture_deadline_time || '17:00',
-                away_fixture_deadline_time: roundData.away_fixture_deadline_time || '17:00',
-                result_entry_deadline_day_offset: roundData.result_entry_deadline_day_offset || 2,
-                result_entry_deadline_time: roundData.result_entry_deadline_time || '00:30',
-                scheduled_date: roundData.scheduled_date,
-              });
-            } else {
-              roundDataMap.set(roundKey, {
-                status: 'pending',
-                home_fixture_deadline_time: '17:00',
-                away_fixture_deadline_time: '17:00',
-                result_entry_deadline_day_offset: 2,
-                result_entry_deadline_time: '00:30',
-              });
+            if (response.ok) {
+              const { roundDeadline } = await response.json();
+              
+              if (roundDeadline) {
+                roundDataMap.set(roundKey, {
+                  status: roundDeadline.status || 'pending',
+                  home_fixture_deadline_time: roundDeadline.home_fixture_deadline_time || '23:30',
+                  away_fixture_deadline_time: roundDeadline.away_fixture_deadline_time || '23:45',
+                  result_entry_deadline_day_offset: roundDeadline.result_entry_deadline_day_offset || 2,
+                  result_entry_deadline_time: roundDeadline.result_entry_deadline_time || '00:30',
+                  scheduled_date: roundDeadline.scheduled_date,
+                });
+              } else {
+                // Default values if round deadline doesn't exist
+                roundDataMap.set(roundKey, {
+                  status: 'pending',
+                  home_fixture_deadline_time: '23:30',
+                  away_fixture_deadline_time: '23:45',
+                  result_entry_deadline_day_offset: 2,
+                  result_entry_deadline_time: '00:30',
+                });
+              }
             }
           } catch (error) {
-            console.error(`Error fetching round data for ${roundId}:`, error);
+            console.error(`Error fetching round deadline for round ${roundNumber} leg ${leg}:`, error);
+            // Set defaults on error
+            roundDataMap.set(roundKey, {
+              status: 'pending',
+              home_fixture_deadline_time: '23:30',
+              away_fixture_deadline_time: '23:45',
+              result_entry_deadline_day_offset: 2,
+              result_entry_deadline_time: '00:30',
+            });
           }
         }
 
@@ -287,9 +339,11 @@ export default function TeamMatchesPage() {
     return null;
   }
 
-  // Completed: matches that are closed/completed
+  // Completed: matches that have results (scores) entered
   const completedMatches = matches.filter(m => 
-    m.status === 'completed' || m.status === 'closed'
+    (m.home_score !== undefined && m.away_score !== undefined) || 
+    m.status === 'completed' || 
+    m.status === 'closed'
   );
   
   // Active: matches in an active round that aren't completed yet
@@ -308,7 +362,8 @@ export default function TeamMatchesPage() {
   );
 
   const getMatchResultClass = (match: Match) => {
-    if (match.status !== 'completed') return '';
+    // Show result styling if scores are available
+    if (match.home_score === undefined || match.away_score === undefined) return '';
     
     if (match.winner_id === user.uid) {
       return 'border-l-4 border-green-500 bg-green-50/50';
@@ -319,7 +374,8 @@ export default function TeamMatchesPage() {
   };
 
   const getResultText = (match: Match) => {
-    if (match.status !== 'completed') return null;
+    // Show result if scores are available
+    if (match.home_score === undefined || match.away_score === undefined) return null;
     
     if (match.winner_id === user.uid) {
       return <span className="text-green-700 font-semibold">Won</span>;
@@ -472,7 +528,7 @@ export default function TeamMatchesPage() {
                           </div>
                         )}
                         <Link
-                          href={`/dashboard/team/fixtures/${match.id}`}
+                          href={`/dashboard/team/fixture/${match.id}`}
                           className="mt-3 w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
                         >
                           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -523,15 +579,15 @@ export default function TeamMatchesPage() {
                           {new Date(match.match_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                         </div>
                       )}
-                      <Link
-                        href={`/dashboard/team/fixtures/${match.id}`}
-                        className="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+                      <button
+                        disabled
+                        className="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-400 bg-gray-100 rounded-lg cursor-not-allowed"
                       >
                         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                         </svg>
-                        Manage Fixtures
-                      </Link>
+                        Not Started
+                      </button>
                     </div>
                   ))}
                 </div>

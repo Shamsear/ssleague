@@ -7,6 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import Link from 'next/link';
 import Image from 'next/image';
+import ContractInfo from '@/components/ContractInfo';
 
 interface TeamData {
   team: {
@@ -14,6 +15,19 @@ interface TeamData {
     name: string;
     logoUrl: string | null;
     balance: number;
+    // Dual currency (Season 16+)
+    dollar_balance?: number;
+    euro_balance?: number;
+    dollar_spent?: number;
+    euro_spent?: number;
+    // Contract fields
+    skipped_seasons?: number;
+    penalty_amount?: number;
+    last_played_season?: string;
+    contract_id?: string;
+    contract_start_season?: string;
+    contract_end_season?: string;
+    is_auto_registered?: boolean;
   };
   totalPlayers: number;
   totalValue: number;
@@ -122,6 +136,7 @@ export default function CommitteeTeamsPage() {
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Team Name</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Players</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Contract</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -145,14 +160,33 @@ export default function CommitteeTeamsPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-700">
-                          <span className="text-[#0066FF] font-semibold">£{teamData.team.balance.toLocaleString()}</span>
-                        </div>
+                        {teamData.team.dollar_balance !== undefined || teamData.team.euro_balance !== undefined ? (
+                          <div className="text-sm text-gray-700">
+                            <div className="mb-1"><span className="font-semibold text-green-700">$</span> {teamData.team.dollar_balance?.toLocaleString?.() ?? '0'}</div>
+                            <div><span className="font-semibold text-blue-700">€</span> {teamData.team.euro_balance?.toLocaleString?.() ?? '0'}</div>
+                          </div>
+                        ) : (
+                          <div className="text-sm font-medium text-gray-700">
+                            <span className="text-[#0066FF] font-semibold">£{teamData.team.balance.toLocaleString()}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap">
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-gray-700 mb-1.5">{teamData.totalPlayers}</span>
                         </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <ContractInfo
+                          skippedSeasons={teamData.team.skipped_seasons}
+                          penaltyAmount={teamData.team.penalty_amount}
+                          lastPlayedSeason={teamData.team.last_played_season}
+                          contractId={teamData.team.contract_id}
+                          contractStartSeason={teamData.team.contract_start_season}
+                          contractEndSeason={teamData.team.contract_end_season}
+                          isAutoRegistered={teamData.team.is_auto_registered}
+                          compact
+                        />
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
@@ -179,7 +213,7 @@ export default function CommitteeTeamsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center">
+                    <td colSpan={6} className="px-6 py-8 text-center">
                       <div className="flex flex-col items-center">
                         <svg className="w-12 h-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -229,10 +263,23 @@ export default function CommitteeTeamsPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-white/50 rounded-lg p-2">
-                      <p className="text-xs text-gray-500 mb-1">Balance</p>
-                      <p className="text-sm font-semibold text-[#0066FF]">£{teamData.team.balance.toLocaleString()}</p>
-                    </div>
+                    {teamData.team.dollar_balance !== undefined || teamData.team.euro_balance !== undefined ? (
+                      <>
+                        <div className="bg-white/50 rounded-lg p-2">
+                          <p className="text-xs text-gray-500 mb-1">$ Balance</p>
+                          <p className="text-sm font-semibold text-green-700">${teamData.team.dollar_balance?.toLocaleString?.() ?? '0'}</p>
+                        </div>
+                        <div className="bg-white/50 rounded-lg p-2">
+                          <p className="text-xs text-gray-500 mb-1">€ Balance</p>
+                          <p className="text-sm font-semibold text-blue-700">€{teamData.team.euro_balance?.toLocaleString?.() ?? '0'}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="bg-white/50 rounded-lg p-2">
+                        <p className="text-xs text-gray-500 mb-1">Balance</p>
+                        <p className="text-sm font-semibold text-[#0066FF]">£{teamData.team.balance.toLocaleString()}</p>
+                      </div>
+                    )}
                     <div className="bg-white/50 rounded-lg p-2">
                       <p className="text-xs text-gray-500 mb-1">Players</p>
                       <p className="text-sm font-semibold text-gray-800">{teamData.totalPlayers}</p>

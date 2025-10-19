@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getActiveSeason } from '@/lib/firebase/seasons';
+import { getActiveSeason, getSeasonById } from '@/lib/firebase/seasons';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   getFixturesByRoundsWithDeadlines,
   TournamentRound,
@@ -14,10 +15,11 @@ import {
   completeRound,
   restartRound
 } from '@/lib/firebase/fixtures';
-import { getISTNow, parseISTDate, createISTDateTime } from '@/lib/utils/timezone';
+import { getISTNow, parseISTDate, createISTDateTime, getISTToday } from '@/lib/utils/timezone';
 
 export default function MatchDayManagementPage() {
   const { user, loading } = useAuth();
+  const { userSeasonId } = usePermissions();
   const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -45,13 +47,24 @@ export default function MatchDayManagementPage() {
     try {
       setIsLoading(true);
 
-      const activeSeason = await getActiveSeason();
-      if (activeSeason) {
-        setActiveSeasonId(activeSeason.id);
-        setSeasonName(activeSeason.name);
+      // Get season - use committee admin's assigned season or active season
+      let seasonId = userSeasonId;
+      let season = null;
+      
+      if (seasonId) {
+        season = await getSeasonById(seasonId);
+      } else {
+        // Fallback to active season for super admins
+        season = await getActiveSeason();
+        seasonId = season?.id || null;
+      }
+
+      if (season && seasonId) {
+        setActiveSeasonId(seasonId);
+        setSeasonName(season.name);
 
         // Load fixture rounds with deadline and status information
-        const fixtureRounds = await getFixturesByRoundsWithDeadlines(activeSeason.id);
+        const fixtureRounds = await getFixturesByRoundsWithDeadlines(seasonId);
         setRounds(fixtureRounds);
         
         console.log('Loaded rounds with deadlines and status:', fixtureRounds.length);
@@ -71,7 +84,33 @@ export default function MatchDayManagementPage() {
     
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
+    
     try {
+      // Check if round has a scheduled date
+      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      
+      if (!round?.scheduled_date) {
+        // Auto-set today's date in IST
+        const formattedDate = getISTToday();
+        
+        // Update the scheduled date first
+        const response = await fetch('/api/round-deadlines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            season_id: activeSeasonId,
+            round_number: roundNumber,
+            leg: leg,
+            scheduled_date: formattedDate,
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to set scheduled date');
+        }
+      }
+      
+      // Start the round
       const result = await startRound(activeSeasonId, roundNumber, leg);
       if (result.success) {
         await loadRounds();
@@ -315,12 +354,12 @@ export default function MatchDayManagementPage() {
                       // Parse deadlines using IST utilities
                       const homeDeadline = createISTDateTime(
                         round.scheduled_date,
-                        round.home_fixture_deadline_time || '17:00'
+                        round.home_fixture_deadline_time || '23:30'
                       );
                       
                       const awayDeadline = createISTDateTime(
                         round.scheduled_date,
-                        round.away_fixture_deadline_time || '17:00'
+                        round.away_fixture_deadline_time || '23:45'
                       );
                       
                       const resultDeadline = new Date(baseDate);
@@ -427,10 +466,10 @@ export default function MatchDayManagementPage() {
                         <td className="px-4 py-4">
                           <div className="text-xs text-gray-600 space-y-1">
                             <div>
-                              <span className="font-medium text-gray-700">Home:</span> {round.home_fixture_deadline_time || '17:00'}
+                              <span className="font-medium text-gray-700">Home:</span> {round.home_fixture_deadline_time || '23:30'}
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Away:</span> {round.away_fixture_deadline_time || '17:00'}
+                              <span className="font-medium text-gray-700">Away:</span> {round.away_fixture_deadline_time || '23:45'}
                             </div>
                             <div>
                               <span className="font-medium text-gray-700">Result:</span> Day {round.result_entry_deadline_day_offset || 2}

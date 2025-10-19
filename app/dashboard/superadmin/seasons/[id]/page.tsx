@@ -5,6 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 export default function SeasonDetails() {
   const { user, loading } = useAuth();
@@ -16,38 +18,18 @@ export default function SeasonDetails() {
   const [loadingSeason, setLoadingSeason] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock data - Replace with actual API calls later
-  const [seasonStats] = useState({
-    totalTeams: 12,
-    newTeams: 3,
-    continuingTeams: 9,
-    totalRounds: 5,
-    activeRounds: 2,
-    completedRounds: 3,
-    totalBids: 156,
-    teamsParticipated: 12,
-    highestBid: 50000,
-    averageBid: 15234,
-    lowestBid: 5000,
+  // Real data states
+  const [seasonStats, setSeasonStats] = useState({
+    totalTeams: 0,
+    totalPlayers: 0,
+    totalRounds: 0,
+    totalBids: 0,
   });
 
-  const [teams] = useState([
-    { id: '1', name: 'Mumbai Warriors', owner: 'John Doe', isNew: false, balance: 45000, bids: 15, totalSpent: 55000 },
-    { id: '2', name: 'Delhi Dynamos', owner: 'Jane Smith', isNew: true, balance: 38000, bids: 12, totalSpent: 62000 },
-    { id: '3', name: 'Bangalore Blasters', owner: 'Mike Johnson', isNew: false, balance: 42000, bids: 18, totalSpent: 58000 },
-  ]);
-
-  const [rounds] = useState([
-    { id: '1', position: 'Round 1', isActive: false, status: 'completed', startTime: new Date('2024-01-15'), bids: 45, teams: 12, players: 15 },
-    { id: '2', position: 'Round 2', isActive: true, status: 'active', startTime: new Date('2024-01-20'), bids: 38, teams: 12, players: 12 },
-    { id: '3', position: 'Round 3', isActive: false, status: 'pending', startTime: null, bids: 0, teams: 0, players: 0 },
-  ]);
-
-  const [topBids] = useState([
-    { playerName: 'Virat Kohli', position: 'Batsman', originalTeam: 'RCB', biddingTeam: 'Mumbai Warriors', amount: 50000, round: 'Round 1' },
-    { playerName: 'Jasprit Bumrah', position: 'Bowler', originalTeam: 'MI', biddingTeam: 'Delhi Dynamos', amount: 48000, round: 'Round 1' },
-    { playerName: 'MS Dhoni', position: 'Wicket Keeper', originalTeam: 'CSK', biddingTeam: 'Bangalore Blasters', amount: 45000, round: 'Round 2' },
-  ]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [rounds, setRounds] = useState<any[]>([]);
+  const [topBids, setTopBids] = useState<any[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -60,19 +42,124 @@ export default function SeasonDetails() {
 
   useEffect(() => {
     if (user && user.role === 'super_admin' && seasonId) {
-      fetchSeason();
+      fetchSeasonData();
     }
   }, [user, seasonId]);
 
-  const fetchSeason = async () => {
+  const fetchSeasonData = async () => {
     try {
       setLoadingSeason(true);
+      
+      // Fetch season details
       const seasonData = await getSeasonById(seasonId);
+      if (!seasonData) {
+        throw new Error('Season not found');
+      }
       setSeason(seasonData);
+      
+      // Fetch team stats for this season
+      const teamStatsQuery = query(
+        collection(db, 'teamstats'),
+        where('season_id', '==', seasonId)
+      );
+      const teamStatsSnapshot = await getDocs(teamStatsQuery);
+      const teamStatsData = teamStatsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Fetch teams data
+      const teamsData: any[] = [];
+      for (const teamStat of teamStatsData) {
+        const teamQuery = query(
+          collection(db, 'teams'),
+          where('id', '==', teamStat.team_id)
+        );
+        const teamSnapshot = await getDocs(teamQuery);
+        if (!teamSnapshot.empty) {
+          const teamDoc = teamSnapshot.docs[0];
+          teamsData.push({
+            id: teamDoc.id,
+            ...teamDoc.data(),
+            stats: teamStat
+          });
+        }
+      }
+      setTeams(teamsData);
+      
+      // Fetch real player stats for this season
+      const playerStatsQuery = query(
+        collection(db, 'realplayerstats'),
+        where('season_id', '==', seasonId)
+      );
+      const playerStatsSnapshot = await getDocs(playerStatsQuery);
+      const playerStatsData = playerStatsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Fetch real players data
+      const playersData: any[] = [];
+      for (const playerStat of playerStatsData) {
+        const playerQuery = query(
+          collection(db, 'realplayers'),
+          where('id', '==', playerStat.player_id)
+        );
+        const playerSnapshot = await getDocs(playerQuery);
+        if (!playerSnapshot.empty) {
+          const playerDoc = playerSnapshot.docs[0];
+          playersData.push({
+            id: playerDoc.id,
+            ...playerDoc.data(),
+            stats: playerStat
+          });
+        }
+      }
+      setPlayers(playersData);
+      
+      // For multi-season types (season 16+), fetch auction data from Neon
+      if (seasonData.type === 'multi') {
+        try {
+          const auctionResponse = await fetch(`/api/seasons/${seasonId}/auction-data`);
+          if (auctionResponse.ok) {
+            const auctionData = await auctionResponse.json();
+            if (auctionData.success) {
+              setRounds(auctionData.data.rounds || []);
+              setTopBids(auctionData.data.topBids || []);
+              
+              // Update stats with auction data
+              setSeasonStats({
+                totalTeams: teamsData.length,
+                totalPlayers: playersData.length,
+                totalRounds: auctionData.data.stats.totalRounds || 0,
+                totalBids: auctionData.data.stats.totalBids || 0,
+              });
+            }
+          }
+        } catch (auctionError) {
+          console.error('Failed to fetch auction data:', auctionError);
+          // Don't fail the whole page, just show without auction data
+          setSeasonStats({
+            totalTeams: teamsData.length,
+            totalPlayers: playersData.length,
+            totalRounds: 0,
+            totalBids: 0,
+          });
+        }
+      } else {
+        // For single-season types (historical), no auction data
+        setSeasonStats({
+          totalTeams: teamsData.length,
+          totalPlayers: playersData.length,
+          totalRounds: 0,
+          totalBids: 0,
+        });
+      }
+      
       setError(null);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch season');
-      console.error('Error fetching season:', err);
+      setError(err.message || 'Failed to fetch season data');
+      console.error('Error fetching season data:', err);
     } finally {
       setLoadingSeason(false);
     }
@@ -237,14 +324,14 @@ export default function SeasonDetails() {
         </div>
 
         {/* Statistics Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           {/* Teams Stats */}
           <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden group hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-600/20 flex items-center justify-center">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 0 0-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 0 1 9.288 0M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6 3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM7 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
                   </svg>
                 </div>
                 <div className="text-right">
@@ -252,68 +339,22 @@ export default function SeasonDetails() {
                   <dd className="text-3xl font-bold text-gray-900">{seasonStats.totalTeams}</dd>
                 </div>
               </div>
-              <div className="text-xs text-gray-500 bg-gray-50/50 rounded-xl p-2">
-                {seasonStats.newTeams} new • {seasonStats.continuingTeams} continuing
-              </div>
             </div>
           </div>
 
-          {/* Rounds Stats */}
+          {/* Players Stats */}
           <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden group hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500/20 to-green-600/20 flex items-center justify-center">
                   <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
                 <div className="text-right">
-                  <dt className="text-sm font-semibold text-gray-600">Rounds</dt>
-                  <dd className="text-3xl font-bold text-gray-900">{seasonStats.totalRounds}</dd>
+                  <dt className="text-sm font-semibold text-gray-600">Total Players</dt>
+                  <dd className="text-3xl font-bold text-gray-900">{seasonStats.totalPlayers}</dd>
                 </div>
-              </div>
-              <div className="text-xs text-gray-500 bg-gray-50/50 rounded-xl p-2">
-                {seasonStats.activeRounds} active • {seasonStats.completedRounds} completed
-              </div>
-            </div>
-          </div>
-
-          {/* Bids Stats */}
-          <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden group hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                  </svg>
-                </div>
-                <div className="text-right">
-                  <dt className="text-sm font-semibold text-gray-600">Total Bids</dt>
-                  <dd className="text-3xl font-bold text-gray-900">{seasonStats.totalBids}</dd>
-                </div>
-              </div>
-              <div className="text-xs text-gray-500 bg-gray-50/50 rounded-xl p-2">
-                {seasonStats.teamsParticipated} teams participated
-              </div>
-            </div>
-          </div>
-
-          {/* Average Bid */}
-          <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden group hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500/20 to-purple-600/20 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                </div>
-                <div className="text-right">
-                  <dt className="text-sm font-semibold text-gray-600">Average Bid</dt>
-                  <dd className="text-3xl font-bold text-gray-900">{seasonStats.averageBid.toLocaleString()}</dd>
-                </div>
-              </div>
-              <div className="text-xs text-gray-500 bg-gray-50/50 rounded-xl p-2">
-                Max: {seasonStats.highestBid.toLocaleString()} • Min: {seasonStats.lowestBid.toLocaleString()}
               </div>
             </div>
           </div>
@@ -331,95 +372,93 @@ export default function SeasonDetails() {
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bids</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Spent</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Matches Played</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white/50 divide-y divide-gray-200">
-                  {teams.map((team) => (
-                    <tr key={team.id} className="hover:bg-white/80 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => alert(`Team details for ${team.name} - To be implemented`)}
-                          className="font-medium text-[#0066FF] hover:text-[#9580FF] transition-colors"
-                        >
-                          {team.name}
-                        </button>
+                  {teams.length > 0 ? (
+                    teams.map((team) => (
+                      <tr key={team.id} className="hover:bg-white/80 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                          {team.team_name || team.name || 'Unknown Team'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {team.owner_name || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {team.stats?.p || team.stats?.points || 0}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {team.stats?.mp || team.stats?.matches_played || 0}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                        No team data available for this season
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{team.owner}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {team.isNew ? (
-                          <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">New</span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">Continuing</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{team.balance.toLocaleString()}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{team.bids}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{team.totalSpent.toLocaleString()}</td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        {/* Rounds Section */}
-        <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden mb-8">
-          <div className="px-6 py-4 bg-gradient-to-r from-[#9580FF]/5 to-[#9580FF]/10 border-b border-[#9580FF]/20">
-            <h3 className="text-lg font-semibold text-[#9580FF]">Rounds ({rounds.length})</h3>
-          </div>
-          <div className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50/50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bids</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teams</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Players</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white/50 divide-y divide-gray-200">
-                  {rounds.map((round) => (
-                    <tr key={round.id} className="hover:bg-white/80 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => alert(`Round details for ${round.position} - To be implemented`)}
-                          className="font-medium text-[#0066FF] hover:text-[#9580FF] transition-colors"
-                        >
-                          {round.position}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {round.isActive ? (
-                          <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Active</span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
-                            {round.status.charAt(0).toUpperCase() + round.status.slice(1)}
+        {/* Rounds Section - Only for multi-season */}
+        {season.type === 'multi' && rounds.length > 0 && (
+          <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden mb-8">
+            <div className="px-6 py-4 bg-gradient-to-r from-[#9580FF]/5 to-[#9580FF]/10 border-b border-[#9580FF]/20">
+              <h3 className="text-lg font-semibold text-[#9580FF]">Auction Rounds ({rounds.length})</h3>
+            </div>
+            <div className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50/50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Round</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bids</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">End Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white/50 divide-y divide-gray-200">
+                    {rounds.map((round: any) => (
+                      <tr key={round.id} className="hover:bg-white/80 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                          Round {round.round_number || round.position}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                            round.status === 'active' 
+                              ? 'bg-green-100 text-green-800' 
+                              : round.status === 'completed'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {round.status?.charAt(0).toUpperCase() + round.status?.slice(1)}
                           </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{formatDateTime(round.startTime)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{round.bids}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{round.teams}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">{round.players}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {round.bidCount || 0}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {round.end_time ? formatDateTime(new Date(round.end_time)) : 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Top Bids Section */}
-        {topBids.length > 0 && (
-          <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden">
+        {/* Top Bids Section - Only for multi-season */}
+        {season.type === 'multi' && topBids.length > 0 && (
+          <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden mb-8">
             <div className="px-6 py-4 bg-gradient-to-r from-[#9580FF]/5 to-[#9580FF]/10 border-b border-[#9580FF]/20">
               <h3 className="text-lg font-semibold text-[#9580FF]">Top Bids</h3>
             </div>
@@ -430,23 +469,29 @@ export default function SeasonDetails() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Team</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bidding Team</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Round</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white/50 divide-y divide-gray-200">
-                    {topBids.map((bid, index) => (
+                    {topBids.map((bid: any, index: number) => (
                       <tr key={index} className="hover:bg-white/80 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{bid.playerName}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">{bid.position}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">{bid.originalTeam}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">{bid.biddingTeam}</td>
-                        <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-900">
-                          {bid.amount.toLocaleString()}
+                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                          {bid.player_name || 'Unknown'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">{bid.round}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {bid.player_position || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {bid.player_team || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-900">
+                          €{bid.amount?.toLocaleString() || 0}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          Round {bid.round_number || 'N/A'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

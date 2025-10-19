@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getAllCategories,
-  createCategory,
-  CreateCategoryData,
-} from '@/lib/firebase/categories';
+import { adminDb } from '@/lib/firebase/admin';
 
 /**
  * GET /api/categories
@@ -11,7 +7,16 @@ import {
  */
 export async function GET() {
   try {
-    const categories = await getAllCategories();
+    // Use Admin SDK to fetch categories
+    const categoriesSnapshot = await adminDb
+      .collection('categories')
+      .orderBy('priority', 'asc')
+      .get();
+    
+    const categories = categoriesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
     
     return NextResponse.json({
       success: true,
@@ -41,7 +46,6 @@ export async function POST(request: NextRequest) {
     // Validate required fields
     const requiredFields = [
       'name',
-      'color',
       'priority',
       'points_same_category',
       'points_one_level_diff',
@@ -63,18 +67,6 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: `Missing required fields: ${missingFields.join(', ')}`,
-        },
-        { status: 400 }
-      );
-    }
-    
-    // Validate color
-    const validColors = ['red', 'blue', 'black', 'white'];
-    if (!validColors.includes(body.color)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Invalid color. Must be one of: ${validColors.join(', ')}`,
         },
         { status: 400 }
       );
@@ -121,10 +113,47 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    const categoryData: CreateCategoryData = {
+    // Check if category with same name exists
+    const existingCategorySnapshot = await adminDb
+      .collection('categories')
+      .where('name', '==', body.name.trim())
+      .limit(1)
+      .get();
+    
+    if (!existingCategorySnapshot.empty) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Category with name "${body.name.trim()}" already exists`,
+        },
+        { status: 400 }
+      );
+    }
+    
+    // Check if priority is already taken
+    const prioritySnapshot = await adminDb
+      .collection('categories')
+      .where('priority', '==', priority)
+      .limit(1)
+      .get();
+    
+    if (!prioritySnapshot.empty) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Priority ${priority} is already assigned to another category`,
+        },
+        { status: 400 }
+      );
+    }
+    
+    // Generate category ID
+    const categoryId = `cat_${body.name.trim().toLowerCase().replace(/\s+/g, '_')}`;
+    
+    const categoryData = {
       name: body.name.trim(),
-      color: body.color,
-      priority: parseInt(body.priority),
+      icon: body.icon || '⭐',
+      priority: priority,
       points_same_category: parseInt(body.points_same_category),
       points_one_level_diff: parseInt(body.points_one_level_diff),
       points_two_level_diff: parseInt(body.points_two_level_diff),
@@ -137,9 +166,16 @@ export async function POST(request: NextRequest) {
       loss_one_level_diff: parseInt(body.loss_one_level_diff),
       loss_two_level_diff: parseInt(body.loss_two_level_diff),
       loss_three_level_diff: parseInt(body.loss_three_level_diff),
+      created_at: new Date(),
     };
     
-    const category = await createCategory(categoryData);
+    // Create category using Admin SDK
+    await adminDb.collection('categories').doc(categoryId).set(categoryData);
+    
+    const category = {
+      id: categoryId,
+      ...categoryData,
+    };
     
     return NextResponse.json(
       {

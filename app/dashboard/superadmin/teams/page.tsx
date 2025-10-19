@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { TeamData } from '@/types/team';
 import {
-  getAllTeams,
   createTeam,
   updateTeam,
   deleteTeam,
@@ -13,12 +12,16 @@ import {
   getTeamStatistics,
 } from '@/lib/firebase/teams';
 import { getAllSeasons } from '@/lib/firebase/seasons';
+import { useCachedTeams, useRefreshCache } from '@/hooks/useCachedData';
 
 export default function TeamsManagement() {
   const { user, loading } = useAuth();
   const router = useRouter();
   
-  const [teams, setTeams] = useState<TeamData[]>([]);
+  // Use cached teams data (reduces Firebase reads from 20+ to 0 per user!)
+  const { data: cachedTeams, isLoading: teamsLoading, refetch: refetchTeams } = useCachedTeams();
+  const teams = cachedTeams || [];
+  
   const [stats, setStats] = useState({
     totalTeams: 0,
     activeTeams: 0,
@@ -64,16 +67,18 @@ export default function TeamsManagement() {
       setLoadingData(true);
       setError(null);
       
-      // Load teams, stats, and seasons in parallel - now using team_seasons collection
-      const [teamsData, statsData, seasonsData] = await Promise.all([
-        getAllTeams(),
+      // Load stats and seasons (teams come from cached hook)
+      // This reduces Firebase reads - teams are now cached!
+      const [statsData, seasonsData] = await Promise.all([
         getTeamStatistics(),
         getAllSeasons(),
       ]);
       
-      setTeams(teamsData);
       setStats(statsData);
       setSeasons(seasonsData.map(s => ({ id: s.id, name: s.name })));
+      
+      // Refresh cached teams data
+      await refetchTeams();
     } catch (err) {
       console.error('Error loading data:', err);
       console.error('Error stack:', (err as Error)?.stack);
@@ -230,7 +235,7 @@ export default function TeamsManagement() {
     return matchesSearch && matchesSeason && matchesStatus;
   });
 
-  if (loading || loadingData) {
+  if (loading || loadingData || teamsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -282,7 +287,7 @@ export default function TeamsManagement() {
         )}
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <div className="glass rounded-2xl p-6 shadow-lg backdrop-blur-md border border-white/20">
             <div className="flex items-center justify-between">
               <div>
@@ -320,20 +325,6 @@ export default function TeamsManagement() {
               <div className="p-3 rounded-xl bg-gradient-to-br from-gray-400/20 to-gray-400/10">
                 <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="glass rounded-2xl p-6 shadow-lg backdrop-blur-md border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Players</p>
-                <p className="text-3xl font-bold text-purple-600">{stats.totalPlayers}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-500/10">
-                <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zm-4 7a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
             </div>
@@ -423,8 +414,6 @@ export default function TeamsManagement() {
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Team</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Owner</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Season</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Players</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -468,18 +457,6 @@ export default function TeamsManagement() {
                           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                             {team.season_name}
                           </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-semibold text-gray-900">{formatCurrency(team.balance)}</div>
-                          <div className="text-xs text-gray-500">of {formatCurrency(team.initial_balance)}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <svg className="w-4 h-4 text-gray-400 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zm-4 7a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                            <span className="text-sm text-gray-700">{team.football_players_count}</span>
-                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
@@ -587,14 +564,6 @@ export default function TeamsManagement() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Balance</p>
-                        <p className="text-sm font-semibold text-gray-900">{formatCurrency(team.balance)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Players</p>
-                        <p className="text-sm font-semibold text-gray-900">{team.football_players_count}</p>
-                      </div>
                       <div>
                         <p className="text-xs text-gray-500">Season</p>
                         <p className="text-sm font-semibold text-gray-900">{team.season_name}</p>

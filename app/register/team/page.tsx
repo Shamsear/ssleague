@@ -108,103 +108,49 @@ function SeasonRegistrationContent() {
     setIsSubmitting(true);
 
     try {
-      // Import Firestore functions dynamically
-      const { db } = await import('@/lib/firebase/config');
-      const { doc, getDoc, setDoc, serverTimestamp, updateDoc, increment } = await import('firebase/firestore');
-
       const userId = user.uid;
-      const teamSeasonId = `${userId}_${seasonId}`;
-
-      // Check if already registered
-      try {
-        const existingDoc = await getDoc(doc(db, 'team_seasons', teamSeasonId));
-        if (existingDoc.exists()) {
-          const data = existingDoc.data();
-          alert(data.status === 'registered' 
-            ? 'You have already joined this season' 
-            : 'You have already declined this season');
-          setIsSubmitting(false);
-          return;
-        }
-      } catch (readError: any) {
-        // Document doesn't exist or no read permission (new registration)
-        console.log('No existing registration found, proceeding with new registration');
-      }
 
       const startingBalance = season.starting_balance || 15000;
+      const teamName = (user as any).teamName || (user as any).username || 'Team';
 
       if (action === 'join') {
-        // Create team_seasons record
-        await setDoc(doc(db, 'team_seasons', teamSeasonId), {
-          team_id: userId,
-          season_id: seasonId,
-          team_name: (user as any).teamName || (user as any).username || 'Team',
-          team_email: user.email,
-          team_logo: (user as any).teamLogo || '',
-          status: 'registered',
-          budget: startingBalance,
-          starting_balance: startingBalance,
-          total_spent: 0,
-          players_count: 0,
-          position_counts: {
-            GK: 0,
-            CB: 0,
-            LB: 0,
-            RB: 0,
-            DMF: 0,
-            CMF: 0,
-            AMF: 0,
-            LMF: 0,
-            RMF: 0,
-            LWF: 0,
-            RWF: 0,
-            SS: 0,
-            CF: 0,
+        // Use API endpoint for proper multi-season registration
+        const response = await fetch(`/api/seasons/${seasonId}/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          joined_at: serverTimestamp(),
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
+          body: JSON.stringify({
+            action: 'join',
+            userId: userId,
+          }),
         });
-
-        // Update season participant count
-        await updateDoc(doc(db, 'seasons', seasonId!), {
-          participant_count: increment(1),
-          updated_at: serverTimestamp(),
-        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.message || 'Registration failed');
+        }
 
         alert(`Successfully joined ${season.name}!`);
       } else {
-        // Create declined record
-        await setDoc(doc(db, 'team_seasons', teamSeasonId), {
-          team_id: userId,
-          season_id: seasonId,
-          team_name: (user as any).teamName || (user as any).username || 'Team',
-          team_email: user.email,
-          team_logo: (user as any).teamLogo || '',
-          status: 'declined',
-          budget: 0,
-          starting_balance: 0,
-          total_spent: 0,
-          players_count: 0,
-          position_counts: {
-            GK: 0,
-            CB: 0,
-            LB: 0,
-            RB: 0,
-            DMF: 0,
-            CMF: 0,
-            AMF: 0,
-            LMF: 0,
-            RMF: 0,
-            LWF: 0,
-            RWF: 0,
-            SS: 0,
-            CF: 0,
+        // Use API endpoint for proper multi-season decline
+        const response = await fetch(`/api/seasons/${seasonId}/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          declined_at: serverTimestamp(),
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
+          body: JSON.stringify({
+            action: 'decline',
+            userId: userId,
+          }),
         });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.message || 'Decline failed');
+        }
 
         alert(`You have declined ${season.name}. You can join future seasons.`);
       }
@@ -300,18 +246,33 @@ function SeasonRegistrationContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               <div className="glass rounded-2xl p-6 border border-white/10">
                 <dt className="text-sm font-semibold text-gray-600 mb-2">Your Team</dt>
                 <dd className="text-xl font-bold text-gray-900">{user.teamName || 'My Team'}</dd>
               </div>
               <div className="glass rounded-2xl p-6 border border-white/10">
-                <dt className="text-sm font-semibold text-gray-600 mb-2">Starting Balance</dt>
-                <dd className="text-xl font-bold text-gray-900">£15,000</dd>
+                <dt className="text-sm font-semibold text-gray-600 mb-2">Season Status</dt>
+                <dd className="text-xl font-bold text-gray-900">{season.is_active ? 'Active' : season.status === 'upcoming' ? 'Upcoming' : 'Scheduled'}</dd>
               </div>
-              <div className="glass rounded-2xl p-6 border border-white/10">
-                <dt className="text-sm font-semibold text-gray-600 mb-2">Season Type</dt>
-                <dd className="text-xl font-bold text-gray-900">Player Auction</dd>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div className="glass rounded-2xl p-6 border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+                <div className="flex items-center justify-between mb-2">
+                  <dt className="text-sm font-semibold text-blue-900">Football Players Budget</dt>
+                  <span className="text-2xl">⚽</span>
+                </div>
+                <dd className="text-3xl font-bold text-blue-900">€10,000</dd>
+                <p className="text-xs text-blue-700 mt-2">For FIFA/Football players</p>
+              </div>
+              <div className="glass rounded-2xl p-6 border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+                <div className="flex items-center justify-between mb-2">
+                  <dt className="text-sm font-semibold text-green-900">Real Players Budget</dt>
+                  <span className="text-2xl">🎮</span>
+                </div>
+                <dd className="text-3xl font-bold text-green-900">$5,000</dd>
+                <p className="text-xs text-green-700 mt-2">For real/human players</p>
               </div>
             </div>
 
@@ -326,19 +287,19 @@ function SeasonRegistrationContent() {
                 <div>
                   <h4 className="font-semibold text-blue-900 mb-2">✅ As a Participant:</h4>
                   <ul className="text-blue-800 text-sm space-y-1">
-                    <li>• Receive £15,000 to spend on players</li>
-                    <li>• Participate in auction rounds for different positions</li>
-                    <li>• Build your squad through strategic bidding</li>
-                    <li>• Compete with other teams for top players</li>
+                    <li>• Receive €10,000 for football players + $5,000 for real players</li>
+                    <li>• Build your squad with both FIFA and real players</li>
+                    <li>• Track your team's performance throughout the season</li>
+                    <li>• Compete with other teams in the league</li>
                   </ul>
                 </div>
                 <div>
                   <h4 className="font-semibold text-blue-900 mb-2">🎯 Season Features:</h4>
                   <ul className="text-blue-800 text-sm space-y-1">
-                    <li>• Real-time bidding system</li>
-                    <li>• Position-based auction rounds</li>
-                    <li>• Team budget management</li>
-                    <li>• Season leaderboards and stats</li>
+                    <li>• Dual currency system - separate budgets for different player types</li>
+                    <li>• Multi-season support - track performance across seasons</li>
+                    <li>• Squad building with football and real players</li>
+                    <li>• Season leaderboards and comprehensive statistics</li>
                   </ul>
                 </div>
               </div>
@@ -359,8 +320,21 @@ function SeasonRegistrationContent() {
                   </p>
                   <div className="bg-green-50 border border-green-200 rounded-2xl p-6 mb-8">
                     <p className="text-green-800 font-medium mb-2">✓ Registration Confirmed</p>
+                    <p className="text-green-700 text-sm mb-3">
+                      Your starting budgets have been allocated:
+                    </p>
+                    <div className="flex gap-4 justify-center mb-3">
+                      <div className="bg-white rounded-lg px-4 py-2">
+                        <p className="text-xs text-blue-600 font-medium">Football Players</p>
+                        <p className="text-lg font-bold text-blue-900">€10,000</p>
+                      </div>
+                      <div className="bg-white rounded-lg px-4 py-2">
+                        <p className="text-xs text-green-600 font-medium">Real Players</p>
+                        <p className="text-lg font-bold text-green-900">$5,000</p>
+                      </div>
+                    </div>
                     <p className="text-green-700 text-sm">
-                      You can now participate in all auction rounds for this season. Check your dashboard for active rounds and team information.
+                      Check your dashboard to start building your squad!
                     </p>
                   </div>
                   <Link

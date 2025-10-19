@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getActiveSeason } from '@/lib/firebase/seasons';
+import { usePermissions } from '@/hooks/usePermissions';
+import { getSeasonById } from '@/lib/firebase/seasons';
 import { getFixturesByRounds, TournamentRound } from '@/lib/firebase/fixtures';
 
 interface Team {
@@ -23,6 +24,7 @@ interface Team {
 export default function TeamManagementPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { userSeasonId } = usePermissions();
   const [teams, setTeams] = useState<Team[]>([]);
   const [seasonName, setSeasonName] = useState<string>('');
   const [isLoadingTeams, setIsLoadingTeams] = useState(true);
@@ -45,25 +47,31 @@ export default function TeamManagementPage() {
         return;
       }
       
+      if (!userSeasonId) {
+        console.log('Team fetch skipped: no season ID');
+        setIsLoadingTeams(false);
+        return;
+      }
+      
       try {
         setIsLoadingTeams(true);
-        console.log('🔍 Fetching active season...');
+        console.log('🔍 Fetching season:', userSeasonId);
         
-        // Get active season
-        const activeSeason = await getActiveSeason();
-        console.log('📅 Active season:', activeSeason);
+        // Get current season
+        const season = await getSeasonById(userSeasonId);
+        console.log('📅 Season:', season);
         
-        if (!activeSeason) {
-          console.warn('⚠️ No active season found');
+        if (!season) {
+          console.warn('⚠️ Season not found');
           setIsLoadingTeams(false);
           return;
         }
         
-        setSeasonName(activeSeason.name);
-        console.log(`✅ Season: ${activeSeason.name} (${activeSeason.id})`);
+        setSeasonName(season.name);
+        console.log(`✅ Season: ${season.name} (${season.id})`);
         
-        // Fetch teams for active season
-        const url = `/api/team/all?season_id=${activeSeason.id}`;
+        // Fetch teams for season
+        const url = `/api/team/all?season_id=${userSeasonId}`;
         console.log('🔍 Fetching teams from:', url);
         
         const response = await fetch(url);
@@ -88,7 +96,7 @@ export default function TeamManagementPage() {
         // Fetch recent matches
         try {
           setIsLoadingMatches(true);
-          const fixtureRounds = await getFixturesByRounds(activeSeason.id);
+          const fixtureRounds = await getFixturesByRounds(userSeasonId);
           
           // Get all completed matches from all rounds
           const allMatches = fixtureRounds.flatMap(round => 
@@ -183,18 +191,6 @@ export default function TeamManagementPage() {
                   <h3 className="ml-3 text-lg font-semibold text-gray-800 group-hover:text-[#0066FF] transition-colors">Categories</h3>
                 </div>
                 <p className="text-sm text-gray-600">Manage player categories, colors and point configurations</p>
-              </Link>
-              
-              <Link href="/dashboard/committee/team-management/team-members" className="glass group rounded-2xl p-5 border border-white/10 hover:border-[#0066FF]/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
-                <div className="flex items-center">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 text-[#0066FF] group-hover:from-[#0066FF]/30 group-hover:to-[#0066FF]/20 transition-all">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <h3 className="ml-3 text-lg font-semibold text-gray-800 group-hover:text-[#0066FF] transition-colors">Team Members</h3>
-                </div>
-                <p className="text-sm text-gray-600">Add or edit team members and assign them to categories</p>
               </Link>
               
               <Link href="/dashboard/committee/team-management/player-leaderboard" className="glass group rounded-2xl p-5 border border-white/10 hover:border-[#0066FF]/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
@@ -386,9 +382,15 @@ export default function TeamManagementPage() {
                     
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Squad Value</span>
-                        <span className="font-semibold text-gray-900">
-                          ${teamData.totalValue.toLocaleString()}
+                        <span className="text-gray-600">Real Players ($)</span>
+                        <span className="font-semibold text-blue-600">
+                          ${(teamData as any).realPlayerSpent?.toLocaleString() || '0'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Football (€)</span>
+                        <span className="font-semibold text-purple-600">
+                          €{(teamData as any).footballSpent?.toLocaleString() || '0'}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
@@ -398,9 +400,15 @@ export default function TeamManagementPage() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Balance</span>
+                        <span className="text-gray-600">$ Balance</span>
                         <span className="font-semibold text-green-600">
-                          ${teamData.team.balance.toLocaleString()}
+                          ${teamData.team.dollar_balance?.toLocaleString() || '0'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">€ Balance</span>
+                        <span className="font-semibold text-green-600">
+                          €{teamData.team.euro_balance?.toLocaleString() || '0'}
                         </span>
                       </div>
                     </div>
