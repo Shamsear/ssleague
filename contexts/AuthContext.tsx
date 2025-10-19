@@ -27,6 +27,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Safety timeout: stop loading after 10 seconds to prevent infinite loading
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.warn('Auth initialization timeout - stopping loading state');
+        setLoading(false);
+        setError('Authentication initialization timed out. Please refresh the page.');
+      }
+    }, 10000);
+    
+    return () => clearTimeout(timeout);
+  }, [loading]);
 
   const refreshUser = async () => {
     if (firebaseUser) {
@@ -39,6 +52,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
   };
+
+  // Safety timeout: stop loading after 8 seconds
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.warn('Auth initialization timeout');
+        setLoading(false);
+      }
+    }, 8000);
+    return () => clearTimeout(timeout);
+  }, [loading]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {

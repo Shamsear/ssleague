@@ -77,18 +77,8 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/players" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Players
-                </Link>
-              </li>
-              <li>
-                <Link href="/teams" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Teams
-                </Link>
-              </li>
-              <li>
-                <Link href="/seasons" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Seasons
+                <Link href="/dashboard" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
+                  Dashboard
                 </Link>
               </li>
             </ul>
@@ -109,35 +99,8 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/dashboard" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Dashboard
-                </Link>
-              </li>
-            </ul>
-          </div>
-          
-          {/* Support */}
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-3 text-xs uppercase tracking-wide">Support</h3>
-            <ul className="space-y-2">
-              <li>
-                <Link href="/help" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Help Center
-                </Link>
-              </li>
-              <li>
-                <Link href="/rules" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Auction Rules
-                </Link>
-              </li>
-              <li>
-                <Link href="/contact" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Contact Us
-                </Link>
-              </li>
-              <li>
-                <Link href="/faq" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  FAQ
+                <Link href="/register" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
+                  Join League
                 </Link>
               </li>
             </ul>
@@ -150,15 +113,9 @@ export default function Footer() {
             © {currentYear} SS League. All rights reserved. Made with ❤️
           </p>
           <div className="flex items-center gap-4">
-            <Link href="/privacy" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150">
-              Privacy
-            </Link>
-            <Link href="/terms" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150">
-              Terms
-            </Link>
-            <Link href="/cookies" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150">
-              Cookies
-            </Link>
+            <span className="text-gray-600 text-xs">
+              v1.0.0
+            </span>
           </div>
         </div>
       </div>
