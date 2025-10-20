@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { db } from '@/lib/firebase/config'
 import { collection, getDocs } from 'firebase/firestore'
@@ -36,6 +36,7 @@ export default function CommitteePlayersPage() {
   const [positionFilter, setPositionFilter] = useState('')
   const [eligibilityFilter, setEligibilityFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [totalPlayers, setTotalPlayers] = useState(0)
   const [teamsCache, setTeamsCache] = useState<Map<string, { id: string; name: string }>>(new Map())
   const [initialLoad, setInitialLoad] = useState(true)
 
@@ -48,25 +49,37 @@ export default function CommitteePlayersPage() {
     }
   }, [user, authLoading, router])
 
-  useEffect(() => {
-    const fetchPlayers = async () => {
-      setLoading(true)
+  // Fetch players with pagination and filters
+  const fetchPlayers = useCallback(async () => {
+    setLoading(true)
+    
+    try {
+      console.log('🔄 Fetching players from Neon and teams from Firestore')
       
-      try {
-        console.log('🔄 Fetching players from Neon and teams from Firestore')
-        
-        // Fetch teams from Firestore (keep) and players from Neon (new)
-        const [teamsSnapshot, playersResponse] = await Promise.all([
-          getDocs(collection(db, 'teams')),
-          fetch('/api/players')
-        ])
-        
-        const { data: playersData, success } = await playersResponse.json()
-        if (!success) {
-          throw new Error('Failed to fetch players')
-        }
-        
-        console.log(`✅ Fetched ${playersData.length} players from Neon, ${teamsSnapshot.size} teams from Firestore`)
+      // Build query params
+      const params = new URLSearchParams({
+        limit: PLAYERS_PER_PAGE.toString(),
+        offset: ((currentPage - 1) * PLAYERS_PER_PAGE).toString(),
+      })
+      
+      if (positionFilter) params.append('position', positionFilter)
+      if (eligibilityFilter === 'eligible') params.append('is_auction_eligible', 'true')
+      
+      // Fetch teams from Firestore (keep) and players from Neon (new)
+      const [teamsSnapshot, playersResponse] = await Promise.all([
+        getDocs(collection(db, 'teams')),
+        fetch(`/api/players?${params}`)
+      ])
+      
+      const { data: playersData, success, pagination } = await playersResponse.json()
+      if (!success) {
+        throw new Error('Failed to fetch players')
+      }
+      
+      console.log(`✅ Fetched ${playersData.length} players from Neon, ${teamsSnapshot.size} teams from Firestore`)
+      
+      // Update total count for pagination
+      setTotalPlayers(pagination?.total || playersData.length)
         
         // Build teams cache
         const teamsMap = new Map<string, { id: string; name: string }>()
@@ -99,17 +112,19 @@ export default function CommitteePlayersPage() {
         setLoading(false)
         setInitialLoad(false)
       }
-    }
+    }, [currentPage, positionFilter, eligibilityFilter])
 
+  useEffect(() => {
     if (user?.role === 'committee_admin') {
       fetchPlayers()
     }
-  }, [user])
+  }, [user, fetchPlayers])
 
+  // Client-side search filter only (position and eligibility are server-side now)
   useEffect(() => {
     let filtered = players
 
-    // Filter by search term
+    // Filter by search term (client-side only)
     if (searchTerm.trim()) {
       const searchLower = searchTerm.toLowerCase()
       filtered = filtered.filter(p =>
@@ -119,19 +134,13 @@ export default function CommitteePlayersPage() {
       )
     }
 
-    // Filter by position
-    if (positionFilter) {
-      filtered = filtered.filter(p => p.position === positionFilter)
-    }
-
-    // Filter by eligibility
-    if (eligibilityFilter === 'eligible') {
-      filtered = filtered.filter(p => p.is_auction_eligible)
-    }
-
     setFilteredPlayers(filtered)
-    setCurrentPage(1) // Reset to first page when filters change
-  }, [searchTerm, positionFilter, eligibilityFilter, players])
+  }, [searchTerm, players])
+  
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [positionFilter, eligibilityFilter])
 
   const handleDelete = async (playerId: string) => {
     if (!confirm('Are you sure you want to delete this player?')) return
@@ -161,14 +170,12 @@ export default function CommitteePlayersPage() {
   )
   
   const totalPages = useMemo(() => 
-    Math.ceil(filteredPlayers.length / PLAYERS_PER_PAGE),
-    [filteredPlayers.length]
+    Math.ceil(totalPlayers / PLAYERS_PER_PAGE),
+    [totalPlayers]
   )
   
-  const paginatedPlayers = useMemo(() => {
-    const startIndex = (currentPage - 1) * PLAYERS_PER_PAGE
-    return filteredPlayers.slice(startIndex, startIndex + PLAYERS_PER_PAGE)
-  }, [filteredPlayers, currentPage])
+  // Use filtered players directly (already paginated from server)
+  const paginatedPlayers = filteredPlayers
 
   const getRatingColor = (rating?: number) => {
     if (!rating) return 'bg-gray-100 text-gray-800'
