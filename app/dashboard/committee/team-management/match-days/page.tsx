@@ -90,39 +90,11 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       
       if (!round?.scheduled_date) {
-        // Auto-set today's date in IST
-        const now = new Date();
-        const istDateString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // en-CA gives YYYY-MM-DD format
-        const formattedDate = istDateString;
-        
-        console.log('Current UTC time:', now.toISOString());
-        console.log('IST date calculated:', formattedDate);
-        console.log('Expected date: 2025-10-19');
-        
-        // Set the scheduled date AND start the round in a single call
-        const response = await fetch('/api/round-deadlines', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            season_id: activeSeasonId,
-            round_number: roundNumber,
-            leg: leg,
-            scheduled_date: formattedDate,
-            status: 'active',
-            is_active: true,
-          }),
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to start round');
-        }
-        
-        // Reload rounds to show updated status
-        await loadRounds();
-        return; // Exit early since we already started the round
+        alert('Please set a scheduled date before starting the round. Use "Edit Deadlines" to set the date.');
+        return;
       }
       
-      // If scheduled_date already exists, just start the round normally
+      // Start the round
       const result = await startRound(activeSeasonId, roundNumber, leg);
       if (result.success) {
         await loadRounds();
@@ -360,45 +332,75 @@ export default function MatchDayManagementPage() {
 
                       // Get current time in IST
                       const now = getISTNow();
-                      // Parse scheduled date as IST
-                      const baseDate = parseISTDate(round.scheduled_date);
+                      
+                      // Extract date string from scheduled_date (could be full timestamp or date string)
+                      const scheduledDateStr = typeof round.scheduled_date === 'string' && round.scheduled_date.includes('T')
+                        ? round.scheduled_date.split('T')[0]  // Extract YYYY-MM-DD from timestamp
+                        : round.scheduled_date;
                       
                       // Parse deadlines using IST utilities
                       const homeDeadline = createISTDateTime(
-                        round.scheduled_date,
+                        scheduledDateStr,
                         round.home_fixture_deadline_time || '23:30'
                       );
                       
                       const awayDeadline = createISTDateTime(
-                        round.scheduled_date,
+                        scheduledDateStr,
                         round.away_fixture_deadline_time || '23:45'
                       );
                       
-                      const resultDeadline = new Date(baseDate);
-                      resultDeadline.setDate(resultDeadline.getDate() + (round.result_entry_deadline_day_offset || 2));
-                      resultDeadline.setHours(
-                        ...((round.result_entry_deadline_time || '00:30').split(':').map(Number) as [number, number]),
-                        0,
-                        0
+                      // Result deadline calculation - add days to the scheduled date
+                      const scheduledDate = new Date(scheduledDateStr + 'T00:00:00+05:30');
+                      const offsetDays = round.result_entry_deadline_day_offset || 2;
+                      const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+                      const resultYear = resultDateObj.getFullYear();
+                      const resultMonth = String(resultDateObj.getMonth() + 1).padStart(2, '0');
+                      const resultDay = String(resultDateObj.getDate()).padStart(2, '0');
+                      const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
+                      const resultDeadline = createISTDateTime(
+                        resultDateStr,
+                        round.result_entry_deadline_time || '00:30'
                       );
 
+                      console.log('🕐 Match-Days Phase Debug:', {
+                        round: `${round.round_number}_${round.leg}`,
+                        scheduled_date: round.scheduled_date,
+                        home_time: round.home_fixture_deadline_time,
+                        away_time: round.away_fixture_deadline_time,
+                        result_time: round.result_entry_deadline_time,
+                        result_offset: round.result_entry_deadline_day_offset,
+                        now: now.toISOString(),
+                        homeDeadline: homeDeadline instanceof Date && !isNaN(homeDeadline.getTime()) ? homeDeadline.toISOString() : 'INVALID',
+                        awayDeadline: awayDeadline instanceof Date && !isNaN(awayDeadline.getTime()) ? awayDeadline.toISOString() : 'INVALID',
+                        resultDeadline: resultDeadline instanceof Date && !isNaN(resultDeadline.getTime()) ? resultDeadline.toISOString() : 'INVALID',
+                        'now < homeDeadline': now < homeDeadline,
+                        'now < awayDeadline': now < awayDeadline,
+                        'now < resultDeadline': now < resultDeadline
+                      });
+
                       if (now < homeDeadline) {
-                        const remaining = Math.ceil((homeDeadline.getTime() - now.getTime()) / (1000 * 60));
+                        const remainingMinutes = Math.ceil((homeDeadline.getTime() - now.getTime()) / (1000 * 60));
+                        const remainingDisplay = remainingMinutes >= 60 
+                          ? `${Math.ceil(remainingMinutes / 60)}h left`
+                          : `${remainingMinutes}m left`;
                         return { 
                           phase: 'home_fixture', 
                           phaseLabel: 'Home Fixture Setup',
                           color: 'bg-blue-100 text-blue-700',
                           deadline: homeDeadline,
-                          remaining: `${remaining}m left`
+                          remaining: remainingDisplay
                         };
                       } else if (now < awayDeadline) {
-                        const remaining = Math.ceil((awayDeadline.getTime() - now.getTime()) / (1000 * 60));
+                        const remainingMinutes = Math.ceil((awayDeadline.getTime() - now.getTime()) / (1000 * 60));
+                        const remainingDisplay = remainingMinutes >= 60 
+                          ? `${Math.ceil(remainingMinutes / 60)}h left`
+                          : `${remainingMinutes}m left`;
                         return { 
                           phase: 'fixture_entry', 
                           phaseLabel: 'Fixture Entry',
                           color: 'bg-purple-100 text-purple-700',
                           deadline: awayDeadline,
-                          remaining: `${remaining}m left`
+                          remaining: remainingDisplay
                         };
                       } else if (now < resultDeadline) {
                         const remaining = Math.ceil((resultDeadline.getTime() - now.getTime()) / (1000 * 60 * 60));

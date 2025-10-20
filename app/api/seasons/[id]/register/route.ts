@@ -179,16 +179,23 @@ export async function POST(
         const currentSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${seasonId}`);
         batch.set(currentSeasonStatsRef, {
           team_id: teamDocId,
+          team_name: teamName,
           season_id: seasonId,
-          season_name: seasonData.name || 'Active Season',
-          players_count: 0,
-          total_goals: 0,
-          total_points: 0,
+          owner_name: userData.username || '',
+          rank: 0, // Will be set at season end
+          points: 0, // Will be calculated from wins/draws
           matches_played: 0,
-          matches_won: 0,
-          matches_drawn: 0,
-          matches_lost: 0,
-          goals_conceded: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goals_for: 0,
+          goals_against: 0,
+          goal_difference: 0,
+          win_percentage: 0,
+          cup_achievement: '', // Will be set if team wins cup
+          cups: [], // Array of cup achievements
+          players_count: 0,
+          processed_fixtures: [], // Track processed fixtures to prevent duplicates
           created_at: FieldValue.serverTimestamp(),
           updated_at: FieldValue.serverTimestamp()
         });
@@ -196,16 +203,23 @@ export async function POST(
         const nextSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${nextSeasonId}`);
         batch.set(nextSeasonStatsRef, {
           team_id: teamDocId,
+          team_name: teamName,
           season_id: nextSeasonId,
-          season_name: `Season ${seasonNumber + 1}`,
-          players_count: 0,
-          total_goals: 0,
-          total_points: 0,
+          owner_name: userData.username || '',
+          rank: 0,
+          points: 0,
           matches_played: 0,
-          matches_won: 0,
-          matches_drawn: 0,
-          matches_lost: 0,
-          goals_conceded: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goals_for: 0,
+          goals_against: 0,
+          goal_difference: 0,
+          win_percentage: 0,
+          cup_achievement: '',
+          cups: [],
+          players_count: 0,
+          processed_fixtures: [],
           created_at: FieldValue.serverTimestamp(),
           updated_at: FieldValue.serverTimestamp()
         });
@@ -243,16 +257,23 @@ export async function POST(
         const currentSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${seasonId}`);
         batch.set(currentSeasonStatsRef, {
           team_id: teamDocId,
+          team_name: teamName,
           season_id: seasonId,
-          season_name: seasonData.name || 'Active Season',
-          players_count: 0,
-          total_goals: 0,
-          total_points: 0,
+          owner_name: userData.username || '',
+          rank: 0, // Will be set at season end
+          points: 0, // Will be calculated from wins/draws
           matches_played: 0,
-          matches_won: 0,
-          matches_drawn: 0,
-          matches_lost: 0,
-          goals_conceded: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goals_for: 0,
+          goals_against: 0,
+          goal_difference: 0,
+          win_percentage: 0,
+          cup_achievement: '', // Will be set if team wins cup
+          cups: [], // Array of cup achievements
+          players_count: 0,
+          processed_fixtures: [], // Track processed fixtures to prevent duplicates
           created_at: FieldValue.serverTimestamp(),
           updated_at: FieldValue.serverTimestamp()
         });
@@ -260,16 +281,23 @@ export async function POST(
         const nextSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${nextSeasonId}`);
         batch.set(nextSeasonStatsRef, {
           team_id: teamDocId,
+          team_name: teamName,
           season_id: nextSeasonId,
-          season_name: `Season ${seasonNumber + 1}`,
-          players_count: 0,
-          total_goals: 0,
-          total_points: 0,
+          owner_name: userData.username || '',
+          rank: 0,
+          points: 0,
           matches_played: 0,
-          matches_won: 0,
-          matches_drawn: 0,
-          matches_lost: 0,
-          goals_conceded: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goals_for: 0,
+          goals_against: 0,
+          goal_difference: 0,
+          win_percentage: 0,
+          cup_achievement: '',
+          cups: [],
+          players_count: 0,
+          processed_fixtures: [],
           created_at: FieldValue.serverTimestamp(),
           updated_at: FieldValue.serverTimestamp()
         });

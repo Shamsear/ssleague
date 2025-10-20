@@ -90,10 +90,8 @@ export function formatISTDateTime(date: Date): string {
  * @param timeString - Time in HH:MM format (optional, defaults to 00:00)
  */
 export function createISTDateTime(dateString: string, timeString: string = '00:00'): Date {
-  const [hours, minutes] = timeString.split(':').map(Number);
-  const date = parseISTDate(dateString);
-  date.setHours(hours, minutes, 0, 0);
-  return date;
+  // Parse the complete datetime string with IST timezone offset
+  return new Date(`${dateString}T${timeString}:00+05:30`);
 }
 
 /**

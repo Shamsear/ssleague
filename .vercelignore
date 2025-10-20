@@ -1,0 +1,29 @@
+# Firebase Functions (deployed separately to Firebase)
+firebase-functions/
+
+# Scripts
+scripts/
+
+# Documentation
+*.md
+!README.md
+
+# Local environment files
+.env.local
+.env.*.local
+.env.local.backup_*
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+.DS_Store

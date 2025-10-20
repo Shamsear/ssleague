@@ -58,11 +58,19 @@ function EditRoundDeadlinesContent() {
         setAwayTime(deadlines.away_fixture_deadline_time || '17:00');
         setResultDayOffset(deadlines.result_entry_deadline_day_offset || 2);
         setResultTime(deadlines.result_entry_deadline_time || '00:30');
-        setScheduledDate(deadlines.scheduled_date || '');
+        
+        // Extract date part if scheduled_date is a timestamp
+        let dateValue = deadlines.scheduled_date || '';
+        if (dateValue && dateValue.includes('T')) {
+          dateValue = dateValue.split('T')[0]; // Extract YYYY-MM-DD
+        }
+        setScheduledDate(dateValue);
+        
         console.log('Set values:', {
           homeTime: deadlines.home_fixture_deadline_time,
           awayTime: deadlines.away_fixture_deadline_time,
-          resultTime: deadlines.result_entry_deadline_time
+          resultTime: deadlines.result_entry_deadline_time,
+          scheduled_date: dateValue
         });
       }
     } catch (error) {

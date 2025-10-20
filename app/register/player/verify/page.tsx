@@ -213,12 +213,13 @@ function PlayerVerifyContent() {
     }
   }, [showDistrictDropdown])
 
-  // Check if email already used for this season
+  // Check if email already used OR if player_id has different email registered
   useEffect(() => {
     const checkEmailUsage = async () => {
-      if (!user?.email || !seasonId) return
+      if (!user?.email || !seasonId || !playerId) return
 
       try {
+        // Check 1: Email already used for this season
         const emailCheckQuery = query(
           collection(db, 'realplayers'),
           where('season_id', '==', seasonId),
@@ -228,8 +229,55 @@ function PlayerVerifyContent() {
         const emailCheckSnapshot = await getDocs(emailCheckQuery)
 
         if (!emailCheckSnapshot.empty) {
-          setError(`This email (${user.email}) has already been used to register for this season`)
-          await signOut(auth)
+          const existingPlayer = emailCheckSnapshot.docs[0].data()
+          if (existingPlayer.player_id !== playerId) {
+            setError(`This email (${user.email}) has already been used to register for this season by another player`)
+            await signOut(auth)
+            return
+          }
+        }
+
+        // Check 2: If player_id already has a registered email in master database
+        const masterPlayerQuery = query(
+          collection(db, 'realplayers'),
+          where('player_id', '==', playerId)
+        )
+        const masterPlayerSnapshot = await getDocs(masterPlayerQuery)
+
+        if (!masterPlayerSnapshot.empty) {
+          const masterPlayerData = masterPlayerSnapshot.docs[0].data()
+          
+          // If master player has an email and it's different from current user's email
+          if (masterPlayerData.email && masterPlayerData.email !== user.email) {
+            setError(
+              `This player ID (${playerId}) is already registered with email: ${masterPlayerData.email}. ` +
+              `You must use the same email address. If you don't have access to that email, please contact the committee admin.`
+            )
+            await signOut(auth)
+            return
+          }
+        }
+
+        // Check 3: Check if player_id has been registered with different email in ANY previous season
+        const allSeasonsQuery = query(
+          collection(db, 'realplayer'),
+          where('player_id', '==', playerId)
+        )
+        const allSeasonsSnapshot = await getDocs(allSeasonsQuery)
+
+        if (!allSeasonsSnapshot.empty) {
+          for (const doc of allSeasonsSnapshot.docs) {
+            const seasonPlayerData = doc.data()
+            if (seasonPlayerData.email && seasonPlayerData.email !== user.email) {
+              setError(
+                `This player ID (${playerId}) was previously registered with email: ${seasonPlayerData.email}. ` +
+                `You must use the same email address. Players cannot change emails across seasons for security reasons. ` +
+                `If you don't have access to that email, please contact the committee admin.`
+              )
+              await signOut(auth)
+              return
+            }
+          }
         }
       } catch (err) {
         console.error('Error checking email:', err)
@@ -237,7 +285,7 @@ function PlayerVerifyContent() {
     }
 
     checkEmailUsage()
-  }, [user, seasonId])
+  }, [user, seasonId, playerId])
 
   // Search players by ID or name
   const searchPlayers = async (term: string) => {

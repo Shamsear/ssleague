@@ -178,17 +178,62 @@ function PlayersRegistrationPageContent() {
   }
 
   const handleDeleteRegistration = async (playerId: string) => {
-    if (!confirm('Are you sure you want to remove this player registration? This will cancel the entire 2-season contract for both the current and next season.')) {
-      return
-    }
-
     if (!seasonId) return
 
     try {
-      // Calculate next season ID
+      // First, check if player is assigned to any team in current or next season
       const currentSeasonNumber = parseInt(seasonId.replace(/\D/g, ''))
       const seasonPrefix = seasonId.replace(/\d+$/, '')
       const nextSeasonId = `${seasonPrefix}${currentSeasonNumber + 1}`
+      
+      // Check current season assignment
+      const currentSeasonQuery = query(
+        collection(db, 'realplayer'),
+        where('player_id', '==', playerId),
+        where('season_id', '==', seasonId)
+      )
+      const currentSeasonSnapshot = await getDocs(currentSeasonQuery)
+      
+      if (!currentSeasonSnapshot.empty) {
+        const playerData = currentSeasonSnapshot.docs[0].data()
+        if (playerData.team_id) {
+          setError(`Cannot delete registration: ${playerData.player_name || 'Player'} is already assigned to a team (${playerData.team_id}). Please remove the player from the team first.`)
+          setTimeout(() => setError(null), 5000)
+          return
+        }
+      }
+      
+      // Check next season assignment
+      const nextSeasonQuery = query(
+        collection(db, 'realplayer'),
+        where('player_id', '==', playerId),
+        where('season_id', '==', nextSeasonId)
+      )
+      const nextSeasonSnapshot = await getDocs(nextSeasonQuery)
+      
+      if (!nextSeasonSnapshot.empty) {
+        const playerData = nextSeasonSnapshot.docs[0].data()
+        if (playerData.team_id) {
+          setError(`Cannot delete registration: Player is already assigned to a team in next season (${playerData.team_id}). Please remove the player from the team first.`)
+          setTimeout(() => setError(null), 5000)
+          return
+        }
+      }
+      
+      // Check if player has any auction value set (indicates they were in an auction)
+      if (!currentSeasonSnapshot.empty) {
+        const playerData = currentSeasonSnapshot.docs[0].data()
+        if (playerData.auction_value && playerData.auction_value > 0) {
+          if (!confirm(`This player has an auction value of $${playerData.auction_value}. Are you sure you want to delete? This may indicate they participated in an auction.`)) {
+            return
+          }
+        }
+      }
+      
+      // Final confirmation
+      if (!confirm('Are you sure you want to remove this player registration? This will cancel the entire 2-season contract for both the current and next season.')) {
+        return
+      }
       
       // Construct the composite document IDs for both seasons
       const currentRegistrationId = `${playerId}_${seasonId}`

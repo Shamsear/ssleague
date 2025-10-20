@@ -22,8 +22,22 @@ export async function GET(request: NextRequest) {
 
     if (roundNumber) {
       // Fetch specific round
+      // Convert DATE to text to prevent timezone conversion
       roundDeadlines = await sql`
-        SELECT * FROM round_deadlines
+        SELECT 
+          season_id,
+          round_number,
+          leg,
+          scheduled_date::text as scheduled_date,
+          home_fixture_deadline_time,
+          away_fixture_deadline_time,
+          result_entry_deadline_day_offset,
+          result_entry_deadline_time,
+          status,
+          is_active,
+          created_at,
+          updated_at
+        FROM round_deadlines
         WHERE season_id = ${seasonId}
           AND round_number = ${parseInt(roundNumber)}
           AND leg = ${leg}
@@ -31,8 +45,22 @@ export async function GET(request: NextRequest) {
       `;
     } else {
       // Fetch all rounds for season
+      // Convert DATE to text to prevent timezone conversion
       roundDeadlines = await sql`
-        SELECT * FROM round_deadlines
+        SELECT 
+          season_id,
+          round_number,
+          leg,
+          scheduled_date::text as scheduled_date,
+          home_fixture_deadline_time,
+          away_fixture_deadline_time,
+          result_entry_deadline_day_offset,
+          result_entry_deadline_time,
+          status,
+          is_active,
+          created_at,
+          updated_at
+        FROM round_deadlines
         WHERE season_id = ${seasonId}
         ORDER BY round_number ASC, leg ASC
       `;
@@ -108,12 +136,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Extract date part if scheduled_date contains timestamp
+    let dateOnly = scheduled_date;
+    console.log('📅 Received scheduled_date:', scheduled_date, typeof scheduled_date);
+    
+    if (dateOnly && typeof dateOnly === 'string' && dateOnly.includes('T')) {
+      dateOnly = dateOnly.split('T')[0]; // Extract YYYY-MM-DD only
+      console.log('📅 Extracted date part:', dateOnly);
+    } else if (dateOnly) {
+      console.log('📅 Using date as-is:', dateOnly);
+    }
+    
     // Upsert
     console.log('Inserting round_deadline:', {
       season_id,
       round_number,
       leg,
-      scheduled_date,
+      scheduled_date: dateOnly,
       homeTime,
       awayTime,
       resultOffset,
@@ -139,7 +178,7 @@ export async function POST(request: NextRequest) {
         ${season_id},
         ${round_number},
         ${leg},
-        ${scheduled_date || null},
+        ${dateOnly ? sql`${dateOnly}::date` : null},
         ${homeTime},
         ${awayTime},
         ${resultOffset},
@@ -150,7 +189,7 @@ export async function POST(request: NextRequest) {
         NOW()
       )
       ON CONFLICT (season_id, round_number, leg) DO UPDATE SET
-        scheduled_date = EXCLUDED.scheduled_date,
+        scheduled_date = ${dateOnly ? sql`${dateOnly}::date` : sql`EXCLUDED.scheduled_date`},
         home_fixture_deadline_time = EXCLUDED.home_fixture_deadline_time,
         away_fixture_deadline_time = EXCLUDED.away_fixture_deadline_time,
         result_entry_deadline_day_offset = EXCLUDED.result_entry_deadline_day_offset,

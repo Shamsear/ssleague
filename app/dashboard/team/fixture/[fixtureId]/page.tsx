@@ -13,6 +13,7 @@ interface Matchup {
   away_player_id: string;
   away_player_name: string;
   position: number;
+  match_duration?: number; // 6, 7, or 8 minutes (eFootball half length)
   home_goals?: number | null;
   away_goals?: number | null;
   result_entered_by?: string | null;
@@ -31,6 +32,8 @@ interface Fixture {
   leg: string;
   status: string;
   scheduled_date?: Date;
+  motm_player_id?: string | null;
+  motm_player_name?: string | null;
 }
 
 interface RoundDeadlines {
@@ -62,6 +65,7 @@ export default function FixturePage() {
   // Matchup state
   const [matchups, setMatchups] = useState<Matchup[]>([]);
   const [selectedAwayPlayers, setSelectedAwayPlayers] = useState<{[key: number]: string}>({});
+  const [matchDurations, setMatchDurations] = useState<{[key: number]: number}>({}); // Duration per matchup
   const [isSaving, setIsSaving] = useState(false);
   const [canCreateMatchups, setCanCreateMatchups] = useState(false);
   const [canEditMatchups, setCanEditMatchups] = useState(false);
@@ -69,7 +73,80 @@ export default function FixturePage() {
   
   // Result entry state
   const [matchResults, setMatchResults] = useState<{[key: number]: {home_goals: number, away_goals: number}}>({});
+  const [motmPlayerId, setMotmPlayerId] = useState<string | null>(null);
   const [isResultMode, setIsResultMode] = useState(false);
+
+  // Function to generate WhatsApp share text
+  const generateWhatsAppText = () => {
+    if (!fixture || matchups.length === 0) return '';
+
+    const homeTotalGoals = matchups.reduce((sum, m) => sum + (m.home_goals ?? 0), 0);
+    const awayTotalGoals = matchups.reduce((sum, m) => sum + (m.away_goals ?? 0), 0);
+    const hasResults = matchups.some(m => m.home_goals !== null);
+    const winner = hasResults
+      ? homeTotalGoals > awayTotalGoals
+        ? fixture.home_team_name
+        : awayTotalGoals > homeTotalGoals
+        ? fixture.away_team_name
+        : 'DRAW'
+      : '';
+
+    // Get MOTM player name from fixture
+    const motmName = fixture.motm_player_name || 'Not selected';
+    
+    // Extract season number from season_id (e.g., SSPSLS16 -> 16)
+    const seasonMatch = fixture.season_id.match(/\d+$/);
+    const seasonNumber = seasonMatch ? seasonMatch[0] : '15';
+
+    const text = `*SS PES SUPER LEAGUE - S${seasonNumber}*
+
+========================================
+
+*MATCHDAY ${fixture.round_number}*
+*${fixture.home_team_name}* vs *${fixture.away_team_name}*
+
+========================================
+
+*MATCHUPS:*
+
+${matchups.map(m => {
+  if (hasResults && m.home_goals !== null && m.away_goals !== null) {
+    return `${m.home_player_name} *${m.home_goals}-${m.away_goals}* ${m.away_player_name} (${m.match_duration || 6}min)`;
+  } else {
+    return `${m.home_player_name} vs ${m.away_player_name} (${m.match_duration || 6}min)`;
+  }
+}).join('\n')}
+
+========================================
+
+*TOTAL GOALS*
+
+Home: ${fixture.home_team_name} - *${hasResults ? homeTotalGoals : 0}*
+Away: ${fixture.away_team_name} - *${hasResults ? awayTotalGoals : 0}*
+
+========================================
+
+*MAN OF THE MATCH*
+>>> ${motmName}
+
+========================================
+
+*RESULT*
+${winner === 'DRAW' ? '>>> *MATCH DRAWN*' : `>>> *${winner}* WON!`}
+
+========================================
+
+_SS Super League S${seasonNumber} Committee_`;
+
+    return text;
+  };
+
+  const handleWhatsAppShare = () => {
+    const text = generateWhatsAppText();
+    const encodedText = encodeURIComponent(text);
+    const whatsappUrl = `https://wa.me/?text=${encodedText}`;
+    window.open(whatsappUrl, '_blank');
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -139,21 +216,31 @@ export default function FixturePage() {
             setRoundDeadlines(deadlines);
 
           // Calculate current phase
+          // All times in database are IST (UTC+5:30)
           const now = new Date();
-          const baseDate = new Date(deadlines.scheduled_date);
-
+          
+          // Parse scheduled_date and times as IST, then convert to Date objects
           const [homeHour, homeMin] = deadlines.home_fixture_deadline_time.split(':').map(Number);
-          const homeDeadline = new Date(baseDate);
-          homeDeadline.setHours(homeHour, homeMin, 0, 0);
+          const homeDeadline = new Date(`${deadlines.scheduled_date}T${deadlines.home_fixture_deadline_time}:00+05:30`);
 
           const [awayHour, awayMin] = deadlines.away_fixture_deadline_time.split(':').map(Number);
-          const awayDeadline = new Date(baseDate);
-          awayDeadline.setHours(awayHour, awayMin, 0, 0);
+          const awayDeadline = new Date(`${deadlines.scheduled_date}T${deadlines.away_fixture_deadline_time}:00+05:30`);
 
-          const resultDeadline = new Date(baseDate);
-          resultDeadline.setDate(resultDeadline.getDate() + deadlines.result_entry_deadline_day_offset);
-          const [resultHour, resultMin] = deadlines.result_entry_deadline_time.split(':').map(Number);
-          resultDeadline.setHours(resultHour, resultMin, 0, 0);
+          // Result deadline is offset by days
+          const resultDate = new Date(deadlines.scheduled_date);
+          resultDate.setDate(resultDate.getDate() + deadlines.result_entry_deadline_day_offset);
+          const resultDateStr = resultDate.toISOString().split('T')[0];
+          const resultDeadline = new Date(`${resultDateStr}T${deadlines.result_entry_deadline_time}:00+05:30`);
+
+          console.log('🕐 Phase Debug:', {
+            now: now.toISOString(),
+            scheduled_date: deadlines.scheduled_date,
+            homeDeadline: homeDeadline.toISOString(),
+            awayDeadline: awayDeadline.toISOString(),
+            resultDeadline: resultDeadline.toISOString(),
+            'now < awayDeadline': now < awayDeadline,
+            'now < resultDeadline': now < resultDeadline
+          });
 
           let currentPhase: typeof phase = 'closed';
           if (now < awayDeadline) {
@@ -261,6 +348,7 @@ export default function FixturePage() {
         away_player_id: selectedAwayPlayers[idx],
         away_player_name: awayPlayers.find(p => p.player_id === selectedAwayPlayers[idx])?.name || '',
         position: idx + 1,
+        match_duration: matchDurations[idx] || 6, // Use individual match duration (default 6)
       }));
 
       const response = await fetch(`/api/fixtures/${fixtureId}/matchups`, {
@@ -463,6 +551,7 @@ export default function FixturePage() {
                 </div>
               </div>
 
+
               <div className="space-y-2 sm:space-y-3">
                 {homePlayers.map((homePlayer, idx) => (
                   <div key={idx} className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 hover:shadow-md transition-shadow">
@@ -510,6 +599,29 @@ export default function FixturePage() {
                         </select>
                       </div>
                     </div>
+                    
+                    {/* Match Duration for this matchup */}
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        eFootball Match Duration
+                      </label>
+                      <select
+                        value={matchDurations[idx] || 6}
+                        onChange={(e) => setMatchDurations({ ...matchDurations, [idx]: Number(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
+                      >
+                        <option value={6}>6 minutes (3 min per half)</option>
+                        <option value={7}>7 minutes (3.5 min per half)</option>
+                        <option value={8}>8 minutes (4 min per half)</option>
+                        <option value={9}>9 minutes (4.5 min per half)</option>
+                        <option value={10}>10 minutes (5 min per half)</option>
+                        <option value={11}>11 minutes (5.5 min per half)</option>
+                        <option value={12}>12 minutes (6 min per half)</option>
+                      </select>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -537,6 +649,18 @@ export default function FixturePage() {
         {/* Display/Edit Existing Matchups */}
         {matchups.length > 0 && (
           <div className="space-y-4">
+            
+            {/* WhatsApp Share Button */}
+            <button
+              onClick={handleWhatsAppShare}
+              className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-green-700 transition-all shadow-lg flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+              </svg>
+              Share Fixture on WhatsApp
+            </button>
+            
             {/* Edit Button */}
             {canEditMatchups && !isEditMode && (
               <button
@@ -557,45 +681,74 @@ export default function FixturePage() {
                 </div>
 
                 {matchups.map((matchup, idx) => (
-                  <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center p-4 bg-gray-50 rounded-xl">
-                    {/* Home Player */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Home Player</label>
-                      <div className="flex items-center p-3 bg-white rounded-lg border border-gray-200">
-                        <div className="font-medium text-gray-900">{matchup.home_player_name}</div>
+                  <div key={idx} className="p-4 bg-gray-50 rounded-xl space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                      {/* Home Player */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Home Player</label>
+                        <div className="flex items-center p-3 bg-white rounded-lg border border-gray-200">
+                          <div className="font-medium text-gray-900">{matchup.home_player_name}</div>
+                        </div>
+                      </div>
+
+                      {/* VS */}
+                      <div className="flex justify-center">
+                        <div className="bg-gray-300 rounded-full px-3 py-1 text-xs font-medium text-gray-700">vs</div>
+                      </div>
+
+                      {/* Away Player Dropdown */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Away Player</label>
+                        <select
+                          value={matchup.away_player_id}
+                          onChange={(e) => {
+                            const newMatchups = [...matchups];
+                            const selectedPlayer = awayPlayers.find(p => p.player_id === e.target.value);
+                            newMatchups[idx].away_player_id = e.target.value;
+                            newMatchups[idx].away_player_name = selectedPlayer?.name || '';
+                            setMatchups(newMatchups);
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                          {awayPlayers.map(player => (
+                            <option key={player.player_id} value={player.player_id}>
+                              {player.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Position */}
+                      <div className="text-center">
+                        <span className="text-xs text-gray-500">Match #{matchup.position}</span>
                       </div>
                     </div>
-
-                    {/* VS */}
-                    <div className="flex justify-center">
-                      <div className="bg-gray-300 rounded-full px-3 py-1 text-xs font-medium text-gray-700">vs</div>
-                    </div>
-
-                    {/* Away Player Dropdown */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Away Player</label>
+                    
+                    {/* Match Duration */}
+                    <div className="pt-3 border-t border-gray-200">
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        eFootball Match Duration
+                      </label>
                       <select
-                        value={matchup.away_player_id}
+                        value={matchup.match_duration || 6}
                         onChange={(e) => {
                           const newMatchups = [...matchups];
-                          const selectedPlayer = awayPlayers.find(p => p.player_id === e.target.value);
-                          newMatchups[idx].away_player_id = e.target.value;
-                          newMatchups[idx].away_player_name = selectedPlayer?.name || '';
+                          newMatchups[idx].match_duration = Number(e.target.value);
                           setMatchups(newMatchups);
                         }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 text-sm border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
                       >
-                        {awayPlayers.map(player => (
-                          <option key={player.player_id} value={player.player_id}>
-                            {player.name}
-                          </option>
-                        ))}
+                        <option value={6}>6 minutes (3 min per half)</option>
+                        <option value={7}>7 minutes (3.5 min per half)</option>
+                        <option value={8}>8 minutes (4 min per half)</option>
+                        <option value={9}>9 minutes (4.5 min per half)</option>
+                        <option value={10}>10 minutes (5 min per half)</option>
+                        <option value={11}>11 minutes (5.5 min per half)</option>
+                        <option value={12}>12 minutes (6 min per half)</option>
                       </select>
-                    </div>
-
-                    {/* Position */}
-                    <div className="text-center">
-                      <span className="text-xs text-gray-500">Match #{matchup.position}</span>
                     </div>
                   </div>
                 ))}
@@ -681,6 +834,21 @@ export default function FixturePage() {
                   );
                 })()}
 
+                {/* Man of the Match Display */}
+                {fixture.motm_player_name && (
+                  <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 rounded-xl p-4">
+                    <div className="flex items-center justify-center gap-3">
+                      <svg className="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <div>
+                        <div className="text-xs font-semibold text-yellow-700 uppercase tracking-wide">Man of the Match</div>
+                        <div className="text-lg font-bold text-yellow-900">{fixture.motm_player_name}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-3">
                   {matchups.map((matchup, idx) => (
                     <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr_auto] gap-3 sm:gap-4 items-center p-4 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-xl">
@@ -721,9 +889,14 @@ export default function FixturePage() {
                         )}
                       </div>
 
-                      {/* Match Number Badge */}
+                      {/* Match Number & Duration */}
                       <div className="col-span-full sm:col-span-1 text-center">
                         <span className="text-xs text-gray-500">Match #{matchup.position}</span>
+                        {matchup.match_duration && (
+                          <span className="ml-2 text-xs text-green-600 font-medium">
+                            ({matchup.match_duration} min)
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -741,12 +914,26 @@ export default function FixturePage() {
                       };
                     });
                     setMatchResults(initialResults);
+                    setMotmPlayerId(fixture.motm_player_id || null);
                     setIsResultMode(true);
                   }}
                   className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-xl hover:from-green-700 hover:to-green-800 transition-all shadow-lg"
                 >
                   {matchups.some(m => m.home_goals !== null) ? 'Edit Results' : 'Enter Results'}
                 </button>
+
+                {/* WhatsApp Share Button (with results) */}
+                {matchups.some(m => m.home_goals !== null) && (
+                  <button
+                    onClick={handleWhatsAppShare}
+                    className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-green-700 transition-all shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                    </svg>
+                    Share Results on WhatsApp
+                  </button>
+                )}
               </div>
             ) : phase === 'result_entry' && isResultMode ? (
               // Result Entry Mode
@@ -852,6 +1039,138 @@ export default function FixturePage() {
                   ))}
                 </div>
 
+                {/* Man of the Match Selector (Fixture Level) */}
+                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-300 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="flex items-center gap-2 text-sm font-bold text-yellow-900">
+                      <svg className="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <span className="uppercase tracking-wide">Man of the Match</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Calculate best player based on performance
+                        let bestPlayer = null;
+                        let bestScore = -999;
+                        
+                        matchups.forEach((m, idx) => {
+                          const homeGoals = matchResults[idx]?.home_goals ?? 0;
+                          const awayGoals = matchResults[idx]?.away_goals ?? 0;
+                          
+                          // Score for home player
+                          const homeWon = homeGoals > awayGoals;
+                          const homeDraw = homeGoals === awayGoals;
+                          const homeScore = (homeGoals * 10) + // 10 points per goal
+                                          (homeWon ? 5 : 0) +    // 5 points for win
+                                          (homeDraw ? 2 : 0) -   // 2 points for draw
+                                          (awayGoals * 2);       // -2 per goal conceded
+                          
+                          // Score for away player
+                          const awayWon = awayGoals > homeGoals;
+                          const awayDraw = homeGoals === awayGoals;
+                          const awayScore = (awayGoals * 10) +
+                                          (awayWon ? 5 : 0) +
+                                          (awayDraw ? 2 : 0) -
+                                          (homeGoals * 2);
+                          
+                          if (homeScore > bestScore) {
+                            bestScore = homeScore;
+                            bestPlayer = {
+                              id: m.home_player_id,
+                              name: m.home_player_name,
+                              goals: homeGoals,
+                              conceded: awayGoals,
+                              result: homeWon ? 'W' : homeDraw ? 'D' : 'L'
+                            };
+                          }
+                          
+                          if (awayScore > bestScore) {
+                            bestScore = awayScore;
+                            bestPlayer = {
+                              id: m.away_player_id,
+                              name: m.away_player_name,
+                              goals: awayGoals,
+                              conceded: homeGoals,
+                              result: awayWon ? 'W' : awayDraw ? 'D' : 'L'
+                            };
+                          }
+                        });
+                        
+                        if (bestPlayer) {
+                          setMotmPlayerId(bestPlayer.id);
+                          alert(`✨ Suggested: ${bestPlayer.name}\n${bestPlayer.goals} goals, ${bestPlayer.conceded} conceded, Result: ${bestPlayer.result}`);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-xs font-semibold rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm flex items-center gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Auto-Suggest
+                    </button>
+                  </div>
+                  
+                  <select
+                    value={motmPlayerId || ''}
+                    onChange={(e) => setMotmPlayerId(e.target.value || null)}
+                    className="w-full px-4 py-3 text-lg font-medium border-2 border-yellow-400 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 bg-white"
+                  >
+                    <option value="">-- Select Player --</option>
+                    <optgroup label="🏠 Home Team ({fixture.home_team_name})">
+                      {matchups.map((m, idx) => {
+                        const goals = matchResults[idx]?.home_goals ?? 0;
+                        const conceded = matchResults[idx]?.away_goals ?? 0;
+                        return (
+                          <option key={m.home_player_id} value={m.home_player_id}>
+                            {m.home_player_name} ({goals}G, {conceded}C)
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                    <optgroup label="✈️ Away Team ({fixture.away_team_name})">
+                      {matchups.map((m, idx) => {
+                        const goals = matchResults[idx]?.away_goals ?? 0;
+                        const conceded = matchResults[idx]?.home_goals ?? 0;
+                        return (
+                          <option key={m.away_player_id} value={m.away_player_id}>
+                            {m.away_player_name} ({goals}G, {conceded}C)
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  </select>
+                  
+                  {motmPlayerId && (() => {
+                    const selectedPlayer = matchups.find(m => m.home_player_id === motmPlayerId || m.away_player_id === motmPlayerId);
+                    const idx = matchups.indexOf(selectedPlayer!);
+                    const isHome = selectedPlayer?.home_player_id === motmPlayerId;
+                    const goals = isHome ? (matchResults[idx]?.home_goals ?? 0) : (matchResults[idx]?.away_goals ?? 0);
+                    const conceded = isHome ? (matchResults[idx]?.away_goals ?? 0) : (matchResults[idx]?.home_goals ?? 0);
+                    const won = goals > conceded;
+                    const draw = goals === conceded;
+                    
+                    return (
+                      <div className="mt-3 p-3 bg-yellow-100 border border-yellow-400 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-yellow-900">
+                              {isHome ? selectedPlayer?.home_player_name : selectedPlayer?.away_player_name}
+                            </p>
+                            <p className="text-xs text-yellow-700 mt-1">
+                              {goals} goals scored • {conceded} conceded • {won ? '✓ Won' : draw ? '◆ Draw' : '✗ Lost'}
+                            </p>
+                          </div>
+                          <span className="text-2xl">⭐</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  
+                  <p className="text-xs text-yellow-700 mt-2">Select or auto-suggest the best player from the entire fixture</p>
+                </div>
+
                 <div className="flex gap-3">
                   <button
                     onClick={() => setIsResultMode(false)}
@@ -862,8 +1181,15 @@ export default function FixturePage() {
                   </button>
                   <button
                     onClick={async () => {
+                      // Validate MOTM is selected
+                      if (!motmPlayerId) {
+                        alert('⚠️ Please select Man of the Match before saving results!');
+                        return;
+                      }
+                      
                       setIsSaving(true);
                       try {
+                        // Save matchup results (goals only)
                         const results = matchups.map((m, idx) => ({
                           position: m.position,
                           home_goals: matchResults[idx]?.home_goals ?? 0,
@@ -881,8 +1207,30 @@ export default function FixturePage() {
 
                         if (!response.ok) throw new Error('Failed to save results');
 
-                        // Results are now stored in Neon database (matchups table)
-                        // Aggregate scores are calculated dynamically by the fixtures API
+                        // Save MOTM at fixture level
+                        const motmPlayerName = motmPlayerId ? 
+                          matchups.find(m => m.home_player_id === motmPlayerId)?.home_player_name ||
+                          matchups.find(m => m.away_player_id === motmPlayerId)?.away_player_name || null
+                          : null;
+
+                        console.log('Saving MOTM:', { motmPlayerId, motmPlayerName });
+
+                        const motmResponse = await fetch(`/api/fixtures/${fixtureId}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            motm_player_id: motmPlayerId,
+                            motm_player_name: motmPlayerName,
+                          }),
+                        });
+
+                        if (!motmResponse.ok) {
+                          const errorData = await motmResponse.json();
+                          console.error('Failed to save MOTM:', errorData);
+                          alert(`Warning: MOTM not saved - ${errorData.error || 'Unknown error'}`);
+                        } else {
+                          console.log('MOTM saved successfully:', motmPlayerName);
+                        }
 
                         // Update player points and star ratings
                         const pointsResponse = await fetch('/api/realplayers/update-points', {
@@ -899,7 +1247,52 @@ export default function FixturePage() {
                           console.log('Player points updated:', pointsData.updates);
                         }
 
-                        alert('Results saved and player points updated successfully!');
+                        // Update player stats (goals, wins/draws/losses, MOTM)
+                        const statsPayload = matchups.map((m, idx) => ({
+                          position: m.position,
+                          home_player_id: m.home_player_id,
+                          home_player_name: m.home_player_name,
+                          away_player_id: m.away_player_id,
+                          away_player_name: m.away_player_name,
+                          home_goals: matchResults[idx]?.home_goals ?? 0,
+                          away_goals: matchResults[idx]?.away_goals ?? 0,
+                        }));
+
+                        const statsResponse = await fetch('/api/realplayers/update-stats', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            season_id: fixture.season_id,
+                            fixture_id: fixtureId,
+                            matchups: statsPayload,
+                            motm_player_id: motmPlayerId, // Pass fixture-level MOTM
+                          }),
+                        });
+
+                        if (statsResponse.ok) {
+                          const statsData = await statsResponse.json();
+                          console.log('Player stats updated:', statsData.updates);
+                        }
+
+                        // Update team stats (wins, draws, losses, goals)
+                        const teamStatsResponse = await fetch('/api/teamstats/update-stats', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            season_id: fixture.season_id,
+                            fixture_id: fixtureId,
+                            home_team_id: fixture.home_team_id,
+                            away_team_id: fixture.away_team_id,
+                            matchups: statsPayload,
+                          }),
+                        });
+
+                        if (teamStatsResponse.ok) {
+                          const teamStatsData = await teamStatsResponse.json();
+                          console.log('Team stats updated:', teamStatsData.updates);
+                        }
+
+                        alert('Results saved and player/team stats updated successfully!');
                         setIsResultMode(false);
                         window.location.reload();
                       } catch (error) {
@@ -920,19 +1313,31 @@ export default function FixturePage() {
               // View Only Mode (non result_entry phase)
               <div className="space-y-3">
                 {matchups.map((matchup, idx) => (
-                  <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center p-4 bg-gray-50 rounded-xl">
-                    <div className="text-center">
-                      <p className="text-xs text-gray-500 mb-1">Home Player</p>
-                      <p className="font-medium text-gray-900">{matchup.home_player_name}</p>
-                    </div>
+                  <div key={idx} className="p-4 bg-gray-50 rounded-xl">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-2">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">Home Player</p>
+                        <p className="font-medium text-gray-900">{matchup.home_player_name}</p>
+                      </div>
 
-                    <div className="flex justify-center">
-                      <div className="bg-green-100 text-green-700 rounded-full px-4 py-2 text-sm font-medium">VS</div>
-                    </div>
+                      <div className="flex justify-center">
+                        <div className="bg-green-100 text-green-700 rounded-full px-4 py-2 text-sm font-medium">VS</div>
+                      </div>
 
-                    <div className="text-center">
-                      <p className="text-xs text-gray-500 mb-1">Away Player</p>
-                      <p className="font-medium text-gray-900">{matchup.away_player_name}</p>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">Away Player</p>
+                        <p className="font-medium text-gray-900">{matchup.away_player_name}</p>
+                      </div>
+                    </div>
+                    
+                    {/* Match info */}
+                    <div className="text-center text-xs text-gray-500 pt-2 border-t border-gray-200">
+                      <span>Match #{matchup.position}</span>
+                      {matchup.match_duration && (
+                        <span className="ml-2 text-green-600 font-medium">
+                          ({matchup.match_duration} min)
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

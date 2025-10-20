@@ -45,11 +45,14 @@ export default function Login() {
     setAlerts([]);
 
     try {
+      console.log('[Login] Starting login process');
+      
       // Trim inputs to avoid whitespace issues
       const trimmedUsername = username.trim();
       const trimmedPassword = password.trim();
 
       if (!trimmedUsername || !trimmedPassword) {
+        console.log('[Login] Validation failed: missing credentials');
         setAlerts([{ 
           type: 'error', 
           message: 'Username and password are required.' 
@@ -57,16 +60,22 @@ export default function Login() {
         return;
       }
 
+      console.log('[Login] Looking up email for username:', trimmedUsername);
+      
       // Username-only login - look up email from username using API
       const lookupResponse = await fetch('/api/auth/username-to-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: trimmedUsername }),
       });
+      
+      console.log('[Login] Username lookup response status:', lookupResponse.status);
 
       const lookupData = await lookupResponse.json();
+      console.log('[Login] Username lookup result:', { success: lookupData.success, hasEmail: !!lookupData.email });
 
       if (!lookupData.success || !lookupData.email) {
+        console.log('[Login] Username lookup failed');
         setAlerts([{ 
           type: 'error', 
           message: 'Username not found. Please check your username.' 
@@ -74,12 +83,17 @@ export default function Login() {
         return;
       }
 
+      console.log('[Login] Attempting Firebase sign-in');
+      
       // Sign in with email
       const { user } = await signIn(lookupData.email, trimmedPassword);
+      
+      console.log('[Login] Sign-in successful, user role:', user?.role);
       
       // Use router.replace for faster navigation (no page reload)
       // Redirect to role-specific dashboard
       if (user) {
+        console.log('[Login] Redirecting to dashboard for role:', user.role);
         switch (user.role) {
           case 'super_admin':
             router.replace('/dashboard/superadmin');
@@ -94,6 +108,7 @@ export default function Login() {
             router.replace('/dashboard');
         }
       } else {
+        console.log('[Login] No user data, redirecting to default dashboard');
         router.replace('/dashboard');
       }
     } catch (error: any) {

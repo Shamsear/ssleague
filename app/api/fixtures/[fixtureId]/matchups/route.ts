@@ -60,6 +60,7 @@ export async function POST(
           away_player_id,
           away_player_name,
           position,
+          match_duration,
           created_by,
           created_at
         ) VALUES (
@@ -69,6 +70,7 @@ export async function POST(
           ${matchup.away_player_id},
           ${matchup.away_player_name},
           ${matchup.position},
+          ${matchup.match_duration || 6},
           ${created_by},
           NOW()
         )
@@ -109,6 +111,7 @@ export async function PUT(
         SET 
           away_player_id = ${matchup.away_player_id},
           away_player_name = ${matchup.away_player_name},
+          match_duration = ${matchup.match_duration || 6},
           updated_at = NOW()
         WHERE fixture_id = ${fixtureId}
         AND position = ${matchup.position}
@@ -142,7 +145,7 @@ export async function PATCH(
       );
     }
 
-    // Update match results
+    // Update match results (MOTM is now at fixture level, not matchup level)
     for (const result of results) {
       await sql`
         UPDATE matchups

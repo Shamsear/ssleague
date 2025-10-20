@@ -625,12 +625,13 @@ export async function updateRoundStatus(
     console.log('Original scheduled_date from DB:', scheduledDate, typeof scheduledDate);
     
     if (scheduledDate) {
-      // If it's a Date object or ISO timestamp, convert to YYYY-MM-DD
-      if (typeof scheduledDate !== 'string') {
-        scheduledDate = new Date(scheduledDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      } else if (scheduledDate.includes('T')) {
-        // Parse the ISO string and format as IST date
-        scheduledDate = new Date(scheduledDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      // Extract just the date part if it's a timestamp
+      if (typeof scheduledDate === 'string' && scheduledDate.includes('T')) {
+        scheduledDate = scheduledDate.split('T')[0]; // Extract YYYY-MM-DD
+      } else if (typeof scheduledDate !== 'string') {
+        // If it's a Date object, format it
+        const d = new Date(scheduledDate);
+        scheduledDate = d.toISOString().split('T')[0];
       }
     }
     
