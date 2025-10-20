@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllPlayers } from '@/lib/neon/players';
 
-// Use Edge Runtime for better performance
-export const runtime = 'edge';
 export const maxDuration = 30;
 
 export async function GET(request: NextRequest) {
