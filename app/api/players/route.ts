@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllPlayers } from '@/lib/neon/players';
 
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     
-    // Parse query parameters
+    // Parse query parameters with default limit to prevent timeouts
     const filters = {
       position: searchParams.get('position') || undefined,
       team_id: searchParams.get('team_id') || undefined,
@@ -14,9 +16,11 @@ export async function GET(request: NextRequest) {
                           searchParams.get('is_auction_eligible') === 'false' ? false : undefined,
       is_sold: searchParams.get('is_sold') === 'true' ? true :
                searchParams.get('is_sold') === 'false' ? false : undefined,
-      limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined,
-      offset: searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : undefined,
+      limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 1000, // Default limit
+      offset: searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0,
     };
+    
+    console.log('[Players API] Fetching with filters:', filters);
 
     const players = await getAllPlayers(filters);
     

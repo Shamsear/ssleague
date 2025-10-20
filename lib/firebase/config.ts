@@ -13,6 +13,18 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+// Log config status (without exposing sensitive values)
+console.log('[Firebase Config] Initialization check:', {
+  hasApiKey: !!firebaseConfig.apiKey,
+  hasAuthDomain: !!firebaseConfig.authDomain,
+  hasProjectId: !!firebaseConfig.projectId,
+  hasStorageBucket: !!firebaseConfig.storageBucket,
+  hasMessagingSenderId: !!firebaseConfig.messagingSenderId,
+  hasAppId: !!firebaseConfig.appId,
+  hasMeasurementId: !!firebaseConfig.measurementId,
+  projectId: firebaseConfig.projectId
+});
+
 // Initialize Firebase
 let app: FirebaseApp;
 let auth: Auth;

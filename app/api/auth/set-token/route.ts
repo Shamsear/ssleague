@@ -3,9 +3,13 @@ import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[set-token API] Request received');
+    
     const { token } = await request.json();
+    console.log('[set-token API] Token extracted, length:', token?.length);
 
     if (!token) {
+      console.log('[set-token API] No token provided');
       return NextResponse.json(
         { success: false, message: 'Token is required' },
         { status: 400 }

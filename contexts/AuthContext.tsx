@@ -72,13 +72,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (firebaseUser) {
         setFirebaseUser(firebaseUser);
         try {
-          // Get Firebase ID token and store it in a cookie (non-blocking)
+          // Get Firebase ID token and store it in a cookie (non-blocking, with timeout)
           firebaseUser.getIdToken().then(idToken => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+            
             fetch('/api/auth/set-token', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ token: idToken }),
-            }).catch(err => console.error('Error setting token:', err));
+              signal: controller.signal
+            })
+            .then(() => clearTimeout(timeoutId))
+            .catch(err => {
+              clearTimeout(timeoutId);
+              console.warn('Token set failed (non-critical):', err.message);
+            });
           });
 
           // Wait a moment for Firebase Auth state to fully propagate
