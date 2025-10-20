@@ -84,9 +84,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               signal: controller.signal
             })
             .then(() => clearTimeout(timeoutId))
-            .catch(err => {
+            .catch(() => {
               clearTimeout(timeoutId);
-              console.warn('Token set failed (non-critical):', err.message);
+              // Silently fail - token cookie is not critical
             });
           });
 

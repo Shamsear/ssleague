@@ -78,8 +78,12 @@ export default function CommitteePlayersPage() {
       
       console.log(`✅ Fetched ${playersData.length} players from Neon, ${teamsSnapshot.size} teams from Firestore`)
       
-      // Update total count for pagination
-      setTotalPlayers(pagination?.total || playersData.length)
+      // Estimate total - if we got a full page, there's likely more
+      if (pagination?.hasMore) {
+        setTotalPlayers((currentPage + 1) * PLAYERS_PER_PAGE + 1); // Assume at least 1 more page
+      } else {
+        setTotalPlayers(playersData.length + (currentPage - 1) * PLAYERS_PER_PAGE); // Last page
+      }
         
         // Build teams cache
         const teamsMap = new Map<string, { id: string; name: string }>()
