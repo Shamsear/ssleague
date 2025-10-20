@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 
+// Vercel function timeout configuration
+export const maxDuration = 10; // 10 seconds max
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
     console.log('[username-to-email API] Request started');
+    console.log('[username-to-email API] Environment check:', {
+      hasAdminDb: !!adminDb,
+      projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
+      hasClientEmail: !!process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      hasPrivateKey: !!process.env.FIREBASE_ADMIN_PRIVATE_KEY
+    });
     
     const { username } = await request.json();
     console.log('[username-to-email API] Username received:', username);
