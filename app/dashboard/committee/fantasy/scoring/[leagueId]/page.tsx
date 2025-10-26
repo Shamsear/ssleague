@@ -4,30 +4,37 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useModal } from '@/hooks/useModal';
-import AlertModal from '@/components/modals/AlertModal';
+import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
 
 interface ScoringRule {
-  id: string;
+  rule_id: number;
+  rule_name: string;
   rule_type: string;
+  description?: string;
   points_value: number;
-  description: string;
+  applies_to: string;
   is_active: boolean;
 }
 
-export default function FantasyScoringPage() {
+export default function CustomScoringRulesPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const leagueId = params?.leagueId as string;
 
-  const [league, setLeague] = useState<any>(null);
-  const [scoringRules, setScoringRules] = useState<ScoringRule[]>([]);
-  const [editingRule, setEditingRule] = useState<ScoringRule | null>(null);
+  const [rules, setRules] = useState<ScoringRule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const { alertState, showAlert, closeAlert } = useModal();
+  const [editingRule, setEditingRule] = useState<ScoringRule | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  
+  // Create form state
+  const [newRule, setNewRule] = useState({
+    rule_name: '',
+    rule_type: '',
+    description: '',
+    points_value: 0,
+    applies_to: 'player',
+  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -40,94 +47,110 @@ export default function FantasyScoringPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    const loadLeagueData = async () => {
-      if (!leagueId) return;
-
-      try {
-        const response = await fetch(`/api/fantasy/leagues/${leagueId}`);
-        if (!response.ok) throw new Error('Failed to load league');
-
-        const data = await response.json();
-        setLeague(data.league);
-        setScoringRules(data.scoring_rules || []);
-      } catch (error) {
-        console.error('Error loading league:', error);
-        showAlert({
-          type: 'error',
-          title: 'Error',
-          message: 'Failed to load fantasy league data',
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (user) {
-      loadLeagueData();
+    if (user && leagueId) {
+      loadRules();
     }
   }, [user, leagueId]);
 
-  const handleEditRule = (rule: ScoringRule) => {
-    setEditingRule({ ...rule });
+  const loadRules = async () => {
+    try {
+      const response = await fetch(`/api/fantasy/scoring-rules?league_id=${leagueId}`);
+      if (!response.ok) throw new Error('Failed to load rules');
+      
+      const data = await response.json();
+      setRules(data.rules || []);
+    } catch (error) {
+      console.error('Error loading rules:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSaveRule = async () => {
-    if (!editingRule) return;
-
-    setIsSaving(true);
+  const createRule = async () => {
+    if (!newRule.rule_name || !newRule.rule_type || newRule.points_value === null || newRule.points_value === undefined) {
+      alert('Please fill in rule name, type, and points value');
+      return;
+    }
 
     try {
-      const response = await fetch(`/api/fantasy/scoring-rules/${editingRule.id}`, {
-        method: 'PUT',
+      const response = await fetch('/api/fantasy/scoring-rules', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          points_value: editingRule.points_value,
-          description: editingRule.description,
-          is_active: editingRule.is_active,
+          league_id: leagueId,
+          ...newRule,
         }),
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to update rule');
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create rule');
       }
 
-      // Update local state
-      setScoringRules(scoringRules.map(rule => 
-        rule.id === editingRule.id ? editingRule : rule
-      ));
-
-      showAlert({
-        type: 'success',
-        title: 'Success',
-        message: 'Scoring rule updated successfully',
+      alert('Rule created successfully!');
+      setShowCreateForm(false);
+      setNewRule({
+        rule_name: '',
+        rule_type: '',
+        description: '',
+        points_value: 0,
+        applies_to: 'player',
       });
-
-      setEditingRule(null);
+      loadRules();
     } catch (error) {
-      console.error('Error updating rule:', error);
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error instanceof Error ? error.message : 'Failed to update scoring rule',
-      });
-    } finally {
-      setIsSaving(false);
+      console.error('Error creating rule:', error);
+      alert(error instanceof Error ? error.message : 'Failed to create rule');
     }
   };
 
-  const getRuleIcon = (ruleType: string) => {
-    switch (ruleType) {
-      case 'goals_scored': return '⚽';
-      case 'goals_conceded': return '🥅';
-      case 'clean_sheet': return '🛡️';
-      case 'motm': return '⭐';
-      case 'win': return '✅';
-      case 'draw': return '🤝';
-      case 'loss': return '❌';
-      case 'fine_goals': return '🚫';
-      case 'substitution_penalty': return '🔄';
-      default: return '📊';
+  const updateRule = async (ruleId: number) => {
+    if (!editingRule) return;
+
+    try {
+      const response = await fetch(`/api/fantasy/scoring-rules/${ruleId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rule_name: editingRule.rule_name,
+          description: editingRule.description,
+          points_value: editingRule.points_value,
+          is_active: editingRule.is_active,
+          applies_to: editingRule.applies_to,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update rule');
+      }
+
+      alert('Rule updated successfully!');
+      setEditingRule(null);
+      loadRules();
+    } catch (error) {
+      console.error('Error updating rule:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update rule');
+    }
+  };
+
+  const deleteRule = async (ruleId: number, ruleName: string) => {
+    if (!confirm(`Delete rule "${ruleName}"?`)) return;
+
+    try {
+      const response = await fetch(`/api/fantasy/scoring-rules/${ruleId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete rule');
+      }
+
+      alert('Rule deleted successfully!');
+      loadRules();
+    } catch (error) {
+      console.error('Error deleting rule:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete rule');
     }
   };
 
@@ -137,203 +160,255 @@ export default function FantasyScoringPage() {
     return 'text-gray-600 bg-gray-50 border-gray-200';
   };
 
+  const commonRuleTypes = [
+    { value: 'goal', label: 'Goal Scored', icon: '⚽' },
+    { value: 'assist', label: 'Assist', icon: '🎯' },
+    { value: 'clean_sheet', label: 'Clean Sheet', icon: '🛡️' },
+    { value: 'goal_conceded', label: 'Goal Conceded', icon: '🥅' },
+    { value: 'motm', label: 'Man of the Match', icon: '⭐' },
+    { value: 'team_win', label: 'Team Win', icon: '✅' },
+    { value: 'team_draw', label: 'Team Draw', icon: '🤝' },
+    { value: 'team_loss', label: 'Team Loss', icon: '❌' },
+    { value: 'yellow_card', label: 'Yellow Card', icon: '🟨' },
+    { value: 'red_card', label: 'Red Card', icon: '🟥' },
+    { value: 'penalty_scored', label: 'Penalty Scored', icon: '🎯' },
+    { value: 'penalty_missed', label: 'Penalty Missed', icon: '❌' },
+    { value: 'own_goal', label: 'Own Goal', icon: '🚫' },
+    { value: 'custom', label: 'Custom Rule', icon: '📊' },
+  ];
+
   if (loading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
-  if (!user || !league) return null;
+  if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-      <AlertModal {...alertState} onClose={closeAlert} />
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 py-8 px-4">
+      <div className="max-w-5xl mx-auto">
+        <Link
+          href={`/dashboard/committee/fantasy/${leagueId}`}
+          className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors mb-6"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to League Dashboard
+        </Link>
 
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
-        {/* Header */}
-        <div className="mb-8">
-          <Link
-            href={`/dashboard/committee/fantasy/${leagueId}`}
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors mb-4"
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Custom Scoring Rules</h1>
+            <p className="text-gray-600 mt-1">Define how players earn points</p>
+          </div>
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to League Dashboard
-          </Link>
-
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center shadow-xl">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Scoring Rules</h1>
-              <p className="text-gray-600 mt-1">{league.name} - Point Configuration</p>
-            </div>
-          </div>
+            <Plus className="w-5 h-5" />
+            Create New Rule
+          </button>
         </div>
 
-        {/* Info Banner */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5 mb-6">
-          <div className="flex items-start gap-3">
-            <svg className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="text-sm font-semibold text-blue-900 mb-1">How Scoring Works</p>
-              <p className="text-sm text-blue-800">
-                These rules determine how many points fantasy players earn based on real player performance. 
-                Positive values add points, negative values deduct them. Click any rule to edit.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Scoring Rules Grid */}
-        {scoringRules.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-12 text-center">
-            <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            <p className="text-gray-500">No scoring rules configured</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {scoringRules.map((rule) => (
-              <div
-                key={rule.id}
-                className={`bg-white rounded-xl shadow-lg border-2 ${
-                  editingRule?.id === rule.id ? 'border-indigo-500' : 'border-gray-200'
-                } overflow-hidden transition-all hover:shadow-xl`}
-              >
-                {editingRule?.id === rule.id ? (
-                  // Edit Mode
-                  <div className="p-6">
-                    <div className="flex items-start gap-4 mb-4">
-                      <div className="text-4xl">{getRuleIcon(rule.rule_type)}</div>
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">
-                          {rule.rule_type.replace(/_/g, ' ').toUpperCase()}
-                        </h3>
-                        
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Points Value
-                            </label>
-                            <input
-                              type="number"
-                              value={editingRule.points_value}
-                              onChange={(e) => setEditingRule({
-                                ...editingRule,
-                                points_value: parseFloat(e.target.value) || 0
-                              })}
-                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Description
-                            </label>
-                            <input
-                              type="text"
-                              value={editingRule.description}
-                              onChange={(e) => setEditingRule({
-                                ...editingRule,
-                                description: e.target.value
-                              })}
-                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            />
-                          </div>
-
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              id={`active-${rule.id}`}
-                              checked={editingRule.is_active}
-                              onChange={(e) => setEditingRule({
-                                ...editingRule,
-                                is_active: e.target.checked
-                              })}
-                              className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                            />
-                            <label htmlFor={`active-${rule.id}`} className="text-sm font-medium text-gray-700">
-                              Active Rule
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 pt-4 border-t border-gray-200">
-                      <button
-                        onClick={handleSaveRule}
-                        disabled={isSaving}
-                        className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50"
-                      >
-                        {isSaving ? 'Saving...' : '✓ Save Changes'}
-                      </button>
-                      <button
-                        onClick={() => setEditingRule(null)}
-                        disabled={isSaving}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  // View Mode
-                  <button
-                    onClick={() => handleEditRule(rule)}
-                    className="w-full p-6 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="text-4xl">{getRuleIcon(rule.rule_type)}</div>
-                        <div className="flex-1">
-                          <h3 className="text-lg font-bold text-gray-900 mb-1">
-                            {rule.rule_type.replace(/_/g, ' ').toUpperCase()}
-                          </h3>
-                          <p className="text-sm text-gray-600">{rule.description}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-4">
-                        <div className={`px-6 py-3 rounded-xl border-2 ${getRuleColor(rule.points_value)} font-bold text-2xl min-w-[100px] text-center`}>
-                          {rule.points_value > 0 ? '+' : ''}{rule.points_value}
-                        </div>
-                        
-                        <div className="flex flex-col items-center gap-2">
-                          {rule.is_active ? (
-                            <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
-                              ACTIVE
-                            </span>
-                          ) : (
-                            <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full">
-                              INACTIVE
-                            </span>
-                          )}
-                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                )}
+        {/* Create Form */}
+        {showCreateForm && (
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 mb-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Create New Scoring Rule</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Rule Name *</label>
+                <input
+                  type="text"
+                  value={newRule.rule_name}
+                  onChange={(e) => setNewRule({ ...newRule, rule_name: e.target.value })}
+                  placeholder="e.g., Goal Bonus"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
-            ))}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Rule Type *</label>
+                <select
+                  value={newRule.rule_type}
+                  onChange={(e) => setNewRule({ ...newRule, rule_type: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select type...</option>
+                  {commonRuleTypes.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.icon} {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Points Value *</label>
+                <input
+                  type="number"
+                  value={newRule.points_value}
+                  onChange={(e) => setNewRule({ ...newRule, points_value: parseFloat(e.target.value) })}
+                  placeholder="e.g., 10"
+                  step="0.5"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Applies To</label>
+                <select
+                  value={newRule.applies_to}
+                  onChange={(e) => setNewRule({ ...newRule, applies_to: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="player">Player</option>
+                  <option value="team">Team</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <input
+                  type="text"
+                  value={newRule.description}
+                  onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
+                  placeholder="Optional description..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={createRule}
+                className="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Create Rule
+              </button>
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
+
+        {/* Rules List */}
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Active Rules</h2>
+          
+          {rules.length === 0 ? (
+            <p className="text-center text-gray-500 py-12">No scoring rules yet. Create your first rule!</p>
+          ) : (
+            <div className="space-y-3">
+              {rules.map((rule) => (
+                <div
+                  key={rule.rule_id}
+                  className={`flex items-center justify-between p-4 border-2 rounded-xl transition-all ${
+                    editingRule?.rule_id === rule.rule_id
+                      ? 'border-indigo-300 bg-indigo-50'
+                      : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  {editingRule?.rule_id === rule.rule_id ? (
+                    // Edit Mode
+                    <>
+                      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <input
+                          type="text"
+                          value={editingRule.rule_name}
+                          onChange={(e) => setEditingRule({ ...editingRule, rule_name: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded-lg"
+                        />
+                        <input
+                          type="number"
+                          value={editingRule.points_value}
+                          onChange={(e) => setEditingRule({ ...editingRule, points_value: parseFloat(e.target.value) })}
+                          className="px-3 py-2 border border-gray-300 rounded-lg"
+                          step="0.5"
+                        />
+                        <select
+                          value={editingRule.applies_to}
+                          onChange={(e) => setEditingRule({ ...editingRule, applies_to: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="player">Player</option>
+                          <option value="team">Team</option>
+                          <option value="both">Both</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <button
+                          onClick={() => updateRule(rule.rule_id)}
+                          className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setEditingRule(null)}
+                          className="p-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    // View Mode
+                    <>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-bold text-gray-900">{rule.rule_name}</h3>
+                          <span className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${getRuleColor(rule.points_value)}`}>
+                            {rule.points_value > 0 ? '+' : ''}{rule.points_value} pts
+                          </span>
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+                            {rule.applies_to}
+                          </span>
+                          {!rule.is_active && (
+                            <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs font-medium rounded">
+                              Inactive
+                            </span>
+                          )}
+                        </div>
+                        {rule.description && (
+                          <p className="text-sm text-gray-600">{rule.description}</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">Type: {rule.rule_type}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setEditingRule(rule)}
+                          className="p-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteRule(rule.rule_id, rule.rule_name)}
+                          className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Info Box */}
+        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-900 mb-2">How Scoring Rules Work:</h4>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• Create custom rules to define how players earn points</li>
+            <li>• Positive values add points, negative values deduct them</li>
+            <li>• Rules can apply to individual players, teams, or both</li>
+            <li>• Common types: goals, assists, clean sheets, team wins, cards, etc.</li>
+          </ul>
+        </div>
       </div>
     </div>
   );

@@ -27,6 +27,10 @@ interface DraftSettings {
   max_squad_size: number;
   is_active: boolean;
   status: 'pending' | 'active' | 'paused' | 'completed';
+  draft_status?: 'pending' | 'active' | 'closed';
+  draft_opens_at?: string;
+  draft_closes_at?: string;
+  is_draft_active?: boolean;
 }
 
 interface MyTeam {
@@ -91,11 +95,18 @@ export default function TeamDraftPage() {
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
         leagueSeasonId = settingsData.settings?.season_id;
+        const draftStatus = settingsData.settings?.draft_status || 'pending';
+        const isDraftActive = settingsData.settings?.is_draft_active || false;
+        
         setDraftSettings({
           budget: settingsData.settings?.budget_per_team || 100,
           max_squad_size: settingsData.settings?.max_squad_size || 15,
-          is_active: true, // Allow drafting
-          status: 'active',
+          is_active: isDraftActive,
+          status: isDraftActive ? 'active' : (draftStatus === 'pending' ? 'pending' : 'completed'),
+          draft_status: draftStatus,
+          draft_opens_at: settingsData.settings?.draft_opens_at,
+          draft_closes_at: settingsData.settings?.draft_closes_at,
+          is_draft_active: isDraftActive,
         });
       }
 
@@ -294,6 +305,62 @@ export default function TeamDraftPage() {
           <p className="text-gray-600">Build your squad within budget</p>
         </div>
 
+        {/* Draft Status Banner */}
+        {draftSettings && draftSettings.draft_status !== 'active' && (
+          <div className={`mb-6 p-4 rounded-xl border-2 ${
+            draftSettings.draft_status === 'pending' 
+              ? 'bg-yellow-50 border-yellow-300 text-yellow-800'
+              : 'bg-red-50 border-red-300 text-red-800'
+          }`}>
+            <div className="flex items-center gap-3">
+              {draftSettings.draft_status === 'pending' ? (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <X className="w-6 h-6" />
+              )}
+              <div className="flex-1">
+                <p className="font-bold text-lg">
+                  {draftSettings.draft_status === 'pending' ? 'Draft Not Started' : 'Draft Period Ended'}
+                </p>
+                <p className="text-sm mt-1">
+                  {draftSettings.draft_status === 'pending'
+                    ? 'The draft will open soon. Check back later to build your squad.'
+                    : 'The draft period has ended. Use transfer windows to modify your squad.'}
+                </p>
+                {draftSettings.draft_opens_at && draftSettings.draft_status === 'pending' && (
+                  <p className="text-xs mt-2 opacity-75">
+                    Opens: {new Date(draftSettings.draft_opens_at).toLocaleString()}
+                  </p>
+                )}
+                {draftSettings.draft_closes_at && draftSettings.draft_status === 'closed' && (
+                  <p className="text-xs mt-2 opacity-75">
+                    Closed: {new Date(draftSettings.draft_closes_at).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {draftSettings && draftSettings.draft_status === 'active' && draftSettings.draft_closes_at && (
+          <div className="mb-6 p-4 rounded-xl bg-green-50 border-2 border-green-300 text-green-800">
+            <div className="flex items-center gap-3">
+              <Check className="w-6 h-6" />
+              <div className="flex-1">
+                <p className="font-bold text-lg">Draft is Open!</p>
+                <p className="text-sm mt-1">
+                  Build your squad before the draft closes.
+                </p>
+                <p className="text-xs mt-2 opacity-75">
+                  Closes: {new Date(draftSettings.draft_closes_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Stats Header */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-4">
@@ -469,8 +536,13 @@ export default function TeamDraftPage() {
                     </div>
                     <button
                       onClick={() => draftPlayer(player.real_player_id)}
-                      disabled={isDrafting === player.real_player_id || player.draft_price > remainingBudget}
+                      disabled={
+                        isDrafting === player.real_player_id || 
+                        player.draft_price > remainingBudget ||
+                        !draftSettings?.is_draft_active
+                      }
                       className="ml-3 px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition"
+                      title={!draftSettings?.is_draft_active ? 'Draft is not active' : ''}
                     >
                       {isDrafting === player.real_player_id ? 'Drafting...' : 'Draft'}
                     </button>

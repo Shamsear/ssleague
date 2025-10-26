@@ -24,6 +24,8 @@ interface Player {
   total_points: number;
   matches_played: number;
   average_points: number;
+  is_captain?: boolean;
+  is_vice_captain?: boolean;
 }
 
 interface PlayerMatchStats {
@@ -65,6 +67,9 @@ export default function MyFantasyTeamPage() {
   const [otherTeams, setOtherTeams] = useState<OtherTeam[]>([]);
   const [showOtherTeams, setShowOtherTeams] = useState(false);
   const [loadingPlayerStats, setLoadingPlayerStats] = useState<Record<string, boolean>>({});
+  const [captainId, setCaptainId] = useState<string | null>(null);
+  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
+  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -98,6 +103,12 @@ export default function MyFantasyTeamPage() {
         setPlayers(data.players);
         setRecentRounds(data.recent_rounds || []);
         setLeagueId(data.team.fantasy_league_id);
+        
+        // Set current captain and vice-captain
+        const captain = data.players.find((p: Player) => p.is_captain);
+        const viceCaptain = data.players.find((p: Player) => p.is_vice_captain);
+        if (captain) setCaptainId(captain.real_player_id);
+        if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
         // Load other teams
         if (data.team.fantasy_league_id) {
@@ -125,6 +136,42 @@ export default function MyFantasyTeamPage() {
       setOtherTeams(others);
     } catch (error) {
       console.error('Error loading other teams:', error);
+    }
+  };
+
+  const saveCaptains = async () => {
+    if (!user) return;
+    
+    setIsSavingCaptains(true);
+    try {
+      const response = await fetch('/api/fantasy/squad/set-captain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          captain_player_id: captainId,
+          vice_captain_player_id: viceCaptainId,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save captains');
+      }
+
+      alert('Captain and vice-captain updated successfully!');
+      
+      // Refresh player data
+      const teamResponse = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
+      if (teamResponse.ok) {
+        const data = await teamResponse.json();
+        setPlayers(data.players);
+      }
+    } catch (error) {
+      console.error('Error saving captains:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save captains');
+    } finally {
+      setIsSavingCaptains(false);
     }
   };
 
@@ -301,6 +348,78 @@ export default function MyFantasyTeamPage() {
           </div>
         )}
 
+        {/* Captain Selection */}
+        {players.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Captain & Vice-Captain</h2>
+              <button
+                onClick={saveCaptains}
+                disabled={isSavingCaptains}
+                className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSavingCaptains ? 'Saving...' : 'Save Selection'}
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Captain earns 2x points, vice-captain earns 1.5x points
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Captain Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="text-2xl">👑</span>
+                    Captain (2x Points)
+                  </span>
+                </label>
+                <select
+                  value={captainId || ''}
+                  onChange={(e) => setCaptainId(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">Select Captain...</option>
+                  {players.map((player) => (
+                    <option 
+                      key={player.real_player_id} 
+                      value={player.real_player_id}
+                      disabled={player.real_player_id === viceCaptainId}
+                    >
+                      {player.player_name} ({player.total_points} pts)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Vice-Captain Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="text-2xl">⭐</span>
+                    Vice-Captain (1.5x Points)
+                  </span>
+                </label>
+                <select
+                  value={viceCaptainId || ''}
+                  onChange={(e) => setViceCaptainId(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">Select Vice-Captain...</option>
+                  {players.map((player) => (
+                    <option 
+                      key={player.real_player_id} 
+                      value={player.real_player_id}
+                      disabled={player.real_player_id === captainId}
+                    >
+                      {player.player_name} ({player.total_points} pts)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Players List */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">My Players</h2>
@@ -323,7 +442,19 @@ export default function MyFantasyTeamPage() {
                         {index + 1}
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-gray-900">{player.player_name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-gray-900">{player.player_name}</p>
+                          {player.is_captain && (
+                            <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs font-bold rounded-full border border-yellow-300">
+                              👑 C
+                            </span>
+                          )}
+                          {player.is_vice_captain && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-bold rounded-full border border-blue-300">
+                              ⭐ VC
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-600">Draft Pick #{player.draft_order}</p>
                       </div>
                     </div>

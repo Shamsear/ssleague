@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { fantasySql } from '@/lib/neon/fantasy-config';
 
 /**
  * PUT /api/fantasy/scoring-rules/[ruleId]
- * Update a scoring rule (committee only)
+ * Update a scoring rule
  */
 export async function PUT(
   request: NextRequest,
@@ -13,52 +12,39 @@ export async function PUT(
   try {
     const { ruleId } = await params;
     const body = await request.json();
-    const { points_value, description, is_active } = body;
+    const { rule_name, description, points_value, is_active, applies_to } = body;
 
-    if (!ruleId) {
-      return NextResponse.json(
-        { error: 'Rule ID is required' },
-        { status: 400 }
-      );
-    }
+    const result = await fantasySql`
+      UPDATE scoring_rules
+      SET 
+        rule_name = COALESCE(${rule_name}, rule_name),
+        description = COALESCE(${description}, description),
+        points_value = COALESCE(${points_value}, points_value),
+        is_active = COALESCE(${is_active}, is_active),
+        applies_to = COALESCE(${applies_to}, applies_to),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE rule_id = ${ruleId}
+      RETURNING *
+    `;
 
-    // Get current rule
-    const ruleDoc = await adminDb
-      .collection('fantasy_scoring_rules')
-      .doc(ruleId)
-      .get();
-
-    if (!ruleDoc.exists) {
+    if (result.length === 0) {
       return NextResponse.json(
         { error: 'Scoring rule not found' },
         { status: 404 }
       );
     }
 
-    // Update rule
-    const updateData: any = {
-      updated_at: FieldValue.serverTimestamp(),
-    };
-
-    if (points_value !== undefined) {
-      updateData.points_value = points_value;
-    }
-    if (description !== undefined) {
-      updateData.description = description;
-    }
-    if (is_active !== undefined) {
-      updateData.is_active = is_active;
-    }
-
-    await adminDb
-      .collection('fantasy_scoring_rules')
-      .doc(ruleId)
-      .update(updateData);
+    console.log(`✅ Scoring rule updated: ${result[0].rule_name}`);
 
     return NextResponse.json({
       success: true,
       message: 'Scoring rule updated successfully',
-      rule_id: ruleId,
+      rule: {
+        rule_id: result[0].rule_id,
+        rule_name: result[0].rule_name,
+        points_value: Number(result[0].points_value),
+        is_active: result[0].is_active,
+      },
     });
   } catch (error) {
     console.error('Error updating scoring rule:', error);
@@ -70,46 +56,39 @@ export async function PUT(
 }
 
 /**
- * GET /api/fantasy/scoring-rules/[ruleId]
- * Get a specific scoring rule
+ * DELETE /api/fantasy/scoring-rules/[ruleId]
+ * Delete a scoring rule
  */
-export async function GET(
+export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ ruleId: string }> }
 ) {
   try {
     const { ruleId } = await params;
 
-    if (!ruleId) {
-      return NextResponse.json(
-        { error: 'Rule ID is required' },
-        { status: 400 }
-      );
-    }
+    const result = await fantasySql`
+      DELETE FROM scoring_rules
+      WHERE rule_id = ${ruleId}
+      RETURNING rule_name
+    `;
 
-    const ruleDoc = await adminDb
-      .collection('fantasy_scoring_rules')
-      .doc(ruleId)
-      .get();
-
-    if (!ruleDoc.exists) {
+    if (result.length === 0) {
       return NextResponse.json(
         { error: 'Scoring rule not found' },
         { status: 404 }
       );
     }
 
+    console.log(`✅ Scoring rule deleted: ${result[0].rule_name}`);
+
     return NextResponse.json({
       success: true,
-      rule: {
-        id: ruleDoc.id,
-        ...ruleDoc.data(),
-      },
+      message: 'Scoring rule deleted successfully',
     });
   } catch (error) {
-    console.error('Error fetching scoring rule:', error);
+    console.error('Error deleting scoring rule:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch scoring rule' },
+      { error: 'Failed to delete scoring rule' },
       { status: 500 }
     );
   }

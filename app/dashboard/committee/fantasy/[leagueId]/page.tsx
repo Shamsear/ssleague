@@ -203,6 +203,32 @@ export default function FantasyLeagueDashboard() {
       bgColor: 'from-yellow-50 to-orange-50',
       borderColor: 'border-yellow-200',
     },
+    {
+      title: 'Draft Control',
+      description: 'Start/stop draft period & set dates',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/draft-control/${leagueId}`,
+      color: 'from-red-500 to-pink-600',
+      bgColor: 'from-red-50 to-pink-50',
+      borderColor: 'border-red-200',
+    },
+    {
+      title: 'Transfer Windows',
+      description: 'Create & manage transfer periods',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/transfer-windows/${leagueId}`,
+      color: 'from-teal-500 to-cyan-600',
+      bgColor: 'from-teal-50 to-cyan-50',
+      borderColor: 'border-teal-200',
+    },
   ];
 
   return (

@@ -61,6 +61,35 @@ export async function POST(request: NextRequest) {
     const maxSquadSize = Number(league.max_squad_size);
     const budgetPerTeam = Number(league.budget_per_team);
 
+    // Check if draft is active
+    if (league.draft_status !== 'active') {
+      return NextResponse.json(
+        { 
+          error: `Draft is currently ${league.draft_status}`,
+          draft_status: league.draft_status,
+          message: league.draft_status === 'pending' 
+            ? 'Draft has not started yet' 
+            : 'Draft period has ended. Use transfer windows to modify your squad.'
+        },
+        { status: 403 }
+      );
+    }
+
+    // Check if within draft period
+    const now = new Date();
+    if (league.draft_closes_at) {
+      const closeDate = new Date(league.draft_closes_at);
+      if (now > closeDate) {
+        return NextResponse.json(
+          { 
+            error: 'Draft period has ended',
+            closed_at: league.draft_closes_at
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Get current squad
     const currentSquad = await fantasySql`
       SELECT * FROM fantasy_squad

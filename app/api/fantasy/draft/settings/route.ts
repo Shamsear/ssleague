@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
         league_name: league.league_name,
         season_name: league.season_name,
         season_id: league.season_id,
+        draft_status: league.draft_status || 'pending',
+        draft_opens_at: league.draft_opens_at,
+        draft_closes_at: league.draft_closes_at,
+        is_draft_active: league.draft_status === 'active',
       },
     });
   } catch (error) {
