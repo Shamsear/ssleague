@@ -7,12 +7,15 @@ import Link from 'next/link';
 import { getActiveSeason } from '@/lib/firebase/seasons';
 import { getRoundDeadlines, updateRoundDeadlines } from '@/lib/firebase/fixtures';
 import { getISTToday, parseISTDate, createISTDateTime, formatISTDateTime } from '@/lib/utils/timezone';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
 
 function EditRoundDeadlinesContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   
+  const tournamentId = searchParams.get('tournament');
   const seasonId = searchParams.get('season');
   const roundNumber = parseInt(searchParams.get('round') || '0');
   const leg = (searchParams.get('leg') || 'first') as 'first' | 'second';
@@ -27,6 +30,13 @@ function EditRoundDeadlinesContent() {
   const [resultTime, setResultTime] = useState('00:30');
   const [scheduledDate, setScheduledDate] = useState('');
 
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+  } = useModal();
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
@@ -38,10 +48,10 @@ function EditRoundDeadlinesContent() {
 
   useEffect(() => {
     loadDeadlines();
-  }, [seasonId, roundNumber, leg]);
+  }, [tournamentId, roundNumber, leg]);
 
   const loadDeadlines = async () => {
-    if (!seasonId || !roundNumber) return;
+    if (!roundNumber) return;
 
     try {
       setIsLoading(true);
@@ -51,7 +61,37 @@ function EditRoundDeadlinesContent() {
         setSeasonName(activeSeason.name);
       }
 
-      const deadlines = await getRoundDeadlines(seasonId, roundNumber, leg);
+      // If tournament_id is not provided, fetch it from season
+      let tournamentIdToUse = tournamentId;
+      if (!tournamentIdToUse && seasonId) {
+        console.log('No tournament_id provided, fetching from season:', seasonId);
+        const tournamentsRes = await fetch(`/api/tournaments?season_id=${seasonId}`);
+        const tournamentsData = await tournamentsRes.json();
+        
+        if (tournamentsData.success && tournamentsData.tournaments && tournamentsData.tournaments.length > 0) {
+          // Use the first/primary tournament for this season
+          tournamentIdToUse = tournamentsData.tournaments[0].id;
+          console.log('Using tournament:', tournamentIdToUse);
+        } else {
+          console.error('No tournaments found for season:', seasonId);
+          return;
+        }
+      }
+
+      if (!tournamentIdToUse) {
+        console.error('No tournament_id available');
+        return;
+      }
+
+      // Fetch round deadlines from tournament API
+      const response = await fetch(`/api/round-deadlines?tournament_id=${tournamentIdToUse}&round_number=${roundNumber}&leg=${leg}`);
+      if (!response.ok) {
+        console.error('Failed to fetch round deadlines');
+        return;
+      }
+      
+      const { roundDeadline } = await response.json();
+      const deadlines = roundDeadline;
       console.log('Loaded deadlines:', deadlines);
       if (deadlines) {
         setHomeTime(deadlines.home_fixture_deadline_time || '17:00');
@@ -97,16 +137,67 @@ function EditRoundDeadlinesContent() {
         deadlineData.scheduled_date = scheduledDate;
       }
 
-      const result = await updateRoundDeadlines(seasonId!, roundNumber, leg, deadlineData);
-
-      if (result.success) {
-        alert('Deadlines updated successfully!');
-        router.push('/dashboard/committee/team-management/match-days');
-      } else {
-        alert(result.error || 'Failed to update deadlines');
+      // If tournament_id is not provided, fetch it from season
+      let tournamentIdToUse = tournamentId;
+      if (!tournamentIdToUse && seasonId) {
+        const tournamentsRes = await fetch(`/api/tournaments?season_id=${seasonId}`);
+        const tournamentsData = await tournamentsRes.json();
+        
+        if (tournamentsData.success && tournamentsData.tournaments && tournamentsData.tournaments.length > 0) {
+          tournamentIdToUse = tournamentsData.tournaments[0].id;
+        }
       }
-    } catch (error: any) {
-      alert('Failed to update deadlines: ' + error.message);
+      
+      if (!tournamentIdToUse) {
+        showAlert({
+          type: 'error',
+          title: 'Error',
+          message: 'No tournament found for this season'
+        });
+        return;
+      }
+      
+      // Update round deadlines via tournament API
+      const response = await fetch('/api/round-deadlines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournament_id: tournamentIdToUse,
+          season_id: seasonId,
+          round_number: roundNumber,
+          leg,
+          ...deadlineData,
+        }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        showAlert({
+          type: 'error',
+          title: 'Update Failed',
+          message: error.error || 'Failed to update deadlines'
+        });
+        return;
+      }
+      
+      const result = await response.json();
+      
+      // Success - redirect after showing message
+      showAlert({
+        type: 'success',
+        title: 'Deadlines Updated',
+        message: 'Deadlines updated successfully!'
+      });
+      setTimeout(() => {
+        router.push('/dashboard/committee/team-management/match-days');
+      }, 1500);
+    } catch (error) {
+      console.error('Error updating deadlines:', error);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update deadlines'
+      });
     } finally {
       setIsSaving(false);
     }
@@ -468,6 +559,15 @@ function EditRoundDeadlinesContent() {
           </div>
         </div>
       </div>
+
+      {/* Modal Component */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
     </div>
   );
 }

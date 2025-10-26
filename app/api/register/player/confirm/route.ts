@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { fantasySql } from '@/lib/neon/fantasy-config';
 
 /**
  * POST /api/register/player/confirm
@@ -11,12 +13,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Validate required fields
-    if (!body.player_id || !body.season_id || !body.user_email || !body.user_uid) {
+    // Validate required fields (user_email and user_uid are optional for committee registrations)
+    if (!body.player_id || !body.season_id) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required fields',
+          error: 'Missing required fields: player_id and season_id are required',
         },
         { status: 400 }
       );
@@ -24,14 +26,15 @@ export async function POST(request: NextRequest) {
 
     const { player_id, season_id, user_email, user_uid, player_data } = body;
 
-    // Check if player already registered for this season
+    // Check if player already registered for this season in Neon
+    const sql = getTournamentDb();
     const registrationId = `${player_id}_${season_id}`;
-    const existingRegistration = await adminDb
-      .collection('realplayer')
-      .doc(registrationId)
-      .get();
+    
+    const existingRegistration = await sql`
+      SELECT id FROM player_seasons WHERE id = ${registrationId}
+    `;
 
-    if (existingRegistration.exists) {
+    if (existingRegistration.length > 0) {
       return NextResponse.json(
         {
           success: false,
@@ -52,59 +55,101 @@ export async function POST(request: NextRequest) {
     
     console.log(`📝 Creating 2-season contract for ${player_id}: ${season_id} & ${nextSeasonId}`);
 
-    // Create registration for CURRENT season in realplayer collection
-    const currentSeasonData = {
-      season_id,
-      player_id,
-      name: player_data?.name || '',
-      player_name: player_data?.name || '',
-      place: player_data?.place || null,
-      date_of_birth: player_data?.date_of_birth || null,
-      email: player_data?.email || null,
-      phone: player_data?.phone || null,
-      
-      // Contract fields
-      contract_id: contractId,
-      contract_start_season: season_id,
-      contract_end_season: nextSeasonId,
-      contract_length: 2,
-      is_auto_registered: false, // This is the initial registration
-      
-      registration_date: FieldValue.serverTimestamp(),
-      created_at: FieldValue.serverTimestamp(),
-      updated_at: FieldValue.serverTimestamp(),
-    };
-    
-    await adminDb.collection('realplayer').doc(registrationId).set(currentSeasonData);
+    // Create registration for CURRENT season in Neon player_seasons table
+    await sql`
+      INSERT INTO player_seasons (
+        id, player_id, season_id, player_name,
+        contract_id, contract_start_season, contract_end_season, contract_length,
+        is_auto_registered, registration_date,
+        star_rating, points,
+        matches_played, goals_scored, assists, wins, draws, losses, clean_sheets, motm_awards,
+        created_at, updated_at
+      )
+      VALUES (
+        ${registrationId}, ${player_id}, ${season_id}, ${player_data?.name || ''},
+        ${contractId}, ${season_id}, ${nextSeasonId}, 2,
+        false, NOW(),
+        3, 100,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        NOW(), NOW()
+      )
+    `;
     
     // Create registration for NEXT season (auto-registered as part of contract)
-    const nextSeasonData = {
-      season_id: nextSeasonId,
-      player_id,
-      name: player_data?.name || '',
-      player_name: player_data?.name || '',
-      place: player_data?.place || null,
-      date_of_birth: player_data?.date_of_birth || null,
-      email: player_data?.email || null,
-      phone: player_data?.phone || null,
-      
-      // Contract fields
-      contract_id: contractId,
-      contract_start_season: season_id,
-      contract_end_season: nextSeasonId,
-      contract_length: 2,
-      is_auto_registered: true, // This is auto-created from contract
-      
-      registration_date: FieldValue.serverTimestamp(),
-      created_at: FieldValue.serverTimestamp(),
-      updated_at: FieldValue.serverTimestamp(),
-    };
-    
-    await adminDb.collection('realplayer').doc(nextRegistrationId).set(nextSeasonData);
+    await sql`
+      INSERT INTO player_seasons (
+        id, player_id, season_id, player_name,
+        contract_id, contract_start_season, contract_end_season, contract_length,
+        is_auto_registered, registration_date,
+        star_rating, points,
+        matches_played, goals_scored, assists, wins, draws, losses, clean_sheets, motm_awards,
+        created_at, updated_at
+      )
+      VALUES (
+        ${nextRegistrationId}, ${player_id}, ${nextSeasonId}, ${player_data?.name || ''},
+        ${contractId}, ${season_id}, ${nextSeasonId}, 2,
+        true, NOW(),
+        3, 100,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        NOW(), NOW()
+      )
+    `;
     
     console.log(`✅ Created contract ${contractId} for ${player_id}: ${registrationId} & ${nextRegistrationId}`);
 
-    // Update is_registered in realplayers collection
+    // Auto-add player to fantasy league if one exists for this season
+    try {
+      const fantasyLeagues = await fantasySql`
+        SELECT league_id, star_rating_prices
+        FROM fantasy_leagues
+        WHERE season_id = ${season_id}
+        LIMIT 1
+      `;
+
+      if (fantasyLeagues.length > 0) {
+        const league = fantasyLeagues[0];
+        const starRating = 5; // Default star rating
+        
+        // Get price from star rating pricing
+        let draftPrice = 10; // Default price
+        if (league.star_rating_prices) {
+          const priceObj = league.star_rating_prices.find((p: any) => p.stars === starRating);
+          if (priceObj) draftPrice = priceObj.price;
+        }
+
+        await fantasySql`
+          INSERT INTO fantasy_players (
+            player_id,
+            league_id,
+            player_name,
+            real_team_id,
+            real_team_name,
+            position,
+            star_rating,
+            draft_price,
+            is_available
+          ) VALUES (
+            ${player_id},
+            ${league.league_id},
+            ${player_data?.name || ''},
+            '',
+            '',
+            'Unknown',
+            ${starRating},
+            ${draftPrice},
+            true
+          )
+          ON CONFLICT (player_id, league_id) DO NOTHING
+        `;
+
+        console.log(`✅ Added ${player_data?.name || player_id} to fantasy league ${league.league_id}`);
+      }
+    } catch (fantasyError) {
+      // Don't fail registration if fantasy addition fails
+      console.error('Warning: Failed to add player to fantasy league:', fantasyError);
+    }
+
+    // Update permanent player data in Firebase realplayers collection
     const playersQuery = await adminDb
       .collection('realplayers')
       .where('player_id', '==', player_id)
@@ -114,10 +159,8 @@ export async function POST(request: NextRequest) {
     if (!playersQuery.empty) {
       const playerDoc = playersQuery.docs[0];
       const updateData: any = {
-        is_registered: true,
-        season_id,
-        registered_email: user_email,
-        registered_user_id: user_uid,
+        current_season_id: season_id,
+        registration_date: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
       };
 

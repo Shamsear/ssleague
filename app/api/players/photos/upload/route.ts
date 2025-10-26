@@ -1,5 +1,5 @@
-import { put } from '@vercel/blob';
 import { NextRequest, NextResponse } from 'next/server';
+import { uploadPlayerPhoto } from '@/lib/imagekit/playerPhotos';
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,44 +7,26 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File;
     const playerId = formData.get('playerId') as string;
 
-    if (!file) {
+    if (!file || !playerId) {
       return NextResponse.json(
-        { success: false, error: 'No file provided' },
+        { error: 'File and playerId are required' },
         { status: 400 }
       );
     }
 
-    if (!playerId) {
-      return NextResponse.json(
-        { success: false, error: 'Player ID is required' },
-        { status: 400 }
-      );
-    }
+    // Upload to ImageKit
+    const result = await uploadPlayerPhoto(playerId, file);
 
-    // Get file extension
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `${playerId}.${fileExtension}`;
-
-    // Upload to Vercel Blob
-    const blob = await put(`player-photos/${fileName}`, file, {
-      access: 'public',
-      addRandomSuffix: false, // Keep player_id as exact name
+    return NextResponse.json({ 
+      url: result.url,
+      fileId: result.fileId,
+      playerId,
+      fileName: file.name
     });
-
-    console.log('✅ Photo uploaded:', blob.url);
-
-    return NextResponse.json({
-      success: true,
-      url: blob.url,
-      message: 'Photo uploaded successfully'
-    });
-  } catch (error: any) {
-    console.error('❌ Error uploading photo:', error);
+  } catch (error) {
+    console.error('Error uploading photo:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message || 'Failed to upload photo'
-      },
+      { error: 'Failed to upload photo' },
       { status: 500 }
     );
   }

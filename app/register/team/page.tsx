@@ -4,6 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
 
 interface Season {
   id: string;
@@ -23,6 +26,21 @@ function SeasonRegistrationContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState<'none' | 'registered' | 'declined'>('none');
+  
+  // Phase 1: New state for registration form
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+  const [managerName, setManagerName] = useState('');
+  const [joinFantasy, setJoinFantasy] = useState(false);
+  
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -50,7 +68,11 @@ function SeasonRegistrationContent() {
       if (!seasonId || !user) return;
 
       if (!seasonId) {
-        alert('No season ID provided in the link');
+        showAlert({
+          type: 'error',
+          title: 'Invalid Link',
+          message: 'No season ID provided in the link'
+        });
         router.push('/dashboard/team');
         return;
       }
@@ -79,12 +101,20 @@ function SeasonRegistrationContent() {
             setRegistrationStatus('none');
           }
         } else {
-          alert('Season not found or link is invalid');
+          showAlert({
+            type: 'error',
+            title: 'Invalid Season',
+            message: 'Season not found or link is invalid'
+          });
           router.push('/dashboard/team');
         }
       } catch (err) {
         console.error('Error fetching season:', err);
-        alert('Failed to load season information');
+        showAlert({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load season information'
+        });
         router.push('/dashboard/team');
       } finally {
         setIsLoading(false);
@@ -99,66 +129,105 @@ function SeasonRegistrationContent() {
   const handleDecision = async (action: 'join' | 'decline') => {
     if (!season || isSubmitting || !user) return;
 
-    const confirmMessage = action === 'join'
-      ? `Are you sure you want to join ${season.name}?`
-      : `Are you sure you want to skip ${season.name}?`;
+    // Phase 1: Show form for joining (to collect manager name and fantasy opt-in)
+    if (action === 'join') {
+      setShowRegistrationForm(true);
+      return;
+    }
 
-    if (!confirm(confirmMessage)) return;
+    // For decline, show confirmation directly
+    const confirmMessage = `Are you sure you want to skip ${season.name}?`;
+
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Skip Season',
+      message: confirmMessage,
+      confirmText: 'Skip',
+      cancelText: 'Cancel'
+    });
+
+    if (!confirmed) return;
 
     setIsSubmitting(true);
 
     try {
-      const userId = user.uid;
+      // Use API endpoint for decline
+      const response = await fetch(`/api/seasons/${seasonId}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'decline',
+          userId: user.uid,
+        }),
+      });
 
-      const startingBalance = season.starting_balance || 15000;
-      const teamName = (user as any).teamName || (user as any).username || 'Team';
+      const result = await response.json();
 
-      if (action === 'join') {
-        // Use API endpoint for proper multi-season registration
-        const response = await fetch(`/api/seasons/${seasonId}/register`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'join',
-            userId: userId,
-          }),
-        });
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-          throw new Error(result.message || 'Registration failed');
-        }
-
-        alert(`Successfully joined ${season.name}!`);
-      } else {
-        // Use API endpoint for proper multi-season decline
-        const response = await fetch(`/api/seasons/${seasonId}/register`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'decline',
-            userId: userId,
-          }),
-        });
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-          throw new Error(result.message || 'Decline failed');
-        }
-
-        alert(`You have declined ${season.name}. You can join future seasons.`);
+      if (!result.success) {
+        throw new Error(result.message || 'Decline failed');
       }
 
-      router.push('/dashboard/team');
+      showAlert({
+        type: 'success',
+        title: 'Season Skipped',
+        message: `You have declined ${season.name}. You can join future seasons.`
+      });
+      setTimeout(() => router.push('/dashboard/team'), 1500);
     } catch (err) {
       console.error('Error processing decision:', err);
-      alert('An error occurred. Please try again.');
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'An error occurred. Please try again.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRegistrationSubmit = async () => {
+    if (!season || isSubmitting || !user) return;
+
+    // Validation: Manager name is optional, but let's trim it
+    const trimmedManagerName = managerName.trim();
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(`/api/seasons/${seasonId}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'join',
+          userId: user.uid,
+          managerName: trimmedManagerName || undefined,
+          joinFantasy: joinFantasy,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Registration failed');
+      }
+
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: `Successfully joined ${season.name}!${joinFantasy ? ' You\'re also registered for Fantasy League!' : ''}`
+      });
+      setTimeout(() => router.push('/dashboard/team'), 1500);
+    } catch (err) {
+      console.error('Error processing registration:', err);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'An error occurred. Please try again.'
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -375,8 +444,91 @@ function SeasonRegistrationContent() {
                     Back to Dashboard
                   </Link>
                 </div>
+              ) : showRegistrationForm ? (
+                // Registration form with manager name and fantasy opt-in
+                <div className="max-w-2xl mx-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowRegistrationForm(false)}
+                    className="mb-6 text-gray-600 hover:text-gray-900 flex items-center transition-colors"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back
+                  </button>
+
+                  <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">Complete Your Registration</h3>
+                  
+                  <div className="space-y-6">
+                    {/* Manager Name Input */}
+                    <div>
+                      <label htmlFor="managerName" className="block text-sm font-semibold text-gray-700 mb-2">
+                        Manager Name (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        id="managerName"
+                        value={managerName}
+                        onChange={(e) => setManagerName(e.target.value)}
+                        placeholder="Enter your name"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all"
+                      />
+                      <p className="text-xs text-gray-500 mt-2">This is for your personal reference and won't be publicly displayed</p>
+                    </div>
+
+                    {/* Fantasy League Opt-in */}
+                    <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-6 border border-purple-200">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="joinFantasy"
+                          checked={joinFantasy}
+                          onChange={(e) => setJoinFantasy(e.target.checked)}
+                          className="mt-1 h-5 w-5 text-[#0066FF] rounded focus:ring-[#0066FF] border-gray-300 cursor-pointer"
+                        />
+                        <label htmlFor="joinFantasy" className="ml-3 cursor-pointer">
+                          <span className="block text-base font-semibold text-purple-900 mb-1">
+                            🎮 Join Fantasy League
+                          </span>
+                          <span className="block text-sm text-purple-700">
+                            Participate in the fantasy league! Draft players, set weekly lineups, earn points based on real match performance, and compete against other managers.
+                          </span>
+                        </label>
+                      </div>
+                      
+                      {joinFantasy && (
+                        <div className="mt-4 pl-8 bg-white/60 rounded-xl p-4 border border-purple-100">
+                          <p className="text-sm font-semibold text-purple-900 mb-2">✨ Fantasy Features:</p>
+                          <ul className="text-xs text-purple-800 space-y-1">
+                            <li>• Draft players from your real team's roster</li>
+                            <li>• Set weekly lineups with Captain/Vice-Captain</li>
+                            <li>• Earn bonus points when your real team wins</li>
+                            <li>• Track dual scoring: player points + team bonuses</li>
+                            <li>• Compete on fantasy league leaderboards</li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Submit Button */}
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={handleRegistrationSubmit}
+                        disabled={isSubmitting}
+                        className="flex-1 group relative px-10 py-4 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-lg shadow-green-600/20 hover:shadow-xl hover:shadow-green-600/30 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>{isSubmitting ? 'Processing...' : 'Confirm Registration'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ) : (
-                // New registration form
+                // Initial decision buttons
                 <div className="text-center">
                   <h3 className="text-2xl font-bold text-gray-900 mb-4">Make Your Decision</h3>
                   <p className="text-gray-600 mb-8">
@@ -436,6 +588,26 @@ function SeasonRegistrationContent() {
           </div>
         </div>
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

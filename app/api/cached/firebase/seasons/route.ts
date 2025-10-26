@@ -62,9 +62,9 @@ export async function GET(request: Request) {
           .filter((season: any) => 
             // Include seasons that are:
             // 1. Marked as active (isActive === true), OR
-            // 2. Not completed (status !== 'completed')
+            // 2. Have status === 'active'
             season.isActive === true || 
-            (season.status && season.status !== 'completed')
+            season.status === 'active'
           )
           // Sort by most recent first
           .sort((a: any, b: any) => {
@@ -82,9 +82,9 @@ export async function GET(request: Request) {
           },
           {
             headers: {
-              'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=240',
-              'CDN-Cache-Control': 'public, s-maxage=120',
-              'Vercel-CDN-Cache-Control': 'public, s-maxage=120',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'CDN-Cache-Control': 'no-cache',
+              'Vercel-CDN-Cache-Control': 'no-cache',
             },
           }
         );
@@ -128,5 +128,5 @@ export async function GET(request: Request) {
   }
 }
 
-export const revalidate = 120; // Revalidate every 2 minutes
-export const dynamic = 'force-static';
+export const revalidate = 0; // Disable cache for testing
+export const dynamic = 'force-dynamic'; // Force fresh data

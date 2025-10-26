@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase/config';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, increment, serverTimestamp } from 'firebase/firestore';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 interface MatchupResult {
   position: number;
@@ -115,8 +114,8 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Update or create player stats document
- * Tracks processed fixtures to prevent duplicate counting when results are edited
+ * Update or create player stats in Neon DB
+ * Uses upsert to handle both new and existing stats
  */
 async function updatePlayerStats(data: {
   player_id: string;
@@ -130,84 +129,66 @@ async function updatePlayerStats(data: {
   lost: boolean;
   motm: boolean;
 }) {
+  const sql = getTournamentDb();
   const { player_id, player_name, season_id, fixture_id, goals_scored, goals_conceded, won, draw, lost, motm } = data;
 
-  // Construct composite ID: player_id_seasonId
   const statsId = `${player_id}_${season_id}`;
-  const statsRef = doc(db, 'realplayerstats', statsId);
 
-  // Check if stats document exists
-  const statsDoc = await getDoc(statsRef);
+  // Get current stats if exists
+  const existing = await sql`
+    SELECT * FROM realplayerstats WHERE id = ${statsId} LIMIT 1
+  `;
 
-  if (statsDoc.exists()) {
-    const existingData = statsDoc.data();
-    const processedFixtures = existingData.processed_fixtures || [];
+  if (existing.length > 0) {
+    const current = existing[0];
     
-    // Check if this fixture was already processed
-    const fixtureIndex = processedFixtures.findIndex((f: any) => f.fixture_id === fixture_id);
-    
-    if (fixtureIndex >= 0) {
-      // Fixture already processed - this is an edit
-      const oldStats = processedFixtures[fixtureIndex];
-      
-      // Calculate the difference to adjust stats
-      const goalsDiff = goals_scored - oldStats.goals_scored;
-      const goalsConcededDiff = goals_conceded - oldStats.goals_conceded;
-      const winsDiff = (won ? 1 : 0) - (oldStats.won ? 1 : 0);
-      const drawsDiff = (draw ? 1 : 0) - (oldStats.draw ? 1 : 0);
-      const lossesDiff = (lost ? 1 : 0) - (oldStats.lost ? 1 : 0);
-      const motmDiff = (motm ? 1 : 0) - (oldStats.motm ? 1 : 0);
-      
-      // Update with differences (not duplicating)
-      const updateData: any = {
-        goals_scored: increment(goalsDiff),
-        goals_conceded: increment(goalsConcededDiff),
-        updated_at: serverTimestamp()
-      };
-      
-      if (winsDiff !== 0) updateData.wins = increment(winsDiff);
-      if (drawsDiff !== 0) updateData.draws = increment(drawsDiff);
-      if (lossesDiff !== 0) updateData.losses = increment(lossesDiff);
-      if (motmDiff !== 0) updateData.motm_awards = increment(motmDiff);
-      
-      // Update the fixture record in processed_fixtures array
-      processedFixtures[fixtureIndex] = { fixture_id, goals_scored, goals_conceded, won, draw, lost, motm };
-      updateData.processed_fixtures = processedFixtures;
-      
-      await updateDoc(statsRef, updateData);
-    } else {
-      // New fixture - add stats
-      const updateData: any = {
-        matches_played: increment(1),
-        goals_scored: increment(goals_scored),
-        goals_conceded: increment(goals_conceded),
-        processed_fixtures: [...processedFixtures, { fixture_id, goals_scored, goals_conceded, won, draw, lost, motm }],
-        updated_at: serverTimestamp()
-      };
-      
-      if (won) updateData.wins = increment(1);
-      if (draw) updateData.draws = increment(1);
-      if (lost) updateData.losses = increment(1);
-      if (motm) updateData.motm_awards = increment(1);
-      
-      await updateDoc(statsRef, updateData);
-    }
+    // Update existing stats
+    await sql`
+      UPDATE realplayerstats
+      SET
+        matches_played = ${(current.matches_played || 0) + 1},
+        goals_scored = ${(current.goals_scored || 0) + goals_scored},
+        assists = ${current.assists || 0},
+        wins = ${(current.wins || 0) + (won ? 1 : 0)},
+        draws = ${(current.draws || 0) + (draw ? 1 : 0)},
+        losses = ${(current.losses || 0) + (lost ? 1 : 0)},
+        motm_awards = ${(current.motm_awards || 0) + (motm ? 1 : 0)},
+        points = ${calculatePoints(
+          (current.wins || 0) + (won ? 1 : 0),
+          (current.draws || 0) + (draw ? 1 : 0),
+          (current.motm_awards || 0) + (motm ? 1 : 0),
+          (current.goals_scored || 0) + goals_scored
+        )},
+        updated_at = NOW()
+      WHERE id = ${statsId}
+    `;
   } else {
-    // Create new stats document
-    await setDoc(statsRef, {
-      player_id,
-      player_name,
-      season_id,
-      matches_played: 1,
-      goals_scored,
-      goals_conceded,
-      wins: won ? 1 : 0,
-      draws: draw ? 1 : 0,
-      losses: lost ? 1 : 0,
-      motm_awards: motm ? 1 : 0,
-      processed_fixtures: [{ fixture_id, goals_scored, goals_conceded, won, draw, lost, motm }],
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    });
+    // Insert new stats
+    const points = calculatePoints(
+      won ? 1 : 0,
+      draw ? 1 : 0,
+      motm ? 1 : 0,
+      goals_scored
+    );
+
+    await sql`
+      INSERT INTO realplayerstats (
+        id, player_id, season_id, player_name,
+        matches_played, goals_scored, assists, wins, draws, losses,
+        motm_awards, points, created_at, updated_at
+      )
+      VALUES (
+        ${statsId}, ${player_id}, ${season_id}, ${player_name},
+        1, ${goals_scored}, 0, ${won ? 1 : 0}, ${draw ? 1 : 0}, ${lost ? 1 : 0},
+        ${motm ? 1 : 0}, ${points}, NOW(), NOW()
+      )
+    `;
   }
+}
+
+/**
+ * Calculate total points: (Wins × 3) + (Draws × 1) + (MOTM × 3) + (Goals × 1)
+ */
+function calculatePoints(wins: number, draws: number, motm: number, goals: number): number {
+  return (wins * 3) + (draws * 1) + (motm * 3) + (goals * 1);
 }

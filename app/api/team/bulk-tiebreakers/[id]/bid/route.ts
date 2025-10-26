@@ -3,6 +3,11 @@ import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 
+// WebSocket broadcast function (set by WebSocket server)
+declare global {
+  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
+}
+
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 /**
@@ -224,9 +229,22 @@ export async function POST(
     const teamsLeft = winnerCheck[0]?.teams_left || 0;
     const isWinner = teamsLeft === 1;
 
-    // TODO: Broadcast via WebSocket
-    // - Notify all teams of new bid
-    // - Update UI in real-time
+    // ✅ Broadcast to WebSocket clients for real-time tiebreaker updates
+    if (global.wsBroadcast) {
+      global.wsBroadcast(`tiebreaker:${tiebreakerId}`, {
+        type: 'tiebreaker_bid',
+        data: {
+          tiebreaker_id: tiebreakerId,
+          player_name: tiebreaker.player_name,
+          team_id: userId,
+          team_name: userData.teamName || 'Unknown Team',
+          bid_amount,
+          teams_remaining: teamsLeft,
+          is_winner: isWinner,
+        },
+      });
+      console.log(`📢 [WebSocket] Broadcast tiebreaker bid to tiebreaker:${tiebreakerId}`);
+    }
 
     if (isWinner) {
       console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${userId} wins!`);

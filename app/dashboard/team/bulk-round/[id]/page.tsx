@@ -4,6 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
+import { useAuctionWebSocket } from '@/hooks/useWebSocket';
 
 interface Player {
   id: string;
@@ -35,11 +39,25 @@ export default function TeamBulkRoundPage() {
   const [bulkRound, setBulkRound] = useState<BulkRound | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedPlayers, setSelectedPlayers] = useState<Set<string>>(new Set());
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
   const [isLoading, setIsLoading] = useState(true);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [teamBalance, setTeamBalance] = useState(1000); // Mock balance
   const [filterPosition, setFilterPosition] = useState<string>('all');
+
+  // ✅ Enable WebSocket for real-time bid updates
+  const { isConnected } = useAuctionWebSocket(roundId, true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -129,17 +147,33 @@ export default function TeamBulkRoundPage() {
 
   const handleSubmitBids = async () => {
     if (selectedPlayers.size === 0) {
-      alert('Please select at least one player');
+      showAlert({
+        type: 'warning',
+        title: 'No Players Selected',
+        message: 'Please select at least one player'
+      });
       return;
     }
 
     const totalCost = selectedPlayers.size * (bulkRound?.base_price || 10);
     if (totalCost > teamBalance) {
-      alert('Insufficient balance!');
+      showAlert({
+        type: 'error',
+        title: 'Insufficient Balance',
+        message: 'Insufficient balance!'
+      });
       return;
     }
 
-    if (!confirm(`Submit bids for ${selectedPlayers.size} player(s) at £${bulkRound?.base_price} each (Total: £${totalCost})?`)) {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Submit Bids',
+      message: `Submit bids for ${selectedPlayers.size} player(s) at £${bulkRound?.base_price} each (Total: £${totalCost})?`,
+      confirmText: 'Submit',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -151,11 +185,19 @@ export default function TeamBulkRoundPage() {
       //   body: JSON.stringify({ player_ids: Array.from(selectedPlayers) }),
       // });
 
-      alert('Bids submitted successfully! (Feature coming soon)');
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: 'Bids submitted successfully! (Feature coming soon)'
+      });
       setSelectedPlayers(new Set());
     } catch (err) {
       console.error('Error submitting bids:', err);
-      alert('Failed to submit bids');
+      showAlert({
+        type: 'error',
+        title: 'Submission Failed',
+        message: 'Failed to submit bids'
+      });
     }
   };
 
@@ -224,9 +266,22 @@ export default function TeamBulkRoundPage() {
               </svg>
             </Link>
             <div className="flex-1">
-              <h1 className="text-3xl md:text-4xl font-bold gradient-text">
-                Bulk Round {bulkRound.round_number}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl md:text-4xl font-bold gradient-text">
+                  Bulk Round {bulkRound.round_number}
+                </h1>
+                {/* WebSocket Status */}
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                  isConnected 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                    isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+                  }`}></span>
+                  {isConnected ? 'Live' : 'Offline'}
+                </span>
+              </div>
               <p className="text-gray-600 mt-1">Select players to bid at £{bulkRound.base_price} each</p>
             </div>
           </div>
@@ -404,6 +459,26 @@ export default function TeamBulkRoundPage() {
           )}
         </div>
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

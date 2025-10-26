@@ -430,5 +430,60 @@ service cloud.firestore {
       // Only super admins can delete awards
       allow delete: if isSuperAdmin();
     }
+    
+    // Fantasy Leagues collection
+    match /fantasy_leagues/{leagueId} {
+      // Allow admins to read fantasy leagues
+      allow read: if isAdmin();
+      
+      // Only admins can create, update, and delete fantasy leagues
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Fantasy Teams collection
+    match /fantasy_teams/{teamId} {
+      // Allow authenticated users to read fantasy teams (for viewing)
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete fantasy teams
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Fantasy Drafts collection
+    match /fantasy_drafts/{draftId} {
+      // Allow authenticated users to read fantasy drafts
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete fantasy drafts
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Fantasy Scoring Rules collection
+    match /fantasy_scoring_rules/{ruleId} {
+      // Allow authenticated users to read scoring rules
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete scoring rules
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Fantasy Player Points collection
+    match /fantasy_player_points/{pointsId} {
+      // Allow authenticated users to read player points
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, and delete player points
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
   }
 }

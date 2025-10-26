@@ -1,0 +1,528 @@
+'use client';
+
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter } from 'lucide-react';
+
+interface Player {
+  real_player_id: string;
+  player_name: string;
+  position: string;
+  team: string;
+  star_rating: number;
+  draft_price: number;
+  ownership_percentage?: number;
+  category?: string;
+  points?: number;
+}
+
+interface DraftedPlayer extends Player {
+  drafted_at: string;
+}
+
+interface DraftSettings {
+  budget: number;
+  max_squad_size: number;
+  is_active: boolean;
+  status: 'pending' | 'active' | 'paused' | 'completed';
+}
+
+interface MyTeam {
+  id: string;
+  team_name: string;
+  total_points: number;
+  player_count: number;
+  supported_team_id?: string;
+  supported_team_name?: string;
+}
+
+interface RealTeam {
+  team_id: string;
+  team_name: string;
+}
+
+export default function TeamDraftPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  const [myTeam, setMyTeam] = useState<MyTeam | null>(null);
+  const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
+  const [mySquad, setMySquad] = useState<DraftedPlayer[]>([]);
+  const [draftSettings, setDraftSettings] = useState<DraftSettings | null>(null);
+  const [realTeams, setRealTeams] = useState<RealTeam[]>([]);
+  const [filter, setFilter] = useState({ position: 'all', team: 'all', search: '', stars: 'all' });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isDrafting, setIsDrafting] = useState<string | null>(null);
+  const [isSelectingTeam, setIsSelectingTeam] = useState(false);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+      return;
+    }
+    if (!loading && user && user.role !== 'team') {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    if (user) {
+      loadDraftData();
+    }
+  }, [user]);
+
+  const loadDraftData = async () => {
+    try {
+      // Get my fantasy team
+      const teamRes = await fetch(`/api/fantasy/teams/my-team?user_id=${user!.uid}`);
+      if (teamRes.status === 404) {
+        setIsLoading(false);
+        return;
+      }
+      const teamData = await teamRes.json();
+      setMyTeam(teamData.team);
+      setMySquad(teamData.players || []);
+
+      // Get draft settings and league info
+      const settingsRes = await fetch(`/api/fantasy/draft/settings?league_id=${teamData.team.fantasy_league_id}`);
+      let leagueSeasonId = null;
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        leagueSeasonId = settingsData.settings?.season_id;
+        setDraftSettings({
+          budget: settingsData.settings?.budget_per_team || 100,
+          max_squad_size: settingsData.settings?.max_squad_size || 15,
+          is_active: true, // Allow drafting
+          status: 'active',
+        });
+      }
+
+      // Get available players
+      const playersRes = await fetch(`/api/fantasy/players/available?league_id=${teamData.team.fantasy_league_id}`);
+      if (playersRes.ok) {
+        const playersData = await playersRes.json();
+        setAvailablePlayers(playersData.available_players || []);
+      }
+
+      // Get real teams for the fantasy league's season
+      const teamsUrl = leagueSeasonId 
+        ? `/api/teams/registered?season_id=${leagueSeasonId}`
+        : '/api/teams/registered';
+      const teamsRes = await fetch(teamsUrl);
+      if (teamsRes.ok) {
+        const teamsData = await teamsRes.json();
+        setRealTeams(teamsData.teams || []);
+      }
+    } catch (error) {
+      console.error('Failed to load draft data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const selectSupportedTeam = async (teamId: string, teamName: string) => {
+    if (!myTeam) return;
+
+    setIsSelectingTeam(true);
+    try {
+      const res = await fetch('/api/fantasy/teams/select-supported', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user!.uid,
+          supported_team_id: teamId,
+          supported_team_name: teamName,
+        }),
+      });
+
+      if (res.ok) {
+        setMyTeam({ ...myTeam, supported_team_id: teamId, supported_team_name: teamName });
+        alert(`Now supporting ${teamName} for passive points!`);
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to select team');
+      }
+    } catch (error) {
+      console.error('Failed to select team:', error);
+      alert('Failed to select team');
+    } finally {
+      setIsSelectingTeam(false);
+    }
+  };
+
+  const draftPlayer = async (playerId: string) => {
+    if (!myTeam || !draftSettings) return;
+
+    const player = availablePlayers.find(p => p.real_player_id === playerId);
+    if (!player) return;
+
+    // Check budget
+    const currentSpent = mySquad.reduce((sum, p) => sum + p.draft_price, 0);
+    const remainingBudget = draftSettings.budget - currentSpent;
+    
+    if (player.draft_price > remainingBudget) {
+      alert(`Not enough budget! You need $${player.draft_price}M but only have $${remainingBudget.toFixed(1)}M remaining.`);
+      return;
+    }
+
+    // Check squad size
+    if (mySquad.length >= draftSettings.max_squad_size) {
+      alert(`Squad is full! Maximum ${draftSettings.max_squad_size} players allowed.`);
+      return;
+    }
+
+    setIsDrafting(playerId);
+    try {
+      const res = await fetch('/api/fantasy/draft/player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user!.uid,
+          real_player_id: playerId,
+          player_name: player.player_name,
+          position: player.position,
+          team_name: player.team,
+          draft_price: player.draft_price,
+        }),
+      });
+
+      if (res.ok) {
+        await loadDraftData();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to draft player');
+      }
+    } catch (error) {
+      console.error('Failed to draft player:', error);
+      alert('Failed to draft player');
+    } finally {
+      setIsDrafting(null);
+    }
+  };
+
+  const remainingBudget = draftSettings
+    ? draftSettings.budget - mySquad.reduce((sum, p) => sum + p.draft_price, 0)
+    : 0;
+
+  const filteredPlayers = availablePlayers.filter(player => {
+    if (filter.position !== 'all' && player.position !== filter.position) return false;
+    if (filter.team !== 'all' && player.team !== filter.team) return false;
+    if (filter.stars !== 'all' && player.star_rating !== parseInt(filter.stars)) return false;
+    if (filter.search && !player.player_name.toLowerCase().includes(filter.search.toLowerCase()))
+      return false;
+    return true;
+  });
+
+  const positions = [...new Set(availablePlayers.map(p => p.position))].sort();
+  const teams = [...new Set(availablePlayers.map(p => p.team))].sort();
+  const starRatings = [...new Set(availablePlayers.map(p => p.star_rating))].sort((a, b) => b - a);
+
+  if (loading || isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading draft...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  if (!myTeam) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="w-20 h-20 bg-gradient-to-br from-gray-300 to-gray-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <X className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">No Fantasy League Yet</h2>
+          <p className="text-gray-600 mb-6">
+            The committee hasn't created a fantasy league for this season yet.
+          </p>
+          <Link
+            href="/dashboard/team/fantasy/my-team"
+            className="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+          >
+            Back to My Team
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!draftSettings?.is_active) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="w-20 h-20 bg-gradient-to-br from-red-300 to-red-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <X className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Draft Not Active</h2>
+          <p className="text-gray-600 mb-6">
+            The draft is currently {draftSettings?.status || 'closed'}. Please wait for the committee to activate it.
+          </p>
+          <Link
+            href="/dashboard/team/fantasy/my-team"
+            className="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+          >
+            Back to My Team
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <Link
+            href="/dashboard/team/fantasy/my-team"
+            className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors mb-4"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to My Team
+          </Link>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Fantasy Draft</h1>
+          <p className="text-gray-600">Build your squad within budget</p>
+        </div>
+
+        {/* Stats Header */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-4">
+            <div className="flex items-center gap-3">
+              <DollarSign className="w-8 h-8 text-green-400" />
+              <div>
+                <p className="text-sm text-gray-600">Remaining Budget</p>
+                <p className="text-2xl font-bold text-gray-900">${remainingBudget.toFixed(1)}M</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-4">
+            <div className="flex items-center gap-3">
+              <Users className="w-8 h-8 text-blue-400" />
+              <div>
+                <p className="text-sm text-gray-600">Squad Size</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {mySquad.length}/{draftSettings.max_squad_size}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-4">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-8 h-8 text-purple-400" />
+              <div>
+                <p className="text-sm text-gray-600">Total Spent</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  ${(draftSettings.budget - remainingBudget).toFixed(1)}M
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-4">
+            <div className="flex items-center gap-3">
+              <Shield className="w-8 h-8 text-indigo-400" />
+              <div>
+                <p className="text-sm text-gray-600">Available Players</p>
+                <p className="text-2xl font-bold text-gray-900">{availablePlayers.length}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Supported Team Selection */}
+        <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6 mb-8">
+          <h3 className="text-lg font-bold text-gray-900 mb-3">Select Your Supported Team (Passive Points)</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Choose a team to support and earn passive points when they win matches.
+          </p>
+          <div className="flex items-center gap-4">
+            <select
+              value={myTeam?.supported_team_id || ''}
+              onChange={(e) => {
+                const team = realTeams.find(t => t.team_id === e.target.value);
+                if (team) selectSupportedTeam(team.team_id, team.team_name);
+              }}
+              disabled={isSelectingTeam}
+              className="flex-1 px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              <option value="">Select a team...</option>
+              {realTeams.map(team => (
+                <option key={team.team_id} value={team.team_id}>
+                  {team.team_name}
+                </option>
+              ))}
+            </select>
+            {myTeam?.supported_team_name && (
+              <div className="px-4 py-3 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl">
+                <p className="text-sm text-gray-600">Currently supporting:</p>
+                <p className="font-bold text-gray-900">{myTeam.supported_team_name}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Available Players */}
+          <div className="lg:col-span-2">
+            <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-gray-900">Available Players</h2>
+                <Filter className="w-5 h-5 text-gray-600" />
+              </div>
+
+              {/* Filters */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <select
+                  value={filter.position}
+                  onChange={e => setFilter({ ...filter, position: e.target.value })}
+                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">All Positions</option>
+                  {positions.map(pos => (
+                    <option key={pos} value={pos}>
+                      {pos}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filter.team}
+                  onChange={e => setFilter({ ...filter, team: e.target.value })}
+                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">All Teams</option>
+                  {teams.map(team => (
+                    <option key={team} value={team}>
+                      {team}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={filter.stars}
+                  onChange={e => setFilter({ ...filter, stars: e.target.value })}
+                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">All Stars</option>
+                  {starRatings.map(rating => (
+                    <option key={rating} value={rating}>
+                      {rating}★ Stars
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="text"
+                  value={filter.search}
+                  onChange={e => setFilter({ ...filter, search: e.target.value })}
+                  placeholder="Search..."
+                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Players List */}
+              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                {filteredPlayers.map(player => (
+                  <div
+                    key={player.real_player_id}
+                    className="flex items-center justify-between p-3 bg-white/60 hover:bg-white/80 rounded-lg border border-gray-200 transition"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <Shield className="w-5 h-5 text-indigo-600" />
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{player.player_name}</p>
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <span>{player.position}</span>
+                          <span>•</span>
+                          <span>{player.team}</span>
+                          {player.category && (
+                            <>
+                              <span>•</span>
+                              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
+                                {player.category}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {[...Array(player.star_rating)].map((_, i) => (
+                          <Sparkles key={i} className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1 text-green-600 font-bold">
+                        <DollarSign className="w-4 h-4" />
+                        {player.draft_price}M
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => draftPlayer(player.real_player_id)}
+                      disabled={isDrafting === player.real_player_id || player.draft_price > remainingBudget}
+                      className="ml-3 px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      {isDrafting === player.real_player_id ? 'Drafting...' : 'Draft'}
+                    </button>
+                  </div>
+                ))}
+
+                {filteredPlayers.length === 0 && (
+                  <div className="text-center py-12 text-gray-500">No players available</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* My Squad */}
+          <div>
+            <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6 sticky top-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">My Squad</h2>
+
+              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                {mySquad.map(player => (
+                  <div
+                    key={player.real_player_id}
+                    className="p-3 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shield className="w-4 h-4 text-green-600" />
+                      <p className="font-medium text-gray-900 text-sm">{player.player_name}</p>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        {player.position} • {player.team}
+                      </span>
+                      <span className="text-green-600 font-bold">${player.draft_price}M</span>
+                    </div>
+                  </div>
+                ))}
+
+                {mySquad.length === 0 && (
+                  <div className="text-center py-12 text-gray-500 text-sm">No players drafted yet</div>
+                )}
+              </div>
+
+              {mySquad.length === draftSettings.max_squad_size && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <Check className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-green-700">Squad Complete!</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

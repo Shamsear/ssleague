@@ -3,6 +3,7 @@ import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { cookies } from 'next/headers';
 import { batchGetFirebaseFields } from '@/lib/firebase/batch';
 import { getCached, setCached } from '@/lib/firebase/cache';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(request: NextRequest) {
   try {
@@ -150,32 +151,37 @@ export async function GET(request: NextRequest) {
     
     console.time('⚡ Batch fetch all real players');
     
-    // Step 3b: Batch fetch all real players for all teams
-    const allRealPlayersSnapshot = await adminDb
-      .collection('realplayer')
-      .where('season_id', '==', seasonId)
-      .where('team_id', 'in', teamIds.slice(0, 10))
-      .get();
+    // Determine if this is a modern season (16+)
+    const isModernSeason = (season: string) => {
+      const seasonNum = parseInt(season.replace(/\D/g, '')) || 0;
+      return seasonNum >= 16;
+    };
     
-    const additionalRealPlayersBatches = [];
-    for (let i = 10; i < teamIds.length; i += 10) {
-      const batch = teamIds.slice(i, i + 10);
-      additionalRealPlayersBatches.push(
-        adminDb
-          .collection('realplayer')
-          .where('season_id', '==', seasonId)
-          .where('team_id', 'in', batch)
-          .get()
-      );
+    // Step 3b: Fetch all real players for all teams from Neon
+    const sql = getTournamentDb();
+    let allRealPlayers;
+    
+    if (isModernSeason(seasonId)) {
+      // Season 16+: Query player_seasons table
+      allRealPlayers = await sql`
+        SELECT * FROM player_seasons 
+        WHERE season_id = ${seasonId}
+        AND team_id = ANY(${teamIds})
+      `;
+    } else {
+      // Season 1-15: Query realplayerstats table
+      allRealPlayers = await sql`
+        SELECT * FROM realplayerstats 
+        WHERE season_id = ${seasonId}
+        AND team_id = ANY(${teamIds})
+      `;
     }
     
-    const additionalRealPlayersSnapshots = await Promise.all(additionalRealPlayersBatches);
-    
-    // Combine all real player documents
-    const allRealPlayerDocs = [
-      ...allRealPlayersSnapshot.docs,
-      ...additionalRealPlayersSnapshots.flatMap(snapshot => snapshot.docs)
-    ];
+    // Convert to document-like format for compatibility
+    const allRealPlayerDocs = allRealPlayers.map((player: any) => ({
+      id: player.id,
+      data: () => player
+    }));
     
     console.timeEnd('⚡ Batch fetch all real players');
     console.log('📋 Total real players fetched:', allRealPlayerDocs.length);
@@ -192,13 +198,13 @@ export async function GET(request: NextRequest) {
     });
     
     const realPlayersByTeam = new Map<string, any[]>();
-    allRealPlayerDocs.forEach(doc => {
-      const player = doc.data();
-      const teamId = player.team_id;
+    allRealPlayerDocs.forEach((doc: any) => {
+      const data = doc.data();
+      const teamId = data.team_id;
       if (!realPlayersByTeam.has(teamId)) {
         realPlayersByTeam.set(teamId, []);
       }
-      realPlayersByTeam.get(teamId)!.push(player);
+      realPlayersByTeam.get(teamId)!.push(data);
     });
     
     // Step 5: Build teams data

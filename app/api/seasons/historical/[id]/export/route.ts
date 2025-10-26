@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 import * as XLSX from 'xlsx';
 
 export async function GET(
@@ -36,17 +37,19 @@ export async function GET(
     
     console.log('✅ Super admin access confirmed');
 
-    // NEW ARCHITECTURE: Fetch all season data from collections
+    // Fetch all season data from NEON and Firebase
     console.log('🔍 Fetching data with queries:');
     console.log('  - Teams: seasons array-contains', sessionId);
-    console.log('  - Team Stats: season_id ==', sessionId, '(from teamstats)');
-    console.log('  - Player Stats: season_id ==', sessionId, '(from realplayerstats)');
+    console.log('  - Team Stats: season_id ==', sessionId, '(from NEON)');
+    console.log('  - Player Stats: season_id ==', sessionId, '(from NEON)');
     
-    const [seasonDoc, teamsSnapshot, teamStatsSnapshot, playerStatsSnapshot] = await Promise.all([
+    const sql = getTournamentDb();
+    
+    const [seasonDoc, teamsSnapshot, teamStatsData, playerStatsData] = await Promise.all([
       adminDb.collection('seasons').doc(sessionId).get(),
       adminDb.collection('teams').where('seasons', 'array-contains', sessionId).get(),
-      adminDb.collection('teamstats').where('season_id', '==', sessionId).get(),
-      adminDb.collection('realplayerstats').where('season_id', '==', sessionId).get()
+      sql`SELECT * FROM teamstats WHERE season_id = ${sessionId}`,
+      sql`SELECT * FROM realplayerstats WHERE season_id = ${sessionId}`
     ]);
 
     if (!seasonDoc.exists) {
@@ -57,11 +60,11 @@ export async function GET(
 
     console.log(`📊 Fetched data counts:`);
     console.log(`  - Teams snapshot: ${teamsSnapshot.docs.length}`);
-    console.log(`  - Team stats snapshot: ${teamStatsSnapshot.docs.length}`);
-    console.log(`  - Player stats snapshot: ${playerStatsSnapshot.docs.length}`);
+    console.log(`  - Team stats from NEON: ${teamStatsData.length}`);
+    console.log(`  - Player stats from NEON: ${playerStatsData.length}`);
     
     // Collect unique player IDs to fetch their permanent data
-    const playerIds = playerStatsSnapshot.docs.map(doc => doc.data().player_id).filter(Boolean);
+    const playerIds = playerStatsData.map((stats: any) => stats.player_id).filter(Boolean);
     const uniquePlayerIds = [...new Set(playerIds)];
     
     console.log(`👤 Fetching permanent data for ${uniquePlayerIds.length} unique players...`);
@@ -132,11 +135,11 @@ export async function GET(
     }
     
     // Debug: Log first player if exists
-    if (playerStatsSnapshot.docs.length > 0) {
-      const firstStats = playerStatsSnapshot.docs[0].data();
+    if (playerStatsData.length > 0) {
+      const firstStats = playerStatsData[0];
       const permanentData = playerDataMap.get(firstStats.player_id);
       console.log('👁️ First player data (merged):', {
-        id: playerStatsSnapshot.docs[0].id,
+        id: firstStats.id,
         player_id: firstStats.player_id,
         name_from_permanent: permanentData?.name,
         category_from_stats: firstStats.category,
@@ -147,8 +150,7 @@ export async function GET(
 
     // Create a map of team stats by team_id
     const teamStatsMap = new Map();
-    teamStatsSnapshot.docs.forEach(doc => {
-      const data = doc.data();
+    teamStatsData.forEach((data: any) => {
       if (data.team_id) {
         teamStatsMap.set(data.team_id, data);
       }
@@ -190,13 +192,12 @@ export async function GET(
     
     console.log(`🎯 Processed teams: ${teams.length}`);
 
-    // Process players data - merge permanent data with season stats
-    const players = playerStatsSnapshot.docs.map(doc => {
-      const statsData = doc.data();
+    // Process players data - merge permanent data with season stats from Neon
+    const players = playerStatsData.map((statsData: any) => {
       const permanentData = playerDataMap.get(statsData.player_id) || {};
       
       return {
-        player_id: statsData.player_id || doc.id,
+        player_id: statsData.player_id || statsData.id,
         // Permanent player info from realplayers
         name: permanentData.name || statsData.name || '',
         display_name: permanentData.display_name || '',

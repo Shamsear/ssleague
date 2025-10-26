@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -89,38 +90,51 @@ export async function POST(
         batch.update(teamRef, teamUpdateData);
         updateCount++;
 
-        // Update teamstats if season_stats are provided
+        // Update teamstats in NEON if season_stats are provided
         if (team.season_stats && seasonId) {
-          // Create a composite ID for teamstats: teamId_seasonId
+          const sql = getTournamentDb();
           const teamStatsId = `${team.id}_${seasonId}`;
-          const teamStatsRef = adminDb.collection('teamstats').doc(teamStatsId);
           
-          const statsUpdateData: any = {
-            team_id: team.id,
-            season_id: seasonId,
-            team_name: team.team_name,
-            owner_name: team.owner_name,
-            updated_at: new Date()
-          };
-
-          // Add all season stats fields - map from Excel column names to database field names
-          if (team.season_stats.rank !== undefined) statsUpdateData.rank = team.season_stats.rank;
-          if (team.season_stats.p !== undefined) statsUpdateData.points = team.season_stats.p;
-          if (team.season_stats.mp !== undefined) statsUpdateData.matches_played = team.season_stats.mp;
-          if (team.season_stats.w !== undefined) statsUpdateData.wins = team.season_stats.w;
-          if (team.season_stats.d !== undefined) statsUpdateData.draws = team.season_stats.d;
-          if (team.season_stats.l !== undefined) statsUpdateData.losses = team.season_stats.l;
-          if (team.season_stats.f !== undefined) statsUpdateData.goals_for = team.season_stats.f;
-          if (team.season_stats.a !== undefined) statsUpdateData.goals_against = team.season_stats.a;
-          if (team.season_stats.gd !== undefined) statsUpdateData.goal_difference = team.season_stats.gd;
-          if (team.season_stats.percentage !== undefined) statsUpdateData.win_percentage = team.season_stats.percentage;
-          if (team.season_stats.cup !== undefined) statsUpdateData.cup_achievement = team.season_stats.cup;
+          // Extract stats fields
+          const rank = team.season_stats.rank || 0;
+          const points = team.season_stats.p || 0;
+          const matchesPlayed = team.season_stats.mp || 0;
+          const wins = team.season_stats.w || 0;
+          const draws = team.season_stats.d || 0;
+          const losses = team.season_stats.l || 0;
+          const goalsFor = team.season_stats.f || 0;
+          const goalsAgainst = team.season_stats.a || 0;
+          const goalDifference = team.season_stats.gd || 0;
           
-          // Add players_count if available
-          if (team.season_stats.players_count !== undefined) statsUpdateData.players_count = team.season_stats.players_count;
-
-          // Use set with merge to create or update
-          batch.set(teamStatsRef, statsUpdateData, { merge: true });
+          // Update in NEON
+          await sql`
+            INSERT INTO teamstats (
+              id, team_id, season_id, team_name,
+              rank, points, matches_played, wins, draws, losses,
+              goals_for, goals_against, goal_difference, position,
+              created_at, updated_at
+            )
+            VALUES (
+              ${teamStatsId}, ${team.id}, ${seasonId}, ${team.team_name},
+              ${rank}, ${points}, ${matchesPlayed}, ${wins}, ${draws}, ${losses},
+              ${goalsFor}, ${goalsAgainst}, ${goalDifference}, ${rank},
+              NOW(), NOW()
+            )
+            ON CONFLICT (id) DO UPDATE
+            SET
+              team_name = EXCLUDED.team_name,
+              rank = EXCLUDED.rank,
+              points = EXCLUDED.points,
+              matches_played = EXCLUDED.matches_played,
+              wins = EXCLUDED.wins,
+              draws = EXCLUDED.draws,
+              losses = EXCLUDED.losses,
+              goals_for = EXCLUDED.goals_for,
+              goals_against = EXCLUDED.goals_against,
+              goal_difference = EXCLUDED.goal_difference,
+              position = EXCLUDED.position,
+              updated_at = NOW()
+          `;
           updateCount++;
         }
       }

@@ -92,44 +92,82 @@ export default function RealPlayersPage() {
       if (!userSeasonId || !currentSeason) return;
       
       try {
-        // Fetch registered real players (SS Members) for this season from 'realplayer' collection
-        const { collection, query, where, getDocs } = await import('firebase/firestore');
-        const { db } = await import('@/lib/firebase/config');
+        // Check if it's a modern season (16+) or historical
+        const seasonNum = parseInt(userSeasonId.replace(/\D/g, '')) || 0;
+        const isModernSeason = seasonNum >= 16;
         
-        const playersQuery = query(
-          collection(db, 'realplayer'),
-          where('season_id', '==', userSeasonId)
-        );
-        
-        const playersSnapshot = await getDocs(playersQuery);
-        
-        if (playersSnapshot.empty) {
-          console.log('No real players registered for this season');
-          setPlayers([]);
-          return;
-        }
-        
-        // Transform Firestore data to our player format
-        const loadedPlayers: RealPlayer[] = playersSnapshot.docs.map(doc => {
-          const data = doc.data();
-          const auctionValue = data.auction_value || 100;
-          const starRating = data.star_rating || 0; // 0 means not assigned
+        if (isModernSeason) {
+          // For Season 16+: Fetch from Neon via API (player_seasons table)
+          const response = await fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
+          const result = await response.json();
           
-          return {
-            id: doc.id,
-            playerName: data.player_name || data.name || '',
-            teamId: data.team_id || '',
-            auctionValue: auctionValue,
-            starRating: starRating,
-            categoryName: data.category_name || '',
-            salaryPerMatch: data.salary_per_match || calculateRealPlayerSalary(auctionValue, starRating),
-            contractStartSeason: data.contract_start_season || currentSeason.name,
-            contractEndSeason: data.contract_end_season || '',
-          };
-        });
-        
-        setPlayers(loadedPlayers);
-        console.log(`Loaded ${loadedPlayers.length} real players from realplayer collection`);
+          if (result.success && result.data && result.data.length > 0) {
+            // Show all players who have star ratings and categories assigned
+            // (star ratings are set in Player Ratings page)
+            const realPlayersData = result.data.filter((p: any) => p.star_rating && p.star_rating > 0);
+            
+            const loadedPlayers: RealPlayer[] = realPlayersData.map((data: any) => {
+              const auctionValue = data.auction_value || 100;
+              const starRating = data.star_rating || 0;
+              
+              return {
+                id: data.player_id || data.id,
+                playerName: data.player_name || '',
+                teamId: data.team_id || '',
+                auctionValue: auctionValue,
+                starRating: starRating,
+                categoryName: data.category || '',
+                salaryPerMatch: calculateRealPlayerSalary(auctionValue, starRating),
+                contractStartSeason: data.contract_start_season || userSeasonId,
+                contractEndSeason: data.contract_end_season || '',
+              };
+            });
+            
+            setPlayers(loadedPlayers);
+            console.log(`Loaded ${loadedPlayers.length} real players from Neon (Season 16+)`);
+          } else {
+            console.log('No players found for this season in Neon');
+            setPlayers([]);
+          }
+        } else {
+          // For historical seasons (1-15): Use Firebase
+          const { collection, query, where, getDocs } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase/config');
+          
+          const playersQuery = query(
+            collection(db, 'realplayer'),
+            where('season_id', '==', userSeasonId)
+          );
+          
+          const playersSnapshot = await getDocs(playersQuery);
+          
+          if (playersSnapshot.empty) {
+            console.log('No real players registered for this season');
+            setPlayers([]);
+            return;
+          }
+          
+          const loadedPlayers: RealPlayer[] = playersSnapshot.docs.map(doc => {
+            const data = doc.data();
+            const auctionValue = data.auction_value || 100;
+            const starRating = data.star_rating || 0;
+            
+            return {
+              id: doc.id,
+              playerName: data.player_name || data.name || '',
+              teamId: data.team_id || '',
+              auctionValue: auctionValue,
+              starRating: starRating,
+              categoryName: data.category_name || '',
+              salaryPerMatch: data.salary_per_match || calculateRealPlayerSalary(auctionValue, starRating),
+              contractStartSeason: data.contract_start_season || currentSeason.name,
+              contractEndSeason: data.contract_end_season || '',
+            };
+          });
+          
+          setPlayers(loadedPlayers);
+          console.log(`Loaded ${loadedPlayers.length} real players from Firebase (Historical)`);
+        }
       } catch (error) {
         console.error('Error loading players:', error);
         setError('Failed to load real players');
@@ -193,6 +231,26 @@ export default function RealPlayersPage() {
       setSubmitting(true);
       setError(null);
       setSuccess(null);
+
+      // Refresh auth token to prevent expiration issues
+      const { auth } = await import('@/lib/firebase/config');
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        try {
+          const freshToken = await currentUser.getIdToken(true); // force refresh
+          // Update cookie with fresh token
+          await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: freshToken }),
+          });
+        } catch (tokenErr) {
+          console.error('Token refresh failed:', tokenErr);
+          setError('Session expired. Please refresh the page and try again.');
+          setSubmitting(false);
+          return;
+        }
+      }
 
       // Get contract seasons
       const { start: startSeason, end: endSeason } = getContractSeasons();
@@ -472,8 +530,15 @@ export default function RealPlayersPage() {
                       <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
-                      <p className="font-medium">No players added yet</p>
-                      <p className="text-sm mt-2">Click "Add Player" to start</p>
+                      <p className="font-medium text-gray-800 mb-2">No SS Members Found</p>
+                      <p className="text-sm text-gray-600">
+                        Please assign star ratings and categories first in the{' '}
+                        <Link href="/dashboard/committee/player-ratings" className="text-blue-600 underline font-semibold hover:text-blue-700">
+                          Player Ratings
+                        </Link>
+                        {' '}page
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">Only players with assigned star ratings will appear here</p>
                     </td>
                   </tr>
                 ) : (

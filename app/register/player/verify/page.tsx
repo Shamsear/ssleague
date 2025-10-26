@@ -64,6 +64,9 @@ function PlayerVerifyContent() {
     email: '',
     phone: ''
   })
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
 
   // Kerala districts list
   const keralaDistricts = [
@@ -417,6 +420,33 @@ function PlayerVerifyContent() {
     setShowDistrictDropdown(true)
   }
 
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Photo size must be less than 5MB')
+      return
+    }
+
+    setPhotoFile(file)
+    
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPhotoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+    setError(null)
+  }
+
   const handleSignOut = async () => {
     try {
       await signOut(auth)
@@ -428,6 +458,12 @@ function PlayerVerifyContent() {
 
   const handleConfirm = async () => {
     if (!seasonId || !user?.email) return
+
+    // Validate photo upload (required for all players)
+    if (!photoFile) {
+      setError('Please upload your photo. This is required for registration.')
+      return
+    }
 
     // Validate form if shown
     if (showForm) {
@@ -482,6 +518,27 @@ function PlayerVerifyContent() {
         finalPlayerId = `sspslpsl${paddedId}`
       }
 
+      // Upload photo to ImageKit
+      setUploadingPhoto(true)
+      let photoUrl = ''
+      let photoFileId = ''
+      
+      if (photoFile && finalPlayerId) {
+        try {
+          const { uploadPlayerPhoto } = await import('@/lib/imagekit/playerPhotos')
+          const result = await uploadPlayerPhoto(finalPlayerId, photoFile)
+          photoUrl = result.url
+          photoFileId = result.fileId
+        } catch (photoError) {
+          console.error('Error uploading photo:', photoError)
+          setError('Failed to upload photo. Please try again.')
+          setSubmitting(false)
+          setUploadingPhoto(false)
+          return
+        }
+      }
+      setUploadingPhoto(false)
+
       // Prepare player data to send to API
       const playerData: any = {}
       
@@ -499,6 +556,12 @@ function PlayerVerifyContent() {
         if (player.date_of_birth) playerData.date_of_birth = player.date_of_birth
         if (player.email) playerData.email = player.email
         if (player.phone) playerData.phone = player.phone
+      }
+      
+      // Add photo URL and fileId
+      if (photoUrl) {
+        playerData.photo_url = photoUrl
+        playerData.photo_file_id = photoFileId
       }
 
       // Call API to confirm registration
@@ -863,6 +926,65 @@ function PlayerVerifyContent() {
                       </div>
                     </div>
 
+                    {/* Photo Upload - Required for all players */}
+                    <div className="bg-blue-50/50 border-2 border-blue-200 rounded-2xl p-6 mt-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Player Photo *
+                        <span className="text-red-500 ml-1">Required</span>
+                      </label>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Please upload a clear photo of yourself. This will be used for your player profile.
+                      </p>
+                      
+                      <div className="flex flex-col sm:flex-row gap-4 items-start">
+                        {/* Photo Preview */}
+                        {photoPreview ? (
+                          <div className="relative">
+                            <img
+                              src={photoPreview}
+                              alt="Photo preview"
+                              className="w-32 h-32 rounded-xl object-cover border-2 border-blue-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotoFile(null)
+                                setPhotoPreview(null)
+                              }}
+                              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50">
+                            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                        
+                        {/* Upload Button */}
+                        <div className="flex-1">
+                          <label className="cursor-pointer inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handlePhotoChange}
+                              className="hidden"
+                            />
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            {photoFile ? 'Change Photo' : 'Upload Photo'}
+                          </label>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Max 5MB • JPG, PNG, GIF
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* 2-Season Contract Information */}
                     <div className="mt-4 bg-blue-50 border-2 border-blue-300 rounded-xl p-4">
                       <div className="flex items-start space-x-3">
@@ -893,10 +1015,10 @@ function PlayerVerifyContent() {
                     
                     <button
                       onClick={handleConfirm}
-                      disabled={submitting}
+                      disabled={submitting || uploadingPhoto}
                       className="w-full mt-4 py-3 px-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {submitting ? 'Submitting...' : 'Complete Registration (2-Season Contract)'}
+                      {uploadingPhoto ? 'Uploading Photo...' : submitting ? 'Submitting...' : 'Complete Registration (2-Season Contract)'}
                     </button>
                   </div>
                 )}
@@ -936,6 +1058,65 @@ function PlayerVerifyContent() {
                       )}
                     </div>
                     
+                    {/* Photo Upload - Required for all players */}
+                    <div className="bg-blue-50/50 border-2 border-blue-200 rounded-2xl p-6 mt-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Player Photo *
+                        <span className="text-red-500 ml-1">Required</span>
+                      </label>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Please upload a clear photo of yourself. This will be used for your player profile.
+                      </p>
+                      
+                      <div className="flex flex-col sm:flex-row gap-4 items-start">
+                        {/* Photo Preview */}
+                        {photoPreview ? (
+                          <div className="relative">
+                            <img
+                              src={photoPreview}
+                              alt="Photo preview"
+                              className="w-32 h-32 rounded-xl object-cover border-2 border-blue-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotoFile(null)
+                                setPhotoPreview(null)
+                              }}
+                              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50">
+                            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                        
+                        {/* Upload Button */}
+                        <div className="flex-1">
+                          <label className="cursor-pointer inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handlePhotoChange}
+                              className="hidden"
+                            />
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            {photoFile ? 'Change Photo' : 'Upload Photo'}
+                          </label>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Max 5MB • JPG, PNG, GIF
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    
                     {/* 2-Season Contract Information */}
                     <div className="mt-4 bg-blue-50 border-2 border-blue-300 rounded-xl p-4">
                       <div className="flex items-start space-x-3">
@@ -966,10 +1147,10 @@ function PlayerVerifyContent() {
                     
                     <button
                       onClick={handleConfirm}
-                      disabled={submitting}
+                      disabled={submitting || uploadingPhoto}
                       className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed mt-4"
                     >
-                      {submitting ? 'Registering...' : 'Confirm Registration (2-Season Contract)'}
+                      {uploadingPhoto ? 'Uploading Photo...' : submitting ? 'Registering...' : 'Confirm Registration (2-Season Contract)'}
                     </button>
                   </div>
                 )}

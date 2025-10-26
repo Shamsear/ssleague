@@ -8,6 +8,9 @@ import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import FinalizationProgress from '@/components/FinalizationProgress';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
 
 interface Round {
   id: string;
@@ -55,6 +58,17 @@ export default function RoundsManagementPage() {
   const [roundDetails, setRoundDetails] = useState<{[key: string]: any}>({});
   const timerRefs = useRef<{[key: string]: NodeJS.Timeout}>({});
   const previousRoundsRef = useRef<string>('');
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -252,12 +266,20 @@ export default function RoundsManagementPage() {
     e.preventDefault();
 
     if (!currentSeasonId) {
-      alert('No active season found');
+      showAlert({
+        type: 'error',
+        title: 'No Active Season',
+        message: 'No active season found'
+      });
       return;
     }
 
     if (!formData.position) {
-      alert('Please select a position');
+      showAlert({
+        type: 'warning',
+        title: 'Missing Position',
+        message: 'Please select a position'
+      });
       return;
     }
 
@@ -284,7 +306,11 @@ export default function RoundsManagementPage() {
       const { success, error } = await response.json();
 
       if (success) {
-        alert(`Round for ${formData.position} started successfully!`);
+        showAlert({
+          type: 'success',
+          title: 'Round Started',
+          message: `Round for ${formData.position} started successfully!`
+        });
         setFormData({
           position: '',
           duration_hours: '2',
@@ -299,11 +325,19 @@ export default function RoundsManagementPage() {
           setRounds(refreshData.data);
         }
       } else {
-        alert(`Error: ${error}`);
+        showAlert({
+          type: 'error',
+          title: 'Error',
+          message: error || 'Failed to start round'
+        });
       }
     } catch (err) {
       console.error('Error starting round:', err);
-      alert('Failed to start round');
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to start round'
+      });
     }
   };
 
@@ -311,7 +345,11 @@ export default function RoundsManagementPage() {
     const minutes = parseInt(addTimeInputs[roundId] || '10');
     
     if (minutes < 5) {
-      alert('Duration must be at least 5 minutes');
+      showAlert({
+        type: 'warning',
+        title: 'Invalid Duration',
+        message: 'Duration must be at least 5 minutes'
+      });
       return;
     }
 
@@ -333,7 +371,11 @@ export default function RoundsManagementPage() {
       const { success } = await response.json();
 
       if (success) {
-        alert(`Added ${minutes} minute${minutes !== 1 ? 's' : ''} to the timer`);
+        showAlert({
+          type: 'success',
+          title: 'Time Added',
+          message: `Added ${minutes} minute${minutes !== 1 ? 's' : ''} to the timer`
+        });
         
         // Refresh rounds
         const params = new URLSearchParams({ season_id: currentSeasonId! });
@@ -345,13 +387,25 @@ export default function RoundsManagementPage() {
       }
     } catch (err) {
       console.error('Error adding time:', err);
-      alert('Failed to add time');
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to add time'
+      });
     }
   };
 
 
   const handleFinalizeRound = async (roundId: string) => {
-    if (!confirm('Are you sure you want to finalize this round? This will allocate players based on bids. This cannot be undone.')) {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Finalize Round',
+      message: 'Are you sure you want to finalize this round? This will allocate players based on bids. This cannot be undone.',
+      confirmText: 'Finalize',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -433,7 +487,15 @@ export default function RoundsManagementPage() {
   };
 
   const handleDeleteRound = async (roundId: string) => {
-    if (!confirm('Are you sure you want to delete this round? This will release all players allocated in this round. This action cannot be undone.')) {
+    const confirmed = await showConfirm({
+      type: 'danger',
+      title: 'Delete Round',
+      message: 'Are you sure you want to delete this round? This will release all players allocated in this round. This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -445,7 +507,11 @@ export default function RoundsManagementPage() {
       const { success } = await response.json();
 
       if (success) {
-        alert('Round deleted successfully');
+        showAlert({
+          type: 'success',
+          title: 'Round Deleted',
+          message: 'Round deleted successfully'
+        });
         const params = new URLSearchParams({ season_id: currentSeasonId! });
         const refreshResponse = await fetch(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
@@ -455,7 +521,11 @@ export default function RoundsManagementPage() {
       }
     } catch (err) {
       console.error('Error deleting round:', err);
-      alert('Failed to delete round');
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to delete round'
+      });
     }
   };
 
@@ -1017,6 +1087,26 @@ export default function RoundsManagementPage() {
           onError={handleFinalizationError}
         />
       )}
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

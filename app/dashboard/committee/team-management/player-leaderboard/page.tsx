@@ -1,9 +1,12 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useTournamentContext } from '@/contexts/TournamentContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useTournament } from '@/hooks/useTournaments';
+import TournamentSelector from '@/components/TournamentSelector';
 
 interface PlayerStats {
   id: string;
@@ -38,7 +41,11 @@ type SortOrder = 'asc' | 'desc';
 
 export default function PlayerLeaderboardPage() {
   const { user, loading } = useAuth();
+  const { selectedTournamentId } = useTournamentContext();
   const router = useRouter();
+  
+  // Get tournament info for display (available for future use)
+  const { data: tournament } = useTournament(selectedTournamentId);
   
   const [players, setPlayers] = useState<PlayerStats[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<PlayerStats[]>([]);
@@ -252,6 +259,9 @@ export default function PlayerLeaderboardPage() {
             </svg>
             Back to Team Management
           </Link>
+        </div>
+        <div>
+          <TournamentSelector />
         </div>
       </div>
 

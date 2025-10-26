@@ -25,6 +25,18 @@ interface Category {
 
 const STAR_RATINGS = [3, 4, 5, 6, 7, 8, 9, 10];
 
+// Base points by star rating (same as system calculation)
+const STAR_RATING_BASE_POINTS: { [key: number]: number } = {
+  3: 100,
+  4: 120,
+  5: 145,
+  6: 175,
+  7: 210,
+  8: 250,
+  9: 300,
+  10: 375,
+};
+
 export default function PlayerRatingsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -37,6 +49,8 @@ export default function PlayerRatingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [dataLoading, setDataLoading] = useState(true);
+  const [pageReady, setPageReady] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -52,6 +66,8 @@ export default function PlayerRatingsPage() {
       if (!userSeasonId) return;
 
       try {
+        setDataLoading(true);
+        
         // Fetch season
         const season = await getSeasonById(userSeasonId);
         setCurrentSeason(season);
@@ -65,6 +81,7 @@ export default function PlayerRatingsPage() {
         }
       } catch (error) {
         console.error('Error fetching data:', error);
+        setError('Failed to load initial data');
       }
     };
 
@@ -79,47 +96,90 @@ export default function PlayerRatingsPage() {
       if (!userSeasonId || !currentSeason) return;
       
       try {
-        const { collection, query, where, getDocs } = await import('firebase/firestore');
-        const { db } = await import('@/lib/firebase/config');
+        // Check if it's a modern season (16+) or historical
+        const seasonNum = parseInt(userSeasonId.replace(/\D/g, '')) || 0;
+        const isModernSeason = seasonNum >= 16;
         
-        const playersQuery = query(
-          collection(db, 'realplayer'),
-          where('season_id', '==', userSeasonId)
-        );
-        
-        const playersSnapshot = await getDocs(playersQuery);
-        
-        if (playersSnapshot.empty) {
-          console.log('No players registered for this season');
-          setPlayers([]);
-          return;
+        if (isModernSeason) {
+          // For Season 16+: Fetch from Neon via API (player_seasons table)
+          const response = await fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
+          const result = await response.json();
+          
+          if (result.success && result.data && result.data.length > 0) {
+            const loadedPlayers: Player[] = result.data.map((data: any) => ({
+              id: data.player_id || data.id,
+              playerName: data.player_name || '',
+              points: data.points || 0,
+              starRating: data.star_rating || 5,
+              categoryId: data.category || '',
+              categoryName: data.category || '',
+            }));
+            
+            setPlayers(loadedPlayers);
+            console.log(`Loaded ${loadedPlayers.length} players from Neon (Season 16+)`);
+          } else {
+            console.log('No players found for this season in Neon');
+            setPlayers([]);
+          }
+        } else {
+          // For historical seasons (1-15): Use Firebase
+          const { collection, query, where, getDocs } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase/config');
+          
+          const playersQuery = query(
+            collection(db, 'realplayer'),
+            where('season_id', '==', userSeasonId)
+          );
+          
+          const playersSnapshot = await getDocs(playersQuery);
+          
+          if (playersSnapshot.empty) {
+            console.log('No players registered for this season');
+            setPlayers([]);
+            return;
+          }
+          
+          const loadedPlayers: Player[] = playersSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              playerName: data.player_name || data.name || '',
+              points: data.points || 0,
+              starRating: data.star_rating || 5,
+              categoryId: data.category_id || '',
+              categoryName: data.category_name || '',
+            };
+          });
+          
+          setPlayers(loadedPlayers);
+          console.log(`Loaded ${loadedPlayers.length} players from Firebase (Historical)`);
         }
-        
-        const loadedPlayers: Player[] = playersSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            playerName: data.player_name || data.name || '',
-            points: data.points || 0,
-            starRating: data.star_rating || 5,
-            categoryId: data.category_id || '',
-            categoryName: data.category_name || '',
-          };
-        });
-        
-        setPlayers(loadedPlayers);
-        console.log(`Loaded ${loadedPlayers.length} players`);
       } catch (error) {
         console.error('Error loading players:', error);
         setError('Failed to load players');
+      } finally {
+        setDataLoading(false);
+        setPageReady(true);
       }
     };
 
-    loadPlayers();
+    if (currentSeason) {
+      loadPlayers();
+    }
   }, [userSeasonId, currentSeason]);
 
   const updatePlayer = (id: string, field: keyof Player, value: any) => {
-    setPlayers(players.map(p => p.id === id ? { ...p, [field]: value } : p));
+    setPlayers(players.map(p => {
+      if (p.id === id) {
+        const updated = { ...p, [field]: value };
+        // Auto-calculate base points when star rating changes
+        if (field === 'starRating') {
+          updated.points = STAR_RATING_BASE_POINTS[value] || 100;
+        }
+        return updated;
+      }
+      return p;
+    }));
   };
 
   const handleSave = async () => {
@@ -184,27 +244,36 @@ export default function PlayerRatingsPage() {
     p.playerName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (loading || !user) {
+  // Unified loading state
+  if (loading || !user || dataLoading || !pageReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600 font-medium">Loading player ratings...</p>
         </div>
       </div>
     );
   }
 
-  if (!user || !isCommitteeAdmin) {
+  // After loading, check permissions
+  if (!isCommitteeAdmin) {
     return null;
   }
 
+  // Check season type
   if (currentSeason?.type !== 'multi') {
     return (
-      <div className="min-h-screen py-8 px-4">
+      <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-white to-purple-50">
         <div className="container mx-auto max-w-6xl">
-          <div className="glass rounded-3xl p-8 text-center">
-            <p className="text-amber-600">This feature is only available for multi-season types (Season 16+)</p>
+          <div className="glass rounded-3xl p-8 text-center shadow-xl">
+            <div className="inline-flex items-center justify-center p-4 bg-amber-100 rounded-full mb-4">
+              <svg className="w-12 h-12 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Season Type Not Supported</h2>
+            <p className="text-amber-700 text-lg">This feature is only available for multi-season types (Season 16+)</p>
           </div>
         </div>
       </div>
@@ -214,11 +283,11 @@ export default function PlayerRatingsPage() {
   // Check if categories exist
   if (categories.length === 0) {
     return (
-      <div className="min-h-screen py-8 px-4">
+      <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-white to-purple-50">
         <div className="container mx-auto max-w-6xl">
-          <div className="glass rounded-3xl p-8 text-center">
-            <div className="mb-4">
-              <svg className="w-16 h-16 mx-auto text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="glass rounded-3xl p-8 text-center shadow-xl">
+            <div className="inline-flex items-center justify-center p-4 bg-amber-100 rounded-full mb-4">
+              <svg className="w-16 h-16 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
@@ -226,7 +295,7 @@ export default function PlayerRatingsPage() {
             <p className="text-amber-600 mb-6">You must create categories before assigning player ratings. Categories will be equally distributed among players based on their star ratings.</p>
             <Link 
               href="/dashboard/committee/team-management/categories"
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all"
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:shadow-lg transition-all transform hover:scale-105"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -239,13 +308,20 @@ export default function PlayerRatingsPage() {
     );
   }
 
+  // Check if players exist
   if (players.length === 0) {
     return (
-      <div className="min-h-screen py-8 px-4">
+      <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-white to-purple-50">
         <div className="container mx-auto max-w-6xl">
-          <div className="glass rounded-3xl p-8 text-center">
+          <div className="glass rounded-3xl p-8 text-center shadow-xl">
+            <div className="inline-flex items-center justify-center p-4 bg-blue-100 rounded-full mb-4">
+              <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">No Players Found</h2>
-            <p className="text-gray-600">No players are registered for {currentSeason?.name}. Please ensure players are registered first.</p>
+            <p className="text-gray-600">No players are registered for {currentSeason?.name}.</p>
+            <p className="text-gray-500 text-sm mt-2">Please ensure players have registered for this season.</p>
           </div>
         </div>
       </div>
@@ -253,7 +329,7 @@ export default function PlayerRatingsPage() {
   }
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <div className="container mx-auto max-w-7xl">
         {/* Header */}
         <div className="mb-8">
@@ -313,8 +389,8 @@ export default function PlayerRatingsPage() {
                   <thead>
                     <tr className="border-b-2 border-gray-200">
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Player Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Points</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Star Rating</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Points (Auto)</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Category (Preview)</th>
                     </tr>
                   </thead>
@@ -324,11 +400,6 @@ export default function PlayerRatingsPage() {
                         {/* Player Name */}
                         <td className="px-4 py-3">
                           <span className="font-medium text-gray-900">{player.playerName}</span>
-                        </td>
-                        
-                        {/* Points */}
-                        <td className="px-4 py-3">
-                          <span className="text-sm font-medium text-gray-700">{player.points}</span>
                         </td>
                         
                         {/* Star Rating */}
@@ -344,6 +415,14 @@ export default function PlayerRatingsPage() {
                               </option>
                             ))}
                           </select>
+                        </td>
+                        
+                        {/* Points (Auto-calculated) */}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-bold text-blue-600">{player.points}</span>
+                            <span className="text-xs text-gray-500 italic">pts</span>
+                          </div>
                         </td>
                         
                         {/* Category Preview */}
@@ -382,6 +461,12 @@ export default function PlayerRatingsPage() {
               <h3 className="font-semibold text-amber-900 mb-3">📝 Auto-Assignment Rules</h3>
               <div className="text-sm text-amber-800 space-y-2">
                 <p>• Star ratings: 3-10 ⭐</p>
+                <p>• <strong>Base Points:</strong> Auto-calculated from stars</p>
+                <div className="text-xs text-amber-700 ml-4 space-y-0.5">
+                  {STAR_RATINGS.map(rating => (
+                    <p key={rating}>⭐ {rating} → {STAR_RATING_BASE_POINTS[rating]} pts</p>
+                  ))}
+                </div>
                 <p>• Players sorted by rating (high to low)</p>
                 <p>• <strong>Categories:</strong> Auto-distributed equally</p>
                 <p className="text-xs text-amber-700 ml-4">

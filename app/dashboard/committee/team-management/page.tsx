@@ -193,16 +193,28 @@ export default function TeamManagementPage() {
                 <p className="text-sm text-gray-600">Manage player categories, colors and point configurations</p>
               </Link>
               
-              <Link href="/dashboard/committee/team-management/player-leaderboard" className="glass group rounded-2xl p-5 border border-white/10 hover:border-[#0066FF]/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+              <Link href="/dashboard/committee/team-management/team-standings" className="glass group rounded-2xl p-5 border border-white/10 hover:border-blue-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
                 <div className="flex items-center">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 text-[#0066FF] group-hover:from-[#0066FF]/30 group-hover:to-[#0066FF]/20 transition-all">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-400/10 text-blue-600 group-hover:from-blue-500/30 group-hover:to-blue-400/20 transition-all">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 0 1 9.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
-                  <h3 className="ml-3 text-lg font-semibold text-gray-800 group-hover:text-[#0066FF] transition-colors">Player Leaderboard</h3>
+                  <h3 className="ml-3 text-lg font-semibold text-gray-800 group-hover:text-blue-600 transition-colors">Team Standings</h3>
                 </div>
-                <p className="text-sm text-gray-600">View individual player stats and performance metrics</p>
+                <p className="text-sm text-gray-600">View league table and team rankings</p>
+              </Link>
+              
+              <Link href="/dashboard/committee/team-management/player-stats" className="glass group rounded-2xl p-5 border border-white/10 hover:border-purple-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+                <div className="flex items-center">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-400/10 text-purple-600 group-hover:from-purple-500/30 group-hover:to-purple-400/20 transition-all">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <h3 className="ml-3 text-lg font-semibold text-gray-800 group-hover:text-purple-600 transition-colors">Player Statistics</h3>
+                </div>
+                <p className="text-sm text-gray-600">View individual player performance metrics</p>
               </Link>
               
               <Link href="/dashboard/committee/team-management/tournament" className="glass group rounded-2xl p-5 border border-white/10 hover:border-green-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">

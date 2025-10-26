@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-
-const sql = neon(process.env.NEON_DATABASE_URL!);
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function POST(request: NextRequest) {
   try {
+    const sql = getTournamentDb();
     const { fixtures } = await request.json();
 
     if (!fixtures || !Array.isArray(fixtures) || fixtures.length === 0) {

@@ -30,7 +30,7 @@ body {
   min-height: 100vh;
   /* Performance optimization */
   will-change: auto;
-  transform: translateZ(0);
+  /* transform: translateZ(0); - REMOVED: This breaks position:fixed modals */
 }
 
 /* Logo watermark overlay */

@@ -79,25 +79,21 @@ function PlayersRegistrationPageContent() {
         })) as MasterPlayer[]
         setMasterPlayers(masterPlayersData)
 
-        // Fetch registered players for this season
-        const playersQuery = query(
-          collection(db, 'realplayer'),
-          where('season_id', '==', seasonId)
-        )
-        const playersSnapshot = await getDocs(playersQuery)
+        // Fetch registered players for this season from API
+        const playersResponse = await fetch(`/api/stats/players?seasonId=${seasonId}`)
+        const playersResult = await playersResponse.json()
+        const playersData = playersResult.success ? playersResult.data : []
         
-        const playersData = playersSnapshot.docs.map(playerDoc => {
-          const data = playerDoc.data()
-          return {
-            id: playerDoc.id,
-            player_id: data.player_id,
-            player_name: data.player_name || data.name, // Support both field names
-            registration_date: data.registration_date || data.created_at,
-            additional_info: data.additional_info
-          }
-        })
+        // Map API data to RegisteredPlayer format
+        const mappedPlayers = playersData.map((player: any) => ({
+          id: player.id,
+          player_id: player.player_id,
+          player_name: player.player_name,
+          registration_date: player.registration_date ? new Timestamp(Math.floor(new Date(player.registration_date).getTime() / 1000), 0) : Timestamp.now(),
+          additional_info: ''
+        }))
         
-        setRegisteredPlayers(playersData as RegisteredPlayer[])
+        setRegisteredPlayers(mappedPlayers as RegisteredPlayer[])
         setLoading(false)
       } catch (err) {
         console.error('Error fetching data:', err)
@@ -295,90 +291,36 @@ function PlayersRegistrationPageContent() {
       let skipCount = 0
       const errors: string[] = []
 
-      // Register each selected player
+      // Register each selected player via API
       for (const player of selectedPlayers) {
         try {
-          // Check if player is already registered for this season
-          const existingPlayerQuery = query(
-            collection(db, 'realplayer'),
-            where('season_id', '==', seasonId),
-            where('player_id', '==', player.player_id)
-          )
-          const existingPlayers = await getDocs(existingPlayerQuery)
-
-          if (!existingPlayers.empty) {
-            skipCount++
-            continue
-          }
-
-          // Generate contract ID for 2-season contract
-          const currentSeasonNumber = parseInt(seasonId.replace(/\D/g, ''))
-          const seasonPrefix = seasonId.replace(/\d+$/, '')
-          const nextSeasonId = `${seasonPrefix}${currentSeasonNumber + 1}`
-          const contractId = `${player.player_id}_${seasonId}_${nextSeasonId}_${Date.now()}`
-          
-          // Create player registration for CURRENT season
-          const registrationId = `${player.player_id}_${seasonId}`
-          const registrationRef = doc(db, 'realplayer', registrationId)
-          
-          await setDoc(registrationRef, {
-            season_id: seasonId,
-            player_id: player.player_id,
-            player_name: player.name,
-            name: player.name,
-            registration_date: Timestamp.now(),
-            created_at: Timestamp.now(),
-            updated_at: Timestamp.now(),
-            // Contract fields for 2-season system
-            contract_id: contractId,
-            contract_start_season: seasonId,
-            contract_end_season: nextSeasonId,
-            contract_length: 2,
-            is_auto_registered: false // First season registration
-          })
-          
-          // Create player registration for NEXT season (auto-registered)
-          const nextRegistrationId = `${player.player_id}_${nextSeasonId}`
-          const nextRegistrationRef = doc(db, 'realplayer', nextRegistrationId)
-          
-          await setDoc(nextRegistrationRef, {
-            season_id: nextSeasonId,
-            player_id: player.player_id,
-            player_name: player.name,
-            name: player.name,
-            registration_date: Timestamp.now(),
-            created_at: Timestamp.now(),
-            updated_at: Timestamp.now(),
-            // Contract fields for 2-season system
-            contract_id: contractId,
-            contract_start_season: seasonId,
-            contract_end_season: nextSeasonId,
-            contract_length: 2,
-            is_auto_registered: true // Second season (auto-registered)
-          })
-
-          // Update the player's is_registered status in realplayers collection
-          try {
-            const updateResponse = await fetch('/api/real-players', {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                player_id: player.player_id,
-                is_registered: true,
-                registered_at: new Date().toISOString(),
-                season_id: seasonId
-              })
+          // Use API endpoint to register player (writes to Neon player_seasons)
+          const registrationResponse = await fetch('/api/register/player/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              player_id: player.player_id,
+              season_id: seasonId,
+              user_email: '', // Not needed for committee registration
+              user_uid: '', // Not needed for committee registration
+              player_data: {
+                name: player.name
+              }
             })
-            
-            const updateResult = await updateResponse.json()
-            if (!updateResult.success) {
-              console.error('Failed to update is_registered status:', updateResult.error)
+          })
+          
+          const registrationResult = await registrationResponse.json()
+          
+          if (!registrationResponse.ok) {
+            if (registrationResult.error?.includes('already registered')) {
+              console.log(`Player ${player.name} is already registered for this season`)
+              skipCount++
+              continue
             }
-          } catch (updateError) {
-            console.error('Error updating is_registered status:', updateError)
+            throw new Error(registrationResult.error || 'Registration failed')
           }
+          
+          const registrationId = `${player.player_id}_${seasonId}`
           
           // Add to registered players list
           setRegisteredPlayers(prev => [

@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
+import { useAuctionWebSocket } from '@/hooks/useWebSocket';
 
 interface Bid {
   id: string;
@@ -78,6 +79,9 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [teamBidCounts, setTeamBidCounts] = useState<TeamBidCount[]>([]);
+
+  // ✅ Enable WebSocket for real-time bid updates
+  const { isConnected } = useAuctionWebSocket(roundId, true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -272,6 +276,17 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
                   Round Details
                   <span className="ml-2 inline-flex items-center justify-center bg-primary/10 text-primary px-2.5 py-1 rounded-full text-sm font-medium">
                     #{round.id.substring(0, 8)}
+                  </span>
+                  {/* WebSocket Status */}
+                  <span className={`ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                    isConnected 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                      isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+                    }`}></span>
+                    {isConnected ? 'Live' : 'Offline'}
                   </span>
                 </h2>
                 <span

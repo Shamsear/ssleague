@@ -35,9 +35,9 @@ export function useTeamDashboard(seasonId: string | undefined, enabled: boolean 
       return data;
     },
     enabled: enabled && !!seasonId,
-    staleTime: 10 * 1000, // 10 seconds - dashboard data is time-sensitive
-    refetchInterval: 15 * 1000, // Refetch every 15 seconds when tab is active
-    refetchIntervalInBackground: false, // Don't refetch when tab is inactive
+    staleTime: 5 * 60 * 1000, // 5 minutes - use WebSocket for live updates
+    refetchInterval: false, // Disabled - use WebSocket for real-time
+    refetchIntervalInBackground: false
   });
 }
 
@@ -122,8 +122,8 @@ export function useRoundData(roundId: string | undefined, enabled: boolean = tru
       return data;
     },
     enabled: enabled && !!roundId,
-    staleTime: 5 * 1000, // 5 seconds - round data changes frequently
-    refetchInterval: 10 * 1000, // Refetch every 10 seconds
+    staleTime: 5 * 60 * 1000, // 5 minutes - use WebSocket for live updates
+    refetchInterval: false, // Disabled - use WebSocket for real-time
     refetchIntervalInBackground: false,
   });
 }
@@ -203,8 +203,8 @@ export function useAllTeams(seasonId: string | undefined, enabled: boolean = tru
       return data.data;
     },
     enabled: enabled && !!seasonId,
-    staleTime: 60 * 1000, // 60 seconds - team data changes slowly
-    refetchInterval: 60 * 1000, // Refetch every minute
+    staleTime: 5 * 60 * 1000, // 5 minutes - team data rarely changes
+    refetchInterval: false, // Disabled - no need for polling
     refetchIntervalInBackground: false,
   });
 }
@@ -224,8 +224,8 @@ export function useTiebreakers(enabled: boolean = true) {
       return data.data;
     },
     enabled,
-    staleTime: 5 * 1000, // 5 seconds - tiebreakers are urgent
-    refetchInterval: 10 * 1000, // Refetch every 10 seconds
+    staleTime: 5 * 60 * 1000, // 5 minutes - use WebSocket for live updates
+    refetchInterval: false, // Disabled - use WebSocket for real-time
     refetchIntervalInBackground: false,
   });
 }
@@ -247,8 +247,8 @@ export function useTiebreakerDetails(tiebreakerId: string | undefined, enabled: 
       return data.data;
     },
     enabled: enabled && !!tiebreakerId,
-    staleTime: 5 * 1000, // 5 seconds
-    refetchInterval: 10 * 1000, // Refetch every 10 seconds
+    staleTime: 5 * 60 * 1000, // 5 minutes - use WebSocket for live updates
+    refetchInterval: false, // Disabled - use WebSocket for real-time
     refetchIntervalInBackground: false,
   });
 }
@@ -299,8 +299,8 @@ export function useTeamPlayers(seasonId: string | undefined, enabled: boolean = 
       return data.data;
     },
     enabled: enabled && !!seasonId,
-    staleTime: 30 * 1000, // 30 seconds
-    refetchInterval: 60 * 1000, // Refetch every minute
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: false, // Disabled - no need for constant updates
     refetchIntervalInBackground: false,
   });
 }
@@ -322,8 +322,8 @@ export function usePlayerStatistics(seasonId: string | undefined, enabled: boole
       return data.data;
     },
     enabled: enabled && !!seasonId,
-    staleTime: 60 * 1000, // 60 seconds - stats change slowly
-    refetchInterval: 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - stats change slowly
+    refetchInterval: false, // Disabled
     refetchIntervalInBackground: false,
   });
 }
@@ -345,8 +345,8 @@ export function usePlayerDetails(playerId: string | undefined, enabled: boolean 
       return data.data;
     },
     enabled: enabled && !!playerId,
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: false, // Disabled
     refetchIntervalInBackground: false,
   });
 }
@@ -364,8 +364,8 @@ export function useRoundStatus(roundId: string | undefined, enabled: boolean = t
       return data;
     },
     enabled: enabled && !!roundId,
-    staleTime: 3 * 1000, // 3 seconds - status changes frequently
-    refetchInterval: 5 * 1000, // Check every 5 seconds
+    staleTime: 30 * 1000, // 30 seconds - use WebSocket for real-time status
+    refetchInterval: false, // Disabled - use WebSocket
     refetchIntervalInBackground: false,
   });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
+import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function POST(
   request: NextRequest,
@@ -9,7 +10,7 @@ export async function POST(
   try {
     // Get userId from request body (sent by client after authentication)
     const body = await request.json();
-    const { action, userId } = body;
+    const { action, userId, managerName, joinFantasy } = body; // NEW: Added managerName and joinFantasy
 
     if (!userId) {
       return NextResponse.json({
@@ -172,57 +173,52 @@ export async function POST(
           seasons: updatedSeasons,
           current_season_id: seasonId,
           total_seasons_participated: updatedSeasons.length,
-          updated_at: FieldValue.serverTimestamp()
+          updated_at: FieldValue.serverTimestamp(),
+          // Phase 1: Add manager name if provided
+          ...(managerName && { manager_name: managerName }),
+          // Phase 1: Update fantasy participation if opted in
+          ...(joinFantasy && {
+            fantasy_participating: true,
+            fantasy_joined_at: FieldValue.serverTimestamp()
+          })
         });
         
-        // Create teamstats records for both seasons
-        const currentSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${seasonId}`);
-        batch.set(currentSeasonStatsRef, {
-          team_id: teamDocId,
-          team_name: teamName,
-          season_id: seasonId,
-          owner_name: userData.username || '',
-          rank: 0, // Will be set at season end
-          points: 0, // Will be calculated from wins/draws
-          matches_played: 0,
-          wins: 0,
-          draws: 0,
-          losses: 0,
-          goals_for: 0,
-          goals_against: 0,
-          goal_difference: 0,
-          win_percentage: 0,
-          cup_achievement: '', // Will be set if team wins cup
-          cups: [], // Array of cup achievements
-          players_count: 0,
-          processed_fixtures: [], // Track processed fixtures to prevent duplicates
-          created_at: FieldValue.serverTimestamp(),
-          updated_at: FieldValue.serverTimestamp()
-        });
+        // Create teamstats records in NEON for both seasons
+        const sql = getTournamentDb();
         
-        const nextSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${nextSeasonId}`);
-        batch.set(nextSeasonStatsRef, {
-          team_id: teamDocId,
-          team_name: teamName,
-          season_id: nextSeasonId,
-          owner_name: userData.username || '',
-          rank: 0,
-          points: 0,
-          matches_played: 0,
-          wins: 0,
-          draws: 0,
-          losses: 0,
-          goals_for: 0,
-          goals_against: 0,
-          goal_difference: 0,
-          win_percentage: 0,
-          cup_achievement: '',
-          cups: [],
-          players_count: 0,
-          processed_fixtures: [],
-          created_at: FieldValue.serverTimestamp(),
-          updated_at: FieldValue.serverTimestamp()
-        });
+        // Insert current season stats to Neon
+        await sql`
+          INSERT INTO teamstats (
+            id, team_id, season_id, team_name,
+            position, points, matches_played, wins, draws, losses,
+            goals_for, goals_against, goal_difference, 
+            created_at, updated_at
+          )
+          VALUES (
+            ${teamDocId + '_' + seasonId}, ${teamDocId}, ${seasonId}, ${teamName},
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 
+            NOW(), NOW()
+          )
+          ON CONFLICT (id) DO NOTHING
+        `;
+        
+        // Insert next season stats to Neon
+        await sql`
+          INSERT INTO teamstats (
+            id, team_id, season_id, team_name,
+            position, points, matches_played, wins, draws, losses,
+            goals_for, goals_against, goal_difference,
+            created_at, updated_at
+          )
+          VALUES (
+            ${teamDocId + '_' + nextSeasonId}, ${teamDocId}, ${nextSeasonId}, ${teamName},
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+            NOW(), NOW()
+          )
+          ON CONFLICT (id) DO NOTHING
+        `;
       } else {
         // Team doesn't exist, create new team with BOTH seasons (teamDocId already set to userId above)
         
@@ -247,60 +243,57 @@ export async function POST(
           updated_at: FieldValue.serverTimestamp(),
           
           // Total seasons participated
-          total_seasons_participated: 2
+          total_seasons_participated: 2,
+          
+          // Phase 1: Manager name (stored but not displayed)
+          manager_name: managerName || '',
+          
+          // Phase 1: Fantasy league participation
+          fantasy_participating: joinFantasy || false,
+          fantasy_joined_at: joinFantasy ? FieldValue.serverTimestamp() : null,
+          fantasy_league_id: null,
+          fantasy_player_points: 0,
+          fantasy_team_bonus_points: 0,
+          fantasy_total_points: 0
         };
         
         const teamRef = adminDb.collection('teams').doc(teamDocId);
         batch.set(teamRef, teamDoc);
         
-        // Create teamstats records for both seasons (separate collection)
-        const currentSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${seasonId}`);
-        batch.set(currentSeasonStatsRef, {
-          team_id: teamDocId,
-          team_name: teamName,
-          season_id: seasonId,
-          owner_name: userData.username || '',
-          rank: 0, // Will be set at season end
-          points: 0, // Will be calculated from wins/draws
-          matches_played: 0,
-          wins: 0,
-          draws: 0,
-          losses: 0,
-          goals_for: 0,
-          goals_against: 0,
-          goal_difference: 0,
-          win_percentage: 0,
-          cup_achievement: '', // Will be set if team wins cup
-          cups: [], // Array of cup achievements
-          players_count: 0,
-          processed_fixtures: [], // Track processed fixtures to prevent duplicates
-          created_at: FieldValue.serverTimestamp(),
-          updated_at: FieldValue.serverTimestamp()
-        });
+        // Create teamstats records in NEON for both seasons
+        const sql2 = getTournamentDb();
         
-        const nextSeasonStatsRef = adminDb.collection('teamstats').doc(`${teamDocId}_${nextSeasonId}`);
-        batch.set(nextSeasonStatsRef, {
-          team_id: teamDocId,
-          team_name: teamName,
-          season_id: nextSeasonId,
-          owner_name: userData.username || '',
-          rank: 0,
-          points: 0,
-          matches_played: 0,
-          wins: 0,
-          draws: 0,
-          losses: 0,
-          goals_for: 0,
-          goals_against: 0,
-          goal_difference: 0,
-          win_percentage: 0,
-          cup_achievement: '',
-          cups: [],
-          players_count: 0,
-          processed_fixtures: [],
-          created_at: FieldValue.serverTimestamp(),
-          updated_at: FieldValue.serverTimestamp()
-        });
+        await sql2`
+          INSERT INTO teamstats (
+            id, team_id, season_id, team_name,
+            position, points, matches_played, wins, draws, losses,
+            goals_for, goals_against, goal_difference,
+            created_at, updated_at
+          )
+          VALUES (
+            ${teamDocId + '_' + seasonId}, ${teamDocId}, ${seasonId}, ${teamName},
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+            NOW(), NOW()
+          )
+          ON CONFLICT (id) DO NOTHING
+        `;
+        
+        await sql2`
+          INSERT INTO teamstats (
+            id, team_id, season_id, team_name,
+            position, points, matches_played, wins, draws, losses,
+            goals_for, goals_against, goal_difference,
+            created_at, updated_at
+          )
+          VALUES (
+            ${teamDocId + '_' + nextSeasonId}, ${teamDocId}, ${nextSeasonId}, ${teamName},
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+            NOW(), NOW()  
+          )
+          ON CONFLICT (id) DO NOTHING
+        `;
       }
       
       // Recalculate teamSeasonId in case teamDocId was updated

@@ -10,26 +10,29 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Stale time: how long data is considered fresh (no refetch needed)
-            staleTime: 30 * 1000, // 30 seconds
+            // Stale time: Longer cache for better performance (stats don't change every second)
+            staleTime: 5 * 60 * 1000, // ✅ 5 minutes - balance between fresh data and performance
             
             // Cache time: how long inactive data stays in cache
-            gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
+            gcTime: 10 * 60 * 1000, // ✅ 10 minutes - keep data longer
             
-            // Refetch on window focus
-            refetchOnWindowFocus: true,
+            // Refetch on window focus - DISABLED for better UX
+            refetchOnWindowFocus: false, // ✅ Don't refetch when switching tabs
             
-            // Refetch on reconnect
+            // Refetch on reconnect - keep enabled for reliability
             refetchOnReconnect: true,
             
-            // Refetch on mount if data is stale
-            refetchOnMount: true,
+            // Refetch on mount - DISABLED, use cached data
+            refetchOnMount: false, // ✅ Use cached data on navigation
             
             // Retry failed requests
             retry: 1,
             
             // Network mode
             networkMode: 'online',
+            
+            // Refetch interval - disabled by default (can override per query)
+            refetchInterval: false,
           },
           mutations: {
             // Retry failed mutations

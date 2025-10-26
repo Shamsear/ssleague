@@ -182,8 +182,25 @@ async function updateTeamStats(data: {
       await updateDoc(statsRef, updateData);
     }
   } else {
-    // Document doesn't exist - this should have been created during team registration
-    console.error(`Team stats document not found for ${statsId}. Skipping update.`);
-    throw new Error(`Team stats document not found for team ${team_id} in season ${season_id}. Please ensure team is properly registered.`);
+    // Document doesn't exist - create it with initial values
+    console.warn(`Team stats document not found for ${statsId}. Creating new document...`);
+    
+    const initialData = {
+      team_id,
+      season_id,
+      matches_played: 1,
+      wins: won ? 1 : 0,
+      draws: draw ? 1 : 0,
+      losses: lost ? 1 : 0,
+      goals_for,
+      goals_against,
+      goal_difference: goals_for - goals_against,
+      processed_fixtures: [{ fixture_id, goals_for, goals_against, won, draw, lost }],
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    };
+    
+    await setDoc(statsRef, initialData);
+    console.log(`✓ Created team stats document for ${statsId}`);
   }
 }

@@ -2,8 +2,10 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
 
 export default function EditTeamProfilePage() {
   const { user, loading } = useAuth();
@@ -22,6 +24,9 @@ export default function EditTeamProfilePage() {
   
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Modal system
+  const { alertState, showAlert, closeAlert } = useModal();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -104,7 +109,11 @@ export default function EditTeamProfilePage() {
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB');
+      showAlert({
+        type: 'warning',
+        title: 'File Too Large',
+        message: 'File size must be less than 5MB'
+      });
       e.target.value = '';
       return;
     }
@@ -170,16 +179,25 @@ export default function EditTeamProfilePage() {
 
       // Upload logo if changed
       let logoUrl = currentLogoUrl;
+      let logoFileId = '';
+      
       if (newLogoFile) {
-        const { storage } = await import('@/lib/firebase/config');
-        const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+        // Upload to ImageKit
+        const { uploadImage } = await import('@/lib/imagekit/upload');
         
         const timestamp = Date.now();
-        const fileName = `team_logos/${user?.uid}_${timestamp}_${newLogoFile.name}`;
-        const storageRef = ref(storage, fileName);
+        const fileName = `${user?.uid}_${timestamp}_${newLogoFile.name}`;
         
-        await uploadBytes(storageRef, newLogoFile);
-        logoUrl = await getDownloadURL(storageRef);
+        const result = await uploadImage({
+          file: newLogoFile,
+          fileName,
+          folder: '/team-logos',
+          tags: ['team', 'logo', user?.uid || ''],
+          useUniqueFileName: true,
+        });
+        
+        logoUrl = result.url;
+        logoFileId = result.fileId;
       }
 
       // Update Firestore
@@ -201,10 +219,17 @@ export default function EditTeamProfilePage() {
 
       const updatePromises = teamSeasonsSnapshot.docs.map(async (teamSeasonDoc) => {
         const teamSeasonRef = doc(db, 'team_seasons', teamSeasonDoc.id);
-        return updateDoc(teamSeasonRef, {
+        const updateData: any = {
           team_name: teamName.trim(),
           team_logo: logoUrl,
-        });
+        };
+        
+        // Add fileId if new logo was uploaded
+        if (logoFileId) {
+          updateData.team_logo_file_id = logoFileId;
+        }
+        
+        return updateDoc(teamSeasonRef, updateData);
       });
 
       await Promise.all(updatePromises);
@@ -640,6 +665,15 @@ export default function EditTeamProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Modal Component */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
     </div>
   );
 }

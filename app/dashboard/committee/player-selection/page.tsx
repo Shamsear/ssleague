@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
+import { useModal } from '@/hooks/useModal'
+import AlertModal from '@/components/modals/AlertModal'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 
 interface FootballPlayer {
   id: string
@@ -35,6 +38,17 @@ export default function PlayerSelectionPage() {
   const [uploading, setUploading] = useState(false)
   const [selectedExportPosition, setSelectedExportPosition] = useState('')
 
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal()
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login')
@@ -63,7 +77,11 @@ export default function PlayerSelectionPage() {
         setFilteredPlayers(data)
       } catch (err) {
         console.error('Error fetching players:', err)
-        alert('Failed to load players. Please try again.')
+        showAlert({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load players. Please try again.'
+        })
       } finally {
         setLoading(false)
       }
@@ -158,7 +176,11 @@ export default function PlayerSelectionPage() {
       ))
     } catch (err) {
       console.error('Error updating player:', err)
-      alert('Failed to update player status')
+      showAlert({
+        type: 'error',
+        title: 'Update Failed',
+        message: 'Failed to update player status'
+      })
     } finally {
       setUpdating(prev => {
         const newSet = new Set(prev)
@@ -169,7 +191,15 @@ export default function PlayerSelectionPage() {
   }
 
   const handleBulkToggle = async (makeEligible: boolean) => {
-    if (!confirm(`Are you sure you want to ${makeEligible ? 'select' : 'deselect'} all ${paginatedPlayers.length} visible players?`)) {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Bulk Update',
+      message: `Are you sure you want to ${makeEligible ? 'select' : 'deselect'} all ${paginatedPlayers.length} visible players?`,
+      confirmText: 'Confirm',
+      cancelText: 'Cancel'
+    })
+    
+    if (!confirmed) {
       return
     }
 
@@ -198,10 +228,18 @@ export default function PlayerSelectionPage() {
         updatedIds.has(p.id) ? { ...p, is_auction_eligible: makeEligible } : p
       ))
       
-      alert(`Successfully updated ${paginatedPlayers.length} players`)
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: `Successfully updated ${paginatedPlayers.length} players`
+      })
     } catch (err) {
       console.error('Error bulk updating players:', err)
-      alert('Failed to update players')
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update players'
+      })
     } finally {
       setLoading(false)
     }
@@ -209,7 +247,11 @@ export default function PlayerSelectionPage() {
 
   const handleExportPosition = async (position: string) => {
     if (!position) {
-      alert('Please select a position first')
+      showAlert({
+        type: 'warning',
+        title: 'No Position Selected',
+        message: 'Please select a position first'
+      })
       return
     }
 
@@ -218,7 +260,11 @@ export default function PlayerSelectionPage() {
       const positionPlayers = players.filter(p => p.position === position)
       
       if (positionPlayers.length === 0) {
-        alert(`No players found for position ${position}`)
+        showAlert({
+          type: 'info',
+          title: 'No Players',
+          message: `No players found for position ${position}`
+        })
         return
       }
 
@@ -377,15 +423,18 @@ export default function PlayerSelectionPage() {
       a.click()
       window.URL.revokeObjectURL(url)
       
-      alert(`✅ Exported ${positionPlayers.length} ${position} players to Excel\n\n` +
-            `The file includes:\n` +
-            `• Yes/No dropdowns in the Eligible column\n` +
-            `• Color coding (Green=Yes, Red=No)\n` +
-            `• Instructions sheet\n\n` +
-            `Edit the file and upload it back to apply changes in bulk!`)
+      showAlert({
+        type: 'success',
+        title: 'Export Successful',
+        message: `✅ Exported ${positionPlayers.length} ${position} players to Excel\n\nThe file includes:\n• Yes/No dropdowns in the Eligible column\n• Color coding (Green=Yes, Red=No)\n• All player information\n\nEdit the file and upload it back to apply changes in bulk!`
+      })
     } catch (err) {
       console.error('Error exporting:', err)
-      alert('Failed to export data. Please try again.')
+      showAlert({
+        type: 'error',
+        title: 'Export Failed',
+        message: 'Failed to export data. Please try again.'
+      })
     }
   }
 
@@ -397,12 +446,20 @@ export default function PlayerSelectionPage() {
 
   const handleFileUpload = async () => {
     if (!selectedFile) {
-      alert('Please select a file first')
+      showAlert({
+        type: 'warning',
+        title: 'No File Selected',
+        message: 'Please select a file first'
+      })
       return
     }
 
     if (!selectedExportPosition) {
-      alert('Please select which position this file is for')
+      showAlert({
+        type: 'warning',
+        title: 'No Position Selected',
+        message: 'Please select which position this file is for'
+      })
       return
     }
 
@@ -431,7 +488,11 @@ export default function PlayerSelectionPage() {
       router.push('/dashboard/committee/player-selection/preview')
     } catch (err) {
       console.error('Error uploading file:', err)
-      alert('Failed to process file. Please check the format.')
+      showAlert({
+        type: 'error',
+        title: 'Upload Failed',
+        message: 'Failed to process file. Please check the format.'
+      })
     } finally {
       setUploading(false)
     }
@@ -853,6 +914,26 @@ export default function PlayerSelectionPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   )
 }

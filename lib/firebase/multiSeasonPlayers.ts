@@ -28,6 +28,7 @@ import {
   calculateStarRating,
   updateAllPlayerCategories,
   calculateTeamRealPlayerSalaries,
+  calculateRealPlayerSalary,
 } from '../contracts';
 import {
   deductDollarBalance,
@@ -176,12 +177,21 @@ export async function updateRealPlayerAfterMatch(
     // Recalculate star rating based on new points
     const newStarRating = calculateStarRating(newPoints);
     
-    // Update player
-    await updateDoc(playerRef, {
+    // Recalculate salary if star rating changed
+    const updateData: any = {
       points: newPoints,
       star_rating: newStarRating,
       updated_at: serverTimestamp(),
-    });
+    };
+    
+    // Only recalculate salary if star rating changed and player has auction value
+    if (newStarRating !== playerData.star_rating && playerData.auction_value) {
+      const newSalary = calculateRealPlayerSalary(playerData.auction_value, newStarRating);
+      updateData.salary_per_match = newSalary;
+    }
+    
+    // Update player
+    await updateDoc(playerRef, updateData);
     
     // Deduct salary from team's dollar balance
     const salaryPerMatch = playerData.salary_per_match || 0;

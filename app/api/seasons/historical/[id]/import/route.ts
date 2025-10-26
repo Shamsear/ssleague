@@ -1,13 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import * as XLSX from 'xlsx';
+import { adminDb } from '@/lib/firebase/admin';
+import admin from 'firebase-admin';
+import { v4 as uuidv4 } from 'uuid';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
+import * as XLSX from 'xlsx';
 
 interface ImportStats {
   teams: { updated: number; unchanged: number; errors: string[] };
   players: { updated: number; unchanged: number; errors: string[] };
   awards: { updated: number; unchanged: number; errors: string[] };
   matches: { updated: number; unchanged: number; errors: string[] };
+}
+
+// Helper function to convert text to Title Case with special handling for abbreviations
+// (e.g., "TEAM fc" -> "Team FC", "st james" -> "St James")
+function toTitleCase(text: string): string {
+  const abbreviations = ['FC', 'CF', 'ST', 'AC', 'SC', 'AFC', 'RFC', 'DC', 'BC', 'MC', 'EC'];
+  
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map(word => {
+      const upperWord = word.toUpperCase();
+      // Check if this word is a known abbreviation
+      if (abbreviations.includes(upperWord)) {
+        return upperWord;
+      }
+      // Otherwise, capitalize first letter
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
 }
 
 // Helper function to get existing player by name or create new one
@@ -22,13 +45,13 @@ const getOrCreatePlayerByName = async (name: string): Promise<{ playerId: string
     if (!existingPlayersQuery.empty) {
       const existingPlayer = existingPlayersQuery.docs[0];
       const playerId = existingPlayer.data().player_id;
-      console.log(`  ✅ Found existing player: ${name} with ID: ${playerId}`);
+      console.log(`  Found existing player: ${name} with ID: ${playerId}`);
       return { playerId, isNew: false };
     }
     
     // No existing player found, generate new ID
     const playerId = await generateNewPlayerId();
-    console.log(`  🆕 Will create new player: ${name} with ID: ${playerId}`);
+    console.log(`  Will create new player: ${name} with ID: ${playerId}`);
     return { playerId, isNew: true };
   } catch (error) {
     console.error('Error in getOrCreatePlayerByName:', error);
@@ -72,7 +95,7 @@ export async function POST(
 ) {
   try {
     const { id: seasonId } = await params;
-    console.log(`📤 Importing Excel data for historical season ID: ${seasonId}`);
+    console.log(`Importing Excel data for historical season ID: ${seasonId}`);
 
     // Verify authentication
     const authHeader = request.headers.get('authorization');
@@ -81,35 +104,35 @@ export async function POST(
     }
 
     const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(token);
+    const decodedToken = await admin.auth().verifyIdToken(token);
     
     // Check user role from Firestore user document
     console.log(`Checking user role for UID: ${decodedToken.uid}`);
     const userDoc = await adminDb.collection('users').doc(decodedToken.uid).get();
     if (!userDoc.exists) {
-      console.log('❌ User document not found in Firestore');
+      console.log('User document not found in Firestore');
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
     
     const userData = userDoc.data();
     console.log(`User role: ${userData?.role}`);
     if (userData?.role !== 'super_admin') {
-      console.log(`❌ Access denied. Required: super_admin, Current: ${userData?.role}`);
+      console.log(`Access denied. Required: super_admin, Current: ${userData?.role}`);
       return NextResponse.json({ error: 'Forbidden: Super admin access required' }, { status: 403 });
     }
     
-    console.log('✅ Super admin access confirmed');
+    console.log('Super admin access confirmed');
 
     // Check content type to determine if this is a file upload or JSON preview import
     const contentType = request.headers.get('content-type') || '';
-    console.log('📝 Content-Type:', contentType);
+    console.log('Content-Type:', contentType);
     
     let teamsToImport: any[] = [];
     let playersToImport: any[] = [];
     
     if (contentType.includes('application/json')) {
       // Import from preview data (JSON)
-      console.log('📊 Importing from preview data (JSON)');
+      console.log('Importing from preview data (JSON)');
       const jsonData = await request.json();
       teamsToImport = jsonData.teams || [];
       playersToImport = jsonData.players || [];
@@ -118,7 +141,7 @@ export async function POST(
       console.log(`  - Players to import: ${playersToImport.length}`);
     } else {
       // Import from Excel file upload
-      console.log('📊 Importing from Excel file');
+      console.log('Importing from Excel file');
       const formData = await request.formData();
       const file = formData.get('file') as File;
       
@@ -160,36 +183,28 @@ export async function POST(
       return NextResponse.json({ error: 'Season not found' }, { status: 404 });
     }
 
-    // CLEANUP PHASE: Delete existing season stats before importing
-    console.log('🗑️  Starting cleanup phase for season stats...');
+    // CLEANUP PHASE: Delete existing season stats from NEON before importing
+    console.log('  Starting cleanup phase for season stats in NEON...');
     
-    // Get all player stats records for this season
-    const existingStatsQuery = await adminDb.collection('realplayerstats')
-      .where('season_id', '==', seasonId)
-      .get();
+    const sql = getTournamentDb();
     
-    const statsDocsToDelete: string[] = [];
+    // Delete all player stats for this season from NEON
+    const deletedPlayerStats = await sql`
+      DELETE FROM realplayerstats
+      WHERE season_id = ${seasonId}
+    `;
     
-    existingStatsQuery.forEach(doc => {
-      statsDocsToDelete.push(doc.id);
-    });
+    console.log(`  Deleted ${deletedPlayerStats.length} player stats records from NEON`);
     
-    console.log(`  Found ${statsDocsToDelete.length} player stats records to delete`);
+    // Delete all team stats for this season from NEON
+    const deletedTeamStats = await sql`
+      DELETE FROM teamstats
+      WHERE season_id = ${seasonId}
+    `;
     
-    // Delete all realplayerstats records for this season
-    if (statsDocsToDelete.length > 0) {
-      const deleteBatch = adminDb.batch();
-      statsDocsToDelete.forEach(docId => {
-        deleteBatch.delete(adminDb.collection('realplayerstats').doc(docId));
-      });
-      await deleteBatch.commit();
-      console.log(`  ✅ Deleted ${statsDocsToDelete.length} player stats records`);
-    } else {
-      console.log(`  ℹ️  No existing stats to delete (first import or empty season)`);
-    }
-    
-    console.log('✅ Cleanup phase completed');
-    console.log('📥 Starting fresh import...\n');
+    console.log(`  Deleted ${deletedTeamStats.length} team stats records from NEON`);
+    console.log('  Cleanup phase completed');
+    console.log('  Starting fresh import...\n');
 
     // OPTIMIZATION: Fetch season name for denormalization
     const seasonData = seasonDoc.data();
@@ -265,36 +280,68 @@ export async function POST(
             continue;
           }
 
-          // Write team stats to teamstats collection ONLY (new architecture)
+          // Write team stats to NEON teamstats table
           const teamStatsDocId = `${teamId}_${seasonId}`;
-          const teamStatsDoc = {
-            team_id: teamId,
-            team_name: row.team_name || currentData?.team_name || '',
-            season_id: seasonId,
-            owner_name: row.owner_name || currentData?.owner_name || '',
-            
-            // Team standings data from Excel
-            rank: parseInt(row.rank) || 0,
-            points: parseInt(row.p || row.points) || 0,
-            matches_played: parseInt(row.mp || row.matches_played) || 0,
-            wins: parseInt(row.w || row.wins) || 0,
-            draws: parseInt(row.d || row.draws) || 0,
-            losses: parseInt(row.l || row.losses) || 0,
-            goals_for: parseInt(row.f || row.goals_for) || 0,
-            goals_against: parseInt(row.a || row.goals_against) || 0,
-            goal_difference: parseInt(row.gd || row.goal_difference) || 0,
-            win_percentage: parseFloat(row.percentage || row.win_percentage) || 0,
-            cup_achievement: row.cup || row.cup_achievement || '',
-            
-            updated_at: FieldValue.serverTimestamp()
-          };
+          const teamName = row.team_name || currentData?.team_name || '';
+          const ownerName = row.owner_name || currentData?.owner_name || '';
+          const rank = parseInt(row.rank) || 0;
+          const points = parseInt(row.p || row.points) || 0;
+          const matchesPlayed = parseInt(row.mp || row.matches_played) || 0;
+          const wins = parseInt(row.w || row.wins) || 0;
+          const draws = parseInt(row.d || row.draws) || 0;
+          const losses = parseInt(row.l || row.losses) || 0;
+          const goalsFor = parseInt(row.f || row.goals_for) || 0;
+          const goalsAgainst = parseInt(row.a || row.goals_against) || 0;
+          const goalDifference = parseInt(row.gd || row.goal_difference) || 0;
           
-          await adminDb.collection('teamstats').doc(teamStatsDocId).set(teamStatsDoc, { merge: true });
+          // Parse team trophies/cups (cup_1, cup_2, etc.)
+          const teamTrophiesArr: any[] = [];
+          Object.keys(row).forEach((key) => {
+            const lowerKey = key.toLowerCase();
+            const value = (row as any)[key];
+            if (!value || value === '') return;
+            if (lowerKey.includes('cup')) {
+              teamTrophiesArr.push({ type: 'cup', name: value });
+            }
+          });
+          const teamTrophiesJsonStr = JSON.stringify(teamTrophiesArr);
+          
+          // Write to NEON
+          await sql`
+            INSERT INTO teamstats (
+              id, team_id, season_id, team_name,
+              points, matches_played, wins, draws, losses,
+              goals_for, goals_against, goal_difference, position, trophies,
+              created_at, updated_at
+            )
+            VALUES (
+              ${teamStatsDocId}, ${teamId}, ${seasonId}, ${teamName},
+              ${points}, ${matchesPlayed}, ${wins}, ${draws}, ${losses},
+              ${goalsFor}, ${goalsAgainst}, ${goalDifference}, ${rank || null},
+              ${teamTrophiesJsonStr}::jsonb,
+              NOW(), NOW()
+            )
+            ON CONFLICT (id) DO UPDATE
+            SET
+              team_name = EXCLUDED.team_name,
+              points = EXCLUDED.points,
+              matches_played = EXCLUDED.matches_played,
+              wins = EXCLUDED.wins,
+              draws = EXCLUDED.draws,
+              losses = EXCLUDED.losses,
+              goals_for = EXCLUDED.goals_for,
+              goals_against = EXCLUDED.goals_against,
+              goal_difference = EXCLUDED.goal_difference,
+              position = EXCLUDED.position,
+              trophies = EXCLUDED.trophies,
+              updated_at = NOW()
+          `;
           stats.teams.updated++;
-          console.log(`  ✅ Updated teamstats for: ${teamStatsDoc.team_name}`);
+          console.log(`  ✅ Updated teamstats in NEON for: ${teamName}`);
         
         } catch (error: any) {
-          stats.teams.errors.push(`Error updating team ${teamId}: ${error.message}`);
+          const teamIdentifier = row.linked_team_id || row.id || row.team_name || 'unknown';
+          stats.teams.errors.push(`Error updating team ${teamIdentifier}: ${error.message}`);
         }
       }
     }
@@ -310,8 +357,13 @@ export async function POST(
             continue;
           }
 
+          // Normalize player name and team to Title Case
+          const normalizedPlayerName = toTitleCase(row.name);
+          const normalizedPlayerTeam = toTitleCase(row.team || '');
+          console.log(`  Processing player: "${row.name}" → "${normalizedPlayerName}" (Team: "${row.team}" → "${normalizedPlayerTeam}")`);
+
           // OPTIMIZED: Use cached player data instead of querying
-          const playerNameLower = row.name.toLowerCase();
+          const playerNameLower = normalizedPlayerName.toLowerCase();
           let playerId: string;
           let isNewPlayer: boolean;
           let currentPlayerData: any = {};
@@ -321,7 +373,7 @@ export async function POST(
             playerId = existingPlayer.playerId;
             currentPlayerData = existingPlayer.data;
             isNewPlayer = false;
-            console.log(`  ✅ Found existing player: ${row.name} with ID: ${playerId}`);
+            console.log(`  ✅ Found existing player: ${normalizedPlayerName} with ID: ${playerId}`);
           } else {
             // Generate new player ID
             maxPlayerNumber++;
@@ -329,7 +381,7 @@ export async function POST(
             isNewPlayer = true;
             // Add to cache for potential duplicate names in same import
             playersByName.set(playerNameLower, { playerId, data: {} });
-            console.log(`  🆕 Will create new player: ${row.name} with ID: ${playerId}`);
+            console.log(`  🆕 Will create new player: ${normalizedPlayerName} with ID: ${playerId}`);
           }
 
           // Map preview data format to import format
@@ -385,8 +437,8 @@ export async function POST(
           // 1. Update/Create permanent player document in realplayers collection
           const permanentPlayerData: any = {
             player_id: playerId,
-            name: row.name || currentPlayerData?.name || '',
-            display_name: row.display_name || currentPlayerData?.display_name || '',
+            name: normalizedPlayerName,
+            display_name: row.display_name || currentPlayerData?.display_name || normalizedPlayerName,
             email: row.email || currentPlayerData?.email || '',
             phone: row.phone || currentPlayerData?.phone || '',
             role: row.role || currentPlayerData?.role || 'player',
@@ -409,9 +461,9 @@ export async function POST(
           await adminDb.collection('realplayers').doc(playerId).set(permanentPlayerData, { merge: true });
 
           // 2. Create season-specific stats document in realplayerstats collection
-          // OPTIMIZED: No need to query - we already deleted all stats in cleanup phase
-          const statsDocId = adminDb.collection('realplayerstats').doc().id;
-          console.log(`  🆕 Creating stats for ${row.name} in season ${seasonId}`);
+          // Use composite ID: player_id_seasonId for easy lookup
+          const statsDocId = `${playerId}_${seasonId}`;
+          console.log(`  🆕 Creating stats for ${normalizedPlayerName} in season ${seasonId}`);
           
           // Parse all category and individual trophies dynamically
           const categoryTrophies: string[] = [];
@@ -481,20 +533,21 @@ export async function POST(
             
             // If no match found, add a warning
             if (!teamNameMatched) {
-              const warningMsg = `⚠️ Player "${row.name}" has team "${normalizedTeamName}" which does not match any current or previous team names`;
+              const warningMsg = `⚠️ Player "${normalizedPlayerName}" has team "${normalizedTeamName}" which does not match any current or previous team names`;
               console.warn(warningMsg);
               stats.players.errors.push(warningMsg);
             }
           }
           
+          // Prepare stats data for Firestore
           const statsData: any = {
             player_id: playerId,
-            player_name: row.name || currentPlayerData?.name || '',
+            player_name: normalizedPlayerName,
             season_id: seasonId,
-            season_name: seasonName, // OPTIMIZED: Denormalized for faster reads
+            season_name: seasonName,
+            team: normalizedTeamName,
+            team_id: teamsCache.get(normalizedTeamName.toLowerCase())?.id || null,
             category: row.category || '', // Season-specific
-            team: normalizedTeamName, // Season-specific (normalized to current name)
-            team_id: row.team_id || null,
             is_active: row.is_active !== false,
             is_available: row.is_available !== false,
             // Flatten stats at document level for easier querying
@@ -506,9 +559,60 @@ export async function POST(
             updated_at: FieldValue.serverTimestamp()
           };
           
-          await adminDb.collection('realplayerstats').doc(statsDocId).set(statsData);
+          // Combine trophies into JSON for Neon
+          const allTrophies = [
+            ...categoryTrophies.map((t: string) => ({ type: 'category', name: t })),
+            ...individualTrophies.map((t: string) => ({ type: 'individual', name: t }))
+          ];
+          const trophiesJson = JSON.stringify(allTrophies);
+          
+          // Write to NEON realplayerstats table
+          await sql`
+            INSERT INTO realplayerstats (
+              id, player_id, season_id, player_name,
+              category, team, team_id,
+              matches_played, matches_won, matches_drawn, matches_lost,
+              goals_scored, goals_conceded, assists, wins, draws, losses,
+              clean_sheets, motm_awards, points, star_rating, trophies,
+              created_at, updated_at
+            )
+            VALUES (
+              ${statsDocId}, ${playerId}, ${seasonId}, ${normalizedPlayerName},
+              ${statsData.category || ''}, ${normalizedPlayerTeam}, ${statsData.team_id},
+              ${statsData.matches_played || 0}, ${statsData.wins || statsData.matches_won || 0},
+              ${statsData.draws || statsData.matches_drawn || 0}, ${statsData.losses || statsData.matches_lost || 0},
+              ${statsData.goals_scored || 0}, ${statsData.goals_conceded || 0},
+              ${statsData.assists || 0}, ${statsData.wins || statsData.matches_won || 0}, 
+              ${statsData.draws || statsData.matches_drawn || 0}, ${statsData.losses || statsData.matches_lost || 0},
+              ${statsData.clean_sheets || 0}, ${statsData.motm_awards || 0}, 
+              ${statsData.points || 0}, ${statsData.star_rating || 3}, ${trophiesJson}::jsonb,
+              NOW(), NOW()
+            )
+            ON CONFLICT (id) DO UPDATE
+            SET
+              player_name = EXCLUDED.player_name,
+              category = EXCLUDED.category,
+              team = EXCLUDED.team,
+              team_id = EXCLUDED.team_id,
+              matches_played = EXCLUDED.matches_played,
+              matches_won = EXCLUDED.matches_won,
+              matches_drawn = EXCLUDED.matches_drawn,
+              matches_lost = EXCLUDED.matches_lost,
+              goals_scored = EXCLUDED.goals_scored,
+              goals_conceded = EXCLUDED.goals_conceded,
+              assists = EXCLUDED.assists,
+              wins = EXCLUDED.wins,
+              draws = EXCLUDED.draws,
+              losses = EXCLUDED.losses,
+              clean_sheets = EXCLUDED.clean_sheets,
+              motm_awards = EXCLUDED.motm_awards,
+              points = EXCLUDED.points,
+              star_rating = EXCLUDED.star_rating,
+              trophies = EXCLUDED.trophies,
+              updated_at = NOW()
+          `;
           stats.players.updated++;
-          console.log(`  ✅ Created player stats: ${statsData.player_name}`);
+          console.log(`  ✅ Created player stats in NEON: ${statsData.player_name}`);
         } catch (error: any) {
           stats.players.errors.push(`Error processing player ${row.name || row.player_id}: ${error.message}`);
         }

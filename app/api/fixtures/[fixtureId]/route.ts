@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-
-const sql = neon(process.env.NEON_DATABASE_URL!);
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 // GET - Fetch a single fixture by ID
 export async function GET(
@@ -9,6 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
+    const sql = getTournamentDb();
     const { fixtureId } = await params;
 
     if (!fixtureId) {
@@ -48,6 +47,7 @@ export async function PATCH(
   { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
+    const sql = getTournamentDb();
     const { fixtureId } = await params;
     const body = await request.json();
     const { motm_player_id, motm_player_name } = body;

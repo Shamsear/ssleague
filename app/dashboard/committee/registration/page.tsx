@@ -2,12 +2,15 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getSeasonById, updateSeason } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
 import { TeamData } from '@/types/team';
-import Link from 'next/link';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -20,6 +23,17 @@ export default function CommitteeRegistrationPage() {
   const [registeredTeamsCount, setRegisteredTeamsCount] = useState(0);
   const [totalTeamsCount, setTotalTeamsCount] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
   const [processingTeamId, setProcessingTeamId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,7 +47,11 @@ export default function CommitteeRegistrationPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      console.log('🔍 Committee Registration - userSeasonId:', userSeasonId);
+      console.log('🔍 Committee Registration - user:', user);
+      
       if (!userSeasonId) {
+        console.log('⚠️ No userSeasonId found');
         setLoadingData(false);
         return;
       }
@@ -41,8 +59,10 @@ export default function CommitteeRegistrationPage() {
       try {
         setLoadingData(true);
         
+        console.log('📡 Fetching season:', userSeasonId);
         // Fetch current season
         const season = await getSeasonById(userSeasonId);
+        console.log('✅ Season fetched:', season);
         setCurrentSeason(season);
         
         // Count registered teams for this season from team_seasons collection
@@ -72,27 +92,45 @@ export default function CommitteeRegistrationPage() {
   }, [isCommitteeAdmin, userSeasonId]);
 
   const toggleTeamRegistration = async () => {
-    if (!currentSeason) return;
+    if (!currentSeason) {
+      console.error('❌ No current season to toggle');
+      return;
+    }
 
     try {
-      const newValue = !currentSeason.is_team_registration_open;
+      const currentStatus = currentSeason.is_team_registration_open;
+      const newValue = !currentStatus;
+      
+      console.log('🔄 Toggling registration:', {
+        seasonId: currentSeason.id,
+        currentStatus,
+        newValue,
+        action: newValue ? 'OPENING' : 'CLOSING'
+      });
+
       await updateSeason(currentSeason.id, {
         is_team_registration_open: newValue
       });
+
+      console.log('✅ Database updated successfully');
 
       setCurrentSeason({
         ...currentSeason,
         is_team_registration_open: newValue
       });
 
+      console.log('✅ Local state updated');
+
       showToast(
-        currentSeason.is_team_registration_open 
+        currentStatus 
           ? 'Team registration closed successfully' 
           : 'Team registration opened successfully',
         'success'
       );
+      
+      console.log('✅ Registration toggle complete');
     } catch (error) {
-      console.error('Error toggling team registration:', error);
+      console.error('❌ Error toggling team registration:', error);
       showToast('Failed to toggle team registration', 'error');
     }
   };
@@ -107,8 +145,11 @@ export default function CommitteeRegistrationPage() {
   };
 
   const showToast = (message: string, type: 'success' | 'error') => {
-    // Simple toast implementation - you can enhance this
-    alert(message);
+    showAlert({
+      type: type === 'success' ? 'success' : 'error',
+      title: type === 'success' ? 'Success' : 'Error',
+      message
+    });
   };
 
   if (loading || loadingData) {
@@ -124,6 +165,39 @@ export default function CommitteeRegistrationPage() {
 
   if (!user || !isCommitteeAdmin) {
     return null;
+  }
+
+  // Show error if no season is assigned
+  if (!loadingData && !currentSeason) {
+    return (
+      <div className="min-h-screen py-4 sm:py-8 px-4">
+        <div className="container mx-auto max-w-screen-2xl">
+          <div className="glass rounded-3xl p-8 mb-8 shadow-lg text-center">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">No Season Assigned</h2>
+            <p className="text-gray-600 mb-6">
+              You need to be assigned to a season to manage team registration.
+            </p>
+            <p className="text-sm text-gray-500 mb-6">
+              User Season ID: {userSeasonId || 'Not assigned'}
+            </p>
+            <Link
+              href="/dashboard/committee"
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-[#0066FF] to-blue-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+              </svg>
+              Back to Dashboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const teamRegistrationLink = currentSeason 
@@ -251,9 +325,27 @@ export default function CommitteeRegistrationPage() {
                     <div className="flex items-center space-x-2">
                       {currentSeason.is_team_registration_open ? (
                         <button
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to close team registration for ${currentSeason.name}?`)) {
-                              toggleTeamRegistration();
+                          onClick={async () => {
+                            console.log('🔘 Close Registration button clicked');
+                            try {
+                              console.log('📋 Showing confirmation modal...');
+                              const confirmed = await showConfirm({
+                                type: 'warning',
+                                title: 'Close Registration',
+                                message: `Are you sure you want to close team registration for ${currentSeason.name}?`,
+                                confirmText: 'Close',
+                                cancelText: 'Cancel'
+                              });
+                              console.log('✅ Modal response:', confirmed);
+                              
+                              if (confirmed) {
+                                console.log('✅ User confirmed - calling toggleTeamRegistration()');
+                                await toggleTeamRegistration();
+                              } else {
+                                console.log('❌ User cancelled');
+                              }
+                            } catch (error) {
+                              console.error('❌ Error in button click handler:', error);
                             }
                           }}
                           className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-xl text-red-700 bg-red-50 hover:bg-red-100 transition-all duration-200"
@@ -265,9 +357,27 @@ export default function CommitteeRegistrationPage() {
                         </button>
                       ) : (
                         <button
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to open team registration for ${currentSeason.name}?`)) {
-                              toggleTeamRegistration();
+                          onClick={async () => {
+                            console.log('🔘 Open Registration button clicked');
+                            try {
+                              console.log('📋 Showing confirmation modal...');
+                              const confirmed = await showConfirm({
+                                type: 'info',
+                                title: 'Open Registration',
+                                message: `Are you sure you want to open team registration for ${currentSeason.name}?`,
+                                confirmText: 'Open',
+                                cancelText: 'Cancel'
+                              });
+                              console.log('✅ Modal response:', confirmed);
+                              
+                              if (confirmed) {
+                                console.log('✅ User confirmed - calling toggleTeamRegistration()');
+                                await toggleTeamRegistration();
+                              } else {
+                                console.log('❌ User cancelled');
+                              }
+                            } catch (error) {
+                              console.error('❌ Error in button click handler:', error);
                             }
                           }}
                           className="inline-flex items-center px-4 py-2 border border-green-300 text-sm font-medium rounded-xl text-green-700 bg-green-50 hover:bg-green-100 transition-all duration-200"
@@ -382,6 +492,26 @@ export default function CommitteeRegistrationPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

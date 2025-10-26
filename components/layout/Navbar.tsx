@@ -91,11 +91,17 @@ export default function Navbar() {
               <Link href="/" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
                 Home
               </Link>
+              <Link href="/season/current" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
+                Season
+              </Link>
               <Link href="/players" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
                 Players
               </Link>
+              <Link href="/teams" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
+                Teams
+              </Link>
               <Link href="/seasons" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
-                Seasons
+                Archive
               </Link>
             </>
           ) : (
@@ -302,12 +308,20 @@ export default function Navbar() {
                             Match Days
                           </span>
                         </Link>
-                        <Link href="/dashboard/committee/team-management/player-leaderboard" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
+                        <div className="border-t border-white/10 my-2"></div>
+                        <Link href="/dashboard/committee/team-management/team-standings" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
-                            Player Leaderboard
+                            Team Standings
                           </span>
                         </Link>
+                        <Link href="/dashboard/committee/team-management/player-stats" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
+                          <span className="flex items-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
+                            Player Statistics
+                          </span>
+                        </Link>
+                        <div className="border-t border-white/10 my-2"></div>
                         <Link href="/dashboard/committee/team-management/team-members" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -469,7 +483,7 @@ export default function Navbar() {
         </div>
         
         {/* Right Side Actions */}
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
           {user ? (
             <>
               {/* User Profile Dropdown */}

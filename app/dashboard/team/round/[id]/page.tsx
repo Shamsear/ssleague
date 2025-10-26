@@ -5,6 +5,9 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRoundData, usePlaceBid, useCancelBid, useRoundStatus } from '@/hooks/useTeamDashboard';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
 
 interface Player {
   id: string;
@@ -53,6 +56,17 @@ export default function TeamRoundPage() {
   // Mutations with optimistic updates
   const placeBidMutation = usePlaceBid(roundId || '');
   const cancelBidMutation = useCancelBid(roundId || '');
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
 
   // UI State
   const [searchTerm, setSearchTerm] = useState('');
@@ -118,18 +132,34 @@ export default function TeamRoundPage() {
     try {
       await placeBidMutation.mutateAsync({ playerId, amount });
     } catch (error: any) {
-      alert(error.message || 'Failed to place bid');
+      showAlert({
+        type: 'error',
+        title: 'Bid Failed',
+        message: error.message || 'Failed to place bid'
+      });
     }
   };
 
   // Cancel bid using React Query mutation
   const handleCancelBid = async (bidId: string) => {
-    if (!confirm('Are you sure you want to cancel this bid?')) return;
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Cancel Bid',
+      message: 'Are you sure you want to cancel this bid?',
+      confirmText: 'Yes, Cancel',
+      cancelText: 'No'
+    });
+    
+    if (!confirmed) return;
 
     try {
       await cancelBidMutation.mutateAsync(bidId);
     } catch (error: any) {
-      alert(error.message || 'Failed to cancel bid');
+      showAlert({
+        type: 'error',
+        title: 'Cancel Failed',
+        message: error.message || 'Failed to cancel bid'
+      });
     }
   };
 
@@ -444,6 +474,26 @@ export default function TeamRoundPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }
@@ -471,6 +521,17 @@ function PlayerCard({
   onCancelBid,
 }: PlayerCardProps) {
   const [bidAmount, setBidAmount] = useState('');
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
 
@@ -479,12 +540,20 @@ function PlayerCard({
     const amount = parseInt(bidAmount);
 
     if (!amount || isNaN(amount) || amount < 10) {
-      alert('Bid amount must be at least £10');
+      showAlert({
+        type: 'warning',
+        title: 'Invalid Amount',
+        message: 'Bid amount must be at least £10'
+      });
       return;
     }
 
     if (amount > teamBalance) {
-      alert('Bid amount exceeds your team balance');
+      showAlert({
+        type: 'error',
+        title: 'Insufficient Balance',
+        message: 'Bid amount exceeds your team balance'
+      });
       return;
     }
 
@@ -634,6 +703,26 @@ function PlayerCard({
           Required number of bids reached for this round
         </div>
       )}
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

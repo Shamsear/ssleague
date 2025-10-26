@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 interface CachedResponse<T> {
   success: boolean;
   data: T;
   cached: boolean;
   timestamp: string;
+  error?: string;
 }
 
 interface UseCachedFirebaseOptions {
@@ -95,8 +97,29 @@ export function useCachedTeamSeasons(params?: { seasonId?: string; teamId?: stri
   return useCachedFirebase<any[]>('/api/cached/firebase/team-seasons', params);
 }
 
-export function useCachedSeasons(params?: { isActive?: string; seasonId?: string }) {
-  return useCachedFirebase<any[] | any>('/api/cached/firebase/seasons', params);
+export function useCachedSeasons(params?: { seasonId?: string; isActive?: string }) {
+  return useQuery({
+    queryKey: ['cached-seasons', params],
+    queryFn: async () => {
+      const queryParams = new URLSearchParams();
+      if (params?.seasonId) queryParams.append('seasonId', params.seasonId);
+      if (params?.isActive) queryParams.append('isActive', params.isActive);
+      // Add cache-busting timestamp
+      queryParams.append('_t', Date.now().toString());
+      
+      const url = `/api/cached/firebase/seasons?${queryParams.toString()}`;
+      const response = await fetch(url, { cache: 'no-store' });
+      const data = await response.json();
+      
+      if (!data.success) throw new Error(data.error);
+      return data.data;
+    },
+    enabled: true,
+    staleTime: 10 * 1000, // 10 seconds - very short for active season checks
+    gcTime: 30 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  });
 }
 
 export function useCachedFixtures(params: { seasonId: string; teamId?: string; roundNumber?: string }) {

@@ -2,9 +2,12 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { usePermissions } from '@/hooks/usePermissions';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
+import { usePermissions } from '@/hooks/usePermissions';
 import ContractInfo from '@/components/ContractInfo';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
@@ -40,6 +43,17 @@ export default function TeamContractsManagementPage() {
   const [contractFilter, setContractFilter] = useState<'all' | 'active' | 'auto' | 'penalty'>('all');
   const [selectedTeam, setSelectedTeam] = useState<TeamContract | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -179,17 +193,33 @@ export default function TeamContractsManagementPage() {
         is_auto_registered: selectedTeam.is_auto_registered || false,
       });
 
-      alert('Team contract updated successfully');
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: 'Team contract updated successfully'
+      });
       setShowEditModal(false);
       window.location.reload();
     } catch (error) {
       console.error('Error updating team contract:', error);
-      alert('Failed to update team contract');
+      showAlert({
+        type: 'error',
+        title: 'Update Failed',
+        message: 'Failed to update team contract'
+      });
     }
   };
 
   const handleClearPenalty = async (team: TeamContract) => {
-    if (!confirm(`Clear penalty for ${team.team_name}? This will reset skipped seasons and penalty amount.`)) {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Clear Penalty',
+      message: `Clear penalty for ${team.team_name}? This will reset skipped seasons and penalty amount.`,
+      confirmText: 'Clear Penalty',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -202,11 +232,19 @@ export default function TeamContractsManagementPage() {
         penalty_amount: 0,
       });
 
-      alert('Penalty cleared successfully');
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: 'Penalty cleared successfully'
+      });
       window.location.reload();
     } catch (error) {
       console.error('Error clearing penalty:', error);
-      alert('Failed to clear penalty');
+      showAlert({
+        type: 'error',
+        title: 'Clear Failed',
+        message: 'Failed to clear penalty'
+      });
     }
   };
 
@@ -609,6 +647,26 @@ export default function TeamContractsManagementPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

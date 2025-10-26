@@ -3,6 +3,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import admin from 'firebase-admin';
 import { v4 as uuidv4 } from 'uuid';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 // Types for the import data
 interface ImportTeamData {
@@ -573,6 +574,26 @@ async function generateNewTeamId(): Promise<string> {
   }
 }
 
+// Helper function to convert text to Title Case with special handling for abbreviations
+// (e.g., "TEAM fc" -> "Team FC", "st james" -> "St James")
+function toTitleCase(text: string): string {
+  const abbreviations = ['FC', 'CF', 'ST', 'AC', 'SC', 'AFC', 'RFC', 'DC', 'BC', 'MC', 'EC'];
+  
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map(word => {
+      const upperWord = word.toUpperCase();
+      // Check if this word is a known abbreviation
+      if (abbreviations.includes(upperWord)) {
+        return upperWord;
+      }
+      // Otherwise, capitalize first letter
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
 // Helper function to import teams and create them as database entities with login credentials
 async function importTeams(
   seasonId: string, 
@@ -585,6 +606,10 @@ async function importTeams(
   
   for (let i = 0; i < teams.length; i++) {
     const team = teams[i];
+    
+    // Normalize team name to Title Case (e.g., "TEAM fc" -> "Team Fc")
+    const normalizedTeamName = toTitleCase(team.team_name);
+    console.log(`Processing team: "${team.team_name}" → "${normalizedTeamName}"`);
     
     // Check if manually linked to existing team
     let existingTeam = null;
@@ -614,16 +639,16 @@ async function importTeams(
       // Team exists, use existing team ID and update it
       teamId = existingTeam.teamId;
       isExistingTeam = true;
-      teamMap.set(team.team_name, teamId);
+      teamMap.set(normalizedTeamName, teamId);
       
-      console.log(`Found existing team: ${team.team_name} (${teamId})`);
+      console.log(`Found existing team: ${normalizedTeamName} (${teamId})`);
       
       // Update existing team - only permanent data
       const existingData = existingTeam.doc;
       const updatedSeasons = existingData.seasons ? [...existingData.seasons, seasonId] : [seasonId];
       
       // Check if team name has changed
-      const nameChanged = existingData.team_name !== team.team_name;
+      const nameChanged = existingData.team_name !== normalizedTeamName;
       const updateData: any = {
         seasons: updatedSeasons,
         current_season_id: seasonId,
@@ -633,12 +658,12 @@ async function importTeams(
       
       // If name changed, track it in name history and update current name
       if (nameChanged) {
-        console.log(`   🔄 Team name changed: "${existingData.team_name}" → "${team.team_name}"`);
+        console.log(`   🔄 Team name changed: "${existingData.team_name}" → "${normalizedTeamName}"`);
         const nameHistory = existingData.name_history || [];
         if (!nameHistory.includes(existingData.team_name)) {
           nameHistory.push(existingData.team_name);
         }
-        updateData.team_name = team.team_name; // Update to new name
+        updateData.team_name = normalizedTeamName; // Update to new name
         updateData.name_history = nameHistory;
         updateData.previous_names = nameHistory; // Also store as previous_names for easier querying
       }
@@ -648,45 +673,65 @@ async function importTeams(
       
       // Create separate teamstats document for this season
       const teamStatsDocId = `${teamId}_${seasonId}`;
-      const teamStatsDoc = {
-        team_id: teamId,
-        team_name: team.team_name,
-        season_id: seasonId,
-        owner_name: team.owner_name,
-        
-        // Team standings data from Excel
-        rank: team.rank || 0,
-        points: team.p || 0,
-        matches_played: team.mp || 0,
-        wins: team.w || 0,
-        draws: team.d || 0,
-        losses: team.l || 0,
-        goals_for: team.f || 0,
-        goals_against: team.a || 0,
-        goal_difference: team.gd || 0,
-        win_percentage: team.percentage || 0,
-        cups: team.cups || [],
-        
-        players_count: 0, // Will be updated when players are imported
-        created_at: FieldValue.serverTimestamp(),
-        updated_at: FieldValue.serverTimestamp()
-      };
+      const sql = getTournamentDb();
       
-      const teamStatsRef = adminDb.collection('teamstats').doc(teamStatsDocId);
-      batch.set(teamStatsRef, teamStatsDoc);
+      // Parse team trophies/cups from Excel (cup_1, cup_2, etc.)
+      const teamTrophies: any[] = [];
+      Object.keys(team).forEach((key) => {
+        const lowerKey = key.toLowerCase();
+        const value = (team as any)[key];
+        if (!value || value === '') return;
+        if (lowerKey.includes('cup')) {
+          teamTrophies.push({ type: 'cup', name: value });
+        }
+      });
+      const teamTrophiesJson = JSON.stringify(teamTrophies);
+      
+      await sql`
+        INSERT INTO teamstats (
+          id, team_id, season_id, team_name,
+          points, matches_played, wins, draws, losses,
+          goals_for, goals_against, goal_difference, position, trophies,
+          created_at, updated_at
+        )
+        VALUES (
+          ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName},
+          ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
+          ${team.d || 0}, ${team.l || 0},
+          ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
+          ${teamTrophiesJson}::jsonb,
+          NOW(), NOW()
+        )
+        ON CONFLICT (id) DO UPDATE
+        SET
+          team_name = EXCLUDED.team_name,
+          points = EXCLUDED.points,
+          matches_played = EXCLUDED.matches_played,
+          wins = EXCLUDED.wins,
+          draws = EXCLUDED.draws,
+          losses = EXCLUDED.losses,
+          goals_for = EXCLUDED.goals_for,
+          goals_against = EXCLUDED.goals_against,
+          goal_difference = EXCLUDED.goal_difference,
+          position = EXCLUDED.position,
+          trophies = EXCLUDED.trophies,
+          updated_at = NOW()
+      `;
+      
+      console.log(`✅ Updated teamstats in NEON for: ${normalizedTeamName}`);
       
     } else {
       // Team doesn't exist, create new team with custom ID
       teamId = await generateNewTeamId();
-      teamMap.set(team.team_name, teamId);
+      teamMap.set(normalizedTeamName, teamId);
       
-      console.log(`Creating new team: ${team.team_name} (${teamId})`);
+      console.log(`Creating new team: ${normalizedTeamName} (${teamId})`);
       
       // Create Firebase Auth user and Firestore user document for the team
       try {
-        const username = team.team_name; // Use team name as username
+        const username = normalizedTeamName.toLowerCase().replace(/\s+/g, ''); // Use team name as username (lowercase, no spaces)
         const email = `${(username || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@historical.team`;
-        const password = team.team_name.length >= 6 ? team.team_name : `${team.team_name}123`; // Ensure password is at least 6 characters
+        const password = (normalizedTeamName.length >= 6 ? normalizedTeamName : `${normalizedTeamName}123`).toLowerCase(); // Ensure password is at least 6 characters and lowercase
         
         let userRecord;
         let userUid: string;
@@ -695,17 +740,17 @@ async function importTeams(
         try {
           userRecord = await admin.auth().getUserByEmail(email);
           userUid = userRecord.uid;
-          console.log(`✅ Found existing Firebase Auth user for ${team.team_name}: ${userUid}`);
+          console.log(`✅ Found existing Firebase Auth user for ${normalizedTeamName}: ${userUid}`);
         } catch (getUserError: any) {
           // User doesn't exist, create new one
           if (getUserError.code === 'auth/user-not-found') {
             userRecord = await admin.auth().createUser({
               email: email,
               password: password,
-              displayName: username
+              displayName: normalizedTeamName
             });
             userUid = userRecord.uid;
-            console.log(`✅ Created Firebase Auth user for ${team.team_name}: ${userUid}`);
+            console.log(`✅ Created Firebase Auth user for ${normalizedTeamName}: ${userUid}`);
           } else {
             throw getUserError;
           }
@@ -723,7 +768,7 @@ async function importTeams(
           createdAt: FieldValue.serverTimestamp(), // Always set for new imports
           
           // Team-specific data
-          teamName: team.team_name,
+          teamName: normalizedTeamName,
           teamId: teamId,
           teamLogo: '',
           players: [],
@@ -743,20 +788,20 @@ async function importTeams(
         batch.set(userRef, userDoc, { merge: true });
         
         // CRITICAL: Create username entry in usernames collection for login
-        const usernameRef = adminDb.collection('usernames').doc((username || '').toLowerCase());
+        const usernameRef = adminDb.collection('usernames').doc(username);
         const usernameDoc = {
           uid: userUid,
           createdAt: FieldValue.serverTimestamp()
         };
         batch.set(usernameRef, usernameDoc);
         
-        console.log(`✅ User document queued for batch write: ${team.team_name}`);
-        console.log(`✅ Username entry queued: ${(username || '').toLowerCase()} -> ${userUid}`);
+        console.log(`✅ User document queued for batch write: ${normalizedTeamName}`);
+        console.log(`✅ Username entry queued: ${username} -> ${userUid}`);
         
         // Create team document with reference to user - only permanent data
         const teamDoc = {
           id: teamId,
-          team_name: team.team_name,
+          team_name: normalizedTeamName,
           owner_name: team.owner_name,
           
           // Link to Firebase Auth user
@@ -785,42 +830,62 @@ async function importTeams(
         const teamRef = adminDb.collection('teams').doc(teamId);
         batch.set(teamRef, teamDoc);
         
-        // Create separate teamstats document for this season
+        // Create team stats in NEON instead of Firebase
         const teamStatsDocId = `${teamId}_${seasonId}`;
-        const teamStatsDoc = {
-          team_id: teamId,
-          team_name: team.team_name,
-          season_id: seasonId,
-          owner_name: team.owner_name,
-          
-          // Team standings data from Excel
-          rank: team.rank || 0,
-          points: team.p || 0,
-          matches_played: team.mp || 0,
-          wins: team.w || 0,
-          draws: team.d || 0,
-          losses: team.l || 0,
-          goals_for: team.f || 0,
-          goals_against: team.a || 0,
-          goal_difference: team.gd || 0,
-          win_percentage: team.percentage || 0,
-          cups: team.cups || [],
-          
-          players_count: 0, // Will be updated when players are imported
-          created_at: FieldValue.serverTimestamp(),
-          updated_at: FieldValue.serverTimestamp()
-        };
+        const sqlTeam = getTournamentDb();
         
-        const teamStatsRef = adminDb.collection('teamstats').doc(teamStatsDocId);
-        batch.set(teamStatsRef, teamStatsDoc);
+        // Parse team trophies/cups
+        const teamTrophies2: any[] = [];
+        Object.keys(team).forEach((key) => {
+          const lowerKey = key.toLowerCase();
+          const value = (team as any)[key];
+          if (!value || value === '') return;
+          if (lowerKey.includes('cup')) {
+            teamTrophies2.push({ type: 'cup', name: value });
+          }
+        });
+        const teamTrophiesJson2 = JSON.stringify(teamTrophies2);
+        
+        await sqlTeam`
+          INSERT INTO teamstats (
+            id, team_id, season_id, team_name,
+            points, matches_played, wins, draws, losses,
+            goals_for, goals_against, goal_difference, position, trophies,
+            created_at, updated_at
+          )
+          VALUES (
+            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName},
+            ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
+            ${team.d || 0}, ${team.l || 0},
+            ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
+            ${teamTrophiesJson2}::jsonb,
+            NOW(), NOW()
+          )
+          ON CONFLICT (id) DO UPDATE
+          SET
+            team_name = EXCLUDED.team_name,
+            points = EXCLUDED.points,
+            matches_played = EXCLUDED.matches_played,
+            wins = EXCLUDED.wins,
+            draws = EXCLUDED.draws,
+            losses = EXCLUDED.losses,
+            goals_for = EXCLUDED.goals_for,
+            goals_against = EXCLUDED.goals_against,
+            goal_difference = EXCLUDED.goal_difference,
+            position = EXCLUDED.position,
+            trophies = EXCLUDED.trophies,
+            updated_at = NOW()
+        `;
+        
+        console.log(`✅ Created teamstats in NEON for new team: ${normalizedTeamName}`);
         
       } catch (userError: any) {
-        console.error(`❌ Error creating user for team ${team.team_name}:`, userError);
+        console.error(`❌ Error creating user for team ${normalizedTeamName}:`, userError);
         
         // If user creation fails, still create the team document without user reference
         const teamDoc = {
           id: teamId,
-          team_name: team.team_name,
+          team_name: normalizedTeamName,
           owner_name: team.owner_name,
           
           // Mark as missing user account
@@ -844,34 +909,54 @@ async function importTeams(
         const teamRef = adminDb.collection('teams').doc(teamId);
         batch.set(teamRef, teamDoc);
         
-        // Create separate teamstats document for this season
+        // Create separate teamstats document for this season in NEON (error fallback)
         const teamStatsDocId = `${teamId}_${seasonId}`;
-        const teamStatsDoc = {
-          team_id: teamId,
-          team_name: team.team_name,
-          season_id: seasonId,
-          owner_name: team.owner_name,
-          
-          // Team standings data from Excel
-          rank: team.rank || 0,
-          points: team.p || 0,
-          matches_played: team.mp || 0,
-          wins: team.w || 0,
-          draws: team.d || 0,
-          losses: team.l || 0,
-          goals_for: team.f || 0,
-          goals_against: team.a || 0,
-          goal_difference: team.gd || 0,
-          win_percentage: team.percentage || 0,
-          cups: team.cups || [],
-          
-          players_count: 0, // Will be updated when players are imported
-          created_at: FieldValue.serverTimestamp(),
-          updated_at: FieldValue.serverTimestamp()
-        };
+        const sql3 = getTournamentDb();
         
-        const teamStatsRef = adminDb.collection('teamstats').doc(teamStatsDocId);
-        batch.set(teamStatsRef, teamStatsDoc);
+        // Parse team trophies/cups
+        const teamTrophies3: any[] = [];
+        Object.keys(team).forEach((key) => {
+          const lowerKey = key.toLowerCase();
+          const value = (team as any)[key];
+          if (!value || value === '') return;
+          if (lowerKey.includes('cup')) {
+            teamTrophies3.push({ type: 'cup', name: value });
+          }
+        });
+        const teamTrophiesJson3 = JSON.stringify(teamTrophies3);
+        
+        await sql3`
+          INSERT INTO teamstats (
+            id, team_id, season_id, team_name,
+            points, matches_played, wins, draws, losses,
+            goals_for, goals_against, goal_difference, position, trophies,
+            created_at, updated_at
+          )
+          VALUES (
+            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName},
+            ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
+            ${team.d || 0}, ${team.l || 0},
+            ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
+            ${teamTrophiesJson3}::jsonb,
+            NOW(), NOW()
+          )
+          ON CONFLICT (id) DO UPDATE
+          SET
+            team_name = EXCLUDED.team_name,
+            points = EXCLUDED.points,
+            matches_played = EXCLUDED.matches_played,
+            wins = EXCLUDED.wins,
+            draws = EXCLUDED.draws,
+            losses = EXCLUDED.losses,
+            goals_for = EXCLUDED.goals_for,
+            goals_against = EXCLUDED.goals_against,
+            goal_difference = EXCLUDED.goal_difference,
+            position = EXCLUDED.position,
+            trophies = EXCLUDED.trophies,
+            updated_at = NOW()
+        `;
+        
+        console.log(`✅ Created teamstats in NEON (fallback): ${normalizedTeamName}`);
       }
     }
     
@@ -879,7 +964,7 @@ async function importTeams(
     await updateProgress(importId, {
       processedItems: i + 1,
       progress: ((i + 1) / teams.length) * 100,
-      currentTask: `Creating team entity: ${team.team_name}`
+      currentTask: `Creating team entity: ${normalizedTeamName}`
     });
     
     // Commit batch every 200 documents to avoid Firestore limits
@@ -1013,8 +1098,13 @@ async function importPlayers(
   for (let i = 0; i < players.length; i++) {
     const player = players[i];
     
+    // Normalize player name to Title Case
+    const normalizedPlayerName = toTitleCase(player.name);
+    const normalizedPlayerTeam = toTitleCase(player.team);
+    console.log(`Processing player: "${player.name}" → "${normalizedPlayerName}" (Team: "${player.team}" → "${normalizedPlayerTeam}")`);
+    
     // Get existing player by name or create new one (using batch lookup - no Firebase read!)
-    const { playerId, isNew: isNewPlayer, playerDoc } = getOrCreatePlayerByName(player.name, batchLookup);
+    const { playerId, isNew: isNewPlayer, playerDoc } = getOrCreatePlayerByName(normalizedPlayerName, batchLookup);
     playerIds.push(playerId);
     
     // Use existing player data from batch lookup (no Firebase read!)
@@ -1087,62 +1177,115 @@ async function importPlayers(
       permanentPlayerDoc.joined_date = FieldValue.serverTimestamp();
     }
     
+    // Update name to normalized version
+    permanentPlayerDoc.name = normalizedPlayerName;
+    permanentPlayerDoc.display_name = currentPlayerData?.display_name || normalizedPlayerName;
+    
     // Save to realplayers collection
     const playerRef = adminDb.collection('realplayers').doc(playerId);
     batch.set(playerRef, permanentPlayerDoc, { merge: true });
     
     // 2. Create/Update season-specific stats document in realplayerstats collection
-    // Check if stats document exists using batch lookup (no Firebase read!)
-    const statsKey = `${playerId}_${seasonId}`;
-    const existingStatsDocId = batchLookup.existingStats.get(statsKey);
+    // Use composite ID: player_id_seasonId for easy lookup
+    const statsDocId = `${playerId}_${seasonId}`;
+    const existingStatsDocId = batchLookup.existingStats.get(statsDocId);
     
-    let statsDocId: string;
     let isNewStats = false;
     
     if (existingStatsDocId) {
-      statsDocId = existingStatsDocId;
       console.log(`  📋 Updating stats for ${player.name} in season ${seasonId}`);
     } else {
-      statsDocId = adminDb.collection('realplayerstats').doc().id;
       isNewStats = true;
       console.log(`  🆕 Creating stats for ${player.name} in season ${seasonId}`);
     }
     
-    const statsDoc = {
-      player_id: playerId,
-      player_name: player.name,
-      season_id: seasonId,
-      team: player.team,
-      team_id: teamMap.get(player.team) || null,
-      category: player.category, // Season-specific
-      // Flatten stats at document level for easier querying
-      ...newStats,
-      // Also keep nested for backward compatibility
-      stats: newStats,
-      // Trophy/Award fields (optional) - now as arrays
-      category_trophies: player.category_trophies || [],
-      individual_trophies: player.individual_trophies || [],
-      created_at: isNewStats ? FieldValue.serverTimestamp() : undefined, // Only set on creation
-      updated_at: FieldValue.serverTimestamp()
-    };
+    // Write player stats to NEON instead of Firebase
+    const sqlPlayer = getTournamentDb();
+    const teamIdForPlayer = teamMap.get(normalizedPlayerTeam) || null;
     
-    const statsRef = adminDb.collection('realplayerstats').doc(statsDocId);
-    batch.set(statsRef, statsDoc, { merge: true });
+    // Parse trophies from Excel data (handles numbered columns like category_wise_trophy_1, category_wise_trophy_2, etc.)
+    const trophiesArray: any[] = [];
+    
+    // Scan all player properties for trophy columns
+    Object.keys(player).forEach((key) => {
+      const lowerKey = key.toLowerCase();
+      const value = (player as any)[key];
+      
+      // Skip empty values
+      if (!value || value === '') return;
+      
+      // Check for category trophies (category_trophies, category_wise_trophy, category_wise_trophy_1, etc.)
+      if (lowerKey.includes('category') && lowerKey.includes('trophy')) {
+        trophiesArray.push({ type: 'category', name: value });
+      }
+      // Check for individual trophies (individual_trophies, individual_wise_trophy, individual_wise_trophy_1, etc.)
+      else if (lowerKey.includes('individual') && lowerKey.includes('trophy')) {
+        trophiesArray.push({ type: 'individual', name: value });
+      }
+    });
+    
+    const trophiesJson = JSON.stringify(trophiesArray);
+    
+    await sqlPlayer`
+      INSERT INTO realplayerstats (
+        id, player_id, season_id, player_name,
+        category, team, team_id,
+        matches_played, matches_won, matches_drawn, matches_lost,
+        goals_scored, goals_conceded, assists, wins, draws, losses,
+        clean_sheets, motm_awards, points, star_rating, trophies,
+        created_at, updated_at
+      )
+      VALUES (
+        ${statsDocId}, ${playerId}, ${seasonId}, ${normalizedPlayerName},
+        ${player.category || ''}, ${normalizedPlayerTeam}, ${teamIdForPlayer},
+        ${newStats.matches_played || 0}, ${newStats.matches_won || 0}, 
+        ${newStats.matches_drawn || 0}, ${newStats.matches_lost || 0},
+        ${newStats.goals_scored || 0}, ${newStats.goals_conceded || 0},
+        ${(player as any).assists || 0}, 
+        ${newStats.matches_won || 0}, ${newStats.matches_drawn || 0}, ${newStats.matches_lost || 0},
+        ${newStats.clean_sheets || 0}, ${newStats.potm || 0},
+        ${newStats.total_points || 0}, 3, ${trophiesJson}::jsonb,
+        NOW(), NOW()
+      )
+      ON CONFLICT (id) DO UPDATE
+      SET
+        player_name = EXCLUDED.player_name,
+        category = EXCLUDED.category,
+        team = EXCLUDED.team,
+        team_id = EXCLUDED.team_id,
+        matches_played = EXCLUDED.matches_played,
+        matches_won = EXCLUDED.matches_won,
+        matches_drawn = EXCLUDED.matches_drawn,
+        matches_lost = EXCLUDED.matches_lost,
+        goals_scored = EXCLUDED.goals_scored,
+        goals_conceded = EXCLUDED.goals_conceded,
+        assists = EXCLUDED.assists,
+        wins = EXCLUDED.wins,
+        draws = EXCLUDED.draws,
+        losses = EXCLUDED.losses,
+        clean_sheets = EXCLUDED.clean_sheets,
+        motm_awards = EXCLUDED.motm_awards,
+        points = EXCLUDED.points,
+        trophies = EXCLUDED.trophies,
+        updated_at = NOW()
+    `;
+    
+    console.log(`✅ Created/Updated player stats in NEON: ${normalizedPlayerName}`);
     
     // Update team statistics
-    const teamStats = player.team ? teamStatsMap.get(player.team.toLowerCase()) : null;
+    const teamStats = normalizedPlayerTeam ? teamStatsMap.get(normalizedPlayerTeam.toLowerCase()) : null;
     if (teamStats) {
       teamStats.playerCount++;
-      teamStats.totalGoals += player.goals_scored;
-      teamStats.totalPoints += player.total_points;
-      teamStats.totalMatches = Math.max(teamStats.totalMatches, player.total_matches);
+      teamStats.totalGoals += player.goals_scored || 0;
+      teamStats.totalPoints += player.total_points || 0;
+      teamStats.totalMatches = Math.max(teamStats.totalMatches, player.total_matches || 0);
     }
     
     // Update progress
     await updateProgress(importId, {
       processedItems: i + 1,
       progress: ((i + 1) / players.length) * 100,
-      currentTask: `Creating player: ${player.name} (${player.team})`
+      currentTask: `Creating player: ${normalizedPlayerName} (${normalizedPlayerTeam})`
     });
     
     // Commit batch every 400 documents to avoid Firestore limits

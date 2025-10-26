@@ -1,9 +1,16 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useTournamentContext } from '@/contexts/TournamentContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { db } from '@/lib/firebase/config';
+import { collection, query, getDocs } from 'firebase/firestore';
+import { usePermissions } from '@/hooks/usePermissions';
+import { usePlayerStats } from '@/hooks';
+import { useTournament } from '@/hooks/useTournaments';
+import TournamentSelector from '@/components/TournamentSelector';
 
 interface PlayerStats {
   id: string;
@@ -20,6 +27,8 @@ interface PlayerStats {
   losses: number;
   draws: number;
   win_rate: number;
+  goals: number;
+  assists: number;
 }
 
 interface Team {
@@ -38,14 +47,23 @@ type SortOrder = 'asc' | 'desc';
 
 export default function PlayerLeaderboardPage() {
   const { user, loading } = useAuth();
+  const { selectedTournamentId } = useTournamentContext();
+  const { userSeasonId } = usePermissions();
   const router = useRouter();
+  
+  // Get tournament info for display
+  const { data: tournament } = useTournament(selectedTournamentId);
   
   const [players, setPlayers] = useState<PlayerStats[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<PlayerStats[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   
-  const [isLoading, setIsLoading] = useState(true);
+  // Use React Query hook for player stats from Neon - now uses tournamentId
+  const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
+    tournamentId: selectedTournamentId,
+    seasonId: userSeasonId || '' // Fallback for backward compatibility
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -64,20 +82,18 @@ export default function PlayerLeaderboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!user || user.role !== 'team') return;
+      if (!user || user.role !== 'team' || !userSeasonId) return;
 
       try {
         setIsLoading(true);
         
-        // Fetch players, teams, and categories
-        const [playersRes, teamsRes, categoriesRes] = await Promise.all([
-          fetch('/api/real-players'),
+        // Fetch teams and categories for filters
+        const [teamsRes, categoriesRes] = await Promise.all([
           fetch('/api/team/all'),
           fetch('/api/categories'),
         ]);
 
-        const [playersData, teamsData, categoriesData] = await Promise.all([
-          playersRes.json(),
+        const [teamsData, categoriesData] = await Promise.all([
           teamsRes.json(),
           categoriesRes.json(),
         ]);
@@ -90,37 +106,68 @@ export default function PlayerLeaderboardPage() {
           setTeams(teamsData.data);
         }
 
-        if (playersData.success) {
-          // Transform real players into stats format
-          // In a real implementation, you'd fetch match history and calculate stats
-          const playerStats: PlayerStats[] = playersData.data.map((player: any) => ({
-            id: player.id,
-            player_id: player.player_id,
-            name: player.name,
-            team_id: player.team_id,
-            team_name: player.team_name,
-            category_id: player.category_id,
-            category_name: player.category_name,
-            category_color: categories.find(c => c.id === player.category_id)?.color,
-            points: 0, // TODO: Calculate from match results
-            matches_played: 0,
-            wins: 0,
-            losses: 0,
-            draws: 0,
-            win_rate: 0,
-          }));
+        // Fetch all realplayer to get team and category assignments
+        const realPlayersQuery = query(collection(db, 'realplayer'));
+        const realPlayersSnapshot = await getDocs(realPlayersQuery);
+        const playersInfoMap = new Map();
+        
+        realPlayersSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.player_id) {
+            playersInfoMap.set(data.player_id, {
+              id: doc.id,
+              team_id: data.team_id,
+              team_name: data.team_name || 'Unassigned',
+              category_id: data.category_id,
+              category_name: data.category_name || 'Unknown',
+              category_color: categoriesData.success ? categoriesData.data.find((c: Category) => c.id === data.category_id)?.color : undefined,
+              points: data.points || 0
+            });
+          }
+        });
 
-          setPlayers(playerStats);
-        }
+        // Store playersInfoMap for later use
+        (window as any).playersInfoMap = playersInfoMap;
       } catch (error) {
         console.error('Error fetching data:', error);
-      } finally {
-        setIsLoading(false);
       }
     };
 
     fetchData();
-  }, [user, categories]);
+  }, [user, userSeasonId]);
+
+  // Process player stats data from Neon when it arrives
+  useEffect(() => {
+    if (!playerStatsData || playerStatsData.length === 0) return;
+    
+    const playersInfoMap = (window as any).playersInfoMap || new Map();
+    
+    const playersData: PlayerStats[] = playerStatsData.map((data: any) => {
+      const playerInfo = playersInfoMap.get(data.player_id) || {};
+      const winRate = data.matches_played > 0 ? (data.wins / data.matches_played) * 100 : 0;
+      
+      return {
+        id: data.id,
+        player_id: data.player_id,
+        name: data.player_name,
+        team_id: data.team_id || playerInfo.team_id,
+        team_name: data.team || playerInfo.team_name || 'Unassigned',
+        category_id: playerInfo.category_id,
+        category_name: data.category || playerInfo.category_name || 'Unknown',
+        category_color: playerInfo.category_color,
+        matches_played: data.matches_played || 0,
+        wins: data.wins || 0,
+        draws: data.draws || 0,
+        losses: data.losses || 0,
+        points: data.points || playerInfo.points || 0,
+        win_rate: winRate,
+        goals: data.goals_scored || 0,
+        assists: data.assists || 0,
+      };
+    });
+
+    setPlayers(playersData);
+  }, [playerStatsData]);
 
   useEffect(() => {
     let filtered = [...players];
@@ -215,7 +262,7 @@ export default function PlayerLeaderboardPage() {
     }
   };
 
-  if (loading || isLoading) {
+  if (loading || statsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -241,17 +288,33 @@ export default function PlayerLeaderboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold gradient-text">Player Leaderboard</h1>
-          <p className="text-gray-500 mt-1">View player statistics and rankings</p>
-          <Link
-            href="/dashboard/team"
-            className="inline-flex items-center mt-2 text-[#0066FF] hover:text-[#0052CC]"
-          >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Dashboard
-          </Link>
+          <h1 className="text-3xl md:text-4xl font-bold gradient-text">🏆 Player Leaderboard</h1>
+          <p className="text-gray-500 mt-1">
+            {tournament?.tournament_name ? `${tournament.tournament_name} - ` : ''}Player statistics and rankings
+          </p>
+          <div className="flex gap-4 mt-2">
+            <Link
+              href="/dashboard/team"
+              className="inline-flex items-center text-[#0066FF] hover:text-[#0052CC] text-sm"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Dashboard
+            </Link>
+            <Link
+              href="/dashboard/team/team-leaderboard"
+              className="inline-flex items-center text-purple-600 hover:text-purple-700 text-sm font-medium"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Team Standings →
+            </Link>
+          </div>
+        </div>
+        <div>
+          <TournamentSelector />
         </div>
       </div>
 
@@ -358,10 +421,14 @@ export default function PlayerLeaderboardPage() {
 
       {/* Leaderboard Table */}
       <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl overflow-hidden border border-gray-100/20">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-800">
-            Rankings ({filteredPlayers.length} players)
-          </h3>
+        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">👥</span>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900">Player Rankings</h3>
+              <p className="text-sm text-gray-600">{filteredPlayers.length} players competing</p>
+            </div>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -445,33 +512,25 @@ export default function PlayerLeaderboardPage() {
             <tbody className="bg-white/60 divide-y divide-gray-200/50">
               {filteredPlayers.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
-                    No players found
+                  <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
+                    <span className="text-6xl mb-4 block">👤</span>
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">No Players Found</h3>
+                    <p className="text-sm">Try adjusting your filters</p>
                   </td>
                 </tr>
               ) : (
                 filteredPlayers.map((player, index) => (
-                  <tr key={player.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center justify-center">
-                        <span className={`
-                          text-sm font-bold
-                          ${index === 0 ? 'text-yellow-600' : ''}
-                          ${index === 1 ? 'text-gray-400' : ''}
-                          ${index === 2 ? 'text-orange-600' : ''}
-                          ${index > 2 ? 'text-gray-600' : ''}
-                        `}>
-                          {index === 0 && '🥇'}
-                          {index === 1 && '🥈'}
-                          {index === 2 && '🥉'}
-                          {index > 2 && `#${index + 1}`}
-                        </span>
-                      </div>
+                  <tr key={player.id} className={`hover:bg-purple-50/50 transition-colors ${index < 3 ? 'bg-yellow-50/30' : ''}`}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                      {index === 0 && <span className="text-2xl">🥇</span>}
+                      {index === 1 && <span className="text-2xl">🥈</span>}
+                      {index === 2 && <span className="text-2xl">🥉</span>}
+                      {index > 2 && `#${index + 1}`}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{player.name}</div>
-                        <div className="text-sm text-gray-500">{player.player_id}</div>
+                        <div className="text-sm font-bold text-gray-900">{player.name}</div>
+                        <div className="text-xs text-gray-500">{player.player_id}</div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -496,7 +555,9 @@ export default function PlayerLeaderboardPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="text-sm font-bold text-gray-900">{player.points}</span>
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-purple-100 text-purple-800">
+                        {player.points}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className="text-sm text-gray-600">{player.matches_played}</span>
@@ -522,6 +583,24 @@ export default function PlayerLeaderboardPage() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Legend Info */}
+      <div className="mt-6 bg-purple-50 border border-purple-200 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl">📊</span>
+          <div>
+            <h3 className="text-sm font-semibold text-purple-800 mb-2">Leaderboard Legend</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs text-purple-700">
+              <div><strong>Points:</strong> Overall score accumulated</div>
+              <div><strong>Played:</strong> Total matches played</div>
+              <div><strong>Win %:</strong> Percentage of matches won</div>
+              <div><strong>🥇🥈🥉:</strong> Top 3 players highlighted</div>
+              <div><strong>W/D/L:</strong> Wins, Draws, Losses</div>
+              <div><strong>Filter:</strong> Search by name, team, or category</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

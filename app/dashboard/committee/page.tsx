@@ -362,6 +362,30 @@ export default function CommitteeDashboard() {
                       </div>
                       <p className="text-sm text-gray-600">Assign teams & auction values for SS Members</p>
                     </Link>
+                    
+                    <Link href="/dashboard/committee/fantasy/create" className="glass group rounded-2xl p-4 border border-white/10 hover:border-purple-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1 bg-gradient-to-br from-purple-50/50 to-pink-50/50">
+                      <div className="flex items-center">
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-500/10 text-purple-600 group-hover:from-purple-600/30 group-hover:to-pink-500/20 transition-all">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          </svg>
+                        </div>
+                        <h4 className="ml-3 text-base font-semibold text-gray-800 group-hover:text-purple-600 transition-colors">🏆 Fantasy League</h4>
+                      </div>
+                      <p className="text-sm text-gray-600">Create league & manage draft assignments</p>
+                    </Link>
+                    
+                    <Link href="/dashboard/committee/fantasy/enable-teams" className="glass group rounded-2xl p-4 border border-white/10 hover:border-blue-500/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1 bg-gradient-to-br from-blue-50/50 to-indigo-50/50">
+                      <div className="flex items-center">
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600/20 to-indigo-500/10 text-blue-600 group-hover:from-blue-600/30 group-hover:to-indigo-500/20 transition-all">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <h4 className="ml-3 text-base font-semibold text-gray-800 group-hover:text-blue-600 transition-colors">✅ Enable Fantasy Teams</h4>
+                      </div>
+                      <p className="text-sm text-gray-600">Bulk enable fantasy participation for teams</p>
+                    </Link>
                   </div>
                 </div>
                 

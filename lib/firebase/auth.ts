@@ -188,9 +188,21 @@ export const signUp = async (
 // Sign in an existing user
 export const signIn = async (
   email: string,
-  password: string
+  password: string,
+  rememberMe: boolean = false
 ): Promise<{ user: User; firebaseUser: FirebaseUser }> => {
   try {
+    // Set persistence based on Remember Me option
+    const { setPersistence, browserLocalPersistence, browserSessionPersistence } = await import('firebase/auth');
+    
+    if (rememberMe) {
+      // Keep user logged in across browser sessions (30 days)
+      await setPersistence(auth, browserLocalPersistence);
+    } else {
+      // Keep user logged in only for current session
+      await setPersistence(auth, browserSessionPersistence);
+    }
+    
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = await getUserDocument(userCredential.user.uid);
 

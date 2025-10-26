@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useTeamDashboard, useDeleteBid } from '@/hooks/useTeamDashboard';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
 
 // Position constants
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -28,6 +31,17 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
 
   // UI state
   const [timeRemaining, setTimeRemaining] = useState<{ [key: string]: number }>({});
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
   const [bulkTimeRemaining, setBulkTimeRemaining] = useState<{ [key: number]: number }>({});
   const [showYourTeam, setShowYourTeam] = useState(true);
   const [selectedPosition, setSelectedPosition] = useState<string>('all');
@@ -112,17 +126,37 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
   };
 
   const handleDeleteBid = async (bidId: number) => {
-    if (!confirm('Are you sure you want to delete this bid?')) return;
+    const confirmed = await showConfirm({
+      type: 'danger',
+      title: 'Delete Bid',
+      message: 'Are you sure you want to delete this bid?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) return;
     
     try {
       await deleteBidMutation.mutateAsync(bidId);
     } catch (err: any) {
-      alert(err.message || 'Failed to delete bid');
+      showAlert({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err.message || 'Failed to delete bid'
+      });
     }
   };
 
   const handleClearAllBids = async () => {
-    if (!confirm('Are you sure you want to clear all bids?')) return;
+    const confirmed = await showConfirm({
+      type: 'danger',
+      title: 'Clear All Bids',
+      message: 'Are you sure you want to clear all bids?',
+      confirmText: 'Clear All',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) return;
     
     try {
       const response = await fetch('/api/team/bids/clear-all', {
@@ -136,7 +170,11 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
       // React Query will automatically refetch
     } catch (err) {
       console.error('Error clearing bids:', err);
-      alert('Failed to clear bids');
+      showAlert({
+        type: 'error',
+        title: 'Clear Failed',
+        message: 'Failed to clear bids'
+      });
     }
   };
 
@@ -264,6 +302,26 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
       <div className="text-center text-gray-500 mt-8">
         Dashboard content rendering with React Query auto-refresh ✅
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

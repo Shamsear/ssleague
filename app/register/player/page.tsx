@@ -119,69 +119,21 @@ function PlayerSearchContent() {
 
     setSearching(true)
     try {
-      const realPlayersRef = collection(db, 'realplayers')
-      const playersQuery = query(realPlayersRef, orderBy('player_id'), limit(50))
-
-      const playersSnapshot = await getDocs(playersQuery)
-      const allPlayers = playersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        player_id: doc.data().player_id,
-        name: doc.data().name,
-        ...doc.data()
-      }))
-
-      // Filter in memory for partial matches
-      const searchLower = term.toLowerCase()
-      const filteredPlayers = allPlayers.filter(p => 
-        p.player_id?.toLowerCase().includes(searchLower) ||
-        p.name?.toLowerCase().includes(searchLower)
+      // Use API endpoint for optimized search
+      const response = await fetch(
+        `/api/players/search?term=${encodeURIComponent(term)}&seasonId=${seasonId}&limit=20`
       )
-
-      // Check registration status for each player
-      const playersWithStatus = await Promise.all(
-        filteredPlayers.map(async (player) => {
-          // Check if player is registered for this season
-          const realPlayerQuery = query(
-            collection(db, 'realplayer'),
-            where('player_id', '==', player.player_id),
-            where('season_id', '==', seasonId)
-          )
-          const realPlayerSnapshot = await getDocs(realPlayerQuery)
-          
-          if (!realPlayerSnapshot.empty) {
-            return {
-              ...player,
-              status: 'registered_current',
-              status_text: 'Already Registered'
-            }
-          }
-
-          // Check if registered for another season
-          const otherSeasonQuery = query(
-            collection(db, 'realplayer'),
-            where('player_id', '==', player.player_id)
-          )
-          const otherSeasonSnapshot = await getDocs(otherSeasonQuery)
-          
-          if (!otherSeasonSnapshot.empty) {
-            return {
-              ...player,
-              status: 'registered_other',
-              status_text: 'Registered (Other Season)'
-            }
-          }
-
-          return {
-            ...player,
-            status: 'available',
-            status_text: 'Available'
-          }
-        })
-      )
-
-      setPlayers(playersWithStatus)
+      
+      if (!response.ok) {
+        throw new Error('Failed to search players')
+      }
+      
+      const { players: searchResults } = await response.json()
+      setPlayers(searchResults || [])
     } catch (err) {
       console.error('Error searching players:', err)
+      setError('Failed to search players')
+      setPlayers([])
     } finally {
       setSearching(false)
     }

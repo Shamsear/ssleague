@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import PlayerImage, { PlayerAvatar } from '@/components/PlayerImage';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
 
 // Position constants
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST'];
@@ -37,6 +39,8 @@ interface Player {
 export default function PlayerStatisticsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [stats, setStats] = useState<any>(null);
+  const { alertState, showAlert, closeAlert } = useModal();
   const [players, setPlayers] = useState<Player[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -162,7 +166,11 @@ export default function PlayerStatisticsPage() {
       }
     } catch (err) {
       console.error('Error toggling star:', err);
-      alert('Failed to update starred status. Please try again.');
+      showAlert({
+        type: 'error',
+        title: 'Update Failed',
+        message: 'Failed to update starred status. Please try again.'
+      });
     }
   };
 
@@ -545,6 +553,15 @@ export default function PlayerStatisticsPage() {
           </button>
         </div>
       )}
+
+      {/* Modal Component */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
     </div>
   );
 }

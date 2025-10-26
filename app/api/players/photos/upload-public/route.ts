@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { bulkUploadPlayerPhotos } from '@/lib/imagekit/playerPhotos';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,65 +8,33 @@ export async function POST(request: NextRequest) {
 
     if (!files || files.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No files provided' },
+        { error: 'No files provided' },
         { status: 400 }
       );
     }
 
-    // Ensure directory exists
-    const uploadDir = join(process.cwd(), 'public', 'images', 'players');
-    try {
-      await mkdir(uploadDir, { recursive: true });
-    } catch (error) {
-      // Directory might already exist, ignore error
-    }
+    // Extract player IDs from filenames (assuming format: playerId.ext)
+    const uploads = files.map(file => {
+      const playerId = file.name.split('.')[0];
+      return { playerId, file };
+    });
 
-    const results = [];
-    const errors = [];
+    // Upload to ImageKit
+    const results = await bulkUploadPlayerPhotos(uploads);
 
-    for (const file of files) {
-      try {
-        // Extract player_id from filename
-        const fileName = file.name;
-        const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
-        const playerId = nameWithoutExt.replace(/^player_/i, '');
-        
-        const fileExtension = file.name.split('.').pop();
-        const finalFileName = `${playerId}.${fileExtension}`;
-
-        // Convert file to buffer
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-
-        // Write file to public folder
-        const filePath = join(uploadDir, finalFileName);
-        await writeFile(filePath, buffer);
-
-        results.push({
-          playerId,
-          fileName: file.name,
-          url: `/images/players/${finalFileName}`,
-          success: true,
-        });
-
-        console.log(`✅ Saved photo for player ${playerId}`);
-      } catch (error: any) {
-        errors.push({
-          fileName: file.name,
-          error: error.message,
-        });
-        console.error(`❌ Failed to save ${file.name}:`, error);
-      }
-    }
-
-    const successCount = results.length;
-    const errorCount = errors.length;
-
+    const successCount = results.filter(r => !r.error).length;
+    const errorCount = results.filter(r => r.error).length;
+    
     return NextResponse.json({
       success: true,
       message: `Uploaded ${successCount} photos successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
-      results,
-      errors,
+      results: results.map(r => ({
+        success: !r.error,
+        fileName: `${r.playerId}.jpg`,
+        url: r.url,
+        fileId: r.fileId,
+        error: r.error
+      })),
       summary: {
         total: files.length,
         success: successCount,

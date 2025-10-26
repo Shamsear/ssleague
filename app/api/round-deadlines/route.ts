@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
-const sql = neon(process.env.NEON_DATABASE_URL!);
-
-// GET - Fetch round_deadlines by season_id, round_number, and leg
+// GET - Fetch round_deadlines by tournament_id, round_number, and leg
 export async function GET(request: NextRequest) {
   try {
+    const sql = getTournamentDb();
     const searchParams = request.nextUrl.searchParams;
-    const seasonId = searchParams.get('season_id');
+    const tournamentId = searchParams.get('tournament_id');
     const roundNumber = searchParams.get('round_number');
     const leg = searchParams.get('leg') || 'first';
 
-    if (!seasonId) {
+    if (!tournamentId) {
       return NextResponse.json(
-        { error: 'season_id is required' },
+        { error: 'tournament_id is required' },
         { status: 400 }
       );
     }
@@ -25,6 +24,7 @@ export async function GET(request: NextRequest) {
       // Convert DATE to text to prevent timezone conversion
       roundDeadlines = await sql`
         SELECT 
+          tournament_id,
           season_id,
           round_number,
           leg,
@@ -34,20 +34,20 @@ export async function GET(request: NextRequest) {
           result_entry_deadline_day_offset,
           result_entry_deadline_time,
           status,
-          is_active,
           created_at,
           updated_at
         FROM round_deadlines
-        WHERE season_id = ${seasonId}
+        WHERE tournament_id = ${tournamentId}
           AND round_number = ${parseInt(roundNumber)}
           AND leg = ${leg}
         LIMIT 1
       `;
     } else {
-      // Fetch all rounds for season
+      // Fetch all rounds for tournament
       // Convert DATE to text to prevent timezone conversion
       roundDeadlines = await sql`
         SELECT 
+          tournament_id,
           season_id,
           round_number,
           leg,
@@ -57,11 +57,10 @@ export async function GET(request: NextRequest) {
           result_entry_deadline_day_offset,
           result_entry_deadline_time,
           status,
-          is_active,
           created_at,
           updated_at
         FROM round_deadlines
-        WHERE season_id = ${seasonId}
+        WHERE tournament_id = ${tournamentId}
         ORDER BY round_number ASC, leg ASC
       `;
     }
@@ -86,8 +85,10 @@ export async function GET(request: NextRequest) {
 // POST - Create or update round_deadlines
 export async function POST(request: NextRequest) {
   try {
+    const sql = getTournamentDb();
     const body = await request.json();
     const { 
+      tournament_id,
       season_id, 
       round_number, 
       leg = 'first',
@@ -96,13 +97,12 @@ export async function POST(request: NextRequest) {
       away_fixture_deadline_time,
       result_entry_deadline_day_offset,
       result_entry_deadline_time,
-      status = 'pending',
-      is_active = false
+      status = 'pending'
     } = body;
 
-    if (!season_id || !round_number) {
+    if (!tournament_id || !round_number) {
       return NextResponse.json(
-        { error: 'season_id and round_number are required' },
+        { error: 'tournament_id and round_number are required' },
         { status: 400 }
       );
     }
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       const settingsResult = await sql`
         SELECT home_deadline_time, away_deadline_time, result_day_offset, result_deadline_time
         FROM tournament_settings
-        WHERE season_id = ${season_id}
+        WHERE tournament_id = ${tournament_id}
         LIMIT 1
       `;
 
@@ -162,6 +162,7 @@ export async function POST(request: NextRequest) {
     
     await sql`
       INSERT INTO round_deadlines (
+        tournament_id,
         season_id,
         round_number,
         leg,
@@ -171,10 +172,10 @@ export async function POST(request: NextRequest) {
         result_entry_deadline_day_offset,
         result_entry_deadline_time,
         status,
-        is_active,
         created_at,
         updated_at
       ) VALUES (
+        ${tournament_id},
         ${season_id},
         ${round_number},
         ${leg},
@@ -184,18 +185,16 @@ export async function POST(request: NextRequest) {
         ${resultOffset},
         ${resultTime},
         ${status},
-        ${is_active},
         NOW(),
         NOW()
       )
-      ON CONFLICT (season_id, round_number, leg) DO UPDATE SET
+      ON CONFLICT (tournament_id, round_number, leg) DO UPDATE SET
         scheduled_date = ${dateOnly ? sql`${dateOnly}::date` : sql`EXCLUDED.scheduled_date`},
         home_fixture_deadline_time = EXCLUDED.home_fixture_deadline_time,
         away_fixture_deadline_time = EXCLUDED.away_fixture_deadline_time,
         result_entry_deadline_day_offset = EXCLUDED.result_entry_deadline_day_offset,
         result_entry_deadline_time = EXCLUDED.result_entry_deadline_time,
         status = EXCLUDED.status,
-        is_active = EXCLUDED.is_active,
         updated_at = NOW()
     `;
     

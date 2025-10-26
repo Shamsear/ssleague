@@ -5,8 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
+import { usePlayerStats, useTeamStats } from '@/hooks';
 
 export default function SeasonDetails() {
   const { user, loading } = useAuth();
@@ -30,6 +29,15 @@ export default function SeasonDetails() {
   const [players, setPlayers] = useState<any[]>([]);
   const [rounds, setRounds] = useState<any[]>([]);
   const [topBids, setTopBids] = useState<any[]>([]);
+  
+  // Use React Query hooks for stats from Neon
+  const { data: teamStatsData, isLoading: teamStatsLoading } = useTeamStats({
+    seasonId: seasonId || ''
+  });
+  
+  const { data: playerStatsData, isLoading: playerStatsLoading } = usePlayerStats({
+    seasonId: seasonId || ''
+  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -46,6 +54,17 @@ export default function SeasonDetails() {
     }
   }, [user, seasonId]);
 
+  useEffect(() => {
+    if (teamStatsData && playerStatsData) {
+      // Update season stats
+      setSeasonStats(prev => ({
+        ...prev,
+        totalTeams: teamStatsData.length,
+        totalPlayers: playerStatsData.length
+      }));
+    }
+  }, [teamStatsData, playerStatsData]);
+
   const fetchSeasonData = async () => {
     try {
       setLoadingSeason(true);
@@ -57,66 +76,6 @@ export default function SeasonDetails() {
       }
       setSeason(seasonData);
       
-      // Fetch team stats for this season
-      const teamStatsQuery = query(
-        collection(db, 'teamstats'),
-        where('season_id', '==', seasonId)
-      );
-      const teamStatsSnapshot = await getDocs(teamStatsQuery);
-      const teamStatsData = teamStatsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Fetch teams data
-      const teamsData: any[] = [];
-      for (const teamStat of teamStatsData) {
-        const teamQuery = query(
-          collection(db, 'teams'),
-          where('id', '==', teamStat.team_id)
-        );
-        const teamSnapshot = await getDocs(teamQuery);
-        if (!teamSnapshot.empty) {
-          const teamDoc = teamSnapshot.docs[0];
-          teamsData.push({
-            id: teamDoc.id,
-            ...teamDoc.data(),
-            stats: teamStat
-          });
-        }
-      }
-      setTeams(teamsData);
-      
-      // Fetch real player stats for this season
-      const playerStatsQuery = query(
-        collection(db, 'realplayerstats'),
-        where('season_id', '==', seasonId)
-      );
-      const playerStatsSnapshot = await getDocs(playerStatsQuery);
-      const playerStatsData = playerStatsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Fetch real players data
-      const playersData: any[] = [];
-      for (const playerStat of playerStatsData) {
-        const playerQuery = query(
-          collection(db, 'realplayers'),
-          where('id', '==', playerStat.player_id)
-        );
-        const playerSnapshot = await getDocs(playerQuery);
-        if (!playerSnapshot.empty) {
-          const playerDoc = playerSnapshot.docs[0];
-          playersData.push({
-            id: playerDoc.id,
-            ...playerDoc.data(),
-            stats: playerStat
-          });
-        }
-      }
-      setPlayers(playersData);
-      
       // For multi-season types (season 16+), fetch auction data from Neon
       if (seasonData.type === 'multi') {
         try {
@@ -126,14 +85,6 @@ export default function SeasonDetails() {
             if (auctionData.success) {
               setRounds(auctionData.data.rounds || []);
               setTopBids(auctionData.data.topBids || []);
-              
-              // Update stats with auction data
-              setSeasonStats({
-                totalTeams: teamsData.length,
-                totalPlayers: playersData.length,
-                totalRounds: auctionData.data.stats.totalRounds || 0,
-                totalBids: auctionData.data.stats.totalBids || 0,
-              });
             }
           }
         } catch (auctionError) {
@@ -185,7 +136,7 @@ export default function SeasonDetails() {
     });
   };
 
-  if (loading || loadingSeason) {
+  if (loading || loadingSeason || teamStatsLoading || playerStatsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-
-const sql = neon(process.env.NEON_DATABASE_URL!);
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
+    const sql = getTournamentDb();
     const { fixtureId } = await params;
 
     // Get matchups for this fixture
@@ -32,17 +31,42 @@ export async function POST(
   { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
+    const sql = getTournamentDb();
     const { fixtureId } = await params;
     const body = await request.json();
     const { matchups, created_by } = body;
 
+    console.log('📥 Received matchups data:', {
+      fixtureId,
+      created_by,
+      matchupsCount: matchups?.length,
+      isArray: Array.isArray(matchups),
+      firstMatchup: matchups?.[0]
+    });
+
     // Validate
     if (!matchups || !Array.isArray(matchups) || matchups.length === 0) {
+      console.error('❌ Validation failed:', { matchups, isArray: Array.isArray(matchups), length: matchups?.length });
       return NextResponse.json(
         { error: 'Invalid matchups data' },
         { status: 400 }
       );
     }
+
+    // Get fixture to extract season_id and round_number
+    const fixtures = await sql`
+      SELECT season_id, round_number FROM fixtures WHERE id = ${fixtureId} LIMIT 1
+    `;
+    
+    if (fixtures.length === 0) {
+      return NextResponse.json(
+        { error: 'Fixture not found' },
+        { status: 404 }
+      );
+    }
+    
+    const seasonId = fixtures[0].season_id;
+    const roundNumber = fixtures[0].round_number;
 
     // Delete existing matchups for this fixture
     await sql`
@@ -55,6 +79,8 @@ export async function POST(
       await sql`
         INSERT INTO matchups (
           fixture_id,
+          season_id,
+          round_number,
           home_player_id,
           home_player_name,
           away_player_id,
@@ -65,6 +91,8 @@ export async function POST(
           created_at
         ) VALUES (
           ${fixtureId},
+          ${seasonId},
+          ${roundNumber},
           ${matchup.home_player_id},
           ${matchup.home_player_name},
           ${matchup.away_player_id},
@@ -78,10 +106,11 @@ export async function POST(
     }
 
     return NextResponse.json({ success: true, message: 'Matchups created successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating matchups:', error);
+    console.error('Error details:', error.message, error.stack);
     return NextResponse.json(
-      { error: 'Failed to create matchups' },
+      { error: 'Failed to create matchups', details: error.message },
       { status: 500 }
     );
   }
@@ -92,6 +121,7 @@ export async function PUT(
   { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
+    const sql = getTournamentDb();
     const { fixtureId } = await params;
     const body = await request.json();
     const { matchups } = body;
@@ -133,6 +163,7 @@ export async function PATCH(
   { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
+    const sql = getTournamentDb();
     const { fixtureId } = await params;
     const body = await request.json();
     const { results, entered_by } = body;
@@ -160,7 +191,41 @@ export async function PATCH(
       `;
     }
 
-    return NextResponse.json({ success: true, message: 'Results saved successfully' });
+    // Calculate total scores from all matchups
+    let totalHomeScore = 0;
+    let totalAwayScore = 0;
+    for (const result of results) {
+      totalHomeScore += result.home_goals;
+      totalAwayScore += result.away_goals;
+    }
+
+    // Determine match result
+    let matchResult: 'home_win' | 'away_win' | 'draw';
+    if (totalHomeScore > totalAwayScore) {
+      matchResult = 'home_win';
+    } else if (totalAwayScore > totalHomeScore) {
+      matchResult = 'away_win';
+    } else {
+      matchResult = 'draw';
+    }
+
+    // Update fixture with scores, result, and status
+    await sql`
+      UPDATE fixtures
+      SET 
+        home_score = ${totalHomeScore},
+        away_score = ${totalAwayScore},
+        result = ${matchResult},
+        status = 'completed', 
+        updated_at = NOW()
+      WHERE id = ${fixtureId}
+    `;
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Results saved successfully',
+      fixture_status: 'completed'
+    });
   } catch (error) {
     console.error('Error saving results:', error);
     return NextResponse.json(

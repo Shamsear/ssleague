@@ -3,6 +3,11 @@ import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 
+// WebSocket broadcast function (set by WebSocket server)
+declare global {
+  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
+}
+
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 const MAX_SQUAD_SIZE = 25;
@@ -225,6 +230,21 @@ export async function POST(
     console.timeEnd('⚡ Insert bids');
 
     console.log(`✅ Successfully placed ${player_ids.length} bids for team ${userId}`);
+
+    // ✅ Broadcast to WebSocket clients for real-time updates
+    if (global.wsBroadcast) {
+      global.wsBroadcast(`round:${roundId}`, {
+        type: 'bulk_bids',
+        data: {
+          team_id: userId,
+          team_name: teamName,
+          player_ids,
+          bid_count: player_ids.length,
+          total_amount: totalCost,
+        },
+      });
+      console.log(`📢 [WebSocket] Broadcast bulk bids to round:${roundId}`);
+    }
 
     // NOTE: Balance is NOT deducted yet - only reserved
     // Money will be deducted after round finalization:

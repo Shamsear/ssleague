@@ -1,9 +1,12 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
 
 interface Category {
   id: string;
@@ -31,7 +34,10 @@ function CategoriesPageContent() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+
+  // Modal system
+  const { alertState, showAlert, closeAlert } = useModal();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -90,11 +96,19 @@ function CategoriesPageContent() {
         setSuccessMessage('Category deleted successfully!');
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
-        alert(`Error: ${result.error}`);
+        showAlert({
+          type: 'error',
+          title: 'Delete Failed',
+          message: `Error: ${result.error}`
+        });
       }
     } catch (error) {
       console.error('Error deleting category:', error);
-      alert('Failed to delete category');
+      showAlert({
+        type: 'error',
+        title: 'Delete Failed',
+        message: 'Failed to delete category'
+      });
     } finally {
       setDeleteConfirm(null);
     }
@@ -353,6 +367,15 @@ function CategoriesPageContent() {
           </div>
         )}
       </div>
+
+      {/* Modal Component */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
     </div>
   );
 }

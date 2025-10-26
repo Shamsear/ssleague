@@ -4,6 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
+import { useTiebreakerWebSocket } from '@/hooks/useWebSocket';
 
 interface Player {
   id: string;
@@ -44,9 +48,23 @@ export default function TeamBulkTiebreakerPage() {
   const [tiebreaker, setTiebreaker] = useState<Tiebreaker | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [bidAmount, setBidAmount] = useState<string>('');
+  const [bidAmount, setBidAmount] = useState('');
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
   const [teamBalance, setTeamBalance] = useState(1000); // Mock balance
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ✅ Enable WebSocket for real-time tiebreaker bid updates
+  const { isConnected } = useTiebreakerWebSocket(tiebreakerId, true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -122,21 +140,41 @@ export default function TeamBulkTiebreakerPage() {
     const amount = parseInt(bidAmount);
 
     if (isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid bid amount');
+      showAlert({
+        type: 'warning',
+        title: 'Invalid Amount',
+        message: 'Please enter a valid bid amount'
+      });
       return;
     }
 
     if (amount <= tiebreaker.current_highest_bid) {
-      alert(`Bid must be higher than the current highest bid (£${tiebreaker.current_highest_bid})`);
+      showAlert({
+        type: 'warning',
+        title: 'Bid Too Low',
+        message: `Bid must be higher than the current highest bid (£${tiebreaker.current_highest_bid})`
+      });
       return;
     }
 
     if (amount > teamBalance) {
-      alert('Insufficient balance!');
+      showAlert({
+        type: 'error',
+        title: 'Insufficient Balance',
+        message: 'Insufficient balance!'
+      });
       return;
     }
 
-    if (!confirm(`Place bid of £${amount} for ${tiebreaker.player_name}?`)) {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Place Bid',
+      message: `Place bid of £${amount} for ${tiebreaker.player_name}?`,
+      confirmText: 'Place Bid',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -149,7 +187,11 @@ export default function TeamBulkTiebreakerPage() {
       //   body: JSON.stringify({ amount }),
       // });
 
-      alert('Bid placed successfully! (Feature coming soon)');
+      showAlert({
+        type: 'success',
+        title: 'Bid Placed',
+        message: 'Bid placed successfully! (Feature coming soon)'
+      });
       
       // Update local state optimistically
       setTiebreaker({
@@ -173,14 +215,26 @@ export default function TeamBulkTiebreakerPage() {
       setBidAmount((amount + 1).toString());
     } catch (err) {
       console.error('Error placing bid:', err);
-      alert('Failed to place bid');
+      showAlert({
+        type: 'error',
+        title: 'Bid Failed',
+        message: 'Failed to place bid'
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleWithdraw = async () => {
-    if (!confirm('Are you sure you want to withdraw from this tiebreaker? You will lose the player.')) {
+    const confirmed = await showConfirm({
+      type: 'danger',
+      title: 'Withdraw from Tiebreaker',
+      message: 'Are you sure you want to withdraw from this tiebreaker? You will lose the player.',
+      confirmText: 'Yes, Withdraw',
+      cancelText: 'No'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -190,11 +244,19 @@ export default function TeamBulkTiebreakerPage() {
       //   method: 'POST',
       // });
 
-      alert('Withdrawn successfully! (Feature coming soon)');
+      showAlert({
+        type: 'success',
+        title: 'Withdrawn',
+        message: 'Withdrawn successfully! (Feature coming soon)'
+      });
       router.push('/dashboard/team');
     } catch (err) {
       console.error('Error withdrawing:', err);
-      alert('Failed to withdraw');
+      showAlert({
+        type: 'error',
+        title: 'Withdrawal Failed',
+        message: 'Failed to withdraw'
+      });
     }
   };
 
@@ -240,8 +302,23 @@ export default function TeamBulkTiebreakerPage() {
               </svg>
             </Link>
             <div className="flex-1">
-              <h1 className="text-3xl md:text-4xl font-bold gradient-text">Tiebreaker Auction</h1>
-              <p className="text-gray-600 mt-1">Bidding for contested player</p>
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl md:text-4xl font-bold gradient-text">
+                  Tiebreaker
+                </h1>
+                {/* WebSocket Status */}
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                  isConnected 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                    isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+                  }`}></span>
+                  {isConnected ? 'Live' : 'Offline'}
+                </span>
+              </div>
+              <p className="text-gray-600 mt-1">Place your highest bid to win the player</p>
             </div>
           </div>
         </div>
@@ -451,6 +528,26 @@ export default function TeamBulkTiebreakerPage() {
           )}
         </div>
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

@@ -83,10 +83,10 @@ export default function Login() {
         return;
       }
 
-      console.log('[Login] Attempting Firebase sign-in');
+      console.log('[Login] Attempting Firebase sign-in with remember me:', remember);
       
-      // Sign in with email
-      const { user } = await signIn(lookupData.email, trimmedPassword);
+      // Sign in with email and remember me option
+      const { user } = await signIn(lookupData.email, trimmedPassword, remember);
       
       console.log('[Login] Sign-in successful, user role:', user?.role);
       
@@ -117,14 +117,25 @@ export default function Login() {
       // Provide user-friendly error messages
       let errorMessage = 'Login failed. Please try again.';
       
-      if (error.message?.includes('auth/invalid-credential')) {
-        errorMessage = 'Invalid username or password.';
-      } else if (error.message?.includes('auth/user-not-found')) {
-        errorMessage = 'User not found. Please register first.';
-      } else if (error.message?.includes('auth/wrong-password')) {
-        errorMessage = 'Incorrect password.';
-      } else if (error.message?.includes('auth/too-many-requests')) {
-        errorMessage = 'Too many failed attempts. Please try again later.';
+      const errorMsg = error.message?.toLowerCase() || '';
+      
+      if (errorMsg.includes('invalid-credential') || errorMsg.includes('invalid credential')) {
+        errorMessage = '❌ Invalid username or password. Please check your credentials.';
+      } else if (errorMsg.includes('user-not-found') || errorMsg.includes('user not found')) {
+        errorMessage = '❌ User not found. Please check your username.';
+      } else if (errorMsg.includes('wrong-password') || errorMsg.includes('wrong password')) {
+        errorMessage = '❌ Incorrect password. Please try again.';
+      } else if (errorMsg.includes('too-many-requests') || errorMsg.includes('too many requests')) {
+        errorMessage = '⏳ Too many failed attempts. Please wait a few minutes and try again.';
+      } else if (errorMsg.includes('network')) {
+        errorMessage = '🌐 Network error. Please check your internet connection.';
+      } else if (errorMsg.includes('pending approval')) {
+        errorMessage = '⏳ Your account is pending approval. Please wait for admin approval.';
+      } else if (errorMsg.includes('deactivated')) {
+        errorMessage = '🚫 Account is deactivated. Please contact support.';
+      } else if (error.message) {
+        // Show the actual error message if it's user-friendly
+        errorMessage = error.message;
       }
       
       setAlerts([{ type: 'error', message: errorMessage }]);

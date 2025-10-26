@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
+import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { FieldValue } from 'firebase-admin/firestore';
 
 // Enable caching for historical data (1 hour)
@@ -57,12 +58,12 @@ export async function GET(
     const teamsSnapshot = await teamsQuery.get();
     const teamsData = teamsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
-    // Fetch team stats for this season from teamstats collection
-    console.log('📊 Fetching team stats data from teamstats...');
-    const teamStatsQuery = adminDb.collection('teamstats')
-      .where('season_id', '==', seasonId);
-    const teamStatsSnapshot = await teamStatsQuery.get();
-    const teamStatsData = teamStatsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Fetch team stats for this season from NEON
+    console.log('📊 Fetching team stats data from NEON...');
+    const sql = getTournamentDb();
+    const teamStatsData = await sql`
+      SELECT * FROM teamstats WHERE season_id = ${seasonId}
+    `;
     
     console.log(`✅ Found ${teamStatsData.length} team stats records for this season`);
     
@@ -75,36 +76,41 @@ export async function GET(
       };
     });
 
-    // NEW ARCHITECTURE: Fetch season-specific stats from realplayerstats collection
-    console.log('⚽ Fetching player stats data from realplayerstats...');
+    // Fetch season-specific stats from NEON realplayerstats table
+    console.log('⚽ Fetching player stats data from NEON...');
     
     // Get total count first (for pagination)
-    const playerStatsCountQuery = adminDb.collection('realplayerstats')
-      .where('season_id', '==', seasonId);
-    const countSnapshot = await playerStatsCountQuery.count().get();
-    const totalPlayers = countSnapshot.data().count;
+    const countResult = await sql`
+      SELECT COUNT(*) as count FROM realplayerstats WHERE season_id = ${seasonId}
+    `;
+    const totalPlayers = parseInt(countResult[0]?.count || '0');
     
     console.log(`📊 Total players in season: ${totalPlayers}`);
     
     // Apply pagination if not loading all
-    let playerStatsQuery = adminDb.collection('realplayerstats')
-      .where('season_id', '==', seasonId)
-      .orderBy('player_name'); // Order by name for consistent pagination
-    
+    let playerStatsData;
     if (!loadAll) {
       const offset = (page - 1) * pageSize;
-      playerStatsQuery = playerStatsQuery.limit(pageSize).offset(offset);
       console.log(`📖 Loading page ${page} (${pageSize} players, offset ${offset})`);
+      playerStatsData = await sql`
+        SELECT * FROM realplayerstats 
+        WHERE season_id = ${seasonId}
+        ORDER BY player_name
+        LIMIT ${pageSize} OFFSET ${offset}
+      `;
     } else {
       console.log(`📚 Loading all ${totalPlayers} players`);
+      playerStatsData = await sql`
+        SELECT * FROM realplayerstats 
+        WHERE season_id = ${seasonId}
+        ORDER BY player_name
+      `;
     }
     
-    const playerStatsSnapshot = await playerStatsQuery.get();
-    
-    console.log(`📊 Loaded ${playerStatsSnapshot.docs.length} player stats records for this page`);
+    console.log(`📊 Loaded ${playerStatsData.length} player stats records for this page`);
     
     // Collect unique player IDs to fetch their permanent data
-    const playerIds = playerStatsSnapshot.docs.map(doc => doc.data().player_id).filter(Boolean);
+    const playerIds = playerStatsData.map((stats: any) => stats.player_id).filter(Boolean);
     const uniquePlayerIds = [...new Set(playerIds)];
     
     console.log(`👤 Fetching permanent data for ${uniquePlayerIds.length} unique players from realplayers...`);
@@ -167,13 +173,12 @@ export async function GET(
     
     console.log(`✅ Retrieved permanent data for ${playerDataMap.size} players`);
     
-    // Merge permanent player data with season-specific stats
-    const playersData = playerStatsSnapshot.docs.map(statsDoc => {
-      const statsData = statsDoc.data();
+    // Merge permanent player data with season-specific stats from Neon
+    const playersData = playerStatsData.map((statsData: any) => {
       const permanentData = playerDataMap.get(statsData.player_id) || {};
       
       return {
-        id: statsDoc.id,
+        id: statsData.id,
         player_id: statsData.player_id,
         // Permanent player info from realplayers (optimized - only essential fields)
         name: permanentData.name || statsData.player_name || statsData.name || 'Unknown Player',
@@ -473,52 +478,37 @@ export async function DELETE(
 
     console.log(`✅ Season verified as historical, proceeding with deletion`);
 
-    // Get counts before deletion for logging
-    const [playerStatsCount, teamStatsCount, awardsCount] = await Promise.all([
-      adminDb.collection('realplayerstats').where('season_id', '==', seasonId).count().get(),
-      adminDb.collection('teamstats').where('season_id', '==', seasonId).count().get(),
-      adminDb.collection('awards').where('season_id', '==', seasonId).count().get(),
-    ]);
-
+    // Delete stats from NEON instead of Firebase
+    console.log('🗑️ Deleting stats from NEON...');
+    const sql = getTournamentDb();
+    
+    const deletedPlayerStats = await sql`
+      DELETE FROM realplayerstats
+      WHERE season_id = ${seasonId}
+      RETURNING id
+    `;
+    
+    const deletedTeamStats = await sql`
+      DELETE FROM teamstats
+      WHERE season_id = ${seasonId}
+      RETURNING id
+    `;
+    
+    console.log(`✅ Deleted ${deletedPlayerStats.length} player stats from NEON`);
+    console.log(`✅ Deleted ${deletedTeamStats.length} team stats from NEON`);
+    
+    // Get awards count from Firebase (awards stay in Firebase)
+    const awardsSnapshot = await adminDb.collection('awards')
+      .where('season_id', '==', seasonId)
+      .get();
+    
     console.log(`📊 Data to delete:`);
-    console.log(`   - Player stats: ${playerStatsCount.data().count}`);
-    console.log(`   - Team stats: ${teamStatsCount.data().count}`);
-    console.log(`   - Awards: ${awardsCount.data().count}`);
+    console.log(`   - Player stats: ${deletedPlayerStats.length}`);
+    console.log(`   - Team stats: ${deletedTeamStats.length}`);
+    console.log(`   - Awards: ${awardsSnapshot.size}`);
 
-    // Step 1: Delete all player stats for this season
-    console.log(`🗑️ Deleting player stats...`);
-    const playerStatsSnapshot = await adminDb
-      .collection('realplayerstats')
-      .where('season_id', '==', seasonId)
-      .get();
-    
-    const playerStatsBatch = adminDb.batch();
-    playerStatsSnapshot.docs.forEach(doc => {
-      playerStatsBatch.delete(doc.ref);
-    });
-    await playerStatsBatch.commit();
-    console.log(`✅ Deleted ${playerStatsSnapshot.size} player stats records`);
-
-    // Step 2: Delete all team stats for this season
-    console.log(`🗑️ Deleting team stats...`);
-    const teamStatsSnapshot = await adminDb
-      .collection('teamstats')
-      .where('season_id', '==', seasonId)
-      .get();
-    
-    const teamStatsBatch = adminDb.batch();
-    teamStatsSnapshot.docs.forEach(doc => {
-      teamStatsBatch.delete(doc.ref);
-    });
-    await teamStatsBatch.commit();
-    console.log(`✅ Deleted ${teamStatsSnapshot.size} team stats records`);
-
-    // Step 3: Delete all awards for this season
+    // Delete awards from Firebase (awards collection stays in Firebase)
     console.log(`🗑️ Deleting awards...`);
-    const awardsSnapshot = await adminDb
-      .collection('awards')
-      .where('season_id', '==', seasonId)
-      .get();
     
     const awardsBatch = adminDb.batch();
     awardsSnapshot.docs.forEach(doc => {
@@ -555,8 +545,8 @@ export async function DELETE(
       message: 'Historical season deleted successfully',
       deleted: {
         seasonId,
-        playerStats: playerStatsSnapshot.size,
-        teamStats: teamStatsSnapshot.size,
+        playerStats: deletedPlayerStats.length,
+        teamStats: deletedTeamStats.length,
         awards: awardsSnapshot.size,
         teamsUpdated: teamsSnapshot.size
       }

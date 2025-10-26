@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { cookies } from 'next/headers';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,51 +49,49 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch team stats across all seasons
-    const teamStatsSnapshot = await adminDb
-      .collection('teamstats')
-      .where('team_name', '==', teamName)
-      .get();
+    // ✅ Fetch team stats from NEON across all seasons (optimized - only needed columns)
+    const sql = getTournamentDb();
+    const teamStats = await sql`
+      SELECT 
+        id, team_id, team_name, season_id, 
+        matches_played, wins, draws, losses,
+        goals_for, goals_against, goal_difference,
+        points, position
+      FROM teamstats
+      WHERE team_name = ${teamName}
+      ORDER BY season_id DESC
+    `;
 
-    const teamStats = teamStatsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    // Fetch player stats for this team across all seasons
-    const playerStatsSnapshot = await adminDb
-      .collection('realplayerstats')
-      .where('team', '==', teamName)
-      .get();
-
-    const playerStats = playerStatsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // ✅ Fetch player stats from NEON for this team across all seasons (optimized - only needed columns)
+    const playerStats = await sql`
+      SELECT 
+        id, player_id, player_name, season_id,
+        team, team_id, category,
+        matches_played, goals_scored, wins, draws, losses,
+        clean_sheets, points
+      FROM realplayerstats
+      WHERE team = ${teamName}
+      ORDER BY season_id DESC, player_name
+    `;
 
     // Calculate aggregated statistics
     const totalSeasons = teamStats.length;
-    const totalMatches = teamStats.reduce((sum, stat) => sum + (stat.matches_played || 0), 0);
-    const totalWins = teamStats.reduce((sum, stat) => sum + (stat.wins || 0), 0);
-    const totalDraws = teamStats.reduce((sum, stat) => sum + (stat.draws || 0), 0);
-    const totalLosses = teamStats.reduce((sum, stat) => sum + (stat.losses || 0), 0);
-    const totalGoalsScored = teamStats.reduce((sum, stat) => sum + (stat.goals_for || 0), 0);
-    const totalGoalsConceded = teamStats.reduce((sum, stat) => sum + (stat.goals_against || 0), 0);
-    const totalPoints = teamStats.reduce((sum, stat) => sum + (stat.points || 0), 0);
+    const totalMatches = teamStats.reduce((sum: number, stat: any) => sum + (stat.matches_played || 0), 0);
+    const totalWins = teamStats.reduce((sum: number, stat: any) => sum + (stat.wins || 0), 0);
+    const totalDraws = teamStats.reduce((sum: number, stat: any) => sum + (stat.draws || 0), 0);
+    const totalLosses = teamStats.reduce((sum: number, stat: any) => sum + (stat.losses || 0), 0);
+    const totalGoalsScored = teamStats.reduce((sum: number, stat: any) => sum + (stat.goals_for || 0), 0);
+    const totalGoalsConceded = teamStats.reduce((sum: number, stat: any) => sum + (stat.goals_against || 0), 0);
+    const totalPoints = teamStats.reduce((sum: number, stat: any) => sum + (stat.points || 0), 0);
 
     // Count unique players
-    const uniquePlayers = new Set(playerStats.map(p => p.player_name));
+    const uniquePlayers = new Set(playerStats.map((p: any) => p.player_name));
     const totalPlayers = uniquePlayers.size;
 
-    // Count trophies/achievements
-    const championships = teamStats.filter(stat => stat.rank === 1).length;
-    const runnerUps = teamStats.filter(stat => stat.rank === 2).length;
-    const cups = teamStats.reduce((sum, stat) => {
-      if (stat.cup_achievement && stat.cup_achievement !== '') {
-        return sum + 1;
-      }
-      return sum;
-    }, 0);
+    // Count trophies/achievements (position 1 = champion)
+    const championships = teamStats.filter((stat: any) => stat.position === 1).length;
+    const runnerUps = teamStats.filter((stat: any) => stat.position === 2).length;
+    const cups = 0; // Cup data not in current schema
 
     // Get current season details
     const { searchParams } = new URL(request.url);

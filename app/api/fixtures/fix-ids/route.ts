@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { db } from '@/lib/firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
 
-const sql = neon(process.env.NEON_DATABASE_URL!);
-
 export async function POST(request: NextRequest) {
   try {
+    const sql = getTournamentDb();
     console.log('🔄 Starting fixture ID migration...');
     
     // Get all team_seasons from Firebase to build a mapping

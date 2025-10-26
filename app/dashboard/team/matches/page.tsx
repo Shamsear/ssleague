@@ -130,7 +130,8 @@ export default function TeamMatchesPage() {
         const fixturesResponse = await fetch(`/api/fixtures/team?team_id=${teamId}&season_id=${currentSeasonId}`);
         
         if (!fixturesResponse.ok) {
-          console.error('Failed to fetch fixtures from Neon');
+          const errorData = await fixturesResponse.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Failed to fetch fixtures from Neon:', fixturesResponse.status, errorData);
           setIsLoading(false);
           return;
         }
@@ -153,51 +154,54 @@ export default function TeamMatchesPage() {
           });
         });
 
-        // Fetch round statuses and deadlines from Neon for all relevant rounds
+        // Fetch round statuses and deadlines from Neon for all relevant rounds (in parallel)
         const roundDataMap = new Map<string, any>();
-        for (const [roundKey, fixtures] of fixturesByRound.entries()) {
+        const roundFetchPromises = Array.from(fixturesByRound.entries()).map(async ([roundKey, fixtures]) => {
           const firstFixture = fixtures[0].fixture;
           const roundNumber = firstFixture.round_number;
           const leg = firstFixture.leg || 'first';
+          const tournamentId = firstFixture.tournament_id;
+          
+          const defaultData = {
+            status: 'pending',
+            home_fixture_deadline_time: '23:30',
+            away_fixture_deadline_time: '23:45',
+            result_entry_deadline_day_offset: 2,
+            result_entry_deadline_time: '00:30',
+          };
           
           try {
-            const response = await fetch(`/api/round-deadlines?season_id=${currentSeasonId}&round_number=${roundNumber}&leg=${leg}`);
+            const response = await fetch(`/api/round-deadlines?tournament_id=${tournamentId}&round_number=${roundNumber}&leg=${leg}`);
             
             if (response.ok) {
               const { roundDeadline } = await response.json();
               
               if (roundDeadline) {
-                roundDataMap.set(roundKey, {
-                  status: roundDeadline.status || 'pending',
-                  home_fixture_deadline_time: roundDeadline.home_fixture_deadline_time || '23:30',
-                  away_fixture_deadline_time: roundDeadline.away_fixture_deadline_time || '23:45',
-                  result_entry_deadline_day_offset: roundDeadline.result_entry_deadline_day_offset || 2,
-                  result_entry_deadline_time: roundDeadline.result_entry_deadline_time || '00:30',
-                  scheduled_date: roundDeadline.scheduled_date,
-                });
-              } else {
-                // Default values if round deadline doesn't exist
-                roundDataMap.set(roundKey, {
-                  status: 'pending',
-                  home_fixture_deadline_time: '23:30',
-                  away_fixture_deadline_time: '23:45',
-                  result_entry_deadline_day_offset: 2,
-                  result_entry_deadline_time: '00:30',
-                });
+                return {
+                  roundKey,
+                  data: {
+                    status: roundDeadline.status || 'pending',
+                    home_fixture_deadline_time: roundDeadline.home_fixture_deadline_time || '23:30',
+                    away_fixture_deadline_time: roundDeadline.away_fixture_deadline_time || '23:45',
+                    result_entry_deadline_day_offset: roundDeadline.result_entry_deadline_day_offset || 2,
+                    result_entry_deadline_time: roundDeadline.result_entry_deadline_time || '00:30',
+                    scheduled_date: roundDeadline.scheduled_date,
+                  }
+                };
               }
             }
+            return { roundKey, data: defaultData };
           } catch (error) {
             console.error(`Error fetching round deadline for round ${roundNumber} leg ${leg}:`, error);
-            // Set defaults on error
-            roundDataMap.set(roundKey, {
-              status: 'pending',
-              home_fixture_deadline_time: '23:30',
-              away_fixture_deadline_time: '23:45',
-              result_entry_deadline_day_offset: 2,
-              result_entry_deadline_time: '00:30',
-            });
+            return { roundKey, data: defaultData };
           }
-        }
+        });
+        
+        // Wait for all round deadline fetches to complete
+        const roundResults = await Promise.all(roundFetchPromises);
+        roundResults.forEach(({ roundKey, data }) => {
+          roundDataMap.set(roundKey, data);
+        });
 
         // Helper function to calculate match phase
         const calculateMatchPhase = (roundData: any, matchDate: Date | null) => {

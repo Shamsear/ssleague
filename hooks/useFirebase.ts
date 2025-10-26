@@ -14,11 +14,11 @@ export const useFirebaseAuth = () => {
   const [error, setError] = useState<string | null>(null);
   const { refreshUser } = useAuth();
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, rememberMe: boolean = false) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await firebaseSignIn(email, password);
+      const result = await firebaseSignIn(email, password, rememberMe);
       await refreshUser();
       return result;
     } catch (err: any) {

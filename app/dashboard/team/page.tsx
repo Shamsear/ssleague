@@ -4,7 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import RegisteredTeamDashboard from './RegisteredTeamDashboard';
-import { useCachedTeamSeasons, useCachedSeasons } from '@/hooks/useCachedFirebase';
+import { useCachedSeasons } from '@/hooks/useCachedFirebase';
+import { useTeamHistory } from '@/hooks/useTeamHistory';
+import { useDashboardWebSocket } from '@/hooks/useWebSocket';
 
 export default function TeamDashboard() {
   const { user, loading } = useAuth();
@@ -22,6 +24,13 @@ export default function TeamDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'seasons' | 'active'>('overview');
   const [activeSeasonDetails, setActiveSeasonDetails] = useState<any>(null);
   const [loadingActiveDetails, setLoadingActiveDetails] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [ownerName, setOwnerName] = useState<string>('');
+  const [checkingRegistration, setCheckingRegistration] = useState(true);
+  const [teamDocId, setTeamDocId] = useState<string>('');
+
+  // ✅ Enable WebSocket for real-time dashboard updates (wallet, notifications)
+  const { isConnected } = useDashboardWebSocket(user?.uid || '', !!user);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -32,91 +41,250 @@ export default function TeamDashboard() {
     }
   }, [user, loading, router]);
 
-  // Fetch team seasons using cached API (60s cache)
-  const { data: teamSeasons, loading: teamSeasonsLoading } = useCachedTeamSeasons(
-    user?.role === 'team' ? { teamId: user.uid } : undefined
+  // Fetch team's historical stats from Neon (all seasons played)
+  const { data: teamHistory, isLoading: teamHistoryLoading } = useTeamHistory(
+    user?.role === 'team' ? user.uid : undefined
   );
 
-  // Fetch current season (not completed) using cached API (120s cache)
-  // This includes draft, active, and ongoing seasons
-  const { data: activeSeasons, loading: activeSeasonsLoading } = useCachedSeasons(
-    user?.role === 'team' ? { isActive: 'true' } : undefined // Will match isActive=true OR status != 'completed'
+  // Fetch current active season from Firebase
+  const { data: activeSeasons, isLoading: activeSeasonsLoading } = useCachedSeasons(
+    user?.role === 'team' ? { isActive: 'true' } : undefined
   );
 
-  // Process cached data to determine season status
+  // Fetch team logo and owner name from teams collection
   useEffect(() => {
-    if (!user || user.role !== 'team' || teamSeasonsLoading || activeSeasonsLoading) {
+    const fetchTeamData = async () => {
+      if (!user?.uid) return;
+
+      try {
+        const { db } = await import('@/lib/firebase/config');
+        const { doc, getDoc, collection, query, where, getDocs } = await import('firebase/firestore');
+        
+        // First, try to find the team document by userId
+        const teamsRef = collection(db, 'teams');
+        const q = query(teamsRef, where('userId', '==', user.uid));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          // Found team document
+          const teamDoc = querySnapshot.docs[0];
+          const teamData = teamDoc.data();
+          console.log('✅ Team document found:', teamDoc.id);
+          console.log('Team data:', teamData);
+          
+          // Store team document ID for registration check
+          setTeamDocId(teamDoc.id);
+          
+          // Set owner name from team document
+          const ownerNameValue = teamData.owner_name || teamData.ownerName || teamData.owner;
+          if (ownerNameValue) {
+            setOwnerName(ownerNameValue);
+            console.log('✅ Owner name set to:', ownerNameValue);
+          }
+          
+          // Set logo URL from team document or user data
+          const logoUrl = teamData.team_logo || teamData.teamLogo || teamData.logo_url || teamData.logoUrl;
+          if (logoUrl) {
+            setTeamLogoUrl(logoUrl);
+            console.log('✅ Team logo set from team document');
+          } else if (user.teamLogoUrl) {
+            setTeamLogoUrl(user.teamLogoUrl);
+            console.log('✅ Team logo set from user data');
+          }
+        } else {
+          console.log('⚠️ No team document found for userId:', user.uid);
+          // Fallback to user data if no team document
+          if (user.teamLogoUrl) {
+            setTeamLogoUrl(user.teamLogoUrl);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching team data:', error);
+        // Fallback to user data
+        if (user.teamLogoUrl) {
+          setTeamLogoUrl(user.teamLogoUrl);
+        }
+      }
+    };
+
+    fetchTeamData();
+  }, [user]);
+
+  // Handle logo upload using ImageKit
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB');
       return;
     }
 
     try {
-      console.log('🔍 Season Status Debug:', {
-        userId: user.uid,
-        teamSeasons: teamSeasons,
-        activeSeasons: activeSeasons
+      setUploadingLogo(true);
+
+      // Upload to ImageKit
+      const { uploadImage } = await import('@/lib/imagekit/upload');
+      
+      const timestamp = Date.now();
+      const fileName = `${user.uid}_${timestamp}_${file.name}`;
+      
+      const result = await uploadImage({
+        file,
+        fileName,
+        folder: '/team-logos',
+        tags: ['team', 'logo', user.uid],
+        useUniqueFileName: true,
       });
+
+      // Update Firestore with ImageKit URL and fileId
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase/config');
       
-      // Filter team seasons for registered status
-      // Check both team_id and user_id fields for compatibility
-      const registeredTeamSeason = teamSeasons?.find(
-        (ts: any) => (ts.team_id === user.uid || ts.user_id === user.uid) && ts.status === 'registered'
-      );
-      
-      console.log('✅ Found registered team season:', registeredTeamSeason);
+      await updateDoc(doc(db, 'users', user.uid), {
+        teamLogoUrl: result.url,
+        teamLogoFileId: result.fileId, // Store for deletion later
+        updatedAt: new Date()
+      });
 
-      // Update team logo if available
-      if (registeredTeamSeason?.team_logo) {
-        setTeamLogoUrl(registeredTeamSeason.team_logo);
-      }
+      setTeamLogoUrl(result.url);
+      alert('Team logo uploaded successfully!');
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      alert('Failed to upload logo. Please try again.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
-      // Get active season (data is array from API)
-      const activeSeason = Array.isArray(activeSeasons) ? activeSeasons[0] : activeSeasons;
+  // Process data to determine season status
+  useEffect(() => {
+    if (!user || user.role !== 'team' || teamHistoryLoading || activeSeasonsLoading) {
+      return;
+    }
+    
+    // IMPORTANT: Wait for teamDocId to be set before checking registration
+    // This prevents race conditions where we check before team data is loaded
+    if (!teamDocId && (!teamHistory || teamHistory.length === 0)) {
+      console.log('⏳ Waiting for team ID to be set...');
+      return;
+    }
 
-      if (!registeredTeamSeason) {
-        // Not registered
-        if (activeSeason) {
+    const checkRegistrationStatus = async () => {
+      setCheckingRegistration(true);
+      try {
+        console.log('🔍 Season Status Debug:', {
+          userId: user.uid,
+          teamHistory: teamHistory,
+          teamHistoryCount: teamHistory?.length || 0,
+          activeSeasons: activeSeasons,
+          activeSeasonsCount: activeSeasons?.length || 0
+        });
+        
+        // Get active season (only if it exists)
+        const activeSeason = activeSeasons && Array.isArray(activeSeasons) && activeSeasons.length > 0 
+          ? activeSeasons[0] 
+          : null;
+        
+        console.log('Active season:', activeSeason ? activeSeason.name : 'NONE');
+        
+        if (!activeSeason) {
+          // No active season available
+          setSeasonStatus({
+            hasActiveSeason: false,
+            isRegistered: false,
+          });
+          console.log('📊 Status: No active season');
+          setCheckingRegistration(false);
+          return;
+        }
+
+        // First check Neon teamstats (already loaded, fast)
+        const registeredInNeon = teamHistory?.find(
+          (ts: any) => ts.season_id === activeSeason.id
+        );
+        
+        console.log('🔍 Neon check:', { registeredInNeon: !!registeredInNeon });
+        
+        let isRegistered = !!registeredInNeon;
+        
+        // If not found in Neon, check Firebase team_seasons as fallback
+        if (!isRegistered) {
+          const { db } = await import('@/lib/firebase/config');
+          const { doc, getDoc } = await import('firebase/firestore');
+          
+          // Try both possible team_season IDs in parallel (userId and team doc ID)
+          const teamSeasonId1 = `${user.uid}_${activeSeason.id}`;
+          const teamSeasonId2 = teamDocId 
+            ? `${teamDocId}_${activeSeason.id}` 
+            : (teamHistory && teamHistory.length > 0 
+                ? `${teamHistory[0].team_id}_${activeSeason.id}` 
+                : null);
+          
+          console.log('🔍 Firebase fallback check:', { teamSeasonId1, teamSeasonId2, teamDocId });
+          
+          const queries = [getDoc(doc(db, 'team_seasons', teamSeasonId1))];
+          if (teamSeasonId2 && teamSeasonId2 !== teamSeasonId1) {
+            queries.push(getDoc(doc(db, 'team_seasons', teamSeasonId2)));
+          }
+          
+          const results = await Promise.all(queries);
+          const teamSeasonDoc = results.find(doc => doc.exists());
+          
+          if (teamSeasonDoc) {
+            isRegistered = teamSeasonDoc.data()?.status === 'registered';
+            console.log('📄 Firebase result:', { exists: true, status: teamSeasonDoc.data()?.status });
+          } else {
+            console.log('📄 Firebase result: No document found');
+          }
+        }
+        
+        console.log('✅ Final registration status:', {
+          userId: user.uid,
+          seasonId: activeSeason.id,
+          registeredInNeon: !!registeredInNeon,
+          finalIsRegistered: isRegistered
+        });
+
+        if (isRegistered) {
+          // Registered in active season
+          setSeasonStatus({
+            hasActiveSeason: true,
+            isRegistered: true,
+            seasonName: activeSeason.name,
+            seasonId: activeSeason.id,
+          });
+          console.log('✅ Status: Registered in active season');
+        } else {
+          // Active season exists but not registered
           setSeasonStatus({
             hasActiveSeason: true,
             isRegistered: false,
             seasonName: activeSeason.name,
             seasonId: activeSeason.id,
           });
-        } else {
-          setSeasonStatus({
-            hasActiveSeason: false,
-            isRegistered: false,
-          });
+          console.log('📊 Status: Active season available, not registered');
         }
-      } else {
-        // User is registered
-        const seasonId = registeredTeamSeason.season_id;
-
-        // Check if active season matches
-        if (activeSeason && activeSeason.id === seasonId) {
-          setSeasonStatus({
-            hasActiveSeason: true,
-            isRegistered: true,
-            seasonName: activeSeason.name,
-            seasonId: seasonId,
-          });
-        } else {
-          // Need to fetch specific season (fallback)
-          setSeasonStatus({
-            hasActiveSeason: true,
-            isRegistered: true,
-            seasonName: registeredTeamSeason.season_name || 'Active Season',
-            seasonId: seasonId,
-          });
-        }
+      } catch (err) {
+        console.error('Error processing season status:', err);
+        setSeasonStatus({
+          hasActiveSeason: false,
+          isRegistered: false,
+        });
+      } finally {
+        setCheckingRegistration(false);
       }
-    } catch (err) {
-      console.error('Error processing season status:', err);
-      setSeasonStatus({
-        hasActiveSeason: false,
-        isRegistered: false,
-      });
-    }
-  }, [user, teamSeasons, activeSeasons, teamSeasonsLoading, activeSeasonsLoading]);
+    };
+
+    checkRegistrationStatus();
+  }, [user, teamHistory, activeSeasons, teamHistoryLoading, activeSeasonsLoading, teamDocId]);
 
   // Fetch historical stats
   useEffect(() => {
@@ -175,7 +343,7 @@ export default function TeamDashboard() {
     });
   };
 
-  const isCheckingStatus = teamSeasonsLoading || activeSeasonsLoading;
+  const isCheckingStatus = teamHistoryLoading || activeSeasonsLoading || checkingRegistration;
 
   if (loading || isCheckingStatus) {
     return (
@@ -201,22 +369,66 @@ export default function TeamDashboard() {
           <div className="glass rounded-3xl p-8 mb-8 shadow-xl backdrop-blur-md border border-white/20">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                {teamLogoUrl ? (
-                  <img 
-                    src={teamLogoUrl} 
-                    alt="Team logo" 
-                    className="w-20 h-20 rounded-3xl object-cover mr-6 border-2 border-[#0066FF]/20"
+                {/* Editable Logo */}
+                <div className="relative group mr-6">
+                  <input
+                    type="file"
+                    id="logo-upload"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    disabled={uploadingLogo}
+                    className="hidden"
                   />
-                ) : (
-                  <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 flex items-center justify-center mr-6">
-                    <span className="text-2xl font-bold text-[#0066FF]">{user.teamName?.[0]?.toUpperCase() || 'T'}</span>
+                  <label
+                    htmlFor="logo-upload"
+                    className="cursor-pointer block relative"
+                    title="Click to change logo"
+                  >
+                    {teamLogoUrl && teamLogoUrl !== 'skip' ? (
+                      <div className="relative">
+                        <img 
+                          src={teamLogoUrl}
+                          alt="Team logo" 
+                          className="w-20 h-20 rounded-3xl object-cover border-2 border-[#0066FF]/20 group-hover:opacity-75 transition-opacity"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 rounded-3xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          {uploadingLogo ? (
+                            <svg className="animate-spin w-6 h-6 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 flex items-center justify-center group-hover:from-[#0066FF]/30 group-hover:to-[#0066FF]/20 transition-all">
+                        <span className="text-2xl font-bold text-[#0066FF]">{user.teamName?.[0]?.toUpperCase() || 'T'}</span>
+                      </div>
+                    )}
+                  </label>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#0066FF] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
                   </div>
-                )}
+                </div>
+
                 <div>
                   <h1 className="text-4xl font-bold bg-gradient-to-r from-[#0066FF] via-blue-500 to-[#0066FF] bg-clip-text text-transparent">
                     {user.teamName || 'My Team'}
                   </h1>
-                  <p className="text-xl text-gray-600 mt-2">Independent Team Dashboard</p>
+                  <p className="text-lg text-gray-600 mt-1 flex items-center">
+                    <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Owner: <span className="font-semibold ml-1">{ownerName || user.username || user.email?.split('@')[0] || 'Team Owner'}</span>
+                  </p>
                   <div className="flex items-center mt-3">
                     <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
                       <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -229,6 +441,20 @@ export default function TeamDashboard() {
               </div>
             </div>
           </div>
+
+          {/* Logo Upload Tip - Show if no logo */}
+          {(!teamLogoUrl || teamLogoUrl === '') && (
+            <div className="glass rounded-2xl p-4 mb-6 shadow-md backdrop-blur-md border border-blue-200/50 bg-gradient-to-r from-blue-50/20 to-indigo-50/20">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-blue-600 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm text-gray-700">
+                  <span className="font-semibold">Tip:</span> Click on your team icon to upload a logo (Max 5MB • JPG, PNG, GIF)
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* No Active Season */}
           {!seasonStatus?.hasActiveSeason && (
@@ -575,7 +801,7 @@ export default function TeamDashboard() {
                       >
                         <div className="flex items-center space-x-4">
                           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 flex items-center justify-center">
-                            <span className="text-2xl font-bold text-blue-600">#{teamSeason.rank || '-'}</span>
+                            <span className="text-2xl font-bold text-blue-600">#{teamSeason.position || '-'}</span>
                           </div>
                           <div className="text-left">
                             <h3 className="text-lg font-bold text-gray-900">
@@ -603,10 +829,10 @@ export default function TeamDashboard() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-4">
-                          {teamSeason.rank === 1 && (
+                          {teamSeason.position === 1 && (
                             <span className="text-2xl">🏆</span>
                           )}
-                          {teamSeason.rank === 2 && (
+                          {teamSeason.position === 2 && (
                             <span className="text-2xl">🥈</span>
                           )}
                           {teamSeason.cup_achievement && (
@@ -634,7 +860,7 @@ export default function TeamDashboard() {
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4">
                             <div className="bg-white/60 rounded-xl p-4">
                               <p className="text-xs text-gray-600 mb-1">Position</p>
-                              <p className="text-2xl font-bold text-gray-900">#{teamSeason.rank || '-'}</p>
+                              <p className="text-2xl font-bold text-gray-900">#{teamSeason.position || '-'}</p>
                             </div>
                             <div className="bg-white/60 rounded-xl p-4">
                               <p className="text-xs text-gray-600 mb-1">Goal Difference</p>
@@ -690,7 +916,7 @@ export default function TeamDashboard() {
                                           {player.matches_played || 0} MP
                                         </p>
                                         <p className="text-sm font-semibold text-gray-900">
-                                          {player.goals_scored || 0}G {player.assists || 0}A
+                                          {player.goals_scored || 0} Goals
                                         </p>
                                       </div>
                                     </div>

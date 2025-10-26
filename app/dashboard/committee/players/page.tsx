@@ -6,6 +6,9 @@ import { db } from '@/lib/firebase/config'
 import { collection, getDocs } from 'firebase/firestore'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
+import { useModal } from '@/hooks/useModal'
+import AlertModal from '@/components/modals/AlertModal'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 
 interface FootballPlayer {
   id: string
@@ -39,6 +42,18 @@ export default function CommitteePlayersPage() {
   const [totalPlayers, setTotalPlayers] = useState(0)
   const [teamsCache, setTeamsCache] = useState<Map<string, { id: string; name: string }>>(new Map())
   const [initialLoad, setInitialLoad] = useState(true)
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal()
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -111,7 +126,11 @@ export default function CommitteePlayersPage() {
         setFilteredPlayers(playersWithTeams)
       } catch (err) {
         console.error('Error fetching players:', err)
-        alert('Failed to load players. Please try again.')
+        showAlert({
+          type: 'error',
+          title: 'Load Failed',
+          message: 'Failed to load players. Please try again.'
+        })
       } finally {
         setLoading(false)
         setInitialLoad(false)
@@ -147,8 +166,16 @@ export default function CommitteePlayersPage() {
   }, [positionFilter, eligibilityFilter])
 
   const handleDelete = async (playerId: string) => {
-    if (!confirm('Are you sure you want to delete this player?')) return
+    const confirmed = await showConfirm({
+      type: 'danger',
+      title: 'Delete Player',
+      message: 'Are you sure you want to delete this player? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    })
     
+    if (!confirmed) return
+
     try {
       const response = await fetch(`/api/players/${playerId}`, {
         method: 'DELETE'
@@ -163,7 +190,11 @@ export default function CommitteePlayersPage() {
       alert('Player deleted successfully')
     } catch (err) {
       console.error('Error deleting player:', err)
-      alert('Failed to delete player')
+      showAlert({
+        type: 'error',
+        title: 'Delete Failed',
+        message: 'Failed to delete player'
+      })
     }
   }
 
@@ -562,6 +593,26 @@ export default function CommitteePlayersPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   )
 }

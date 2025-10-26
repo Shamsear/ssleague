@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(
   request: NextRequest,
@@ -79,14 +80,16 @@ export async function GET(
       console.log(`   First 5: ${allPlayers.slice(0, 5).map(p => p.name).join(', ')}`);
     }
 
-    // Get players who have stats in this season (players who actually played)
-    const playerStatsSnapshot = await adminDb
-      .collection('realplayerstats')
-      .where('season_id', '==', seasonId)
-      .get();
+    // Get players who have stats in this season from NEON
+    const sql = getTournamentDb();
+    const playerStatsData = await sql`
+      SELECT DISTINCT player_id 
+      FROM realplayerstats 
+      WHERE season_id = ${seasonId}
+    `;
 
     const playersWithStats = new Set(
-      playerStatsSnapshot.docs.map(doc => doc.data().player_id)
+      playerStatsData.map((stat: any) => stat.player_id)
     );
 
     // Mark players who have played in this season

@@ -165,13 +165,12 @@ export async function GET(request: NextRequest) {
           p.team_name as player_team,
           (
             SELECT json_agg(json_build_object(
-              'team_id', b2.team_id,
-              'original_bid', t.original_amount,
+              'team_id', tt2.team_id,
+              'old_bid', tt2.old_bid_amount,
               'new_bid', tt2.new_bid_amount,
               'submitted', tt2.submitted
             ))
             FROM team_tiebreakers tt2
-            INNER JOIN bids b2 ON tt2.original_bid_id = b2.id
             WHERE tt2.tiebreaker_id = t.id
           ) as teams_data
         FROM tiebreakers t
@@ -330,6 +329,7 @@ export async function GET(request: NextRequest) {
         p.team_name as player_team,
         r.position as round_position,
         r.season_id,
+        tt.old_bid_amount as team_old_bid,
         tt.new_bid_amount as team_new_bid,
         tt.submitted as team_submitted,
         tt.submitted_at as team_submitted_at
@@ -337,8 +337,7 @@ export async function GET(request: NextRequest) {
       INNER JOIN footballplayers p ON t.player_id = p.id
       INNER JOIN rounds r ON t.round_id = r.id
       INNER JOIN team_tiebreakers tt ON t.id = tt.tiebreaker_id
-      INNER JOIN bids b ON tt.original_bid_id = b.id
-      WHERE b.team_id = ${userId}
+      WHERE tt.team_id = ${userId}
       AND t.status = 'active'
       ORDER BY t.created_at DESC
     `;
@@ -356,7 +355,8 @@ export async function GET(request: NextRequest) {
       },
       original_amount: tiebreaker.original_amount,
       status: tiebreaker.status,
-      new_amount: tiebreaker.team_new_bid,
+      old_bid: tiebreaker.team_old_bid,
+      new_bid: tiebreaker.team_new_bid,
       submitted: tiebreaker.team_submitted,
     }));
 

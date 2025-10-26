@@ -6,6 +6,7 @@ import Footer from "@/components/layout/Footer";
 import MobileNav from "@/components/layout/MobileNav";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { QueryProvider } from "@/contexts/QueryProvider";
+import { TournamentProvider } from "@/contexts/TournamentContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,6 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'),
   title: "SS League - Football Auction Platform",
   description: "Experience the thrill of building your dream football team through strategic bidding and competitive auctions",
   icons: {
@@ -49,12 +51,14 @@ export default function RootLayout({
       >
         <QueryProvider>
           <AuthProvider>
-            <Navbar />
-            <main className="flex-grow">
-              {children}
-            </main>
-            <Footer />
-            <MobileNav />
+            <TournamentProvider>
+              <Navbar />
+              <main className="flex-grow">
+                {children}
+              </main>
+              <Footer />
+              <MobileNav />
+            </TournamentProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

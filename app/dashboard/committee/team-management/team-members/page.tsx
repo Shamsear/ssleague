@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { usePermissions } from '@/hooks/usePermissions';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
 
 interface RealPlayer {
   id: string;
@@ -69,6 +71,13 @@ export default function TeamMembersPage() {
   // UI states
   const [showBulkForm, setShowBulkForm] = useState(false);
   const [showUploadForm, setShowUploadForm] = useState(false);
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+  } = useModal();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -206,19 +215,33 @@ export default function TeamMembersPage() {
       });
 
       if (response.ok) {
-        alert('Player assigned successfully!');
+        closeAlert();
+        showAlert({
+          type: 'success',
+          title: 'Player Assigned',
+          message: 'Player assigned successfully!'
+        });
         setSelectedPlayer('');
         setSelectedTeam('');
         setSelectedCategory('');
-        // Refresh data
         window.location.reload();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        closeAlert();
+        showAlert({
+          type: 'error',
+          title: 'Assignment Failed',
+          message: `Error: ${error.error}`
+        });
       }
     } catch (error) {
       console.error('Error assigning player:', error);
-      alert('Failed to assign player');
+      closeAlert();
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to assign player'
+      });
     }
   };
   
@@ -226,12 +249,20 @@ export default function TeamMembersPage() {
     e.preventDefault();
     
     if (selectedPlayerIds.length === 0) {
-      alert('Please select at least one player');
+      showAlert({
+        type: 'warning',
+        title: 'No Selection',
+        message: 'Please select at least one player'
+      });
       return;
     }
     
     if (!bulkTeam && !bulkCategory) {
-      alert('Please select at least a team or category');
+      showAlert({
+        type: 'warning',
+        title: 'Missing Selection',
+        message: 'Please select at least a team or category'
+      });
       return;
     }
     
@@ -253,14 +284,22 @@ export default function TeamMembersPage() {
       const results = await Promise.all(updates);
       const successCount = results.filter(Boolean).length;
       
-      alert(`Successfully assigned ${successCount} out of ${selectedPlayerIds.length} players`);
+      showAlert({
+        type: 'success',
+        title: 'Bulk Assignment Complete',
+        message: `Successfully assigned ${successCount} out of ${selectedPlayerIds.length} players`
+      });
       setSelectedPlayerIds([]);
       setBulkTeam('');
       setBulkCategory('');
       window.location.reload();
     } catch (error) {
       console.error('Error bulk assigning players:', error);
-      alert('Failed to assign players');
+      showAlert({
+        type: 'error',
+        title: 'Bulk Assignment Failed',
+        message: 'Failed to assign players'
+      });
     } finally {
       setIsBulkAssigning(false);
     }
@@ -274,7 +313,11 @@ export default function TeamMembersPage() {
     const isXLSX = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     
     if (!isCSV && !isXLSX) {
-      alert('Please upload a CSV or Excel file (.csv, .xlsx, .xls)');
+      showAlert({
+        type: 'error',
+        title: 'Invalid File',
+        message: 'Please upload a CSV or Excel file (.csv, .xlsx, .xls)'
+      });
       return;
     }
     
@@ -289,7 +332,11 @@ export default function TeamMembersPage() {
         const lines = text.split('\n').filter(line => line.trim());
         
         if (lines.length < 2) {
-          alert('CSV file is empty or invalid');
+          showAlert({
+            type: 'error',
+            title: 'Empty File',
+            message: 'CSV file is empty or invalid'
+          });
           setIsUploading(false);
           return;
         }
@@ -309,7 +356,11 @@ export default function TeamMembersPage() {
         
         const worksheet = workbook.worksheets[0];
         if (!worksheet) {
-          alert('Excel file is empty');
+          showAlert({
+            type: 'error',
+            title: 'Empty File',
+            message: 'Excel file is empty'
+          });
           setIsUploading(false);
           return;
         }
@@ -329,7 +380,11 @@ export default function TeamMembersPage() {
       }
       
       if (parsedData.length === 0) {
-        alert('No valid data found in file');
+        showAlert({
+          type: 'error',
+          title: 'No Data',
+          message: 'No valid data found in file'
+        });
         setIsUploading(false);
         return;
       }
@@ -365,7 +420,11 @@ export default function TeamMembersPage() {
       }
     } catch (error) {
       console.error('Error processing file:', error);
-      alert('Failed to process file');
+      showAlert({
+        type: 'error',
+        title: 'Processing Failed',
+        message: 'Failed to process file'
+      });
       setIsUploading(false);
     }
   };
@@ -403,14 +462,22 @@ export default function TeamMembersPage() {
         }
       }
       
-      alert(`Upload complete!\nSuccess: ${successCount}\nErrors: ${errorCount}`);
+      showAlert({
+        type: 'success',
+        title: 'Upload Complete',
+        message: `Upload complete!\nSuccess: ${successCount}\nErrors: ${errorCount}`
+      });
       setShowPreview(false);
       setPreviewData([]);
       setValidationResults([]);
       window.location.reload();
     } catch (error) {
       console.error('Error uploading data:', error);
-      alert('Failed to upload data');
+      showAlert({
+        type: 'error',
+        title: 'Upload Failed',
+        message: 'Failed to upload data'
+      });
     } finally {
       setIsUploading(false);
     }
@@ -1194,6 +1261,15 @@ export default function TeamMembersPage() {
           </div>
         </div>
       )}
+
+      {/* Modal Component */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
     </div>
   );
 }

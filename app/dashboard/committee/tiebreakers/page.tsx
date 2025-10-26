@@ -4,6 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
 
 interface Tiebreaker {
   id: string;
@@ -39,6 +42,17 @@ export default function CommitteeTiebreakerPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [statusFilter, setStatusFilter] = useState('active');
   const [resolving, setResolving] = useState<string | null>(null);
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -77,12 +91,19 @@ export default function CommitteeTiebreakerPage() {
   }, [user, statusFilter]);
 
   const handleResolve = async (tiebreakerId: string, resolutionType: 'auto' | 'exclude') => {
-    const confirmMessage =
-      resolutionType === 'auto'
+    const confirmMessage = resolutionType === 'auto'
         ? 'Are you sure you want to resolve this tiebreaker? The highest bid will be selected as the winner.'
         : 'Are you sure you want to exclude this tiebreaker? No team will receive the player.';
 
-    if (!confirm(confirmMessage)) return;
+    const confirmed = await showConfirm({
+      type: resolutionType === 'auto' ? 'info' : 'warning',
+      title: resolutionType === 'auto' ? 'Resolve Tiebreaker' : 'Exclude Tiebreaker',
+      message: confirmMessage,
+      confirmText: resolutionType === 'auto' ? 'Resolve' : 'Exclude',
+      cancelText: 'Cancel'
+    });
+
+    if (!confirmed) return;
 
     setResolving(tiebreakerId);
     
@@ -96,14 +117,26 @@ export default function CommitteeTiebreakerPage() {
       const result = await response.json();
       
       if (result.success) {
-        alert(`Tiebreaker ${resolutionType === 'auto' ? 'resolved' : 'excluded'} successfully!`);
+        showAlert({
+          type: 'success',
+          title: 'Success',
+          message: `Tiebreaker ${resolutionType === 'auto' ? 'resolved' : 'excluded'} successfully!`
+        });
         fetchTiebreakers();
       } else {
-        alert(`Error: ${result.error}`);
+        showAlert({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to resolve tiebreaker'
+        });
       }
     } catch (error) {
       console.error('Error resolving tiebreaker:', error);
-      alert('An error occurred. Please try again.');
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'An error occurred. Please try again.'
+      });
     } finally {
       setResolving(null);
     }
@@ -339,6 +372,26 @@ export default function CommitteeTiebreakerPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

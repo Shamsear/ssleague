@@ -5,7 +5,17 @@ export async function POST(request: NextRequest) {
   try {
     console.log('[set-token API] Request received');
     
-    const { token } = await request.json();
+    // Check if request has a body
+    const text = await request.text();
+    if (!text) {
+      console.log('[set-token API] Empty request body');
+      return NextResponse.json(
+        { success: false, message: 'Request body is required' },
+        { status: 400 }
+      );
+    }
+    
+    const { token } = JSON.parse(text);
     console.log('[set-token API] Token extracted, length:', token?.length);
 
     if (!token) {

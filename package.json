@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"npm:dev:next\" \"npm:dev:ws\" --names \"NEXT,WS\" --prefix-colors \"cyan,magenta\"",
+    "dev:next": "next dev",
+    "dev:ws": "node server/websocket.js",
     "dev:fresh": "powershell -Command \"Get-Process | Where-Object {$_.ProcessName -like '*node*'} | Stop-Process -Force 2>$null; npm run dev\"",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "concurrently \"npm:start:next\" \"npm:start:ws\" --names \"NEXT,WS\" --prefix-colors \"cyan,magenta\"",
+    "start:next": "next start",
+    "start:ws": "node server/websocket.js",
+    "lint": "next lint",
+    "cleanup": "node scripts/clear-all-keep-superadmin.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
@@ -16,12 +21,16 @@
     "@tanstack/react-query-devtools": "^5.90.2",
     "@types/papaparse": "^5.3.16",
     "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
     "@vercel/blob": "^2.0.0",
     "bcryptjs": "^3.0.2",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
     "firebase": "^12.3.0",
     "firebase-admin": "^13.5.0",
+    "imagekit": "^6.0.0",
+    "imagekit-javascript": "^4.0.1",
     "jose": "^6.1.0",
     "lucide-react": "^0.545.0",
     "nanoid": "^5.1.6",
@@ -32,6 +41,7 @@
     "react-dom": "19.1.0",
     "sql.js": "^1.13.0",
     "uuid": "^13.0.0",
+    "ws": "^8.18.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

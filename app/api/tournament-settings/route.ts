@@ -1,24 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
-const sql = neon(process.env.NEON_DATABASE_URL!);
-
-// GET - Fetch tournament settings by season_id
+// GET - Fetch tournament settings by tournament_id
 export async function GET(request: NextRequest) {
   try {
+    const sql = getTournamentDb();
     const searchParams = request.nextUrl.searchParams;
+    let tournamentId = searchParams.get('tournament_id');
     const seasonId = searchParams.get('season_id');
 
-    if (!seasonId) {
+    // Backward compatibility: If only seasonId provided, get primary tournament
+    if (seasonId && !tournamentId) {
+      const primaryTournament = await sql`
+        SELECT id FROM tournaments 
+        WHERE season_id = ${seasonId} AND is_primary = true
+        LIMIT 1
+      `;
+      if (primaryTournament.length > 0) {
+        tournamentId = primaryTournament[0].id;
+      } else {
+        tournamentId = `${seasonId}-LEAGUE`;
+      }
+    }
+
+    if (!tournamentId) {
       return NextResponse.json(
-        { error: 'season_id is required' },
+        { error: 'tournament_id or season_id is required' },
         { status: 400 }
       );
     }
 
     const settings = await sql`
       SELECT * FROM tournament_settings
-      WHERE season_id = ${seasonId}
+      WHERE tournament_id = ${tournamentId}
       LIMIT 1
     `;
 
@@ -39,9 +53,10 @@ export async function GET(request: NextRequest) {
 // POST - Create or update tournament settings
 export async function POST(request: NextRequest) {
   try {
+    const sql = getTournamentDb();
     const body = await request.json();
     const { 
-      season_id,
+      tournament_id,
       tournament_name,
       squad_size,
       tournament_system,
@@ -57,9 +72,9 @@ export async function POST(request: NextRequest) {
       num_teams
     } = body;
 
-    if (!season_id) {
+    if (!tournament_id) {
       return NextResponse.json(
-        { error: 'season_id is required' },
+        { error: 'tournament_id is required' },
         { status: 400 }
       );
     }
@@ -67,7 +82,7 @@ export async function POST(request: NextRequest) {
     // Upsert (insert or update if exists)
     await sql`
       INSERT INTO tournament_settings (
-        season_id,
+        tournament_id,
         tournament_name,
         squad_size,
         tournament_system,
@@ -84,7 +99,7 @@ export async function POST(request: NextRequest) {
         created_at,
         updated_at
       ) VALUES (
-        ${season_id},
+        ${tournament_id},
         ${tournament_name || null},
         ${squad_size ?? null},
         ${tournament_system || 'match_round'},
@@ -101,7 +116,7 @@ export async function POST(request: NextRequest) {
         NOW(),
         NOW()
       )
-      ON CONFLICT (season_id) DO UPDATE SET
+      ON CONFLICT (tournament_id) DO UPDATE SET
         tournament_name = EXCLUDED.tournament_name,
         squad_size = EXCLUDED.squad_size,
         tournament_system = EXCLUDED.tournament_system,
@@ -134,19 +149,20 @@ export async function POST(request: NextRequest) {
 // DELETE - Delete tournament settings
 export async function DELETE(request: NextRequest) {
   try {
+    const sql = getTournamentDb();
     const searchParams = request.nextUrl.searchParams;
-    const seasonId = searchParams.get('season_id');
+    const tournamentId = searchParams.get('tournament_id');
 
-    if (!seasonId) {
+    if (!tournamentId) {
       return NextResponse.json(
-        { error: 'season_id is required' },
+        { error: 'tournament_id is required' },
         { status: 400 }
       );
     }
 
     await sql`
       DELETE FROM tournament_settings
-      WHERE season_id = ${seasonId}
+      WHERE tournament_id = ${tournamentId}
     `;
 
     return NextResponse.json({ 

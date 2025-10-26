@@ -16,6 +16,9 @@ import {
   restartRound
 } from '@/lib/firebase/fixtures';
 import { getISTNow, parseISTDate, createISTDateTime, getISTToday } from '@/lib/utils/timezone';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
+import ConfirmModal from '@/components/modals/ConfirmModal';
 
 export default function MatchDayManagementPage() {
   const { user, loading } = useAuth();
@@ -27,6 +30,17 @@ export default function MatchDayManagementPage() {
   const [seasonName, setSeasonName] = useState('');
   const [rounds, setRounds] = useState<TournamentRound[]>([]);
   const [actioningId, setActioningId] = useState<string | null>(null);
+
+  // Modal system
+  const {
+    alertState,
+    showAlert,
+    closeAlert,
+    confirmState,
+    showConfirm,
+    closeConfirm,
+    handleConfirm,
+  } = useModal();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -63,11 +77,92 @@ export default function MatchDayManagementPage() {
         setActiveSeasonId(seasonId);
         setSeasonName(season.name);
 
-        // Load fixture rounds with deadline and status information
-        const fixtureRounds = await getFixturesByRoundsWithDeadlines(seasonId);
-        setRounds(fixtureRounds);
+        // Load all tournaments for this season
+        const tournamentsRes = await fetch(`/api/tournaments?season_id=${seasonId}`);
+        const tournamentsData = await tournamentsRes.json();
         
-        console.log('Loaded rounds with deadlines and status:', fixtureRounds.length);
+        if (!tournamentsData.success || !tournamentsData.tournaments || tournamentsData.tournaments.length === 0) {
+          console.log('No tournaments found for season:', seasonId);
+          setRounds([]);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Load round_deadlines from all tournaments
+        const allRounds: TournamentRound[] = [];
+        for (const tournament of tournamentsData.tournaments) {
+          // Fetch fixtures for this tournament
+          const fixturesRes = await fetch(`/api/tournaments/${tournament.id}/fixtures`);
+          const fixturesData = await fixturesRes.json();
+          
+          if (fixturesData.success && fixturesData.fixtures && fixturesData.fixtures.length > 0) {
+            // Group fixtures by round_number and leg
+            const roundsMap = new Map();
+            
+            for (const fixture of fixturesData.fixtures) {
+              const key = `${fixture.round_number}_${fixture.leg || 'first'}`;
+              if (!roundsMap.has(key)) {
+                roundsMap.set(key, {
+                  round_number: fixture.round_number,
+                  leg: fixture.leg || 'first',
+                  tournament_id: tournament.id,
+                  tournament_name: tournament.tournament_name,
+                  total_matches: 0,
+                  completed_matches: 0,
+                  matches: [],
+                  status: 'pending',
+                  is_active: false,
+                  scheduled_date: null,
+                  home_fixture_deadline_time: '17:00',
+                  away_fixture_deadline_time: '17:00',
+                  result_entry_deadline_day_offset: 2,
+                  result_entry_deadline_time: '00:30',
+                });
+              }
+              
+              const round = roundsMap.get(key);
+              round.total_matches++;
+              if (fixture.status === 'completed') round.completed_matches++;
+              round.matches.push(fixture);
+            }
+            
+            // Fetch round_deadlines for this tournament to get scheduled dates and settings
+            try {
+              const deadlinesRes = await fetch(`/api/round-deadlines?tournament_id=${tournament.id}`);
+              if (deadlinesRes.ok) {
+                const deadlinesData = await deadlinesRes.json();
+                if (deadlinesData.roundDeadlines) {
+                  for (const deadline of deadlinesData.roundDeadlines) {
+                    const key = `${deadline.round_number}_${deadline.leg || 'first'}`;
+                    const round = roundsMap.get(key);
+                    if (round) {
+                      // Merge deadline data into round
+                      round.scheduled_date = deadline.scheduled_date;
+                      round.home_fixture_deadline_time = deadline.home_fixture_deadline_time;
+                      round.away_fixture_deadline_time = deadline.away_fixture_deadline_time;
+                      round.result_entry_deadline_day_offset = deadline.result_entry_deadline_day_offset;
+                      round.result_entry_deadline_time = deadline.result_entry_deadline_time;
+                      round.status = deadline.status || 'pending';
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching round deadlines for tournament:', tournament.id, error);
+            }
+            
+            allRounds.push(...Array.from(roundsMap.values()));
+          }
+        }
+        
+        // Sort rounds by round number and leg
+        allRounds.sort((a, b) => {
+          if (a.round_number !== b.round_number) return a.round_number - b.round_number;
+          return a.leg === 'first' ? -1 : 1;
+        });
+        
+        setRounds(allRounds);
+        console.log('Loaded rounds from tournaments:', allRounds.length);
       }
     } catch (error) {
       console.error('Error loading rounds:', error);
@@ -90,19 +185,53 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       
       if (!round?.scheduled_date) {
-        alert('Please set a scheduled date before starting the round. Use "Edit Deadlines" to set the date.');
+        showAlert({
+          type: 'warning',
+          title: 'No Date Set',
+          message: 'Please set a scheduled date before starting the round. Use "Edit Deadlines" to set the date.'
+        });
         return;
       }
       
-      // Start the round
-      const result = await startRound(activeSeasonId, roundNumber, leg);
-      if (result.success) {
+      // Start the round via API
+      const response = await fetch('/api/round-deadlines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournament_id: round.tournament_id,
+          season_id: activeSeasonId,
+          round_number: roundNumber,
+          leg,
+          scheduled_date: round.scheduled_date,
+          home_fixture_deadline_time: round.home_fixture_deadline_time,
+          away_fixture_deadline_time: round.away_fixture_deadline_time,
+          result_entry_deadline_day_offset: round.result_entry_deadline_day_offset,
+          result_entry_deadline_time: round.result_entry_deadline_time,
+          status: 'active',
+        }),
+      });
+      
+      if (response.ok) {
         await loadRounds();
+        showAlert({
+          type: 'success',
+          title: 'Round Started',
+          message: `Round ${roundNumber} has been started!`
+        });
       } else {
-        alert(result.error || 'Failed to start round');
+        const error = await response.json();
+        showAlert({
+          type: 'error',
+          title: 'Start Failed',
+          message: error.error || 'Failed to start round'
+        });
       }
     } catch (error: any) {
-      alert('Failed to start round: ' + error.message);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to start round: ' + error.message
+      });
     } finally {
       setActioningId(null);
     }
@@ -110,19 +239,56 @@ export default function MatchDayManagementPage() {
 
   const handlePauseRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    if (!confirm(`Pause Round ${roundNumber} (${leg})?`)) return;
+    
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Pause Round',
+      message: `Pause Round ${roundNumber} (${leg})?`,
+      confirmText: 'Pause',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) return;
     
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const result = await pauseRound(activeSeasonId, roundNumber, leg);
-      if (result.success) {
+      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      if (!round) return;
+      
+      const response = await fetch('/api/round-deadlines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournament_id: round.tournament_id,
+          season_id: activeSeasonId,
+          round_number: roundNumber,
+          leg,
+          scheduled_date: round.scheduled_date,
+          home_fixture_deadline_time: round.home_fixture_deadline_time,
+          away_fixture_deadline_time: round.away_fixture_deadline_time,
+          result_entry_deadline_day_offset: round.result_entry_deadline_day_offset,
+          result_entry_deadline_time: round.result_entry_deadline_time,
+          status: 'paused',
+        }),
+      });
+      
+      if (response.ok) {
         await loadRounds();
       } else {
-        alert(result.error || 'Failed to pause round');
+        const error = await response.json();
+        showAlert({
+          type: 'error',
+          title: 'Pause Failed',
+          message: error.error || 'Failed to pause round'
+        });
       }
     } catch (error: any) {
-      alert('Failed to pause round: ' + error.message);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to pause round: ' + error.message
+      });
     } finally {
       setActioningId(null);
     }
@@ -134,14 +300,42 @@ export default function MatchDayManagementPage() {
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const result = await resumeRound(activeSeasonId, roundNumber, leg);
-      if (result.success) {
+      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      if (!round) return;
+      
+      const response = await fetch('/api/round-deadlines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournament_id: round.tournament_id,
+          season_id: activeSeasonId,
+          round_number: roundNumber,
+          leg,
+          scheduled_date: round.scheduled_date,
+          home_fixture_deadline_time: round.home_fixture_deadline_time,
+          away_fixture_deadline_time: round.away_fixture_deadline_time,
+          result_entry_deadline_day_offset: round.result_entry_deadline_day_offset,
+          result_entry_deadline_time: round.result_entry_deadline_time,
+          status: 'active',
+        }),
+      });
+      
+      if (response.ok) {
         await loadRounds();
       } else {
-        alert(result.error || 'Failed to resume round');
+        const error = await response.json();
+        showAlert({
+          type: 'error',
+          title: 'Resume Failed',
+          message: error.error || 'Failed to resume round'
+        });
       }
     } catch (error: any) {
-      alert('Failed to resume round: ' + error.message);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to resume round: ' + error.message
+      });
     } finally {
       setActioningId(null);
     }
@@ -149,19 +343,56 @@ export default function MatchDayManagementPage() {
 
   const handleCompleteRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    if (!confirm(`Complete Round ${roundNumber} (${leg})? This action cannot be undone.`)) return;
+    
+    const confirmed = await showConfirm({
+      type: 'danger',
+      title: 'Complete Round',
+      message: `Complete Round ${roundNumber} (${leg})? This action cannot be undone.`,
+      confirmText: 'Complete',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) return;
     
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const result = await completeRound(activeSeasonId, roundNumber, leg);
-      if (result.success) {
+      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      if (!round) return;
+      
+      const response = await fetch('/api/round-deadlines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournament_id: round.tournament_id,
+          season_id: activeSeasonId,
+          round_number: roundNumber,
+          leg,
+          scheduled_date: round.scheduled_date,
+          home_fixture_deadline_time: round.home_fixture_deadline_time,
+          away_fixture_deadline_time: round.away_fixture_deadline_time,
+          result_entry_deadline_day_offset: round.result_entry_deadline_day_offset,
+          result_entry_deadline_time: round.result_entry_deadline_time,
+          status: 'completed',
+        }),
+      });
+      
+      if (response.ok) {
         await loadRounds();
       } else {
-        alert(result.error || 'Failed to complete round');
+        const error = await response.json();
+        showAlert({
+          type: 'error',
+          title: 'Complete Failed',
+          message: error.error || 'Failed to complete round'
+        });
       }
     } catch (error: any) {
-      alert('Failed to complete round: ' + error.message);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to complete round: ' + error.message
+      });
     } finally {
       setActioningId(null);
     }
@@ -169,19 +400,56 @@ export default function MatchDayManagementPage() {
 
   const handleRestartRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    if (!confirm(`Restart Round ${roundNumber} (${leg})?`)) return;
+    
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Restart Round',
+      message: `Restart Round ${roundNumber} (${leg})?`,
+      confirmText: 'Restart',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) return;
     
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const result = await restartRound(activeSeasonId, roundNumber, leg);
-      if (result.success) {
+      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      if (!round) return;
+      
+      const response = await fetch('/api/round-deadlines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournament_id: round.tournament_id,
+          season_id: activeSeasonId,
+          round_number: roundNumber,
+          leg,
+          scheduled_date: round.scheduled_date,
+          home_fixture_deadline_time: round.home_fixture_deadline_time,
+          away_fixture_deadline_time: round.away_fixture_deadline_time,
+          result_entry_deadline_day_offset: round.result_entry_deadline_day_offset,
+          result_entry_deadline_time: round.result_entry_deadline_time,
+          status: 'active',
+        }),
+      });
+      
+      if (response.ok) {
         await loadRounds();
       } else {
-        alert(result.error || 'Failed to restart round');
+        const error = await response.json();
+        showAlert({
+          type: 'error',
+          title: 'Restart Failed',
+          message: error.error || 'Failed to restart round'
+        });
       }
     } catch (error: any) {
-      alert('Failed to restart round: ' + error.message);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to restart round: ' + error.message
+      });
     } finally {
       setActioningId(null);
     }
@@ -203,13 +471,13 @@ export default function MatchDayManagementPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
-        <div className="mb-4 sm:mb-0">
-          <h1 className="text-3xl md:text-4xl font-bold gradient-text">Match Round Dashboard</h1>
-          <p className="text-gray-500 mt-1">{seasonName} - Tournament</p>
-          <div className="flex items-center mt-2 text-sm text-blue-600">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8">
+        <div className="mb-3 sm:mb-0">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold gradient-text">Match Round Dashboard</h1>
+          <p className="text-sm sm:text-base text-gray-500 mt-1">{seasonName} - Tournament</p>
+          <div className="flex items-center mt-1 sm:mt-2 text-xs sm:text-sm text-blue-600">
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -219,67 +487,68 @@ export default function MatchDayManagementPage() {
         
         <Link
           href="/dashboard/committee/team-management/tournament"
-          className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors duration-200 shadow-sm hover:shadow-md"
+          className="inline-flex items-center px-3 py-2 sm:px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm sm:text-base font-medium rounded-xl transition-colors duration-200 shadow-sm hover:shadow-md"
         >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
-          Back to Tournament
+          <span className="hidden sm:inline">Back to Tournament</span>
+          <span className="sm:hidden">Back</span>
         </Link>
       </div>
 
       {/* Tournament Status Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl p-6 shadow-lg">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-blue-100 text-sm font-medium">Total Rounds</div>
-              <div className="text-3xl font-bold">{rounds.length}</div>
+              <div className="text-blue-100 text-xs sm:text-sm font-medium">Total Rounds</div>
+              <div className="text-2xl sm:text-3xl font-bold">{rounds.length}</div>
             </div>
             <div className="text-blue-200">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
               </svg>
             </div>
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-green-100 text-sm font-medium">Active Round</div>
-              <div className="text-3xl font-bold">{activeRound ? `${activeRound.round_number} (${activeRound.leg})` : 'None'}</div>
+              <div className="text-green-100 text-xs sm:text-sm font-medium">Active Round</div>
+              <div className="text-xl sm:text-3xl font-bold truncate">{activeRound ? `${activeRound.round_number} (${activeRound.leg})` : 'None'}</div>
             </div>
             <div className="text-green-200">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-cyan-100 text-sm font-medium">Completed</div>
-              <div className="text-3xl font-bold">{completedRounds}</div>
+              <div className="text-cyan-100 text-xs sm:text-sm font-medium">Completed</div>
+              <div className="text-2xl sm:text-3xl font-bold">{completedRounds}</div>
             </div>
             <div className="text-cyan-200">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-2xl p-6 shadow-lg">
+        <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
-              <div className="text-purple-100 text-sm font-medium">Total Fixtures</div>
-              <div className="text-3xl font-bold">{rounds.reduce((sum, r) => sum + r.total_matches, 0)}</div>
+              <div className="text-purple-100 text-xs sm:text-sm font-medium">Total Fixtures</div>
+              <div className="text-2xl sm:text-3xl font-bold">{rounds.reduce((sum, r) => sum + r.total_matches, 0)}</div>
             </div>
             <div className="text-purple-200">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
@@ -289,12 +558,14 @@ export default function MatchDayManagementPage() {
 
       {/* Match Rounds Table */}
       <div className="bg-white/90 backdrop-blur-md shadow-xl rounded-2xl overflow-hidden border border-gray-100">
-        <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-800">Match Rounds</h2>
+        <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 px-4 sm:px-6 py-4 border-b border-gray-100">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-800">Match Rounds</h2>
         </div>
-        <div className="p-6">
+        <div className="p-3 sm:p-6">
           {rounds.length > 0 ? (
-            <div className="overflow-x-auto">
+            <>
+            {/* Desktop Table - Hidden on mobile */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -598,6 +869,273 @@ export default function MatchDayManagementPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card Layout - Shown only on mobile */}
+            <div className="md:hidden space-y-4">
+              {rounds.map((round: any) => {
+                const progressPercentage = round.total_matches > 0 ? Math.round((round.completed_matches / round.total_matches) * 100) : 0;
+                const status = round.status || 'pending';
+                const isActive = round.is_active || false;
+                const roundId = `${round.round_number}_${round.leg}`;
+                
+                // Calculate current phase (same logic as desktop)
+                const calculatePhase = () => {
+                  if (status !== 'active') {
+                    return { phase: 'N/A', phaseLabel: 'Not Started', color: 'bg-gray-100 text-gray-600' };
+                  }
+
+                  if (!round.scheduled_date) {
+                    return { 
+                      phase: 'awaiting_schedule', 
+                      phaseLabel: 'Set Schedule Date', 
+                      color: 'bg-yellow-100 text-yellow-700',
+                      remaining: 'Required'
+                    };
+                  }
+
+                  const now = getISTNow();
+                  const scheduledDateStr = typeof round.scheduled_date === 'string' && round.scheduled_date.includes('T')
+                    ? round.scheduled_date.split('T')[0]
+                    : round.scheduled_date;
+                  
+                  const homeDeadline = createISTDateTime(
+                    scheduledDateStr,
+                    round.home_fixture_deadline_time || '23:30'
+                  );
+                  
+                  const awayDeadline = createISTDateTime(
+                    scheduledDateStr,
+                    round.away_fixture_deadline_time || '23:45'
+                  );
+                  
+                  const scheduledDate = new Date(scheduledDateStr + 'T00:00:00+05:30');
+                  const offsetDays = round.result_entry_deadline_day_offset || 2;
+                  const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+                  const resultYear = resultDateObj.getFullYear();
+                  const resultMonth = String(resultDateObj.getMonth() + 1).padStart(2, '0');
+                  const resultDay = String(resultDateObj.getDate()).padStart(2, '0');
+                  const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
+                  const resultDeadline = createISTDateTime(
+                    resultDateStr,
+                    round.result_entry_deadline_time || '00:30'
+                  );
+
+                  if (now < homeDeadline) {
+                    const remainingMinutes = Math.ceil((homeDeadline.getTime() - now.getTime()) / (1000 * 60));
+                    const remainingDisplay = remainingMinutes >= 60 
+                      ? `${Math.ceil(remainingMinutes / 60)}h left`
+                      : `${remainingMinutes}m left`;
+                    return { 
+                      phase: 'home_fixture', 
+                      phaseLabel: 'Home Fixture Setup',
+                      color: 'bg-blue-100 text-blue-700',
+                      deadline: homeDeadline,
+                      remaining: remainingDisplay
+                    };
+                  } else if (now < awayDeadline) {
+                    const remainingMinutes = Math.ceil((awayDeadline.getTime() - now.getTime()) / (1000 * 60));
+                    const remainingDisplay = remainingMinutes >= 60 
+                      ? `${Math.ceil(remainingMinutes / 60)}h left`
+                      : `${remainingMinutes}m left`;
+                    return { 
+                      phase: 'fixture_entry', 
+                      phaseLabel: 'Fixture Entry',
+                      color: 'bg-purple-100 text-purple-700',
+                      deadline: awayDeadline,
+                      remaining: remainingDisplay
+                    };
+                  } else if (now < resultDeadline) {
+                    const remaining = Math.ceil((resultDeadline.getTime() - now.getTime()) / (1000 * 60 * 60));
+                    return { 
+                      phase: 'result_entry', 
+                      phaseLabel: 'Result Entry',
+                      color: 'bg-orange-100 text-orange-700',
+                      deadline: resultDeadline,
+                      remaining: `${remaining}h left`
+                    };
+                  } else {
+                    return { 
+                      phase: 'closed', 
+                      phaseLabel: 'Closed',
+                      color: 'bg-red-100 text-red-700',
+                      deadline: null,
+                      remaining: 'Expired'
+                    };
+                  }
+                };
+
+                const phaseInfo = calculatePhase();
+                
+                return (
+                  <div
+                    key={`${round.round_number}-${round.leg}`}
+                    className={`rounded-xl border-2 p-4 ${
+                      isActive
+                        ? 'bg-green-50 border-green-200'
+                        : status === 'completed'
+                        ? 'bg-blue-50 border-blue-200'
+                        : status === 'paused'
+                        ? 'bg-yellow-50 border-yellow-200'
+                        : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    {/* Round Header */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="font-bold text-lg text-gray-900">Round {round.round_number}</h3>
+                        <span className="text-xs text-gray-600">{round.leg === 'first' ? '1st Leg' : '2nd Leg'}</span>
+                      </div>
+                      {isActive && (
+                        <span className="px-3 py-1 text-xs font-bold bg-green-500 text-white rounded-full">ACTIVE</span>
+                      )}
+                    </div>
+
+                    {/* Status & Phase */}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Status</p>
+                        <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
+                          status === 'pending'
+                            ? 'bg-gray-100 text-gray-700'
+                            : status === 'active'
+                            ? 'bg-green-100 text-green-700'
+                            : status === 'paused'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Current Phase</p>
+                        <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${phaseInfo.color}`}>
+                          {phaseInfo.phaseLabel}
+                        </span>
+                        {phaseInfo.remaining && status === 'active' && (
+                          <p className="text-xs text-gray-600 mt-1">{phaseInfo.remaining}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Deadlines */}
+                    <div className="bg-white/50 rounded-lg p-2 mb-3">
+                      <p className="text-xs font-semibold text-gray-700 mb-1">Deadlines</p>
+                      <div className="text-xs text-gray-600 space-y-0.5">
+                        <div><span className="font-medium">Home:</span> {round.home_fixture_deadline_time || '23:30'}</div>
+                        <div><span className="font-medium">Away:</span> {round.away_fixture_deadline_time || '23:45'}</div>
+                        <div><span className="font-medium">Result:</span> Day {round.result_entry_deadline_day_offset || 2}</div>
+                      </div>
+                    </div>
+
+                    {/* Fixtures & Progress */}
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                        <span>Fixtures: {round.total_matches}</span>
+                        <span className="font-medium">{progressPercentage}% Complete</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${progressPercentage}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-2">
+                      {status === 'pending' && (
+                        <button
+                          onClick={() => handleStartRound(round.round_number, round.leg)}
+                          disabled={actioningId === roundId}
+                          className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                        >
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Start
+                        </button>
+                      )}
+
+                      {status === 'active' && (
+                        <>
+                          <button
+                            onClick={() => handlePauseRound(round.round_number, round.leg)}
+                            disabled={actioningId === roundId}
+                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Pause
+                          </button>
+                          <button
+                            onClick={() => handleCompleteRound(round.round_number, round.leg)}
+                            disabled={actioningId === roundId}
+                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Complete
+                          </button>
+                        </>
+                      )}
+
+                      {status === 'paused' && (
+                        <>
+                          <button
+                            onClick={() => handleResumeRound(round.round_number, round.leg)}
+                            disabled={actioningId === roundId}
+                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Resume
+                          </button>
+                          <button
+                            onClick={() => handleRestartRound(round.round_number, round.leg)}
+                            disabled={actioningId === roundId}
+                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Restart
+                          </button>
+                        </>
+                      )}
+
+                      {(status === 'completed') && (
+                        <button
+                          onClick={() => handleRestartRound(round.round_number, round.leg)}
+                          disabled={actioningId === roundId}
+                          className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                        >
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Restart
+                        </button>
+                      )}
+
+                      <Link
+                        href={`/dashboard/committee/team-management/match-days/edit?tournament=${round.tournament_id}&season=${activeSeasonId}&round=${round.round_number}&leg=${round.leg}`}
+                        className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors duration-200"
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Edit Deadlines
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            </>
           ) : (
             <div className="text-center py-12">
               <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -687,6 +1225,26 @@ export default function MatchDayManagementPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal Components */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        type={confirmState.type}
+      />
     </div>
   );
 }

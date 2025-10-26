@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { cookies } from 'next/headers';
-import { FieldValue } from 'firebase-admin/firestore';
 
 interface LineupPlayer {
   player_id: string;
@@ -52,8 +51,8 @@ export async function POST(
     }
 
     // Get fixture from Neon
-    const { neon } = await import('@neondatabase/serverless');
-    const sql = neon(process.env.NEON_DATABASE_URL!);
+    const { getTournamentDb } = await import('@/lib/neon/tournament-config');
+    const sql = getTournamentDb();
     
     const fixtures = await sql`
       SELECT * FROM fixtures WHERE id = ${fixtureId} LIMIT 1
@@ -194,30 +193,33 @@ export async function POST(
       }
     }
 
-    // Save lineup
+    // Save lineup to Neon
     const lineupData = {
       players: players,
       locked: false,
       submitted_by: userId,
-      submitted_at: FieldValue.serverTimestamp(),
+      submitted_at: new Date().toISOString(),
     };
 
-    const updateData: any = {};
     if (isHomeTeam) {
-      updateData.home_lineup = lineupData;
-      if (!homeSubmitted) {
-        updateData.home_lineup_submitted_at = FieldValue.serverTimestamp();
-      }
+      await sql`
+        UPDATE fixtures
+        SET 
+          home_lineup = ${JSON.stringify(lineupData)}::jsonb,
+          home_lineup_submitted_at = ${!homeSubmitted ? 'NOW()' : sql`home_lineup_submitted_at`},
+          updated_at = NOW()
+        WHERE id = ${fixtureId}
+      `;
     } else {
-      updateData.away_lineup = lineupData;
-      if (!awaySubmitted) {
-        updateData.away_lineup_submitted_at = FieldValue.serverTimestamp();
-      }
+      await sql`
+        UPDATE fixtures
+        SET 
+          away_lineup = ${JSON.stringify(lineupData)}::jsonb,
+          away_lineup_submitted_at = ${!awaySubmitted ? 'NOW()' : sql`away_lineup_submitted_at`},
+          updated_at = NOW()
+        WHERE id = ${fixtureId}
+      `;
     }
-
-    updateData.updated_at = FieldValue.serverTimestamp();
-
-    await fixtureRef.update(updateData);
 
     return NextResponse.json({
       success: true,

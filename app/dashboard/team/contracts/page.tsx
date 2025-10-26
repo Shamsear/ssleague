@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ContractInfo from '@/components/ContractInfo';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface TeamContractData {
   skipped_seasons?: number;
@@ -108,77 +108,79 @@ export default function TeamContractsPage() {
           initial_budget: teamSeasonData.initial_budget,
         });
 
-        // Fetch real player contracts for current and next season
+        // Fetch real player contracts from Neon
         const currentSeasonNumber = parseInt(currentSeasonId.replace(/\D/g, ''));
         const seasonPrefix = currentSeasonId.replace(/\d+$/, '');
         const nextSeasonId = `${seasonPrefix}${currentSeasonNumber + 1}`;
 
-        const currentSeasonQuery = query(
-          collection(db, 'realplayer'),
-          where('team_id', '==', teamId),
-          where('season_id', '==', currentSeasonId)
-        );
-        const nextSeasonQuery = query(
-          collection(db, 'realplayer'),
-          where('team_id', '==', teamId),
-          where('season_id', '==', nextSeasonId)
-        );
+        console.log('Fetching player contracts from Neon for team:', teamId);
+        console.log('Current season:', currentSeasonId, 'Next season:', nextSeasonId);
 
-        const [currentSnapshot, nextSnapshot] = await Promise.all([
-          getDocs(currentSeasonQuery),
-          getDocs(nextSeasonQuery),
+        // Fetch from both seasons
+        const [currentResponse, nextResponse] = await Promise.all([
+          fetch(`/api/stats/players?teamId=${teamId}&seasonId=${currentSeasonId}&limit=1000`),
+          fetch(`/api/stats/players?teamId=${teamId}&seasonId=${nextSeasonId}&limit=1000`),
         ]);
 
         const allContracts: RealPlayerContract[] = [];
 
         // Process current season
-        currentSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          console.log('Current season player doc:', doc.id, '- contract_id:', data.contract_id, '- team_id:', data.team_id);
-          if (data.contract_id) {
-            allContracts.push({
-              player_id: data.player_id || '',
-              name: data.name || data.player_name || '',
-              contract_id: data.contract_id,
-              contract_start_season: data.contract_start_season || '',
-              contract_end_season: data.contract_end_season || '',
-              contract_length: data.contract_length || 2,
-              is_auto_registered: data.is_auto_registered || false,
-              season_id: data.season_id,
-              category_name: data.category_name,
-              registration_date: data.registration_date,
-              auction_value: data.auction_value,
-              salary_per_match: data.salary_per_match,
-              star_rating: data.star_rating,
-              category: data.category,
+        if (currentResponse.ok) {
+          const currentResult = await currentResponse.json();
+          if (currentResult.success && currentResult.data) {
+            currentResult.data.forEach((player: any) => {
+              if (player.contract_id) {
+                console.log('Found current season contract:', player.player_name);
+                allContracts.push({
+                  player_id: player.player_id || '',
+                  name: player.player_name || '',
+                  contract_id: player.contract_id,
+                  contract_start_season: player.contract_start_season || '',
+                  contract_end_season: player.contract_end_season || '',
+                  contract_length: player.contract_length || 2,
+                  is_auto_registered: player.is_auto_registered || false,
+                  season_id: player.season_id,
+                  category_name: player.category,
+                  registration_date: player.registration_date,
+                  auction_value: player.auction_value,
+                  salary_per_match: player.salary_per_match,
+                  star_rating: player.star_rating,
+                  category: player.category,
+                });
+              }
             });
           }
-        });
+        }
 
         // Process next season
-        nextSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.contract_id) {
-            allContracts.push({
-              player_id: data.player_id || '',
-              name: data.name || data.player_name || '',
-              contract_id: data.contract_id,
-              contract_start_season: data.contract_start_season || '',
-              contract_end_season: data.contract_end_season || '',
-              contract_length: data.contract_length || 2,
-              is_auto_registered: data.is_auto_registered || false,
-              season_id: data.season_id,
-              category_name: data.category_name,
-              registration_date: data.registration_date,
-              auction_value: data.auction_value,
-              salary_per_match: data.salary_per_match,
-              star_rating: data.star_rating,
-              category: data.category,
+        if (nextResponse.ok) {
+          const nextResult = await nextResponse.json();
+          if (nextResult.success && nextResult.data) {
+            nextResult.data.forEach((player: any) => {
+              if (player.contract_id) {
+                console.log('Found next season contract:', player.player_name);
+                allContracts.push({
+                  player_id: player.player_id || '',
+                  name: player.player_name || '',
+                  contract_id: player.contract_id,
+                  contract_start_season: player.contract_start_season || '',
+                  contract_end_season: player.contract_end_season || '',
+                  contract_length: player.contract_length || 2,
+                  is_auto_registered: player.is_auto_registered || false,
+                  season_id: player.season_id,
+                  category_name: player.category,
+                  registration_date: player.registration_date,
+                  auction_value: player.auction_value,
+                  salary_per_match: player.salary_per_match,
+                  star_rating: player.star_rating,
+                  category: player.category,
+                });
+              }
             });
           }
-        });
+        }
 
-        console.log(`📋 Fetched ${allContracts.length} player contract entries`);
+        console.log(`📋 Fetched ${allContracts.length} player contract entries from Neon`);
 
         // Group by contract_id
         const grouped = new Map<string, RealPlayerContract[]>();

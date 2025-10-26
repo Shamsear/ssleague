@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
+import { useModal } from '@/hooks/useModal';
+import AlertModal from '@/components/modals/AlertModal';
 
 // Only these positions are used for position groups
 const POSITION_GROUP_POSITIONS = ['CB', 'DMF', 'CMF', 'AMF', 'CF'] as const;
@@ -61,6 +63,9 @@ export default function PositionGroupsPage() {
     ungrouped: []
   });
   const [dividing, setDividing] = useState(false);
+
+  // Modal system
+  const { alertState, showAlert, closeAlert } = useModal();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -159,10 +164,18 @@ export default function PositionGroupsPage() {
       await fetchPlayers();
       handlePositionClick(selectedPosition);
       
-      alert(`Successfully divided ${sortedPlayers.length} players into 2 balanced groups!`);
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: `Successfully divided ${sortedPlayers.length} players into 2 balanced groups!`
+      });
     } catch (err) {
       console.error('Error dividing players:', err);
-      alert('Failed to divide players. Please try again.');
+      showAlert({
+        type: 'error',
+        title: 'Division Failed',
+        message: 'Failed to divide players. Please try again.'
+      });
     } finally {
       setDividing(false);
     }
@@ -193,7 +206,11 @@ export default function PositionGroupsPage() {
       }
     } catch (err) {
       console.error('Error swapping player:', err);
-      alert('Failed to swap player group');
+      showAlert({
+        type: 'error',
+        title: 'Swap Failed',
+        message: 'Failed to swap player group'
+      });
     }
   };
 
@@ -429,6 +446,15 @@ export default function PositionGroupsPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Component */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+      />
     </div>
   );
 }

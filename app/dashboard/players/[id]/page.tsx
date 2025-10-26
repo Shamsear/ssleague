@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
+import { usePlayerStats } from '@/hooks';
 
 interface PlayerData {
   id: string;
@@ -93,12 +94,16 @@ export default function PlayerDetailPage() {
   const [allSeasonData, setAllSeasonData] = useState<PlayerData[]>([]);
   const [matchHistory, setMatchHistory] = useState<MatchHistory[]>([]);
   const [seasonName, setSeasonName] = useState<string>('Season');
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedView, setSelectedView] = useState<'overall' | 'all-seasons' | string>('overall');
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
 
   const playerId = params.id as string;
+  
+  // Use React Query hook for player stats from Neon
+  const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
+    playerId: playerId
+  });
 
   useEffect(() => {
     if (authLoading) return;
@@ -114,157 +119,65 @@ export default function PlayerDetailPage() {
       return;
     }
 
-    fetchPlayerData();
+    // No need to fetch player data - React Query hook handles it
   }, [user, authLoading, playerId]);
 
-  const fetchPlayerData = async () => {
-    try {
-      setLoading(true);
+  // Process player stats data from Neon when it arrives
+  useEffect(() => {
+    // Clear error when data starts loading
+    if (statsLoading) {
       setError(null);
-
-      // 1. Fetch permanent player data from realplayers collection
-      const playerDoc = await getDoc(doc(db, 'realplayers', playerId));
-      
-      if (!playerDoc.exists()) {
-        setError('Player not found');
-        setLoading(false);
-        return;
-      }
-      
-      const permanentPlayerData = { id: playerDoc.id, ...playerDoc.data() };
-      
-      // 2. Fetch all season stats from realplayerstats collection
-      const statsRef = collection(db, 'realplayerstats');
-      const statsQuery = query(statsRef, where('player_id', '==', playerId));
-      const statsSnapshot = await getDocs(statsQuery);
-      
-      if (statsSnapshot.empty) {
-        setError('No season stats found for this player');
-        setLoading(false);
-        return;
-      }
-      
-      // OPTIMIZED: Use denormalized season_name (no extra reads needed!)
-      // Only fetch season names if not already in the document
-      const docsWithoutSeasonName = statsSnapshot.docs.filter(
-        doc => !doc.data().season_name
-      );
-      
-      const seasonNamesMap = new Map<string, string>();
-      
-      if (docsWithoutSeasonName.length > 0) {
-        // Fallback: Batch fetch season names for old documents without denormalized data
-        const uniqueSeasonIds = [...new Set(
-          docsWithoutSeasonName.map(doc => doc.data().season_id).filter(Boolean)
-        )];
-        
-        if (uniqueSeasonIds.length > 0) {
-          const seasonPromises = uniqueSeasonIds.map(seasonId => 
-            getDoc(doc(db, 'seasons', seasonId))
-              .then(seasonDoc => {
-                if (seasonDoc.exists()) {
-                  const seasonData = seasonDoc.data();
-                  return { 
-                    id: seasonId, 
-                    name: seasonData.name || seasonData.short_name || seasonId 
-                  };
-                }
-                return { id: seasonId, name: seasonId };
-              })
-              .catch(() => ({ id: seasonId, name: seasonId }))
-          );
-          
-          const seasons = await Promise.all(seasonPromises);
-          seasons.forEach(s => seasonNamesMap.set(s.id, s.name));
-        }
-      }
-      
-      // 3. Fetch team standings for all seasons to check for league winners
-      // Get unique season IDs from player stats
-      const uniqueSeasonIds = [...new Set(
-        statsSnapshot.docs.map(doc => doc.data().season_id).filter(Boolean)
-      )];
-      
-      // Fetch teamstats for each season to check rankings
-      const teamStandingsMap = new Map<string, any>(); // Map of team_id+season_id -> teamstats data
-      
-      if (uniqueSeasonIds.length > 0) {
-        const teamStatsPromises = uniqueSeasonIds.map(async (seasonId) => {
-          const teamStatsRef = collection(db, 'teamstats');
-          const teamStatsQuery = query(teamStatsRef, where('season_id', '==', seasonId));
-          const teamStatsSnapshot = await getDocs(teamStatsQuery);
-          return { seasonId, docs: teamStatsSnapshot.docs };
-        });
-        
-        const teamStatsResults = await Promise.all(teamStatsPromises);
-        teamStatsResults.forEach(result => {
-          result.docs.forEach(doc => {
-            const data = doc.data();
-            const key = `${data.team_id}_${result.seasonId}`;
-            teamStandingsMap.set(key, data);
-          });
-        });
-      }
-      
-      // Combine permanent data with each season's stats
-      const allData = statsSnapshot.docs.map((statsDoc) => {
-        const statsData = statsDoc.data();
-        
-        // OPTIMIZED: Use denormalized season_name if available, fallback to map
-        const seasonName = statsData.season_name || 
-          seasonNamesMap.get(statsData.season_id) || 
-          statsData.season_id;
-        
-        // Check if this team won the league (has a ranking in standings)
-        const teamStatsKey = `${statsData.team_id}_${statsData.season_id}`;
-        const teamStats = teamStandingsMap.get(teamStatsKey);
-        const hasLeagueTrophy = teamStats && teamStats.season_stats && 
-          teamStats.season_stats.rank !== undefined && 
-          teamStats.season_stats.rank !== null;
-        
-        // Combine permanent player data with season-specific stats
-        return {
-          ...permanentPlayerData, // Permanent fields (name, email, phone, etc.)
-          season_id: statsData.season_id,
-          season_name: seasonName,
-          team: statsData.team, // Season-specific
-          team_id: statsData.team_id, // Season-specific
-          category: statsData.category, // Season-specific
-          stats: statsData.stats, // Season-specific stats
-          // Trophy/Award fields from this season (new array format)
-          category_trophies: statsData.category_trophies || [],
-          individual_trophies: statsData.individual_trophies || [],
-          // Team trophy fields
-          has_league_trophy: hasLeagueTrophy,
-          team_rank: teamStats?.season_stats?.rank,
-          cup_achievement: teamStats?.cup_achievement
-        } as PlayerData;
-      });
-      
-      // Sort by season (most recent first)
-      allData.sort((a, b) => {
-        const seasonA = a.season_id || '';
-        const seasonB = b.season_id || '';
-        return seasonB.localeCompare(seasonA);
-      });
-      
-      setAllSeasonData(allData);
-      // Set the most recent season as current
-      setPlayer(allData[0]);
-      await fetchMatchHistory(playerId, allData[0].team_id);
-      
-      // Set season name for display
-      if (allData[0].season_name) {
-        setSeasonName(allData[0].season_name);
-      }
-
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching player data:', err);
-      setError('Failed to load player data');
-      setLoading(false);
+      return;
     }
-  };
+    
+    // Only show error if done loading and no data
+    if (!playerStatsData || playerStatsData.length === 0) {
+      setError('No season stats found for this player');
+      return;
+    }
+    
+    // Clear error when we have data
+    setError(null);
+    
+    // Process all season data from Neon
+    const allData = playerStatsData.map((statsData: any) => {
+      const seasonName = statsData.season_name || statsData.season_id;
+      
+      return {
+        ...statsData,
+        id: statsData.id || statsData.player_id,
+        name: statsData.player_name || 'Unknown Player',
+        player_id: statsData.player_id,
+        season_name: seasonName,
+        team: statsData.team,
+        team_id: statsData.team_id,
+        category: statsData.category,
+        stats: {
+          matches_played: statsData.matches_played || 0,
+          matches_won: statsData.wins || 0,
+          matches_lost: statsData.losses || 0,
+          matches_drawn: statsData.draws || 0,
+          goals_scored: statsData.goals_scored || 0,
+          goals_conceded: statsData.goals_conceded || 0,
+          assists: statsData.assists || 0,
+          clean_sheets: statsData.clean_sheets || 0,
+          points: statsData.points || 0,
+          win_rate: statsData.matches_played > 0 
+            ? parseFloat(((statsData.wins / statsData.matches_played) * 100).toFixed(1))
+            : 0
+        }
+      };
+    });
+    
+    setAllSeasonData(allData);
+    
+    // Set the first season as default
+    if (allData.length > 0) {
+      setPlayer(allData[0]);
+      setSeasonName(allData[0].season_name || 'Season');
+    }
+  }, [playerStatsData, statsLoading]);
+
 
   const fetchSeasonName = async (seasonId: string) => {
     try {
@@ -335,7 +248,7 @@ export default function PlayerDetailPage() {
     }
   };
 
-  if (authLoading || loading) {
+  if (authLoading || statsLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
@@ -444,7 +357,7 @@ export default function PlayerDetailPage() {
   
   const goalDifference = stats.net_goals || ((stats.goals_scored || 0) - (stats.goals_conceded || 0));
   const winRate = stats.win_rate || (stats.matches_played && stats.matches_played > 0 
-    ? Math.round((stats.matches_won || 0) / stats.matches_played * 100) 
+    ? parseFloat((((stats.matches_won || 0) / stats.matches_played) * 100).toFixed(1))
     : 0);
   const goalsPerGame = stats.goals_per_game || (stats.matches_played && stats.matches_played > 0
     ? ((stats.goals_scored || 0) / stats.matches_played).toFixed(2)
@@ -577,7 +490,7 @@ export default function PlayerDetailPage() {
                     />
                   ) : null}
                   <div className={`bg-primary/10 w-full h-full flex items-center justify-center ${player.photo_url ? 'hidden' : ''}`}>
-                    <span className="text-5xl font-bold text-primary">{player.name[0]}</span>
+                    <span className="text-5xl font-bold text-primary">{player.name?.[0] || 'P'}</span>
                   </div>
                   
                   {/* POTM Badge */}
