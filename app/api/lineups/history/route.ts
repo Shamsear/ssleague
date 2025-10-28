@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/neon';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
+
+const sql = getTournamentDb();
 
 /**
  * Get lineup submission history for a season

@@ -1,4 +1,6 @@
-import { sql } from '@/lib/neon';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
+
+const sql = getTournamentDb();
 
 /**
  * Record player participation based on lineup when match results are submitted
