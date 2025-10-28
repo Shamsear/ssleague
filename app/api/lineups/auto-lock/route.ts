@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase-admin';
+import { adminDb as db } from '@/lib/firebase/admin';
 
 /**
  * Auto-lock lineups for a specific fixture if deadline has passed

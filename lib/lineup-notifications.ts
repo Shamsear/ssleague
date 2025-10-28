@@ -1,4 +1,4 @@
-import { db } from '@/lib/firebase-admin';
+import { adminDb as db } from '@/lib/firebase/admin';
 
 interface LineupNotification {
   id: string;

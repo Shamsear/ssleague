@@ -215,6 +215,20 @@ export default function MobileNav() {
                 </div>
               )}
               
+              {/* Current Season */}
+              <div className="border-b border-black/10">
+                <Link 
+                  href="/season/current" 
+                  className="block py-4"
+                  onClick={() => toggleMenu(false)}
+                >
+                  <div className="flex flex-col">
+                    <span className="text-2xl font-normal text-gray-900">Season</span>
+                    <span className="text-sm text-gray-700 mt-1">Current season</span>
+                  </div>
+                </Link>
+              </div>
+              
               {/* Players */}
               <div className="border-b border-black/10">
                 <Link 
@@ -229,7 +243,21 @@ export default function MobileNav() {
                 </Link>
               </div>
               
-              {/* Seasons */}
+              {/* Teams */}
+              <div className="border-b border-black/10">
+                <Link 
+                  href="/teams" 
+                  className="block py-4"
+                  onClick={() => toggleMenu(false)}
+                >
+                  <div className="flex flex-col">
+                    <span className="text-2xl font-normal text-gray-900">Teams</span>
+                    <span className="text-sm text-gray-700 mt-1">All teams</span>
+                  </div>
+                </Link>
+              </div>
+              
+              {/* Archive */}
               <div className="border-b border-black/10">
                 <Link 
                   href="/seasons" 
@@ -237,8 +265,36 @@ export default function MobileNav() {
                   onClick={() => toggleMenu(false)}
                 >
                   <div className="flex flex-col">
-                    <span className="text-2xl font-normal text-gray-900">Past Seasons</span>
-                    <span className="text-sm text-gray-700 mt-1">Previous competitions</span>
+                    <span className="text-2xl font-normal text-gray-900">Archive</span>
+                    <span className="text-sm text-gray-700 mt-1">Past seasons</span>
+                  </div>
+                </Link>
+              </div>
+              
+              {/* Awards */}
+              <div className="border-b border-black/10">
+                <Link 
+                  href="/awards" 
+                  className="block py-4"
+                  onClick={() => toggleMenu(false)}
+                >
+                  <div className="flex flex-col">
+                    <span className="text-2xl font-normal text-gray-900">🏆 Awards</span>
+                    <span className="text-sm text-gray-700 mt-1">Trophy cabinet</span>
+                  </div>
+                </Link>
+              </div>
+              
+              {/* News */}
+              <div className="border-b border-black/10">
+                <Link 
+                  href="/news" 
+                  className="block py-4"
+                  onClick={() => toggleMenu(false)}
+                >
+                  <div className="flex flex-col">
+                    <span className="text-2xl font-normal text-gray-900">📰 News</span>
+                    <span className="text-sm text-gray-700 mt-1">Latest updates</span>
                   </div>
                 </Link>
               </div>
