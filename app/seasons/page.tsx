@@ -43,10 +43,26 @@ export default function SeasonsArchivePage() {
       const seasonsQuery = query(seasonsRef, orderBy('created_at', 'desc'));
       const seasonsSnapshot = await getDocs(seasonsQuery);
       
-      const seasonsData = seasonsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Season[];
+      const seasonsData = seasonsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        let name = data.name;
+        
+        // Generate name from ID if missing (for historical seasons like sspsls15)
+        if (!name && doc.id) {
+          const seasonNum = doc.id.match(/\d+/);
+          if (seasonNum) {
+            name = `Season ${seasonNum[0]}`;
+          } else {
+            name = doc.id;
+          }
+        }
+        
+        return {
+          id: doc.id,
+          ...data,
+          name
+        };
+      }) as Season[];
       
       setSeasons(seasonsData);
     } catch (error) {

@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter } from 'lucide-react';
+import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star } from 'lucide-react';
 
 interface Player {
   real_player_id: string;
@@ -60,6 +60,9 @@ export default function TeamDraftPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDrafting, setIsDrafting] = useState<string | null>(null);
   const [isSelectingTeam, setIsSelectingTeam] = useState(false);
+  const [captainId, setCaptainId] = useState<string | null>(null);
+  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
+  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -152,14 +155,68 @@ export default function TeamDraftPage() {
         setMyTeam({ ...myTeam, supported_team_id: teamId, supported_team_name: teamName });
         alert(`Now supporting ${teamName} for passive points!`);
       } else {
-        const error = await res.json();
-        alert(error.error || 'Failed to select team');
+        let errorMessage = 'Failed to select team';
+        try {
+          const error = await res.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          // Response body is empty or not JSON
+        }
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Failed to select team:', error);
       alert('Failed to select team');
     } finally {
       setIsSelectingTeam(false);
+    }
+  };
+
+  const saveCaptains = async () => {
+    if (!user) return;
+    
+    if (!captainId || !viceCaptainId) {
+      alert('Please select both captain and vice-captain');
+      return;
+    }
+
+    if (captainId === viceCaptainId) {
+      alert('Captain and vice-captain must be different players');
+      return;
+    }
+    
+    setIsSavingCaptains(true);
+    try {
+      const response = await fetch('/api/fantasy/squad/set-captain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          captain_player_id: captainId,
+          vice_captain_player_id: viceCaptainId,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to save captains';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          // Response body is empty or not JSON
+        }
+        throw new Error(errorMessage);
+      }
+
+      alert('Captain and vice-captain saved successfully! Your draft is complete.');
+      
+      // Refresh squad data to show captain badges
+      await loadDraftData();
+    } catch (error) {
+      console.error('Error saving captains:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save captains');
+    } finally {
+      setIsSavingCaptains(false);
     }
   };
 
@@ -202,8 +259,14 @@ export default function TeamDraftPage() {
       if (res.ok) {
         await loadDraftData();
       } else {
-        const error = await res.json();
-        alert(error.error || 'Failed to draft player');
+        let errorMessage = 'Failed to draft player';
+        try {
+          const error = await res.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          // Response body is empty or not JSON
+        }
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Failed to draft player:', error);
@@ -594,6 +657,95 @@ export default function TeamDraftPage() {
             </div>
           </div>
         </div>
+
+        {/* Captain Selection (shown when squad is complete) */}
+        {mySquad.length === draftSettings.max_squad_size && (
+          <div className="mt-8 glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Captain & Vice-Captain</h2>
+                <p className="text-sm text-gray-600">
+                  Captain earns 2x points, Vice-Captain earns 1.5x points
+                </p>
+              </div>
+              <button
+                onClick={saveCaptains}
+                disabled={isSavingCaptains || !captainId || !viceCaptainId}
+                className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+              >
+                {isSavingCaptains ? 'Saving...' : 'Complete Draft'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Captain Selection */}
+              <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-6 border-2 border-yellow-300">
+                <label className="block text-lg font-bold text-gray-900 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Crown className="w-6 h-6 text-yellow-600" />
+                    <span>Captain (2x Points)</span>
+                  </div>
+                </label>
+                <select
+                  value={captainId || ''}
+                  onChange={(e) => setCaptainId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                >
+                  <option value="">Select Captain...</option>
+                  {mySquad.map((player) => (
+                    <option 
+                      key={player.real_player_id} 
+                      value={player.real_player_id}
+                      disabled={player.real_player_id === viceCaptainId}
+                    >
+                      {player.player_name} ({player.team}) - {player.position}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-600 mt-2">
+                  Your captain will earn double points in every match
+                </p>
+              </div>
+
+              {/* Vice-Captain Selection */}
+              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border-2 border-blue-300">
+                <label className="block text-lg font-bold text-gray-900 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-6 h-6 text-blue-600" />
+                    <span>Vice-Captain (1.5x Points)</span>
+                  </div>
+                </label>
+                <select
+                  value={viceCaptainId || ''}
+                  onChange={(e) => setViceCaptainId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Vice-Captain...</option>
+                  {mySquad.map((player) => (
+                    <option 
+                      key={player.real_player_id} 
+                      value={player.real_player_id}
+                      disabled={player.real_player_id === captainId}
+                    >
+                      {player.player_name} ({player.team}) - {player.position}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-600 mt-2">
+                  Your vice-captain will earn 1.5x points in every match
+                </p>
+              </div>
+            </div>
+
+            {(!captainId || !viceCaptainId) && (
+              <div className="mt-4 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-xl">
+                <p className="text-sm text-yellow-800 font-medium text-center">
+                  ⚠️ Please select both captain and vice-captain to complete your draft
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

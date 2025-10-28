@@ -134,6 +134,32 @@ export async function GET(request: NextRequest) {
         `;
       }
     }
+    // Get all players for a season (for contracts page, registration page, etc.)
+    else if (seasonId && !playerId) {
+      if (isModernSeason(seasonId)) {
+        stats = await sql`
+          SELECT 
+            id, player_id, player_name, season_id,
+            team, team_id, category,
+            matches_played, goals_scored, assists, wins, draws, losses,
+            clean_sheets, motm_awards, points, star_rating,
+            contract_id, contract_start_season, contract_end_season,
+            is_auto_registered, registration_date, registration_type,
+            created_at, updated_at
+          FROM player_seasons 
+          WHERE season_id = ${seasonId}
+          ORDER BY registration_date ASC
+          LIMIT ${limit}
+        `;
+      } else {
+        stats = await sql`
+          SELECT * FROM realplayerstats 
+          WHERE season_id = ${seasonId}
+          ORDER BY points DESC
+          LIMIT ${limit}
+        `;
+      }
+    }
     // Get season/tournament stats with filters
     else if (tournamentId) {
       let query = `

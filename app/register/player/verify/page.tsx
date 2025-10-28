@@ -67,6 +67,7 @@ function PlayerVerifyContent() {
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
   // Kerala districts list
   const keralaDistricts = [
@@ -105,17 +106,28 @@ function PlayerVerifyContent() {
     return () => unsubscribe()
   }, [router, seasonId])
 
-  // Fetch season data
+  // Fetch season and player data in parallel for faster load
   useEffect(() => {
-    const fetchSeason = async () => {
+    const fetchData = async () => {
       if (!seasonId) {
         setError('Missing season information')
         setLoading(false)
         return
       }
 
+      if (!user) return
+
       try {
-        const seasonDoc = await getDoc(doc(db, 'seasons', seasonId))
+        // Fetch season, player data, and registration stats in parallel
+        const seasonPromise = getDoc(doc(db, 'seasons', seasonId))
+        const playerPromise = playerId 
+          ? getDocs(query(collection(db, 'realplayers'), where('player_id', '==', playerId)))
+          : Promise.resolve(null)
+        const statsPromise = fetch(`/api/admin/registration-phases?season_id=${seasonId}`).catch(() => null)
+
+        const [seasonDoc, playerSnapshot, statsResponse] = await Promise.all([seasonPromise, playerPromise, statsPromise])
+
+        // Process season data
         if (!seasonDoc.exists()) {
           setError('Season not found')
           setLoading(false)
@@ -130,43 +142,29 @@ function PlayerVerifyContent() {
           return
         }
 
+        // Add registration phase info to season data
+        if (statsResponse) {
+          const statsResult = await statsResponse.json()
+          if (statsResult.success) {
+            Object.assign(seasonData, statsResult.data)
+          }
+        }
+
         setSeason(seasonData)
-        setLoading(false)
-      } catch (err) {
-        console.error('Error fetching season:', err)
-        setError('Failed to load season details')
-        setLoading(false)
-      }
-    }
 
-    fetchSeason()
-  }, [seasonId])
-
-  // Load player data if player ID is provided, or set up for new player
-  useEffect(() => {
-    const loadPlayerData = async () => {
-      if (!user) return
-
-      // If no player ID provided, treat as new player registration
-      if (!playerId) {
-        setIsNewPlayer(true)
-        setShowForm(true)
-        setFormData({
-          name: '',
-          place: '',
-          date_of_birth: '',
-          email: user.email || '',
-          phone: ''
-        })
-        return
-      }
-
-      try {
-        const realPlayersRef = collection(db, 'realplayers')
-        const playerQuery = query(realPlayersRef, where('player_id', '==', playerId))
-        const playerSnapshot = await getDocs(playerQuery)
-
-        if (!playerSnapshot.empty) {
+        // Process player data
+        if (!playerId) {
+          // New player registration
+          setIsNewPlayer(true)
+          setShowForm(true)
+          setFormData({
+            name: '',
+            place: '',
+            date_of_birth: '',
+            email: user.email || '',
+            phone: ''
+          })
+        } else if (playerSnapshot && !playerSnapshot.empty) {
           const playerData = { id: playerSnapshot.docs[0].id, ...playerSnapshot.docs[0].data() } as Player
           setPlayer(playerData)
 
@@ -186,20 +184,48 @@ function PlayerVerifyContent() {
             setIsNewPlayer(false)
           }
         } else {
-          // Player not found, redirect back to search
+          // Player not found
           setError('Player not found')
           setTimeout(() => {
             router.push(`/register/player?season=${seasonId}`)
           }, 2000)
         }
+
+        setLoading(false)
       } catch (err) {
-        console.error('Error loading player data:', err)
-        setError('Failed to load player data')
+        console.error('Error fetching data:', err)
+        setError('Failed to load registration details')
+        setLoading(false)
       }
     }
 
-    loadPlayerData()
-  }, [playerId, user, seasonId, router])
+    fetchData()
+  }, [seasonId, playerId, user, router])
+
+  // Auto-refresh slot availability every 5 seconds
+  useEffect(() => {
+    if (!seasonId || !season) return
+
+    const refreshSlots = async () => {
+      try {
+        const statsResponse = await fetch(`/api/admin/registration-phases?season_id=${seasonId}`)
+        if (statsResponse.ok) {
+          const statsResult = await statsResponse.json()
+          if (statsResult.success) {
+            setSeason(prev => prev ? { ...prev, ...statsResult.data } : null)
+            setLastUpdated(new Date())
+          }
+        }
+      } catch (err) {
+        // Silently fail - don't disrupt user experience
+        console.error('Error refreshing slots:', err)
+      }
+    }
+
+    // Refresh every 5 seconds
+    const interval = setInterval(refreshSlots, 5000)
+    return () => clearInterval(interval)
+  }, [seasonId, season])
 
   // Handle click outside to close dropdown
   useEffect(() => {
@@ -216,79 +242,8 @@ function PlayerVerifyContent() {
     }
   }, [showDistrictDropdown])
 
-  // Check if email already used OR if player_id has different email registered
-  useEffect(() => {
-    const checkEmailUsage = async () => {
-      if (!user?.email || !seasonId || !playerId) return
-
-      try {
-        // Check 1: Email already used for this season
-        const emailCheckQuery = query(
-          collection(db, 'realplayers'),
-          where('season_id', '==', seasonId),
-          where('email', '==', user.email),
-          where('is_registered', '==', true)
-        )
-        const emailCheckSnapshot = await getDocs(emailCheckQuery)
-
-        if (!emailCheckSnapshot.empty) {
-          const existingPlayer = emailCheckSnapshot.docs[0].data()
-          if (existingPlayer.player_id !== playerId) {
-            setError(`This email (${user.email}) has already been used to register for this season by another player`)
-            await signOut(auth)
-            return
-          }
-        }
-
-        // Check 2: If player_id already has a registered email in master database
-        const masterPlayerQuery = query(
-          collection(db, 'realplayers'),
-          where('player_id', '==', playerId)
-        )
-        const masterPlayerSnapshot = await getDocs(masterPlayerQuery)
-
-        if (!masterPlayerSnapshot.empty) {
-          const masterPlayerData = masterPlayerSnapshot.docs[0].data()
-          
-          // If master player has an email and it's different from current user's email
-          if (masterPlayerData.email && masterPlayerData.email !== user.email) {
-            setError(
-              `This player ID (${playerId}) is already registered with email: ${masterPlayerData.email}. ` +
-              `You must use the same email address. If you don't have access to that email, please contact the committee admin.`
-            )
-            await signOut(auth)
-            return
-          }
-        }
-
-        // Check 3: Check if player_id has been registered with different email in ANY previous season
-        const allSeasonsQuery = query(
-          collection(db, 'realplayer'),
-          where('player_id', '==', playerId)
-        )
-        const allSeasonsSnapshot = await getDocs(allSeasonsQuery)
-
-        if (!allSeasonsSnapshot.empty) {
-          for (const doc of allSeasonsSnapshot.docs) {
-            const seasonPlayerData = doc.data()
-            if (seasonPlayerData.email && seasonPlayerData.email !== user.email) {
-              setError(
-                `This player ID (${playerId}) was previously registered with email: ${seasonPlayerData.email}. ` +
-                `You must use the same email address. Players cannot change emails across seasons for security reasons. ` +
-                `If you don't have access to that email, please contact the committee admin.`
-              )
-              await signOut(auth)
-              return
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error checking email:', err)
-      }
-    }
-
-    checkEmailUsage()
-  }, [user, seasonId, playerId])
+  // REMOVED: Email validation checks moved to form submission for faster page load
+  // These checks will be performed by the API when submitting the registration
 
   // Search players by ID or name
   const searchPlayers = async (term: string) => {

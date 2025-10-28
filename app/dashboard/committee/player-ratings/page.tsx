@@ -51,6 +51,7 @@ export default function PlayerRatingsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
   const [pageReady, setPageReady] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -180,6 +181,63 @@ export default function PlayerRatingsPage() {
       }
       return p;
     }));
+  };
+
+  const handleRecalculateCategories = async () => {
+    if (categories.length === 0) {
+      setError('Please create categories first');
+      return;
+    }
+
+    try {
+      setRecalculating(true);
+      setError(null);
+      setSuccess(null);
+
+      // Sort players by star rating (descending)
+      const sortedPlayers = [...players].sort((a, b) => b.starRating - a.starRating);
+      const playersPerCategory = Math.ceil(sortedPlayers.length / categories.length);
+      
+      // Auto-assign categories based on star rating
+      const playersWithCategories = sortedPlayers.map((player, index) => {
+        const categoryIndex = Math.floor(index / playersPerCategory);
+        const category = categories[Math.min(categoryIndex, categories.length - 1)];
+        return {
+          ...player,
+          categoryId: category.id,
+          categoryName: category.name,
+        };
+      });
+
+      // Call API to update only categories (not star ratings)
+      const response = await fetch('/api/player-ratings/recalculate-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seasonId: userSeasonId,
+          players: playersWithCategories.map(p => ({
+            id: p.id,
+            categoryId: p.categoryId,
+            categoryName: p.categoryName,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to recalculate categories');
+      }
+
+      const result = await response.json();
+      setSuccess(`Successfully recalculated categories for ${playersWithCategories.length} players`);
+      
+      // Update local state to show new categories
+      setPlayers(playersWithCategories);
+    } catch (error) {
+      console.error('Error recalculating:', error);
+      setError(error instanceof Error ? error.message : 'Failed to recalculate categories');
+    } finally {
+      setRecalculating(false);
+    }
   };
 
   const handleSave = async () => {
@@ -441,11 +499,25 @@ export default function PlayerRatingsPage() {
                 </table>
               </div>
 
-              {/* Save button */}
-              <div className="mt-6 flex justify-end">
+              {/* Action buttons */}
+              <div className="mt-6 flex justify-between items-center gap-4">
+                {/* Recalculate button */}
+                <button
+                  onClick={handleRecalculateCategories}
+                  disabled={recalculating || submitting}
+                  className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Recalculate categories based on current star ratings without saving"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {recalculating ? 'Recalculating...' : 'Recalculate Categories'}
+                </button>
+
+                {/* Save button */}
                 <button
                   onClick={handleSave}
-                  disabled={submitting}
+                  disabled={submitting || recalculating}
                   className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? 'Saving...' : 'Save Ratings & Auto-Assign Categories'}
@@ -486,8 +558,18 @@ export default function PlayerRatingsPage() {
               <h3 className="font-semibold text-blue-900 mb-3">➡️ Next Steps</h3>
               <div className="text-sm text-blue-800 space-y-2">
                 <p>1. Assign star ratings to all players</p>
-                <p>2. Click "Save" to auto-assign categories</p>
-                <p>3. Go to <Link href="/dashboard/committee/real-players" className="underline font-semibold">SS Members</Link> to assign teams</p>
+                <p>2. Click "Recalculate" to preview category distribution</p>
+                <p>3. Click "Save" to persist ratings & categories</p>
+                <p>4. Go to <Link href="/dashboard/committee/real-players" className="underline font-semibold">SS Members</Link> to assign teams</p>
+              </div>
+            </div>
+            
+            {/* Recalculate info */}
+            <div className="glass rounded-2xl p-5 bg-gradient-to-br from-purple-50 to-pink-50">
+              <h3 className="font-semibold text-purple-900 mb-3">🔄 Recalculate Categories</h3>
+              <div className="text-sm text-purple-800 space-y-2">
+                <p>Use the <strong>Recalculate</strong> button to redistribute categories based on current star ratings without saving changes.</p>
+                <p className="text-xs text-purple-700 mt-2">This is useful if categories were manually edited or if you want to preview the distribution before committing.</p>
               </div>
             </div>
           </div>

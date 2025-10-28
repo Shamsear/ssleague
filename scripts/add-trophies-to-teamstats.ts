@@ -7,12 +7,23 @@
  * Run with: npx tsx scripts/add-trophies-to-teamstats.ts
  */
 
-import { getTournamentDb } from '../lib/neon/tournament-config';
+import dotenv from 'dotenv';
+import { neon } from '@neondatabase/serverless';
+
+// Load environment variables BEFORE importing anything else
+dotenv.config({ path: '.env.local' });
 
 async function addTrophiesToTeamstats() {
   console.log('🚀 Starting migration: Add trophies column to teamstats\n');
 
-  const sql = getTournamentDb();
+  // Get database connection
+  const connectionString = process.env.NEON_TOURNAMENT_DB_URL;
+  
+  if (!connectionString) {
+    throw new Error('NEON_TOURNAMENT_DB_URL environment variable is not set');
+  }
+  
+  const sql = neon(connectionString);
 
   try {
     // Check if column already exists

@@ -25,6 +25,9 @@ interface BudgetData {
   realPlayerSpent: number;
   matchesPerSeason: number;
   midSeasonMatches: number;
+  minRealPlayers: number;
+  maxRealPlayers: number;
+  maxFootballPlayers: number;
 }
 
 const FOOTBALL_POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -35,14 +38,18 @@ export default function BudgetPlannerPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<PlayerType>('football');
+  const [isLoadingBudget, setIsLoadingBudget] = useState(true);
   
-  const [budgetData] = useState<BudgetData>({
+  const [budgetData, setBudgetData] = useState<BudgetData>({
     footballBudget: 10000,
     footballSpent: 0,
-    realPlayerBudget: 5000,
+    realPlayerBudget: 1000,
     realPlayerSpent: 0,
     matchesPerSeason: 38,
     midSeasonMatches: 19,
+    minRealPlayers: 5,
+    maxRealPlayers: 7,
+    maxFootballPlayers: 25,
   });
 
   const [footballPlayers, setFootballPlayers] = useState<PlayerEstimate[]>([]);
@@ -56,6 +63,44 @@ export default function BudgetPlannerPage() {
       router.push('/dashboard');
     }
   }, [user, loading, router]);
+
+  // Fetch team's actual budget from team_seasons
+  useEffect(() => {
+    const fetchBudget = async () => {
+      if (!user) return;
+      
+      try {
+        setIsLoadingBudget(true);
+        const response = await fetch('/api/team/dashboard');
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+          // Use season settings for initial budgets, team_seasons for spent amounts
+          const seasonSettings = data.data.seasonSettings || {};
+          const team = data.data.team || {};
+          
+          setBudgetData({
+            footballBudget: seasonSettings.euro_budget || 10000,
+            footballSpent: team.football_spent || 0,
+            realPlayerBudget: seasonSettings.dollar_budget || 1000,
+            realPlayerSpent: team.real_player_spent || 0,
+            matchesPerSeason: 38,
+            midSeasonMatches: 19,
+            minRealPlayers: seasonSettings.min_real_players || 5,
+            maxRealPlayers: seasonSettings.max_real_players || 7,
+            maxFootballPlayers: seasonSettings.max_football_players || 25,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching budget:', error);
+        // Keep default values on error
+      } finally {
+        setIsLoadingBudget(false);
+      }
+    };
+    
+    fetchBudget();
+  }, [user]);
 
   // Add new player estimate
   const addPlayerEstimate = (type: PlayerType) => {
@@ -144,7 +189,7 @@ export default function BudgetPlannerPage() {
   const footballTotals = calculateTotals(footballPlayers);
   const realPlayerTotals = calculateTotals(realPlayers);
 
-  if (loading) {
+  if (loading || isLoadingBudget) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -259,10 +304,12 @@ export default function BudgetPlannerPage() {
                 <span className="text-xs text-green-600 font-medium px-2 py-1 bg-green-100 rounded-full">Remaining</span>
               </div>
               <h3 className="text-sm text-gray-600 mb-1">After Estimates</h3>
-              <p className={`text-3xl font-bold ${budgetData.footballBudget - currentTotals.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-3xl font-bold ${
+                budgetData.footballBudget - currentTotals.total >= 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
                 €{(budgetData.footballBudget - currentTotals.total).toLocaleString()}
               </p>
-              <div className="mt-3 text-xs text-gray-500">For 25 player slots max</div>
+              <div className="mt-3 text-xs text-gray-500">For {budgetData.maxFootballPlayers} player slots max</div>
             </div>
           </>
         ) : (
@@ -308,10 +355,12 @@ export default function BudgetPlannerPage() {
                 <span className="text-xs text-blue-600 font-medium px-2 py-1 bg-blue-100 rounded-full">Remaining</span>
               </div>
               <h3 className="text-sm text-gray-600 mb-1">After Estimates</h3>
-              <p className={`text-3xl font-bold ${budgetData.realPlayerBudget - currentTotals.total >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+              <p className={`text-3xl font-bold ${
+                budgetData.realPlayerBudget - currentTotals.total >= 0 ? 'text-blue-600' : 'text-red-600'
+              }`}>
                 ${(budgetData.realPlayerBudget - currentTotals.total).toLocaleString()}
               </p>
-              <div className="mt-3 text-xs text-gray-500">Min 5, max 7 member slots</div>
+              <div className="mt-3 text-xs text-gray-500">Min {budgetData.minRealPlayers}, max {budgetData.maxRealPlayers} member slots</div>
             </div>
           </>
         )}

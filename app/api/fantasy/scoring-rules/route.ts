@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { league_id, rule_name, rule_type, description, points_value, applies_to } = body;
+    const { league_id, rule_name, rule_type, description, points_value, applies_to, is_bonus_rule, bonus_conditions } = body;
 
     if (!league_id || !rule_name || !rule_type || points_value === undefined) {
       return NextResponse.json(
@@ -62,10 +62,12 @@ export async function POST(request: NextRequest) {
 
     const result = await fantasySql`
       INSERT INTO scoring_rules (
-        league_id, rule_name, rule_type, description, points_value, applies_to
+        league_id, rule_name, rule_type, description, points_value, applies_to,
+        is_bonus_rule, bonus_conditions
       ) VALUES (
         ${league_id}, ${rule_name}, ${rule_type}, ${description || null}, 
-        ${points_value}, ${applies_to || 'player'}
+        ${points_value}, ${applies_to || 'player'},
+        ${is_bonus_rule || false}, ${bonus_conditions ? JSON.stringify(bonus_conditions) : null}
       )
       RETURNING *
     `;

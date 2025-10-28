@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuctionDb } from '@/lib/neon/auction-config';
+import { triggerNews } from '@/lib/news/trigger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -97,6 +98,20 @@ export async function POST(request: NextRequest) {
       )
       RETURNING *
     `;
+    
+    // Trigger news for auction start if active
+    if (status === 'active') {
+      try {
+        await triggerNews('auction_start', {
+          season_id,
+          position,
+          round_number,
+          duration_seconds,
+        });
+      } catch (newsError) {
+        console.error('Failed to generate auction news:', newsError);
+      }
+    }
     
     return NextResponse.json({
       success: true,

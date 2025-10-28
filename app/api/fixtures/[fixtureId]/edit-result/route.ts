@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { triggerNews } from '@/lib/news/trigger';
 
 /**
  * PATCH - Edit fixture results (with stat reversion)
@@ -194,6 +195,22 @@ export async function PATCH(
         })}
       )
     `;
+
+    // Trigger news for match result
+    try {
+      await triggerNews('match_result', {
+        season_id: seasonId,
+        fixture_id: fixtureId,
+        home_team_name: fixture.home_team_name,
+        away_team_name: fixture.away_team_name,
+        home_score: newHomeScore,
+        away_score: newAwayScore,
+        result: newResult,
+        motm_player_name: fixture.motm_player_name || null,
+      });
+    } catch (newsError) {
+      console.error('Failed to generate match result news:', newsError);
+    }
 
     return NextResponse.json({
       success: true,

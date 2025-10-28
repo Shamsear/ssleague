@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const uid = usernameDoc.data()?.uid;
+    const uid = usernameDoc.data()?.userId || usernameDoc.data()?.uid; // Support both userId and uid fields
     console.log('[username-to-email API] UID found:', !!uid);
 
     if (!uid) {

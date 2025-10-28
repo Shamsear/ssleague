@@ -49,6 +49,16 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Fetch season settings for slot limits
+    let seasonData = getCached<any>('seasons', seasonId, 30 * 60 * 1000); // 30 min TTL
+    if (!seasonData) {
+      const seasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
+      if (seasonDoc.exists) {
+        seasonData = seasonDoc.data();
+        setCached('seasons', seasonId, seasonData);
+      }
+    }
+
     // OPTIMIZED: Check cache first for user data (extended cache duration)
     let userData = getCached<any>('users', userId, 30 * 60 * 1000); // 30 min TTL
     if (!userData) {
@@ -411,6 +421,13 @@ export async function GET(request: NextRequest) {
         activeBulkRounds,
         roundResults,
         seasonParticipation: teamSeasonData,
+        seasonSettings: {
+          euro_budget: seasonData?.euro_budget || 10000,
+          dollar_budget: seasonData?.dollar_budget || 5000,
+          min_real_players: seasonData?.min_real_players || 5,
+          max_real_players: seasonData?.max_real_players || 7,
+          max_football_players: seasonData?.max_football_players || 25,
+        },
         stats: {
           playerCount: teamSeasonData?.players_count || 0,
           balance: teamSeasonData?.budget || 0,

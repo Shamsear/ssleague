@@ -224,21 +224,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Recalculate categories for ALL players in this season based on league-wide ranking
-    console.log(`Recalculating categories for all players in season ${season_id}...`);
-    const categoryResult = await recalculateAllPlayerCategories(season_id);
+    // DISABLED: Auto-recalculation of categories after match
+    // Categories are now only updated when admin manually triggers it via the recalculate page
+    // This keeps categories stable and prevents them from changing after every match
+    // console.log(`Recalculating categories for all players in season ${season_id}...`);
+    // const categoryResult = await recalculateAllPlayerCategories(season_id);
     
-    if (!categoryResult.success) {
-      console.error('Failed to recalculate categories:', categoryResult.error);
-    } else {
-      console.log(`Categories recalculated: ${categoryResult.legendCount} Legend / ${categoryResult.totalPlayers! - categoryResult.legendCount!} Classic`);
-    }
+    // if (!categoryResult.success) {
+    //   console.error('Failed to recalculate categories:', categoryResult.error);
+    // } else {
+    //   console.log(`Categories recalculated: ${categoryResult.legendCount} Legend / ${categoryResult.totalPlayers! - categoryResult.legendCount!} Classic`);
+    // }
 
     return NextResponse.json({
       success: true,
-      message: 'Player points and ratings updated successfully',
+      message: 'Player points and ratings updated successfully (categories not auto-updated)',
       updates,
-      categoryUpdate: categoryResult
+      // categoryUpdate: categoryResult
     });
   } catch (error) {
     console.error('Error updating player points:', error);

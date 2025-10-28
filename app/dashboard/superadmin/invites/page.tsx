@@ -450,17 +450,17 @@ export default function AdminInvites() {
                 </svg>
                 Active Invitations
               </h3>
-              {invites.length > 0 && (
+              {invites.filter(inv => inv.isActive && inv.usedCount < inv.maxUses).length > 0 && (
                 <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-[#9580FF]/20 text-[#9580FF]">
-                  {invites.length} Active
+                  {invites.filter(inv => inv.isActive && inv.usedCount < inv.maxUses).length} Active
                 </span>
               )}
             </div>
           </div>
           
-          {invites.length > 0 ? (
+          {invites.filter(inv => inv.isActive && inv.usedCount < inv.maxUses).length > 0 ? (
             <div className="divide-y divide-gray-200/50">
-              {invites.map((invite) => (
+              {invites.filter(inv => inv.isActive && inv.usedCount < inv.maxUses).map((invite) => (
                 <div key={invite.id} className="px-6 py-5 hover:bg-white/30 transition-all duration-200 group">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -526,15 +526,17 @@ export default function AdminInvites() {
                             onClick={(e) => e.currentTarget.select()}
                             className="flex-1 min-w-0 text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#0066FF]/20 focus:border-[#0066FF]"
                           />
-                          <button
-                            onClick={() => copyToClipboard(getInviteUrl(invite.code, invite.seasonId), invite.id)}
-                            className="inline-flex items-center px-3 py-2 text-xs font-medium rounded-xl text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
-                          >
-                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                            {copiedUrl === invite.id ? 'Copied!' : 'Copy'}
-                          </button>
+                          {invite.usedCount < invite.maxUses && (
+                            <button
+                              onClick={() => copyToClipboard(getInviteUrl(invite.code, invite.seasonId), invite.id)}
+                              className="inline-flex items-center px-3 py-2 text-xs font-medium rounded-xl text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                            >
+                              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              {copiedUrl === invite.id ? 'Copied!' : 'Copy'}
+                            </button>
+                          )}
                           <a
                             href={getInviteUrl(invite.code, invite.seasonId)}
                             target="_blank"

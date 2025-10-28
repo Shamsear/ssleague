@@ -12,9 +12,12 @@
     "start:next": "next start",
     "start:ws": "node server/websocket.js",
     "lint": "next lint",
-    "cleanup": "node scripts/clear-all-keep-superadmin.js"
+    "cleanup": "node scripts/clear-all-keep-superadmin.js",
+    "db:clear": "npx tsx scripts/clear-database.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@huggingface/inference": "^4.13.0",
     "@neondatabase/serverless": "^1.0.2",
     "@prisma/client": "^6.17.1",
     "@tanstack/react-query": "^5.90.2",

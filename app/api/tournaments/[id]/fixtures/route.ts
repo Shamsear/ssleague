@@ -11,14 +11,24 @@ export async function POST(
     const sql = getTournamentDb();
     const { id: tournamentId } = await params;
     const body = await request.json();
-    const { team_ids, is_two_legged } = body;
+    const { is_two_legged } = body;
 
-    if (!team_ids || !Array.isArray(team_ids) || team_ids.length < 2) {
+    // Get teams already assigned to this tournament from teamstats
+    const assignedTeams = await sql`
+      SELECT DISTINCT team_id, team_name
+      FROM teamstats
+      WHERE tournament_id = ${tournamentId}
+      ORDER BY team_name ASC
+    `;
+
+    if (assignedTeams.length < 2) {
       return NextResponse.json(
-        { success: false, error: 'At least 2 teams are required' },
+        { success: false, error: 'At least 2 teams must be assigned to this tournament first. Please use the Teams tab to assign teams.' },
         { status: 400 }
       );
     }
+
+    const team_ids = assignedTeams.map(t => t.team_id);
 
     // Get tournament details
     const tournament = await sql`
@@ -142,6 +152,9 @@ export async function POST(
         ON CONFLICT (tournament_id, round_number, leg) DO NOTHING
       `;
     }
+
+    // Teams are already assigned via the Teams tab, so no need to update here
+    console.log(`✅ Generated fixtures for ${team_ids.length} teams in tournament ${tournamentId}`);
 
     return NextResponse.json({
       success: true,

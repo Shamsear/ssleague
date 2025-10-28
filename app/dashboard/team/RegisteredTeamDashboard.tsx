@@ -664,6 +664,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/budget-planner" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-purple-100 text-purple-700 hover:bg-purple-200 transition-all text-xs sm:text-sm font-medium text-center">
                 💰 Budget Planner
               </Link>
+              <Link href="/dashboard/team/transactions" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all text-xs sm:text-sm font-medium text-center">
+                💳 Transactions
+              </Link>
               <Link href="/dashboard/team/profile/edit" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 ⚙️ Settings
               </Link>

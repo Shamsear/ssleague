@@ -47,11 +47,16 @@ interface Fixture {
 export default function TeamDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const teamId = params.id as string;
   const [team, setTeam] = useState<TeamData | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentSeasonId, setCurrentSeasonId] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'all-time' | 'season'>('all-time');
+  const [seasonBreakdown, setSeasonBreakdown] = useState<any[]>([]);
+  const [achievements, setAchievements] = useState<any[]>([]);
+  const [allFixtures, setAllFixtures] = useState<Fixture[]>([]);
 
   // Use React Query hooks for player stats and fixtures
   const { data: playerStats, isLoading: statsLoading } = usePlayerStats({
@@ -64,8 +69,6 @@ export default function TeamDetailPage() {
     teamId: teamId
   });
 
-  const teamId = params.id as string;
-
   useEffect(() => {
     fetchTeamData();
   }, [teamId]);
@@ -75,34 +78,101 @@ export default function TeamDetailPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch current season first
-      const seasonRes = await fetch('/api/public/current-season');
-      const seasonData = await seasonRes.json();
+      // Check if we're coming from a season context via URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const seasonParam = urlParams.get('season');
       
-      if (!seasonData.success) {
-        setError('Could not load season data');
-        setLoading(false);
-        return;
-      }
-      
-      const seasonId = seasonData.data.id;
-      setCurrentSeasonId(seasonId);
-
-      // Fetch team stats for current season
-      const teamsRes = await fetch(`/api/team/all?season_id=${seasonId}`);
-      const teamsData = await teamsRes.json();
-      
-      if (teamsData.success && teamsData.data?.teamStats) {
-        const teamStat = teamsData.data.teamStats.find((t: TeamData) => t.team_id === teamId);
-        if (teamStat) {
-          setTeam(teamStat);
+      if (seasonParam) {
+        // Season-specific view - Fetch comprehensive season data
+        setViewMode('season');
+        setCurrentSeasonId(seasonParam);
+        
+        // Fetch team stats for specific season
+        const statsRes = await fetch(`/api/seasons/${seasonParam}/stats`);
+        const statsData = await statsRes.json();
+        
+        if (statsData.success && statsData.data?.teams) {
+          const teamStat = statsData.data.teams.find((t: TeamData) => t.team_id === teamId);
+          if (teamStat) {
+            setTeam(teamStat);
+          } else {
+            setError('Team not found in this season');
+          }
+          
+          // Set players with season-specific stats
+          const seasonPlayers = statsData.data.players?.filter((p: any) => p.team_id === teamId) || [];
+          setPlayers(seasonPlayers.map((p: any) => ({
+            id: p.player_id,
+            player_id: p.player_id,
+            name: p.player_name,
+            display_name: p.player_name,
+            category: p.category,
+            stats: {
+              matches_played: p.matches_played,
+              goals_scored: p.goals_scored,
+              clean_sheets: p.clean_sheets,
+              points: p.points
+            }
+          })));
+          
+          // Fetch season-specific fixtures
+          try {
+            const fixturesRes = await fetch(
+              `/api/tournament/fixtures?seasonId=${seasonParam}&teamId=${teamId}`
+            );
+            const fixturesData = await fixturesRes.json();
+            if (fixturesData.success && fixturesData.data) {
+              setAllFixtures(fixturesData.data);
+            }
+          } catch (err) {
+            console.log('Could not fetch fixtures:', err);
+          }
+        }
+      } else {
+        // All-time view (default from /teams page) - Fetch comprehensive details
+        setViewMode('all-time');
+        
+        // Fetch current season for context
+        const seasonRes = await fetch('/api/public/current-season');
+        const seasonData = await seasonRes.json();
+        if (seasonData.success) {
+          setCurrentSeasonId(seasonData.data.id);
+        }
+        
+        // Fetch comprehensive team details
+        const detailsRes = await fetch(`/api/teams/${teamId}/details`);
+        const detailsData = await detailsRes.json();
+        
+        if (detailsData.success && detailsData.data) {
+          // Set team with all-time stats
+          setTeam({
+            ...detailsData.data.team,
+            ...detailsData.data.allTimeStats
+          });
+          
+          // Set additional data
+          setSeasonBreakdown(detailsData.data.seasonBreakdown || []);
+          setAchievements(detailsData.data.achievements || []);
+          setAllFixtures(detailsData.data.fixtures || []);
+          
+          // Set players with aggregated stats
+          setPlayers(detailsData.data.players.map((p: any) => ({
+            id: p.player_id,
+            player_id: p.player_id,
+            name: p.player_name,
+            display_name: p.player_name,
+            category: p.category,
+            stats: {
+              matches_played: p.total_matches,
+              goals_scored: p.total_goals,
+              points: p.total_points
+            },
+            seasons: p.seasons
+          })));
         } else {
           setError('Team not found');
         }
       }
-
-      // Note: Player stats and fixtures are now fetched via React Query hooks
-      // No direct Firebase queries needed - data is cached automatically!
 
       setLoading(false);
     } catch (error) {
@@ -305,17 +375,107 @@ export default function TeamDetailPage() {
         </div>
       )}
 
-      {/* Recent Fixtures */}
-      {fixtures.length > 0 && (
-        <div className="glass rounded-2xl p-6 sm:p-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">Fixtures</h2>
+      {/* Achievements - Only in all-time view */}
+      {viewMode === 'all-time' && achievements.length > 0 && (
+        <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900">🏆 Achievements</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {achievements.map((achievement: any, index: number) => (
+              <div key={index} className={`rounded-xl p-4 border-2 ${
+                achievement.type === 'champion'
+                  ? 'bg-amber-50 border-amber-300'
+                  : 'bg-gray-50 border-gray-300'
+              }`}>
+                <div className="text-2xl mb-2">{achievement.type === 'champion' ? '🥇' : '🥈'}</div>
+                <div className="font-bold text-lg text-gray-900">{achievement.achievement}</div>
+                <div className="text-sm text-gray-600">{achievement.season_name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Season-by-Season Breakdown - Only in all-time view */}
+      {viewMode === 'all-time' && seasonBreakdown.length > 0 && (
+        <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900">Season History</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Season</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Rank</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">MP</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">W</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">D</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">L</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">GF</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">GA</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">GD</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seasonBreakdown.map((season: any, index: number) => (
+                  <tr key={index} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
+                    <td className="py-3 px-4">
+                      <Link href={`/seasons/${season.season_id}`} className="text-blue-600 hover:underline font-medium">
+                        {season.season_id}
+                      </Link>
+                    </td>
+                    <td className="text-center py-3 px-4">
+                      {season.rank ? (
+                        <span className={`px-2 py-1 rounded font-bold ${
+                          season.rank === 1 ? 'bg-amber-100 text-amber-700' :
+                          season.rank === 2 ? 'bg-gray-200 text-gray-700' :
+                          season.rank === 3 ? 'bg-amber-50 text-amber-600' :
+                          'bg-blue-50 text-blue-600'
+                        }`}>
+                          #{season.rank}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td className="text-center py-3 px-4 text-gray-700">{season.matches_played}</td>
+                    <td className="text-center py-3 px-4 text-green-600 font-semibold">{season.wins}</td>
+                    <td className="text-center py-3 px-4 text-gray-600">{season.draws}</td>
+                    <td className="text-center py-3 px-4 text-red-600 font-semibold">{season.losses}</td>
+                    <td className="text-center py-3 px-4 text-gray-700">{season.goals_scored}</td>
+                    <td className="text-center py-3 px-4 text-gray-700">{season.goals_conceded}</td>
+                    <td className="text-center py-3 px-4 font-semibold text-gray-900">
+                      {season.goal_difference > 0 ? '+' : ''}{season.goal_difference}
+                    </td>
+                    <td className="text-center py-3 px-4 font-bold text-blue-600">{season.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* All Fixtures - Only in all-time view */}
+      {viewMode === 'all-time' && allFixtures.length > 0 && (
+        <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900">Recent Fixtures</h2>
           <div className="space-y-3">
-            {fixtures.slice(0, 5).map((fixture) => (
+            {allFixtures.slice(0, 10).map((fixture: any) => (
               <div key={fixture.id} className="bg-white rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-500">{fixture.season_id} - MD{fixture.match_day}</span>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    fixture.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {fixture.status}
+                  </span>
+                </div>
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="font-semibold text-gray-900">{fixture.home_team}</div>
-                    <div className="text-sm text-gray-600">Home</div>
+                    <div className={`font-semibold ${
+                      fixture.is_home ? 'text-blue-600' : 'text-gray-900'
+                    }`}>
+                      {fixture.home_team_name}
+                    </div>
+                    <div className="text-xs text-gray-500">Home</div>
                   </div>
                   
                   {fixture.status === 'completed' ? (
@@ -324,13 +484,67 @@ export default function TeamDetailPage() {
                     </div>
                   ) : (
                     <div className="px-4 py-2 bg-gray-100 rounded-lg text-gray-600 text-sm">
-                      {fixture.status}
+                      vs
                     </div>
                   )}
                   
                   <div className="flex-1 text-right">
-                    <div className="font-semibold text-gray-900">{fixture.away_team}</div>
-                    <div className="text-sm text-gray-600">Away</div>
+                    <div className={`font-semibold ${
+                      !fixture.is_home ? 'text-blue-600' : 'text-gray-900'
+                    }`}>
+                      {fixture.away_team_name}
+                    </div>
+                    <div className="text-xs text-gray-500">Away</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Season-specific Fixtures */}
+      {viewMode === 'season' && allFixtures.length > 0 && (
+        <div className="glass rounded-2xl p-6 sm:p-8">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900">Season Fixtures</h2>
+          <div className="space-y-3">
+            {allFixtures.map((fixture: any) => (
+              <div key={fixture.id} className="bg-white rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-500">Match Day {fixture.match_day || fixture.matchDay}</span>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    fixture.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {fixture.status}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className={`font-semibold ${
+                      fixture.home_team_id === teamId || fixture.homeTeamId === teamId ? 'text-blue-600' : 'text-gray-900'
+                    }`}>
+                      {fixture.home_team_name || fixture.homeTeam || fixture.home_team}
+                    </div>
+                    <div className="text-xs text-gray-500">Home</div>
+                  </div>
+                  
+                  {fixture.status === 'completed' ? (
+                    <div className="px-4 py-2 bg-blue-50 rounded-lg font-bold text-blue-600">
+                      {fixture.home_score || fixture.homeScore || 0} - {fixture.away_score || fixture.awayScore || 0}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-2 bg-gray-100 rounded-lg text-gray-600 text-sm">
+                      vs
+                    </div>
+                  )}
+                  
+                  <div className="flex-1 text-right">
+                    <div className={`font-semibold ${
+                      fixture.away_team_id === teamId || fixture.awayTeamId === teamId ? 'text-blue-600' : 'text-gray-900'
+                    }`}>
+                      {fixture.away_team_name || fixture.awayTeam || fixture.away_team}
+                    </div>
+                    <div className="text-xs text-gray-500">Away</div>
                   </div>
                 </div>
               </div>

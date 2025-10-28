@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -13,12 +11,14 @@ interface Player {
   display_name?: string;
   category?: string;
   team?: string;
+  team_name?: string;
   photo_url?: string;
-  stats?: {
-    points?: number;
-    matches_played?: number;
-    goals_scored?: number;
-    average_rating?: number;
+  current_season_id?: string;
+  stats: {
+    points: number;
+    matches_played: number;
+    goals_scored: number;
+    clean_sheets: number;
   };
 }
 
@@ -44,28 +44,35 @@ export default function AllPlayersPage() {
     try {
       setLoading(true);
       
-      // Fetch all players from realplayers collection
-      const playersRef = collection(db, 'realplayers');
-      const playersQuery = query(playersRef, orderBy('name'));
-      const playersSnapshot = await getDocs(playersQuery);
+      // Fetch all players from Firebase and aggregate their stats
+      const response = await fetch('/api/players/with-stats');
+      const data = await response.json();
       
-      const playersData = playersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        player_id: doc.data().player_id,
-        name: doc.data().name,
-        display_name: doc.data().display_name,
-        category: doc.data().category,
-        team: doc.data().team,
-        photo_url: doc.data().photo_url,
-        stats: doc.data().stats || {}
-      })) as Player[];
-      
-      setPlayers(playersData);
-      
-      // Extract unique teams for filter
-      const uniqueTeams = Array.from(new Set(playersData.map(p => p.team).filter(Boolean))) as string[];
-      setTeams(uniqueTeams.sort());
-      
+      if (data.success && data.players) {
+        const playersData = data.players.map((p: any) => ({
+          id: p.id,
+          player_id: p.player_id,
+          name: p.name,
+          display_name: p.display_name,
+          category: p.category,
+          team: p.team,
+          team_name: p.team_name,
+          photo_url: p.photo_url,
+          current_season_id: p.current_season_id,
+          stats: {
+            points: p.total_points || 0,
+            matches_played: p.matches_played || 0,
+            goals_scored: p.goals_scored || 0,
+            clean_sheets: p.clean_sheets || 0
+          }
+        })) as Player[];
+        
+        setPlayers(playersData);
+        
+        // Extract unique teams for filter
+        const uniqueTeams = Array.from(new Set(playersData.map(p => p.team_name).filter(Boolean))) as string[];
+        setTeams(uniqueTeams.sort());
+      }
     } catch (error) {
       console.error('Error fetching players:', error);
     } finally {
@@ -91,7 +98,7 @@ export default function AllPlayersPage() {
     
     // Team filter
     if (teamFilter !== 'all') {
-      filtered = filtered.filter(player => player.team === teamFilter);
+      filtered = filtered.filter(player => player.team_name === teamFilter);
     }
     
     // Sort
@@ -100,11 +107,11 @@ export default function AllPlayersPage() {
         case 'name':
           return a.name.localeCompare(b.name);
         case 'points':
-          return (b.stats?.points || 0) - (a.stats?.points || 0);
+          return b.stats.points - a.stats.points;
         case 'goals':
-          return (b.stats?.goals_scored || 0) - (a.stats?.goals_scored || 0);
-        case 'rating':
-          return (b.stats?.average_rating || 0) - (a.stats?.average_rating || 0);
+          return b.stats.goals_scored - a.stats.goals_scored;
+        case 'matches':
+          return b.stats.matches_played - a.stats.matches_played;
         default:
           return 0;
       }
@@ -185,9 +192,9 @@ export default function AllPlayersPage() {
               className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="name">Name (A-Z)</option>
-              <option value="points">Points (High to Low)</option>
-              <option value="goals">Goals (High to Low)</option>
-              <option value="rating">Rating (High to Low)</option>
+              <option value="points">Points</option>
+              <option value="goals">Goals</option>
+              <option value="matches">Matches Played</option>
             </select>
           </div>
         </div>
@@ -213,57 +220,78 @@ export default function AllPlayersPage() {
             <Link
               key={player.id}
               href={`/players/${player.id}`}
-              className="glass rounded-xl p-4 hover:shadow-lg transition-all duration-200 hover:scale-105 group"
+              className="group"
             >
-              {/* Player Photo */}
-              <div className="relative w-full aspect-square mb-4 rounded-lg overflow-hidden bg-gradient-to-br from-blue-50 to-purple-50">
-                {player.photo_url ? (
-                  <Image
-                    src={player.photo_url}
-                    alt={player.name}
-                    fill
-                    className="object-cover group-hover:scale-110 transition-transform duration-300"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <svg className="w-20 h-20 text-gray-300" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                    </svg>
-                  </div>
-                )}
-                
-                {/* Category Badge */}
-                {player.category && (
-                  <div className={`absolute top-2 right-2 px-2 py-1 rounded-lg text-xs font-semibold ${
-                    player.category === 'Legend' 
-                      ? 'bg-amber-500 text-white' 
-                      : 'bg-blue-500 text-white'
-                  }`}>
-                    {player.category}
-                  </div>
-                )}
-              </div>
+              <div className="glass rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
+                {/* Player Photo with Overlay */}
+                <div className="relative w-full aspect-[3/4] bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100">
+                  {player.photo_url ? (
+                    <Image
+                      src={player.photo_url}
+                      alt={player.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                      <svg className="w-24 h-24 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                    </div>
+                  )}
+                  
+                  {/* Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+                  
+                  {/* Category Badge */}
+                  {player.category && (
+                    <div className={`absolute top-3 right-3 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg backdrop-blur-sm ${
+                      player.category === 'Legend' || player.category?.toLowerCase() === 'legend'
+                        ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white' 
+                        : 'bg-gradient-to-r from-blue-400 to-blue-600 text-white'
+                    }`}>
+                      {player.category?.toUpperCase()}
+                    </div>
+                  )}
 
-              {/* Player Info */}
-              <div>
-                <h3 className="font-bold text-gray-900 mb-1 truncate">
-                  {player.display_name || player.name}
-                </h3>
-                {player.team && (
-                  <p className="text-sm text-gray-600 mb-3 truncate">{player.team}</p>
-                )}
-
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-blue-50 rounded-lg p-2">
-                    <div className="text-gray-600">Points</div>
-                    <div className="font-bold text-blue-600">{player.stats?.points || 0}</div>
-                  </div>
-                  <div className="bg-purple-50 rounded-lg p-2">
-                    <div className="text-gray-600">Goals</div>
-                    <div className="font-bold text-purple-600">{player.stats?.goals_scored || 0}</div>
+                  {/* Player Name Overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 p-4">
+                    <h3 className="font-bold text-white text-lg mb-1 drop-shadow-lg">
+                      {player.display_name || player.name}
+                    </h3>
+                    {player.team_name && (
+                      <p className="text-white/90 text-sm font-medium drop-shadow-md truncate">{player.team_name}</p>
+                    )}
                   </div>
                 </div>
+
+                {/* Stats Section */}
+                <div className="p-4 bg-white/50">
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="text-center p-2 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200">
+                      <div className="text-2xl font-bold text-blue-600">{player.stats.points}</div>
+                      <div className="text-xs text-gray-600 font-medium">Points</div>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200">
+                      <div className="text-2xl font-bold text-purple-600">⚽ {player.stats.goals_scored}</div>
+                      <div className="text-xs text-gray-600 font-medium">Goals</div>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-200">
+                      <span className="text-xs text-gray-600">Matches</span>
+                      <span className="font-bold text-gray-900">{player.stats.matches_played}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200">
+                      <span className="text-xs text-gray-600">CS</span>
+                      <span className="font-bold text-green-600">🛡️ {player.stats.clean_sheets}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hover Effect Border */}
+                <div className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-blue-500 transition-colors duration-300 pointer-events-none"></div>
               </div>
             </Link>
           ))}

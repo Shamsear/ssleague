@@ -51,67 +51,64 @@ export default function ContractsPage() {
       }
 
       try {
-        // Fetch all realplayer documents for current and next season
+        // Calculate current and next season
         const currentSeasonNumber = parseInt(userSeasonId.replace(/\D/g, ''));
         const seasonPrefix = userSeasonId.replace(/\d+$/, '');
         const nextSeasonId = `${seasonPrefix}${currentSeasonNumber + 1}`;
 
-        const currentSeasonQuery = query(
-          collection(db, 'realplayer'),
-          where('season_id', '==', userSeasonId)
-        );
-        const nextSeasonQuery = query(
-          collection(db, 'realplayer'),
-          where('season_id', '==', nextSeasonId)
-        );
+        // Fetch contracts from Neon player_seasons API for both seasons
+        const [currentResponse, nextResponse] = await Promise.all([
+          fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`),
+          fetch(`/api/stats/players?seasonId=${nextSeasonId}&limit=1000`),
+        ]);
 
-        const [currentSnapshot, nextSnapshot] = await Promise.all([
-          getDocs(currentSeasonQuery),
-          getDocs(nextSeasonQuery),
+        const [currentResult, nextResult] = await Promise.all([
+          currentResponse.json(),
+          nextResponse.json(),
         ]);
 
         const allContracts: Contract[] = [];
 
-        // Process current season
-        currentSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.contract_id) {
+        // Process current season players
+        const currentPlayers = currentResult.success ? currentResult.data : [];
+        currentPlayers.forEach((player: any) => {
+          if (player.contract_id) {
             allContracts.push({
-              player_id: data.player_id || '',
-              name: data.name || data.player_name || '',
-              contract_id: data.contract_id,
-              contract_start_season: data.contract_start_season || '',
-              contract_end_season: data.contract_end_season || '',
-              contract_length: data.contract_length || 2,
-              is_auto_registered: data.is_auto_registered || false,
-              season_id: data.season_id,
-              team_id: data.team_id,
-              team_name: data.team_name,
-              category_id: data.category_id,
-              category_name: data.category_name,
-              registration_date: data.registration_date,
+              player_id: player.player_id || '',
+              name: player.player_name || '',
+              contract_id: player.contract_id,
+              contract_start_season: player.contract_start_season || '',
+              contract_end_season: player.contract_end_season || '',
+              contract_length: player.contract_length || 2,
+              is_auto_registered: player.is_auto_registered || false,
+              season_id: player.season_id,
+              team_id: player.team_id,
+              team_name: player.team_name,
+              category_id: player.category_id,
+              category_name: player.category_name,
+              registration_date: player.registration_date,
             });
           }
         });
 
-        // Process next season
-        nextSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.contract_id) {
+        // Process next season players
+        const nextPlayers = nextResult.success ? nextResult.data : [];
+        nextPlayers.forEach((player: any) => {
+          if (player.contract_id) {
             allContracts.push({
-              player_id: data.player_id || '',
-              name: data.name || data.player_name || '',
-              contract_id: data.contract_id,
-              contract_start_season: data.contract_start_season || '',
-              contract_end_season: data.contract_end_season || '',
-              contract_length: data.contract_length || 2,
-              is_auto_registered: data.is_auto_registered || false,
-              season_id: data.season_id,
-              team_id: data.team_id,
-              team_name: data.team_name,
-              category_id: data.category_id,
-              category_name: data.category_name,
-              registration_date: data.registration_date,
+              player_id: player.player_id || '',
+              name: player.player_name || '',
+              contract_id: player.contract_id,
+              contract_start_season: player.contract_start_season || '',
+              contract_end_season: player.contract_end_season || '',
+              contract_length: player.contract_length || 2,
+              is_auto_registered: player.is_auto_registered || false,
+              season_id: player.season_id,
+              team_id: player.team_id,
+              team_name: player.team_name,
+              category_id: player.category_id,
+              category_name: player.category_name,
+              registration_date: player.registration_date,
             });
           }
         });
@@ -185,10 +182,10 @@ export default function ContractsPage() {
 
   if (loading || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading contracts...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[#0066FF] mx-auto"></div>
+          <p className="mt-4 text-lg text-gray-600 font-medium">Loading contracts...</p>
         </div>
       </div>
     );
@@ -199,110 +196,118 @@ export default function ContractsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold gradient-text">Player Contracts</h1>
-          <p className="text-gray-500 mt-1">Manage 2-season player contracts</p>
-          <Link
-            href="/dashboard/committee"
-            className="inline-flex items-center mt-2 text-[#0066FF] hover:text-[#0052CC]"
-          >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Dashboard
-          </Link>
-        </div>
-      </div>
-
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 backdrop-blur-md rounded-xl p-4 border border-blue-200/20">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-4 sm:py-8 px-4">
+      <div className="container mx-auto max-w-screen-2xl">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <p className="text-sm text-gray-600 font-medium">Total Contracts</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{groupedContracts.size}</p>
+              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Player Contracts</h1>
+              <p className="text-gray-600 mt-2 text-sm sm:text-base">Manage 2-season player contracts</p>
             </div>
-            <div className="p-3 bg-blue-500/20 rounded-lg">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-green-500/10 to-green-600/5 backdrop-blur-md rounded-xl p-4 border border-green-200/20">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Current Season</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
-                {Array.from(groupedContracts.values()).filter(docs => docs.some(d => d.season_id === userSeasonId && !d.is_auto_registered)).length}
-              </p>
-            </div>
-            <div className="p-3 bg-green-500/20 rounded-lg">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 backdrop-blur-md rounded-xl p-4 border border-purple-200/20">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Next Season (Auto)</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
-                {Array.from(groupedContracts.values()).filter(docs => docs.some(d => d.is_auto_registered)).length}
-              </p>
-            </div>
-            <div className="p-3 bg-purple-500/20 rounded-lg">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl p-6 mb-6 border border-gray-100/20">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Filter Contracts</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by name or player ID..."
-              className="w-full py-2 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF]/70"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="w-full py-2 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF]/70"
+            <Link
+              href="/dashboard/committee"
+              className="inline-flex items-center px-4 sm:px-6 py-2.5 sm:py-3 glass rounded-xl border border-white/20 text-gray-700 hover:bg-white hover:shadow-lg transition-all text-sm font-medium whitespace-nowrap"
             >
-              <option value="all">All Contracts</option>
-              <option value="current">Current Season</option>
-              <option value="future">Next Season (Auto)</option>
-            </select>
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back
+            </Link>
           </div>
+        </div>
+
+        {/* Statistics */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="glass rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-blue-100/50 shadow-lg border border-blue-200/30 hover:shadow-xl transition-shadow">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-xs sm:text-sm text-blue-900/70 font-medium mb-1">Total Contracts</p>
+                <p className="text-2xl sm:text-3xl font-bold text-blue-900">{groupedContracts.size}</p>
+              </div>
+              <div className="p-2 sm:p-3 bg-blue-500/20 rounded-lg">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-green-50 to-green-100/50 shadow-lg border border-green-200/30 hover:shadow-xl transition-shadow">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-xs sm:text-sm text-green-900/70 font-medium mb-1">Current Season</p>
+                <p className="text-2xl sm:text-3xl font-bold text-green-900">
+                  {Array.from(groupedContracts.values()).filter(docs => docs.some(d => d.season_id === userSeasonId && !d.is_auto_registered)).length}
+                </p>
+              </div>
+              <div className="p-2 sm:p-3 bg-green-500/20 rounded-lg">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-purple-50 to-purple-100/50 shadow-lg border border-purple-200/30 hover:shadow-xl transition-shadow">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-xs sm:text-sm text-purple-900/70 font-medium mb-1">Next Season (Auto)</p>
+                <p className="text-2xl sm:text-3xl font-bold text-purple-900">
+                  {Array.from(groupedContracts.values()).filter(docs => docs.some(d => d.is_auto_registered)).length}
+                </p>
+              </div>
+              <div className="p-2 sm:p-3 bg-purple-500/20 rounded-lg">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+      </div>
+
+        {/* Filters */}
+        <div className="glass rounded-3xl p-4 sm:p-6 mb-6 shadow-lg border border-white/20">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-4">🔍 Filter Contracts</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Search</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by name or player ID..."
+                  className="w-full py-2.5 pl-10 pr-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#0066FF] focus:border-transparent outline-none text-sm"
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Status</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="w-full py-2.5 px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#0066FF] focus:border-transparent outline-none text-sm"
+              >
+                <option value="all">All Contracts</option>
+                <option value="current">Current Season</option>
+                <option value="future">Next Season (Auto)</option>
+              </select>
+            </div>
         </div>
       </div>
 
-      {/* Contracts Table */}
-      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl overflow-hidden border border-gray-100/20">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800">
-            Contracts List ({filteredContracts.length})
-          </h3>
-        </div>
+        {/* Contracts Table */}
+        <div className="glass rounded-3xl shadow-xl border border-white/20 overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900">
+              📋 Contracts List <span className="text-sm font-normal text-gray-600">({filteredContracts.length} contracts)</span>
+            </h3>
+          </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50/50">
@@ -327,8 +332,14 @@ export default function ContractsPage() {
             <tbody className="bg-white/60 divide-y divide-gray-200/50">
               {filteredContracts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    No contracts found
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center">
+                      <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <p className="text-gray-500 font-medium">No contracts found</p>
+                      <p className="text-gray-400 text-sm mt-1">Try adjusting your filters</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -378,9 +389,9 @@ export default function ContractsPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <button
                           onClick={() => handleCancelContract(contractId, firstDoc.name)}
-                          className="text-red-600 hover:text-red-800 font-medium"
+                          className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-medium transition-colors"
                         >
-                          Cancel Contract
+                          Cancel
                         </button>
                       </td>
                     </tr>
@@ -390,6 +401,7 @@ export default function ContractsPage() {
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </div>
   );

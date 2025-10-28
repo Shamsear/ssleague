@@ -13,6 +13,9 @@ import {
   Filter,
   AlertCircle,
   Calendar,
+  Crown,
+  Star,
+  Users as UsersIcon,
 } from 'lucide-react';
 
 interface Player {
@@ -41,10 +44,22 @@ interface TransferSettings {
   points_cost_per_transfer: number;
 }
 
+interface RealTeam {
+  team_id: string;
+  team_name: string;
+}
+
+interface MyTeam {
+  fantasy_league_id: string;
+  supported_team_id?: string;
+  supported_team_name?: string;
+}
+
 export default function TeamTransfersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
+  const [activeTab, setActiveTab] = useState<'players' | 'captains' | 'team'>('players');
   const [mySquad, setMySquad] = useState<Player[]>([]);
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -56,6 +71,19 @@ export default function TeamTransfersPage() {
   const [isTransferring, setIsTransferring] = useState(false);
   const [transfersUsed, setTransfersUsed] = useState(0);
   const [leagueId, setLeagueId] = useState<string>('');
+  
+  // Captain/VC state
+  const [captainId, setCaptainId] = useState<string | null>(null);
+  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
+  const [originalCaptainId, setOriginalCaptainId] = useState<string | null>(null);
+  const [originalViceCaptainId, setOriginalViceCaptainId] = useState<string | null>(null);
+  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
+  
+  // Team affiliation state
+  const [myTeam, setMyTeam] = useState<MyTeam | null>(null);
+  const [realTeams, setRealTeams] = useState<RealTeam[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const [isSavingTeam, setIsSavingTeam] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -84,14 +112,49 @@ export default function TeamTransfersPage() {
       const teamData = await teamRes.json();
       setMySquad(teamData.players || []);
       setLeagueId(teamData.team.fantasy_league_id);
+      setMyTeam(teamData.team);
+      setSelectedTeamId(teamData.team.supported_team_id || '');
+      
+      // Set current captain and vice-captain
+      const captain = teamData.players.find((p: any) => p.is_captain);
+      const viceCaptain = teamData.players.find((p: any) => p.is_vice_captain);
+      if (captain) {
+        setCaptainId(captain.real_player_id);
+        setOriginalCaptainId(captain.real_player_id);
+      }
+      if (viceCaptain) {
+        setViceCaptainId(viceCaptain.real_player_id);
+        setOriginalViceCaptainId(viceCaptain.real_player_id);
+      }
 
-      // Get transfer settings
-      const settingsRes = await fetch(
-        `/api/fantasy/transfers/settings?fantasy_league_id=${teamData.team.fantasy_league_id}`
+      // Get active transfer window
+      const windowsRes = await fetch(
+        `/api/fantasy/transfer-windows?league_id=${teamData.team.fantasy_league_id}`
       );
-      if (settingsRes.ok) {
-        const settingsData = await settingsRes.json();
-        setSettings(settingsData.settings);
+      
+      let activeWindow = null;
+      if (windowsRes.ok) {
+        const windowsData = await windowsRes.json();
+        // Find the active window
+        activeWindow = windowsData.windows?.find((w: any) => w.is_active);
+      }
+
+      // Get transfer settings for the active window
+      if (activeWindow) {
+        const settingsRes = await fetch(
+          `/api/fantasy/transfers/settings?window_id=${activeWindow.window_id}`
+        );
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          setSettings(settingsData.settings);
+        }
+      } else {
+        // No active window - set settings to show window is closed
+        setSettings({
+          max_transfers_per_window: 0,
+          is_transfer_window_open: false,
+          points_cost_per_transfer: 0,
+        });
       }
 
       // Get available players
@@ -112,10 +175,109 @@ export default function TeamTransfersPage() {
         setTransfers(transfersData.transfers || []);
         setTransfersUsed(transfersData.transfers_used || 0);
       }
+
+      // Get real teams for team affiliation changes
+      const teamsRes = await fetch('/api/teams/registered');
+      if (teamsRes.ok) {
+        const teamsData = await teamsRes.json();
+        setRealTeams(teamsData.teams || []);
+      }
     } catch (error) {
       console.error('Failed to load transfer data:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const saveCaptains = async () => {
+    if (!user) return;
+    
+    if (!captainId || !viceCaptainId) {
+      alert('Please select both captain and vice-captain');
+      return;
+    }
+
+    if (captainId === viceCaptainId) {
+      alert('Captain and vice-captain must be different players');
+      return;
+    }
+    
+    setIsSavingCaptains(true);
+    try {
+      const response = await fetch('/api/fantasy/squad/set-captain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          captain_player_id: captainId,
+          vice_captain_player_id: viceCaptainId,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to save captains';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          // Response body is empty or not JSON
+        }
+        throw new Error(errorMessage);
+      }
+
+      alert('Captain and vice-captain updated successfully!');
+      setOriginalCaptainId(captainId);
+      setOriginalViceCaptainId(viceCaptainId);
+      await loadTransferData();
+    } catch (error) {
+      console.error('Error saving captains:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save captains');
+    } finally {
+      setIsSavingCaptains(false);
+    }
+  };
+
+  const changeTeamAffiliation = async () => {
+    if (!user || !myTeam) return;
+    
+    if (!selectedTeamId) {
+      alert('Please select a team');
+      return;
+    }
+
+    const team = realTeams.find(t => t.team_id === selectedTeamId);
+    if (!team) return;
+    
+    setIsSavingTeam(true);
+    try {
+      const response = await fetch('/api/fantasy/teams/select-supported', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          supported_team_id: team.team_id,
+          supported_team_name: team.team_name,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to change team';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          // Response body is empty or not JSON
+        }
+        throw new Error(errorMessage);
+      }
+
+      alert(`Now supporting ${team.team_name} for passive points!`);
+      await loadTransferData();
+    } catch (error) {
+      console.error('Error changing team:', error);
+      alert(error instanceof Error ? error.message : 'Failed to change team');
+    } finally {
+      setIsSavingTeam(false);
     }
   };
 
@@ -280,23 +442,66 @@ export default function TeamTransfersPage() {
           </div>
         </div>
 
-        {/* Info Alert */}
-        {settings.points_cost_per_transfer > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
-              <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">Transfer Cost</p>
-                <p>
-                  Each transfer will deduct {settings.points_cost_per_transfer} points from your total
-                  score. Choose wisely!
-                </p>
-              </div>
-            </div>
+        {/* Tabs */}
+        <div className="bg-white rounded-t-2xl shadow-lg border border-gray-200 border-b-0 mb-0">
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab('players')}
+              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
+                activeTab === 'players'
+                  ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <ArrowLeftRight className="w-5 h-5" />
+              Player Transfers
+            </button>
+            <button
+              onClick={() => setActiveTab('captains')}
+              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
+                activeTab === 'captains'
+                  ? 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Crown className="w-5 h-5" />
+              Captain Changes
+            </button>
+            <button
+              onClick={() => setActiveTab('team')}
+              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
+                activeTab === 'team'
+                  ? 'bg-gradient-to-r from-green-500 to-teal-600 text-white'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <UsersIcon className="w-5 h-5" />
+              Team Affiliation
+            </button>
           </div>
-        )}
+        </div>
 
-        {/* Transfer Interface */}
+        <div className="bg-white rounded-b-2xl shadow-lg border border-gray-200 border-t-0 p-6">
+          {/* Player Transfers Tab */}
+          {activeTab === 'players' && (
+            <>
+              {/* Info Alert */}
+              {settings.points_cost_per_transfer > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                    <div className="text-sm text-amber-800">
+                      <p className="font-medium mb-1">Transfer Cost</p>
+                      <p>
+                        Each transfer will deduct {settings.points_cost_per_transfer} points from your total
+                        score. Choose wisely!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Transfer Interface */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Player Out */}
           <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
@@ -481,6 +686,173 @@ export default function TeamTransfersPage() {
               <p className="text-center text-gray-500 py-8">No transfers yet</p>
             )}
           </div>
+        </div>
+            </>
+          )}
+
+          {/* Captain Changes Tab */}
+          {activeTab === 'captains' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Change Captain & Vice-Captain</h2>
+                <p className="text-gray-600 mb-6">Updates take effect immediately for all future matches</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Captain Selection */}
+                <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-6 border-2 border-yellow-300">
+                  <label className="block text-lg font-bold text-gray-900 mb-3">
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-6 h-6 text-yellow-600" />
+                      <span>Captain (2x Points)</span>
+                    </div>
+                  </label>
+                  <select
+                    value={captainId || ''}
+                    onChange={(e) => setCaptainId(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                  >
+                    <option value="">Select Captain...</option>
+                    {mySquad.map((player) => (
+                      <option 
+                        key={player.real_player_id} 
+                        value={player.real_player_id}
+                        disabled={player.real_player_id === viceCaptainId}
+                      >
+                        {player.player_name} ({player.team}) - {player.position}
+                      </option>
+                    ))}
+                  </select>
+                  {originalCaptainId && (
+                    <p className="text-xs text-gray-600 mt-2">
+                      Current: {mySquad.find(p => p.real_player_id === originalCaptainId)?.player_name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Vice-Captain Selection */}
+                <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border-2 border-blue-300">
+                  <label className="block text-lg font-bold text-gray-900 mb-3">
+                    <div className="flex items-center gap-2">
+                      <Star className="w-6 h-6 text-blue-600" />
+                      <span>Vice-Captain (1.5x Points)</span>
+                    </div>
+                  </label>
+                  <select
+                    value={viceCaptainId || ''}
+                    onChange={(e) => setViceCaptainId(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select Vice-Captain...</option>
+                    {mySquad.map((player) => (
+                      <option 
+                        key={player.real_player_id} 
+                        value={player.real_player_id}
+                        disabled={player.real_player_id === captainId}
+                      >
+                        {player.player_name} ({player.team}) - {player.position}
+                      </option>
+                    ))}
+                  </select>
+                  {originalViceCaptainId && (
+                    <p className="text-xs text-gray-600 mt-2">
+                      Current: {mySquad.find(p => p.real_player_id === originalViceCaptainId)?.player_name}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={saveCaptains}
+                disabled={
+                  isSavingCaptains || 
+                  !captainId || 
+                  !viceCaptainId || 
+                  (captainId === originalCaptainId && viceCaptainId === originalViceCaptainId)
+                }
+                className="w-full px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg text-lg"
+              >
+                {isSavingCaptains ? 'Saving...' : 'Save Captain Changes'}
+              </button>
+
+              {captainId === originalCaptainId && viceCaptainId === originalViceCaptainId && captainId && viceCaptainId && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-sm text-blue-800 text-center">
+                    ℹ️ No changes to save - these are your current selections
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Team Affiliation Tab */}
+          {activeTab === 'team' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Change Supported Team</h2>
+                <p className="text-gray-600 mb-6">Select which real team you support to earn passive points from their wins</p>
+              </div>
+
+              {myTeam?.supported_team_name && (
+                <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl p-6 border-2 border-green-300">
+                  <div className="flex items-center gap-3">
+                    <UsersIcon className="w-8 h-8 text-green-600" />
+                    <div>
+                      <p className="text-sm text-gray-600">Currently Supporting</p>
+                      <p className="text-2xl font-bold text-gray-900">{myTeam.supported_team_name}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 border-2 border-gray-300">
+                <label className="block text-lg font-bold text-gray-900 mb-3">
+                  Select New Team
+                </label>
+                <select
+                  value={selectedTeamId}
+                  onChange={(e) => setSelectedTeamId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="">Select a team...</option>
+                  {realTeams.map(team => (
+                    <option key={team.team_id} value={team.team_id}>
+                      {team.team_name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-600 mt-2">
+                  You'll earn passive points when this team wins matches
+                </p>
+              </div>
+
+              <button
+                onClick={changeTeamAffiliation}
+                disabled={
+                  isSavingTeam || 
+                  !selectedTeamId || 
+                  selectedTeamId === myTeam?.supported_team_id
+                }
+                className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg text-lg"
+              >
+                {isSavingTeam ? 'Saving...' : 'Change Supported Team'}
+              </button>
+
+              {selectedTeamId === myTeam?.supported_team_id && selectedTeamId && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-sm text-blue-800 text-center">
+                    ℹ️ This is already your supported team
+                  </p>
+                </div>
+              )}
+
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <p className="text-sm text-green-800">
+                  <strong>How Passive Points Work:</strong> When your supported team wins a match, you automatically earn bonus points added to your fantasy total. This is separate from your player points.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

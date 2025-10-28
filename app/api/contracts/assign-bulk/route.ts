@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { fantasySql } from '@/lib/neon/fantasy-config';
+import { triggerNews } from '@/lib/news/trigger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -380,6 +381,50 @@ export async function POST(request: NextRequest) {
         });
         console.log(`Updated team_seasons ${currentSeasonDocId}: ${data.count} players, $${data.totalSpent} spent`);
       }
+    }
+
+    // Trigger news for each team getting players assigned
+    try {
+      // Get season name
+      const seasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
+      const seasonName = seasonDoc.exists ? seasonDoc.data()?.name : undefined;
+      
+      // Generate news for each team that got players
+      for (const [teamId, data] of teamPlayerMap.entries()) {
+        const teamName = teamNames.get(teamId) || 'Unknown Team';
+        const teamPlayers = players.filter(p => p.teamId === teamId);
+        const playerIdsList = teamPlayers.map(p => p.id);
+        
+        // Check if roster is complete (e.g., 5+ players typically means complete)
+        const isRosterComplete = data.count >= 5;
+        
+        if (isRosterComplete) {
+          // Trigger "roster complete" news
+          await triggerNews('team_roster_complete', {
+            season_id: seasonId,
+            season_name: seasonName,
+            team_id: teamId,
+            team_name: teamName,
+            player_count: data.count,
+            total_spent: data.totalSpent,
+          });
+        } else {
+          // Trigger "players assigned" news
+          await triggerNews('team_players_assigned', {
+            season_id: seasonId,
+            season_name: seasonName,
+            team_id: teamId,
+            team_name: teamName,
+            player_ids: playerIdsList,
+            player_count: data.count,
+            total_spent: data.totalSpent,
+          });
+        }
+      }
+      
+      console.log(`✅ Generated news for ${teamPlayerMap.size} teams`);
+    } catch (newsError) {
+      console.error('Failed to generate team roster news:', newsError);
     }
 
     return NextResponse.json({

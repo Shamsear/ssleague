@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { db } from '@/lib/firebase/config';
 import { doc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { useModal } from '@/hooks/useModal';
+import { useAutoLockLineups } from '@/hooks/useAutoLockLineups';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 
@@ -44,6 +45,7 @@ interface Fixture {
   leg: string;
   status: string;
   scheduled_date?: Date;
+  lineup_deadline?: string;
   motm_player_id?: string | null;
   motm_player_name?: string | null;
   // Penalty/Fine goals
@@ -115,6 +117,9 @@ export default function FixturePage() {
     closeConfirm,
     handleConfirm,
   } = useModal();
+
+  // Auto-lock lineups when deadline passes
+  useAutoLockLineups(fixtureId, fixture?.lineup_deadline);
 
   // Function to generate WhatsApp share text
   const generateWhatsAppText = () => {
@@ -1320,56 +1325,195 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                 )}
 
                 <div className="space-y-3">
-                  {matchups.map((matchup, idx) => (
-                    <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr_auto] gap-3 sm:gap-4 items-center p-4 bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-xl">
-                      {/* Home Player & Goals */}
-                      <div className="text-center sm:text-right">
-                        <p className="text-xs text-gray-500 mb-1">Home Player</p>
-                        <p className="font-medium text-gray-900 mb-1">{matchup.home_player_name}</p>
-                        {matchup.home_goals !== null && matchup.home_goals !== undefined ? (
-                          <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-bold">
-                            {matchup.home_goals} {matchup.home_goals === 1 ? 'goal' : 'goals'}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">No result</span>
-                        )}
-                      </div>
-
-                      {/* VS Badge with Score */}
-                      <div className="flex justify-center">
-                        {matchup.home_goals !== null && matchup.away_goals !== null ? (
-                          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg px-4 py-2 font-bold text-lg shadow-md">
-                            {matchup.home_goals} - {matchup.away_goals}
+                  {matchups.map((matchup, idx) => {
+                    const hasResult = matchup.home_goals !== null && matchup.away_goals !== null;
+                    const homeWon = hasResult && matchup.home_goals! > matchup.away_goals!;
+                    const awayWon = hasResult && matchup.away_goals! > matchup.home_goals!;
+                    const isDraw = hasResult && matchup.home_goals === matchup.away_goals;
+                    const isPOTD = fixture.motm_player_id && (fixture.motm_player_id === matchup.home_player_id || fixture.motm_player_id === matchup.away_player_id);
+                    const homePOTD = fixture.motm_player_id === matchup.home_player_id;
+                    const awayPOTD = fixture.motm_player_id === matchup.away_player_id;
+                    
+                    return (
+                      <div key={idx} className={`p-4 rounded-xl border-2 transition-all ${
+                        isPOTD ? 'bg-gradient-to-br from-yellow-50 via-amber-50 to-yellow-100 border-yellow-400 shadow-lg' : 'bg-gradient-to-br from-gray-50 to-white border-gray-200'
+                      }`}>
+                        {/* Match Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-2.5 py-1 bg-gray-800 text-white text-xs font-bold rounded-lg">
+                              Match #{matchup.position}
+                            </span>
+                            {matchup.match_duration && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-md">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {matchup.match_duration} min
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <div className="bg-gray-200 text-gray-600 rounded-full px-4 py-2 text-sm font-medium">VS</div>
-                        )}
-                      </div>
+                          {isPOTD && (
+                            <div className="flex items-center gap-1 px-3 py-1 bg-yellow-400 text-yellow-900 rounded-full text-xs font-bold shadow-md">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                              MOTM
+                            </div>
+                          )}
+                        </div>
 
-                      {/* Away Player & Goals */}
-                      <div className="text-center sm:text-left">
-                        <p className="text-xs text-gray-500 mb-1">Away Player</p>
-                        <p className="font-medium text-gray-900 mb-1">{matchup.away_player_name}</p>
-                        {matchup.away_goals !== null && matchup.away_goals !== undefined ? (
-                          <span className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-full font-bold">
-                            {matchup.away_goals} {matchup.away_goals === 1 ? 'goal' : 'goals'}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">No result</span>
+                        {/* Substitution Warnings */}
+                        {(matchup.home_substituted || matchup.away_substituted) && (
+                          <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                            <div className="flex items-start gap-2">
+                              <svg className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                              <div className="flex-1 text-xs">
+                                <p className="font-semibold text-orange-900 mb-1">⚠️ Substitution Penalties Applied</p>
+                                {matchup.home_substituted && (
+                                  <p className="text-orange-700 mb-0.5">
+                                    🔁 Home: {matchup.home_original_player_name} → {matchup.home_player_name} 
+                                    <span className="font-bold ml-1">(+{matchup.home_sub_penalty || 0} goals to {fixture.away_team_name})</span>
+                                  </p>
+                                )}
+                                {matchup.away_substituted && (
+                                  <p className="text-orange-700">
+                                    🔁 Away: {matchup.away_original_player_name} → {matchup.away_player_name}
+                                    <span className="font-bold ml-1">(+{matchup.away_sub_penalty || 0} goals to {fixture.home_team_name})</span>
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         )}
-                      </div>
 
-                      {/* Match Number & Duration */}
-                      <div className="col-span-full sm:col-span-1 text-center">
-                        <span className="text-xs text-gray-500">Match #{matchup.position}</span>
-                        {matchup.match_duration && (
-                          <span className="ml-2 text-xs text-green-600 font-medium">
-                            ({matchup.match_duration} min)
-                          </span>
+                        {/* Main Matchup Display */}
+                        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+                          {/* Home Player */}
+                          <div className={`p-3 rounded-lg border-2 transition-all ${
+                            homePOTD ? 'bg-gradient-to-br from-yellow-200 to-yellow-300 border-yellow-500 shadow-md' :
+                            homeWon ? 'bg-gradient-to-br from-green-100 to-green-200 border-green-400' :
+                            isDraw ? 'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300' :
+                            awayWon ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-200' :
+                            'bg-white border-gray-200'
+                          }`}>
+                            <div className="text-center">
+                              <div className="flex items-center justify-center gap-1 mb-1">
+                                {homePOTD && (
+                                  <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                )}
+                                <p className="text-xs font-medium text-gray-600">🏠 {fixture.home_team_name}</p>
+                              </div>
+                              <p className={`font-bold mb-2 ${
+                                homePOTD ? 'text-yellow-900 text-base' : 'text-gray-900 text-sm'
+                              }`}>{matchup.home_player_name}</p>
+                              {hasResult && (
+                                <div className="space-y-1">
+                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-sm ${
+                                    homeWon ? 'bg-green-500 text-white' :
+                                    isDraw ? 'bg-gray-400 text-white' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    {homeWon ? '✓' : isDraw ? '◆' : '✗'}
+                                    <span className="ml-0.5">{matchup.home_goals} goal{matchup.home_goals !== 1 ? 's' : ''}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-600">
+                                    {homeWon ? '🎉 Won' : isDraw ? '🤝 Draw' : '❌ Lost'}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Score Badge */}
+                          <div className="flex flex-col items-center gap-2">
+                            {hasResult ? (
+                              <>
+                                <div className={`px-4 py-2 rounded-lg font-bold text-lg shadow-md ${
+                                  isDraw ? 'bg-yellow-400 text-yellow-900' :
+                                  'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
+                                }`}>
+                                  {matchup.home_goals} - {matchup.away_goals}
+                                </div>
+                                {!isDraw && (
+                                  <div className="flex items-center gap-1 text-xs font-semibold text-gray-600">
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                    {matchup.home_player_name} {homeWon ? 'beat' : 'lost to'} {matchup.away_player_name}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="bg-gray-200 text-gray-600 rounded-full px-4 py-2 text-sm font-medium">VS</div>
+                            )}
+                          </div>
+
+                          {/* Away Player */}
+                          <div className={`p-3 rounded-lg border-2 transition-all ${
+                            awayPOTD ? 'bg-gradient-to-br from-yellow-200 to-yellow-300 border-yellow-500 shadow-md' :
+                            awayWon ? 'bg-gradient-to-br from-green-100 to-green-200 border-green-400' :
+                            isDraw ? 'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300' :
+                            homeWon ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-200' :
+                            'bg-white border-gray-200'
+                          }`}>
+                            <div className="text-center">
+                              <div className="flex items-center justify-center gap-1 mb-1">
+                                {awayPOTD && (
+                                  <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                )}
+                                <p className="text-xs font-medium text-gray-600">✈️ {fixture.away_team_name}</p>
+                              </div>
+                              <p className={`font-bold mb-2 ${
+                                awayPOTD ? 'text-yellow-900 text-base' : 'text-gray-900 text-sm'
+                              }`}>{matchup.away_player_name}</p>
+                              {hasResult && (
+                                <div className="space-y-1">
+                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-sm ${
+                                    awayWon ? 'bg-green-500 text-white' :
+                                    isDraw ? 'bg-gray-400 text-white' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    {awayWon ? '✓' : isDraw ? '◆' : '✗'}
+                                    <span className="ml-0.5">{matchup.away_goals} goal{matchup.away_goals !== 1 ? 's' : ''}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-600">
+                                    {awayWon ? '🎉 Won' : isDraw ? '🤝 Draw' : '❌ Lost'}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Match Stats Summary */}
+                        {hasResult && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <div className="flex items-center justify-center gap-4 text-xs text-gray-600">
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                </svg>
+                                <span><strong>Goal Diff:</strong> {matchup.home_player_name} {matchup.home_goals! > matchup.away_goals! ? '+' : ''}{matchup.home_goals! - matchup.away_goals!}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                </svg>
+                                <span><strong>Goal Diff:</strong> {matchup.away_player_name} {matchup.away_goals! > matchup.home_goals! ? '+' : ''}{matchup.away_goals! - matchup.home_goals!}</span>
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Enter/Edit Results Button */}

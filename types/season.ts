@@ -1,6 +1,8 @@
 export type SeasonStatus = 'draft' | 'active' | 'ongoing' | 'completed';
 export type SeasonType = 'single' | 'multi'; // single: seasons 1-15, multi: season 16+
 export type PlayerCategory = 'legend' | 'classic';
+export type RegistrationPhase = 'confirmed' | 'paused' | 'unconfirmed' | 'closed';
+export type RegistrationType = 'confirmed' | 'unconfirmed';
 
 export interface Season {
   id: string;
@@ -13,6 +15,12 @@ export interface Season {
   registrationOpen: boolean;
   is_team_registration_open?: boolean;
   is_player_registration_open?: boolean;
+  
+  // Player registration slot management
+  registration_phase?: RegistrationPhase; // Current phase of registration
+  confirmed_slots_limit?: number; // Total confirmed slots available
+  confirmed_slots_filled?: number; // Number of confirmed slots filled
+  unconfirmed_registration_enabled?: boolean; // Whether Phase 2 is enabled
   startDate?: Date;
   endDate?: Date;
   totalTeams: number;

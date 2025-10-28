@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -13,6 +13,7 @@ interface AlertMessage {
 
 export default function Login() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: userLoading } = useAuth();
   const { signIn, loading: authLoading } = useFirebaseAuth();
   const [username, setUsername] = useState('');
@@ -20,25 +21,45 @@ export default function Login() {
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [alerts, setAlerts] = useState<AlertMessage[]>([]);
+  
+  // Read redirect URL once at mount and store in state
+  const [redirectUrl] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    
+    const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+    if (redirectParam) return redirectParam;
+    
+    const storedRedirect = sessionStorage.getItem('redirectAfterLogin');
+    if (storedRedirect) {
+      sessionStorage.removeItem('redirectAfterLogin'); // Clear it immediately
+      return storedRedirect;
+    }
+    
+    return null;
+  });
+  
+  // Get role-based default dashboard
+  const getRoleBasedDashboard = (userRole?: string) => {
+    switch (userRole) {
+      case 'super_admin':
+        return '/dashboard/superadmin';
+      case 'committee_admin':
+        return '/dashboard/committee';
+      case 'team':
+        return '/dashboard/team';
+      default:
+        return '/dashboard';
+    }
+  };
 
-  // Redirect if user is already logged in to their role-specific dashboard
+  // Redirect if user is already logged in
   useEffect(() => {
     if (!userLoading && user) {
-      switch (user.role) {
-        case 'super_admin':
-          router.replace('/dashboard/superadmin');
-          break;
-        case 'committee_admin':
-          router.replace('/dashboard/committee');
-          break;
-        case 'team':
-          router.replace('/dashboard/team');
-          break;
-        default:
-          router.replace('/dashboard');
-      }
+      const targetUrl = redirectUrl || getRoleBasedDashboard(user.role);
+      console.log('[Login] User already logged in, redirecting to:', targetUrl);
+      router.replace(targetUrl);
     }
-  }, [user, userLoading, router]);
+  }, [user, userLoading, router, redirectUrl]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -90,27 +111,10 @@ export default function Login() {
       
       console.log('[Login] Sign-in successful, user role:', user?.role);
       
-      // Use router.replace for faster navigation (no page reload)
-      // Redirect to role-specific dashboard
-      if (user) {
-        console.log('[Login] Redirecting to dashboard for role:', user.role);
-        switch (user.role) {
-          case 'super_admin':
-            router.replace('/dashboard/superadmin');
-            break;
-          case 'committee_admin':
-            router.replace('/dashboard/committee');
-            break;
-          case 'team':
-            router.replace('/dashboard/team');
-            break;
-          default:
-            router.replace('/dashboard');
-        }
-      } else {
-        console.log('[Login] No user data, redirecting to default dashboard');
-        router.replace('/dashboard');
-      }
+      // Redirect to intended page or role-specific dashboard
+      const targetUrl = redirectUrl || getRoleBasedDashboard(user?.role);
+      console.log('[Login] Sign-in successful, redirecting to:', targetUrl);
+      router.replace(targetUrl);
     } catch (error: any) {
       console.error('Login error:', error);
       

@@ -689,20 +689,20 @@ async function importTeams(
       
       await sql`
         INSERT INTO teamstats (
-          id, team_id, season_id, team_name,
+          id, team_id, season_id, team_name, tournament_id,
           points, matches_played, wins, draws, losses,
           goals_for, goals_against, goal_difference, position, trophies,
           created_at, updated_at
         )
         VALUES (
-          ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName},
+          ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, ${'historical'},
           ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
           ${team.d || 0}, ${team.l || 0},
           ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
           ${teamTrophiesJson}::jsonb,
           NOW(), NOW()
         )
-        ON CONFLICT (id) DO UPDATE
+        ON CONFLICT (team_id, season_id) DO UPDATE
         SET
           team_name = EXCLUDED.team_name,
           points = EXCLUDED.points,
@@ -848,20 +848,20 @@ async function importTeams(
         
         await sqlTeam`
           INSERT INTO teamstats (
-            id, team_id, season_id, team_name,
+            id, team_id, season_id, team_name, tournament_id,
             points, matches_played, wins, draws, losses,
             goals_for, goals_against, goal_difference, position, trophies,
             created_at, updated_at
           )
           VALUES (
-            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName},
+            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, ${'historical'},
             ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
             ${team.d || 0}, ${team.l || 0},
             ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
             ${teamTrophiesJson2}::jsonb,
             NOW(), NOW()
           )
-          ON CONFLICT (id) DO UPDATE
+          ON CONFLICT (team_id, season_id) DO UPDATE
           SET
             team_name = EXCLUDED.team_name,
             points = EXCLUDED.points,
@@ -927,20 +927,20 @@ async function importTeams(
         
         await sql3`
           INSERT INTO teamstats (
-            id, team_id, season_id, team_name,
+            id, team_id, season_id, team_name, tournament_id,
             points, matches_played, wins, draws, losses,
             goals_for, goals_against, goal_difference, position, trophies,
             created_at, updated_at
           )
           VALUES (
-            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName},
+            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, ${'historical'},
             ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
             ${team.d || 0}, ${team.l || 0},
             ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
             ${teamTrophiesJson3}::jsonb,
             NOW(), NOW()
           )
-          ON CONFLICT (id) DO UPDATE
+          ON CONFLICT (team_id, season_id) DO UPDATE
           SET
             team_name = EXCLUDED.team_name,
             points = EXCLUDED.points,
@@ -1228,7 +1228,7 @@ async function importPlayers(
     
     await sqlPlayer`
       INSERT INTO realplayerstats (
-        id, player_id, season_id, player_name,
+        id, player_id, season_id, player_name, tournament_id,
         category, team, team_id,
         matches_played, matches_won, matches_drawn, matches_lost,
         goals_scored, goals_conceded, assists, wins, draws, losses,
@@ -1236,7 +1236,7 @@ async function importPlayers(
         created_at, updated_at
       )
       VALUES (
-        ${statsDocId}, ${playerId}, ${seasonId}, ${normalizedPlayerName},
+        ${statsDocId}, ${playerId}, ${seasonId}, ${normalizedPlayerName}, ${'historical'},
         ${player.category || ''}, ${normalizedPlayerTeam}, ${teamIdForPlayer},
         ${newStats.matches_played || 0}, ${newStats.matches_won || 0}, 
         ${newStats.matches_drawn || 0}, ${newStats.matches_lost || 0},
@@ -1247,7 +1247,7 @@ async function importPlayers(
         ${newStats.total_points || 0}, 3, ${trophiesJson}::jsonb,
         NOW(), NOW()
       )
-      ON CONFLICT (id) DO UPDATE
+      ON CONFLICT (player_id, season_id) DO UPDATE
       SET
         player_name = EXCLUDED.player_name,
         category = EXCLUDED.category,

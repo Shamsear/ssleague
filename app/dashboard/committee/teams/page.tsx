@@ -15,12 +15,10 @@ interface TeamData {
     name: string;
     logoUrl: string | null;
     balance: number;
-    // Dual currency (Season 16+)
     dollar_balance?: number;
     euro_balance?: number;
     dollar_spent?: number;
     euro_spent?: number;
-    // Contract fields
     skipped_seasons?: number;
     penalty_amount?: number;
     last_played_season?: string;
@@ -42,6 +40,8 @@ export default function CommitteeTeamsPage() {
   const [teams, setTeams] = useState<TeamData[]>([]);
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'players' | 'balance'>('name');
 
   useEffect(() => {
     if (!loading && !user) {
@@ -66,7 +66,6 @@ export default function CommitteeTeamsPage() {
         const data = await response.json();
 
         if (data.success && data.data?.teams) {
-          console.log('✅ Fetched teams:', data.data.teams);
           setTeams(data.data.teams);
           setError(null);
         } else {
@@ -85,12 +84,32 @@ export default function CommitteeTeamsPage() {
     }
   }, [isCommitteeAdmin, userSeasonId]);
 
+  // Filter and sort teams
+  const filteredTeams = teams
+    .filter(team => 
+      team.team.name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.team.name.localeCompare(b.team.name);
+        case 'players':
+          return b.totalPlayers - a.totalPlayers;
+        case 'balance':
+          const aBalance = a.team.dollar_balance ?? a.team.balance;
+          const bBalance = b.team.dollar_balance ?? b.team.balance;
+          return bBalance - aBalance;
+        default:
+          return 0;
+      }
+    });
+
   if (loading || loadingTeams) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading teams...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[#0066FF] mx-auto"></div>
+          <p className="mt-6 text-gray-600 font-medium">Loading teams...</p>
         </div>
       </div>
     );
@@ -101,201 +120,295 @@ export default function CommitteeTeamsPage() {
   }
 
   return (
-    <div className="min-h-screen py-4 sm:py-8 px-4">
+    <div className="min-h-screen py-6 px-4 sm:px-6 lg:px-8">
       <div className="container mx-auto max-w-screen-2xl">
-        {/* Teams Overview */}
-        <div className="glass rounded-3xl p-4 sm:p-6 mb-8 shadow-lg">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <div className="hidden sm:block">
-              <h2 className="text-xl font-bold text-gray-800">Teams Overview</h2>
+        
+        {/* Header Section */}
+        <div className="mb-8">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div>
+              <h1 className="text-4xl md:text-5xl font-bold gradient-text mb-3">
+                Season Teams
+              </h1>
+              <p className="text-gray-600 text-lg">
+                Manage and monitor all registered teams
+              </p>
             </div>
-            <div className="flex space-x-2 w-full sm:w-auto">
-              <Link
-                href="/dashboard/committee"
-                className="px-4 py-2.5 text-sm glass rounded-xl hover:bg-white/90 transition-all duration-300 flex items-center justify-center text-gray-800 sm:justify-start w-full sm:w-auto"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+            
+            <Link 
+              href="/dashboard/committee" 
+              className="inline-flex items-center justify-center px-5 py-3 bg-gradient-to-r from-[#0066FF] to-blue-600 hover:from-[#0052CC] hover:to-blue-700 text-white text-sm font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Dashboard
+            </Link>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-6 glass rounded-2xl p-4 bg-red-50/50 border border-red-200/50 text-red-700 flex items-center animate-fade-in">
+            <svg className="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {error}
+          </div>
+        )}
+
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+          <div className="glass rounded-2xl p-5 shadow-xl border border-white/30 hover:border-[#0066FF]/40 transition-all hover:-translate-y-1">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-[#0066FF] to-blue-600 shadow-lg">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                Back to Dashboard
-              </Link>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600 mb-1">Total Teams</div>
+            <div className="text-3xl font-bold gradient-text">{teams.length}</div>
+          </div>
+
+          <div className="glass rounded-2xl p-5 shadow-xl border border-white/30 hover:border-purple-500/40 transition-all hover:-translate-y-1">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600 mb-1">Total Players</div>
+            <div className="text-3xl font-bold text-purple-600">
+              {teams.reduce((sum, team) => sum + team.totalPlayers, 0)}
             </div>
           </div>
 
-          {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-              {error}
+          <div className="glass rounded-2xl p-5 shadow-xl border border-white/30 hover:border-amber-500/40 transition-all hover:-translate-y-1">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 shadow-lg">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600 mb-1">Avg Rating</div>
+            <div className="text-3xl font-bold text-amber-600">
+              {teams.length > 0 
+                ? (teams.reduce((sum, team) => sum + team.avgRating, 0) / teams.length).toFixed(1)
+                : '0.0'
+              }
+            </div>
+          </div>
+        </div>
+
+        {/* Search and Filter */}
+        <div className="glass rounded-3xl p-6 shadow-xl border border-white/30 mb-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search teams..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 glass rounded-xl border border-white/20 focus:border-[#0066FF]/50 focus:outline-none focus:ring-2 focus:ring-[#0066FF]/20 transition-all"
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSortBy('name')}
+                className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+                  sortBy === 'name'
+                    ? 'bg-gradient-to-r from-[#0066FF] to-blue-600 text-white shadow-lg'
+                    : 'glass hover:bg-white/50 text-gray-700'
+                }`}
+              >
+                Name
+              </button>
+              <button
+                onClick={() => setSortBy('players')}
+                className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+                  sortBy === 'players'
+                    ? 'bg-gradient-to-r from-[#0066FF] to-blue-600 text-white shadow-lg'
+                    : 'glass hover:bg-white/50 text-gray-700'
+                }`}
+              >
+                Players
+              </button>
+              <button
+                onClick={() => setSortBy('balance')}
+                className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+                  sortBy === 'balance'
+                    ? 'bg-gradient-to-r from-[#0066FF] to-blue-600 text-white shadow-lg'
+                    : 'glass hover:bg-white/50 text-gray-700'
+                }`}
+              >
+                Balance
+              </button>
+            </div>
+          </div>
+          
+          {searchQuery && (
+            <div className="mt-4 text-sm text-gray-600">
+              Found {filteredTeams.length} team{filteredTeams.length !== 1 ? 's' : ''}
             </div>
           )}
+        </div>
 
-          {/* Desktop Table (hidden on mobile) */}
-          <div className="hidden md:block overflow-x-auto rounded-xl shadow-sm">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50/50">
-                <tr>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Team Name</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Players</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Contract</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white/30">
-                {teams.length > 0 ? (
-                  teams.map((teamData) => (
-                    <tr key={teamData.team.id} className="hover:bg-white/60 transition-colors">
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-8 w-8 flex-shrink-0 bg-[#0066FF]/10 rounded-md flex items-center justify-center text-[#0066FF] mr-3 overflow-hidden">
-                            {teamData.team.logoUrl ? (
-                              <Image src={teamData.team.logoUrl} alt={teamData.team.name} width={32} height={32} className="object-contain" />
-                            ) : (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-                              </svg>
-                            )}
-                          </div>
-                          <div className="text-sm font-medium text-gray-800">{teamData.team.name}</div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        {teamData.team.dollar_balance !== undefined || teamData.team.euro_balance !== undefined ? (
-                          <div className="text-sm text-gray-700">
-                            <div className="mb-1"><span className="font-semibold text-green-700">$</span> {teamData.team.dollar_balance?.toLocaleString?.() ?? '0'}</div>
-                            <div><span className="font-semibold text-blue-700">€</span> {teamData.team.euro_balance?.toLocaleString?.() ?? '0'}</div>
-                          </div>
+        {/* Teams Grid */}
+        <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
+          {filteredTeams.length > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+              {filteredTeams.map((teamData) => (
+                <div
+                  key={teamData.team.id}
+                  className="glass rounded-2xl p-5 border border-white/20 hover:border-[#0066FF]/40 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+                >
+                  {/* Team Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="h-14 w-14 flex-shrink-0 bg-gradient-to-br from-[#0066FF]/10 to-blue-500/10 rounded-xl flex items-center justify-center overflow-hidden shadow-md">
+                        {teamData.team.logoUrl ? (
+                          <Image 
+                            src={teamData.team.logoUrl} 
+                            alt={teamData.team.name} 
+                            width={56} 
+                            height={56} 
+                            className="object-contain" 
+                          />
                         ) : (
-                          <div className="text-sm font-medium text-gray-700">
-                            <span className="text-[#0066FF] font-semibold">£{teamData.team.balance.toLocaleString()}</span>
-                          </div>
+                          <svg className="w-7 h-7 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                          </svg>
                         )}
-                      </td>
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-700 mb-1.5">{teamData.totalPlayers}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <ContractInfo
-                          skippedSeasons={teamData.team.skipped_seasons}
-                          penaltyAmount={teamData.team.penalty_amount}
-                          lastPlayedSeason={teamData.team.last_played_season}
-                          contractId={teamData.team.contract_id}
-                          contractStartSeason={teamData.team.contract_start_season}
-                          contractEndSeason={teamData.team.contract_end_season}
-                          isAutoRegistered={teamData.team.is_auto_registered}
-                          compact
-                        />
-                      </td>
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-gray-900 text-lg truncate">{teamData.team.name}</h3>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 mt-1">
                           <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                           </svg>
                           Registered
                         </span>
-                      </td>
-                      <td className="px-5 py-4 whitespace-nowrap text-sm">
-                        <div className="flex space-x-1">
-                          <Link
-                            href={`/dashboard/committee/teams/${teamData.team.id}`}
-                            className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors duration-200"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center">
-                      <div className="flex flex-col items-center">
-                        <svg className="w-12 h-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                        <p className="text-gray-500 text-sm">No teams found for this season</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Cards (hidden on desktop) */}
-          <div className="md:hidden space-y-4">
-            {teams.length > 0 ? (
-              teams.map((teamData) => (
-                <div key={teamData.team.id} className="bg-white/30 backdrop-blur-sm rounded-xl shadow-sm p-4 border border-gray-100">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 flex-shrink-0 bg-[#0066FF]/10 rounded-md flex items-center justify-center text-[#0066FF] mr-3 overflow-hidden">
-                        {teamData.team.logoUrl ? (
-                          <Image src={teamData.team.logoUrl} alt={teamData.team.name} width={40} height={40} className="object-contain" />
-                        ) : (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-                          </svg>
-                        )}
-                      </div>
-                      <div>
-                        <h3 className="text-base font-semibold text-gray-800">{teamData.team.name}</h3>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 mt-1">
-                          Registered
-                        </span>
                       </div>
                     </div>
-
+                    
                     <Link
                       href={`/dashboard/committee/teams/${teamData.team.id}`}
-                      className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors duration-200"
+                      className="p-2.5 rounded-xl bg-gradient-to-br from-[#0066FF] to-blue-600 text-white hover:from-[#0052CC] hover:to-blue-700 transition-all shadow-md hover:shadow-lg flex-shrink-0"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
                     </Link>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* Stats Grid */}
+                  <div className="space-y-2.5">
                     {teamData.team.dollar_balance !== undefined || teamData.team.euro_balance !== undefined ? (
                       <>
-                        <div className="bg-white/50 rounded-lg p-2">
-                          <p className="text-xs text-gray-500 mb-1">$ Balance</p>
-                          <p className="text-sm font-semibold text-green-700">${teamData.team.dollar_balance?.toLocaleString?.() ?? '0'}</p>
+                        <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
+                          <span className="text-gray-700 font-medium flex items-center">
+                            <span className="text-green-600 font-bold mr-1">$</span>
+                            Balance
+                          </span>
+                          <span className="font-bold text-green-700">
+                            ${teamData.team.dollar_balance?.toLocaleString() ?? '0'}
+                          </span>
                         </div>
-                        <div className="bg-white/50 rounded-lg p-2">
-                          <p className="text-xs text-gray-500 mb-1">€ Balance</p>
-                          <p className="text-sm font-semibold text-blue-700">€{teamData.team.euro_balance?.toLocaleString?.() ?? '0'}</p>
+                        <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
+                          <span className="text-gray-700 font-medium flex items-center">
+                            <span className="text-blue-600 font-bold mr-1">€</span>
+                            Balance
+                          </span>
+                          <span className="font-bold text-blue-700">
+                            €{teamData.team.euro_balance?.toLocaleString() ?? '0'}
+                          </span>
                         </div>
                       </>
                     ) : (
-                      <div className="bg-white/50 rounded-lg p-2">
-                        <p className="text-xs text-gray-500 mb-1">Balance</p>
-                        <p className="text-sm font-semibold text-[#0066FF]">£{teamData.team.balance.toLocaleString()}</p>
+                      <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
+                        <span className="text-gray-700 font-medium">Balance</span>
+                        <span className="font-bold text-[#0066FF]">
+                          £{teamData.team.balance.toLocaleString()}
+                        </span>
                       </div>
                     )}
-                    <div className="bg-white/50 rounded-lg p-2">
-                      <p className="text-xs text-gray-500 mb-1">Players</p>
-                      <p className="text-sm font-semibold text-gray-800">{teamData.totalPlayers}</p>
+                    
+                    <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
+                      <span className="text-gray-700 font-medium">Total Players</span>
+                      <span className="font-bold text-gray-900">{teamData.totalPlayers}</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
+                      <span className="text-gray-700 font-medium">Avg Rating</span>
+                      <span className="font-bold text-amber-600">
+                        ⭐ {teamData.avgRating.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Contract Info */}
+                  {(teamData.team.contract_id || teamData.team.skipped_seasons || teamData.team.penalty_amount) && (
+                    <div className="mt-4 pt-4 border-t border-gray-200/50">
+                      <ContractInfo
+                        skippedSeasons={teamData.team.skipped_seasons}
+                        penaltyAmount={teamData.team.penalty_amount}
+                        lastPlayedSeason={teamData.team.last_played_season}
+                        contractId={teamData.team.contract_id}
+                        contractStartSeason={teamData.team.contract_start_season}
+                        contractEndSeason={teamData.team.contract_end_season}
+                        isAutoRegistered={teamData.team.is_auto_registered}
+                        compact
+                      />
+                    </div>
+                  )}
+
+                  {/* Position Breakdown */}
+                  <div className="mt-4 pt-4 border-t border-gray-200/50">
+                    <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                      <span className="font-semibold">Squad Composition</span>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(teamData.positionBreakdown)
+                        .filter(([_, count]) => count > 0)
+                        .map(([position, count]) => (
+                          <span
+                            key={position}
+                            className="text-xs px-2.5 py-1 bg-gradient-to-r from-[#0066FF]/10 to-blue-500/10 text-[#0066FF] rounded-full font-semibold border border-[#0066FF]/20"
+                          >
+                            {position}: {count}
+                          </span>
+                        ))}
                     </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="bg-white/30 backdrop-blur-sm rounded-xl shadow-sm p-6 text-center">
-                <svg className="w-12 h-12 text-gray-400 mb-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <p className="text-gray-500">No teams found for this season</p>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16">
+              <svg className="w-20 h-20 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <h3 className="text-xl font-bold text-gray-600 mb-2">
+                {searchQuery ? 'No teams found' : 'No teams registered'}
+              </h3>
+              <p className="text-gray-500">
+                {searchQuery 
+                  ? 'Try adjusting your search query'
+                  : 'Teams will appear here once they register for the season'
+                }
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

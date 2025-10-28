@@ -896,15 +896,26 @@ export default function HistoricalSeasonDetailPage() {
                     </svg>
                   </div>
                   <div>
-                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#0066FF] to-purple-600 bg-clip-text text-transparent">
-                      {season.name}
-                    </h1>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                        ID: {seasonId}
+                      </span>
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                         📚 Historical Season
                       </span>
+                    </div>
+                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#0066FF] to-purple-600 bg-clip-text text-transparent">
+                      {season.name || seasonId}
+                    </h1>
+                    <div className="flex items-center gap-2 mt-1">
+                      {season.short_name && (
+                        <span className="text-gray-600 text-sm font-medium">
+                          {season.short_name}
+                        </span>
+                      )}
+                      {season.short_name && <span className="text-gray-400">•</span>}
                       <span className="text-gray-500 text-sm">
-                        {season.short_name && `${season.short_name} • `}Status: {season.status}
+                        Status: <span className="font-medium text-gray-700">{season.status}</span>
                       </span>
                     </div>
                   </div>
@@ -1962,6 +1973,7 @@ export default function HistoricalSeasonDetailPage() {
                             <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">L</th>
                             <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Goals</th>
                             <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Pts</th>
+                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Trophies</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -2048,6 +2060,49 @@ export default function HistoricalSeasonDetailPage() {
                                       {points}
                                     </span>
                                   </td>
+                                  <td className="px-6 py-4 text-center">
+                                    {team.season_stats?.trophies ? (
+                                      <div className="flex items-center justify-center gap-2 flex-wrap max-w-xs mx-auto">
+                                        {Array.isArray(team.season_stats.trophies) ? (
+                                          team.season_stats.trophies.flatMap((trophy: any, idx: number) => {
+                                            // Handle nested array in name field: {name: ["trophy1", "trophy2"], type: "cup"}
+                                            if (typeof trophy === 'object' && Array.isArray(trophy.name)) {
+                                              return trophy.name.map((trophyName: string, subIdx: number) => (
+                                                <span key={`${idx}-${subIdx}`} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
+                                                  🏆 {trophyName}
+                                                </span>
+                                              ));
+                                            }
+                                            // Handle simple object: {name: "trophy", type: "cup"}
+                                            const trophyName = typeof trophy === 'object' ? trophy.name : trophy;
+                                            return (
+                                              <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
+                                                🏆 {trophyName}
+                                              </span>
+                                            );
+                                          })
+                                        ) : typeof team.season_stats.trophies === 'object' ? (
+                                          Array.isArray(team.season_stats.trophies.name) ? (
+                                            team.season_stats.trophies.name.map((trophyName: string, idx: number) => (
+                                              <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
+                                                🏆 {trophyName}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
+                                              🏆 {team.season_stats.trophies.name}
+                                            </span>
+                                          )
+                                        ) : (
+                                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
+                                            🏆 {team.season_stats.trophies}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-400 text-xs">—</span>
+                                    )}
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -2125,6 +2180,48 @@ export default function HistoricalSeasonDetailPage() {
                                   {team.losses}L
                                 </span>
                               </div>
+                              {team.season_stats?.trophies && (
+                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                  <div className="text-xs font-medium text-gray-600 mb-2">🏆 Trophies:</div>
+                                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                                    {Array.isArray(team.season_stats.trophies) ? (
+                                      team.season_stats.trophies.flatMap((trophy: any, idx: number) => {
+                                        // Handle nested array in name field: {name: ["trophy1", "trophy2"], type: "cup"}
+                                        if (typeof trophy === 'object' && Array.isArray(trophy.name)) {
+                                          return trophy.name.map((trophyName: string, subIdx: number) => (
+                                            <span key={`${idx}-${subIdx}`} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
+                                              {trophyName}
+                                            </span>
+                                          ));
+                                        }
+                                        // Handle simple object: {name: "trophy", type: "cup"}
+                                        const trophyName = typeof trophy === 'object' ? trophy.name : trophy;
+                                        return (
+                                          <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
+                                            {trophyName}
+                                          </span>
+                                        );
+                                      })
+                                    ) : typeof team.season_stats.trophies === 'object' ? (
+                                      Array.isArray(team.season_stats.trophies.name) ? (
+                                        team.season_stats.trophies.name.map((trophyName: string, idx: number) => (
+                                          <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
+                                            {trophyName}
+                                          </span>
+                                        ))
+                                      ) : (
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
+                                          {team.season_stats.trophies.name}
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
+                                        {team.season_stats.trophies}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}

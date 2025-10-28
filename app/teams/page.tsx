@@ -5,17 +5,19 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 interface Team {
+  id: string;
   team_id: string;
   team_name: string;
-  rank?: number;
-  points?: number;
+  logo_url?: string;
+  balance?: number;
   matches_played?: number;
   wins?: number;
   draws?: number;
   losses?: number;
   goals_scored?: number;
   goals_conceded?: number;
-  logo_url?: string;
+  points?: number;
+  created_at?: any;
 }
 
 export default function AllTeamsPage() {
@@ -23,8 +25,7 @@ export default function AllTeamsPage() {
   const [filteredTeams, setFilteredTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<string>('rank');
-  const [currentSeasonId, setCurrentSeasonId] = useState<string>('');
+  const [sortBy, setSortBy] = useState<string>('name');
 
   useEffect(() => {
     fetchTeams();
@@ -38,20 +39,12 @@ export default function AllTeamsPage() {
     try {
       setLoading(true);
       
-      // Fetch current season first
-      const seasonRes = await fetch('/api/public/current-season');
-      const seasonData = await seasonRes.json();
+      // Fetch all teams from Firebase
+      const response = await fetch('/api/teams');
+      const data = await response.json();
       
-      if (seasonData.success) {
-        setCurrentSeasonId(seasonData.data.id);
-        
-        // Fetch teams for current season
-        const teamsRes = await fetch(`/api/team/all?season_id=${seasonData.data.id}`);
-        const teamsData = await teamsRes.json();
-        
-        if (teamsData.success && teamsData.data?.teamStats) {
-          setTeams(teamsData.data.teamStats);
-        }
+      if (data.success && data.teams) {
+        setTeams(data.teams);
       }
     } catch (error) {
       console.error('Error fetching teams:', error);
@@ -73,12 +66,12 @@ export default function AllTeamsPage() {
     // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rank':
-          return (a.rank || 999) - (b.rank || 999);
-        case 'points':
-          return (b.points || 0) - (a.points || 0);
         case 'name':
           return a.team_name.localeCompare(b.team_name);
+        case 'balance':
+          return (b.balance || 0) - (a.balance || 0);
+        case 'points':
+          return (b.points || 0) - (a.points || 0);
         case 'wins':
           return (b.wins || 0) - (a.wins || 0);
         case 'goals':
@@ -133,9 +126,9 @@ export default function AllTeamsPage() {
               onChange={(e) => setSortBy(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="rank">Rank (Best First)</option>
-              <option value="points">Points (High to Low)</option>
               <option value="name">Name (A-Z)</option>
+              <option value="points">Points (High to Low)</option>
+              <option value="balance">Balance (High to Low)</option>
               <option value="wins">Wins (High to Low)</option>
               <option value="goals">Goals (High to Low)</option>
             </select>
@@ -167,20 +160,8 @@ export default function AllTeamsPage() {
             >
               {/* Team Header */}
               <div className="flex items-center gap-4 mb-4">
-                {/* Rank Badge */}
-                {team.rank && (
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${
-                    team.rank === 1 ? 'bg-amber-500 text-white' :
-                    team.rank === 2 ? 'bg-gray-300 text-gray-700' :
-                    team.rank === 3 ? 'bg-amber-700 text-white' :
-                    'bg-blue-100 text-blue-600'
-                  }`}>
-                    #{team.rank}
-                  </div>
-                )}
-
                 {/* Team Logo */}
-                {team.logo_url && (
+                {team.logo_url ? (
                   <div className="w-16 h-16 rounded-lg overflow-hidden bg-white flex-shrink-0 group-hover:scale-110 transition-transform">
                     <Image
                       src={team.logo_url}
@@ -189,6 +170,12 @@ export default function AllTeamsPage() {
                       height={64}
                       className="object-contain p-1"
                     />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+                    </svg>
                   </div>
                 )}
               </div>

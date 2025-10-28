@@ -33,11 +33,17 @@ export async function GET(
       id: seasonDoc.id,
       name: seasonData.name,
       short_name: seasonData.short_name || '',
-      is_active: seasonData.is_active || false,
+      is_active: seasonData.is_active || seasonData.isActive || false,
       status: seasonData.status || 'upcoming',
       starting_balance: seasonData.starting_balance || 15000,
-      created_at: seasonData.created_at,
-      updated_at: seasonData.updated_at,
+      type: seasonData.type || 'single',
+      dollar_budget: seasonData.dollar_budget,
+      euro_budget: seasonData.euro_budget,
+      min_real_players: seasonData.min_real_players,
+      max_real_players: seasonData.max_real_players,
+      max_football_players: seasonData.max_football_players,
+      created_at: seasonData.created_at || seasonData.createdAt,
+      updated_at: seasonData.updated_at || seasonData.updatedAt,
     };
 
     return NextResponse.json({

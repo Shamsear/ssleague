@@ -103,6 +103,12 @@ export default function Navbar() {
               <Link href="/seasons" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
                 Archive
               </Link>
+              <Link href="/awards" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
+                🏆 Awards
+              </Link>
+              <Link href="/news" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
+                📰 News
+              </Link>
             </>
           ) : (
             <>
@@ -126,7 +132,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'seasons' && (
-                      <div className="absolute top-full left-0 mt-1 w-56 glass rounded-xl shadow-xl py-2 z-50 border border-white/20 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-1 w-56 bg-white rounded-xl shadow-xl py-2 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/superadmin/seasons" className="block px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-all duration-150 rounded-lg mx-1.5 font-medium">
                           All Seasons
                         </Link>
@@ -155,7 +161,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'management' && (
-                      <div className="absolute top-full left-0 mt-1 w-56 glass rounded-xl shadow-xl py-2 z-50 border border-white/20 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-1 w-56 bg-white rounded-xl shadow-xl py-2 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/superadmin/users" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -213,7 +219,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'teams' && (
-                      <div className="absolute top-full left-0 mt-2 w-60 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/committee/teams" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -254,7 +260,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'rounds' && (
-                      <div className="absolute top-full left-0 mt-2 w-60 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/committee/rounds" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -289,7 +295,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'tournament' && (
-                      <div className="absolute top-full left-0 mt-2 w-60 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/committee/team-management" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -344,7 +350,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'settings' && (
-                      <div className="absolute top-full left-0 mt-2 w-60 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/committee/auction-settings" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -361,6 +367,12 @@ export default function Navbar() {
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
                             Player Selection
+                          </span>
+                        </Link>
+                        <Link href="/dashboard/committee/awards" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
+                          <span className="flex items-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
+                            🏆 Awards Management
                           </span>
                         </Link>
                       </div>
@@ -384,7 +396,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'myteam' && (
-                      <div className="absolute top-full left-0 mt-2 w-60 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/team/profile" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -425,7 +437,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'matches' && (
-                      <div className="absolute top-full left-0 mt-2 w-60 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/team/matches" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -454,7 +466,7 @@ export default function Navbar() {
                       </svg>
                     </button>
                     {openDropdown === 'leaderboards' && (
-                      <div className="absolute top-full left-0 mt-2 w-60 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                      <div className="absolute top-full left-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                         <Link href="/dashboard/team/team-leaderboard" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
@@ -510,7 +522,7 @@ export default function Navbar() {
                   </svg>
                 </button>
                 {openDropdown === 'profile' && (
-                  <div className="absolute top-full right-0 mt-3 w-64 glass rounded-2xl shadow-2xl py-3 z-50 border border-white/30 animate-fade-in">
+                  <div className="absolute top-full right-0 mt-3 w-64 bg-white rounded-2xl shadow-2xl py-3 z-50 border border-gray-200 animate-fade-in">
                     <div className="px-5 py-4 border-b border-white/20">
                       <p className="text-sm font-semibold text-gray-800">{user.username}</p>
                       <p className="text-xs text-gray-500">{user.email}</p>

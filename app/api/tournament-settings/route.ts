@@ -69,7 +69,9 @@ export async function POST(request: NextRequest) {
       direct_semifinal_teams,
       qualification_threshold,
       is_two_legged,
-      num_teams
+      num_teams,
+      awards_enabled,
+      awards_config
     } = body;
 
     if (!tournament_id) {
@@ -96,6 +98,8 @@ export async function POST(request: NextRequest) {
         qualification_threshold,
         is_two_legged,
         num_teams,
+        awards_enabled,
+        awards_config,
         created_at,
         updated_at
       ) VALUES (
@@ -113,6 +117,8 @@ export async function POST(request: NextRequest) {
         ${qualification_threshold ?? null},
         ${is_two_legged !== undefined ? is_two_legged : true},
         ${num_teams || null},
+        ${awards_enabled ?? true},
+        ${JSON.stringify(awards_config || {})},
         NOW(),
         NOW()
       )
@@ -130,6 +136,8 @@ export async function POST(request: NextRequest) {
         qualification_threshold = EXCLUDED.qualification_threshold,
         is_two_legged = EXCLUDED.is_two_legged,
         num_teams = EXCLUDED.num_teams,
+        awards_enabled = EXCLUDED.awards_enabled,
+        awards_config = EXCLUDED.awards_config,
         updated_at = NOW()
     `;
 

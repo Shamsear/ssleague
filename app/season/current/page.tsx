@@ -47,12 +47,12 @@ export default function CurrentSeasonPage() {
       if (seasonData.success) {
         setSeason(seasonData.data);
         
-        // Fetch teams for this season
-        const teamsRes = await fetch(`/api/team/all?season_id=${seasonData.data.id}`);
-        const teamsData = await teamsRes.json();
+        // Fetch teams for this season using public stats API
+        const statsRes = await fetch(`/api/seasons/${seasonData.data.id}/stats`);
+        const statsData = await statsRes.json();
         
-        if (teamsData.success && teamsData.data?.teamStats) {
-          setTeams(teamsData.data.teamStats);
+        if (statsData.success && statsData.data?.teams) {
+          setTeams(statsData.data.teams);
         }
       }
     } catch (error) {
@@ -152,7 +152,7 @@ export default function CurrentSeasonPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
             {/* Second Place */}
             <Link
-              href={`/teams/${sortedTeams[1].team_id}`}
+              href={`/teams/${teams[1].team_id}?season=${season.id}`}
               className="glass rounded-2xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-105 sm:order-1"
             >
               <div className="text-center">
@@ -175,7 +175,7 @@ export default function CurrentSeasonPage() {
 
             {/* First Place */}
             <Link
-              href={`/teams/${sortedTeams[0].team_id}`}
+              href={`/teams/${teams[0].team_id}?season=${season.id}`}
               className="glass rounded-2xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-105 sm:order-2 sm:transform sm:scale-110"
             >
               <div className="text-center">
@@ -198,7 +198,7 @@ export default function CurrentSeasonPage() {
 
             {/* Third Place */}
             <Link
-              href={`/teams/${sortedTeams[2].team_id}`}
+              href={`/teams/${teams[2].team_id}?season=${season.id}`}
               className="glass rounded-2xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-105 sm:order-3"
             >
               <div className="text-center">
@@ -265,7 +265,7 @@ export default function CurrentSeasonPage() {
                     </div>
                   </td>
                   <td className="py-3 px-4">
-                    <Link href={`/teams/${team.team_id}`} className="flex items-center gap-3 hover:text-blue-600 transition-colors">
+                    <Link href={`/teams/${team.team_id}?season=${season.id}`} className="flex items-center gap-3 hover:text-blue-600 transition-colors">
                       {team.logo_url && (
                         <div className="w-10 h-10 rounded-lg overflow-hidden bg-white">
                           <Image
@@ -302,7 +302,7 @@ export default function CurrentSeasonPage() {
           {sortedTeams.map((team) => (
             <Link
               key={team.team_id}
-              href={`/teams/${team.team_id}`}
+              href={`/teams/${team.team_id}?season=${season.id}`}
               className="block bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all"
             >
               <div className="flex items-center gap-3 mb-3">

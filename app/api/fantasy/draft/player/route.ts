@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { fantasySql } from '@/lib/neon/fantasy-config';
+import { triggerNews } from '@/lib/news/trigger';
 
 /**
  * POST /api/fantasy/draft/player
@@ -176,6 +177,21 @@ export async function POST(request: NextRequest) {
           updated_at = CURRENT_TIMESTAMP
       WHERE team_id = ${teamId}
     `;
+
+    // Trigger news for fantasy draft milestone (every 10 drafts)
+    if ((currentSquad.length + 1) % 10 === 0) {
+      try {
+        await triggerNews('fantasy_draft', {
+          season_id: league.season_id || null,
+          league_id: leagueId,
+          total_drafted: currentSquad.length + 1,
+          player_name,
+          team_name: team.team_name,
+        });
+      } catch (newsError) {
+        console.error('Failed to generate fantasy draft news:', newsError);
+      }
+    }
 
     return NextResponse.json({
       success: true,

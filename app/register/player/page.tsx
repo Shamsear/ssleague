@@ -35,6 +35,7 @@ function PlayerSearchContent() {
   const [authLoading, setAuthLoading] = useState(true)
   const [signingIn, setSigningIn] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
   // Check auth state
   useEffect(() => {
@@ -54,7 +55,12 @@ function PlayerSearchContent() {
       }
 
       try {
-        const seasonDoc = await getDoc(doc(db, 'seasons', seasonId))
+        // Fetch season data and registration stats in parallel
+        const [seasonDoc, statsResponse] = await Promise.all([
+          getDoc(doc(db, 'seasons', seasonId)),
+          fetch(`/api/admin/registration-phases?season_id=${seasonId}`).catch(() => null)
+        ])
+
         if (!seasonDoc.exists()) {
           setError('Season not found')
           setLoading(false)
@@ -69,8 +75,22 @@ function PlayerSearchContent() {
           return
         }
 
+        // Add registration phase info to season data
+        if (statsResponse) {
+          const statsResult = await statsResponse.json()
+          if (statsResult.success) {
+            Object.assign(seasonData, statsResult.data)
+            
+            // Check if registration is paused
+            if (statsResult.data.registration_phase === 'paused') {
+              setError('Player registration is currently paused. Confirmed slots are full and Phase 2 has not been enabled yet.')
+              setLoading(false)
+              return
+            }
+          }
+        }
+
         setSeason(seasonData)
-        // Don't load players initially - only when user searches
         setLoading(false)
       } catch (err) {
         console.error('Error fetching season:', err)
@@ -81,6 +101,31 @@ function PlayerSearchContent() {
 
     fetchSeason()
   }, [seasonId])
+
+  // Auto-refresh slot availability every 5 seconds
+  useEffect(() => {
+    if (!seasonId || !season) return
+
+    const refreshSlots = async () => {
+      try {
+        const statsResponse = await fetch(`/api/admin/registration-phases?season_id=${seasonId}`)
+        if (statsResponse.ok) {
+          const statsResult = await statsResponse.json()
+          if (statsResult.success) {
+            setSeason(prev => prev ? { ...prev, ...statsResult.data } : null)
+            setLastUpdated(new Date())
+          }
+        }
+      } catch (err) {
+        // Silently fail - don't disrupt user experience
+        console.error('Error refreshing slots:', err)
+      }
+    }
+
+    // Refresh every 5 seconds
+    const interval = setInterval(refreshSlots, 5000)
+    return () => clearInterval(interval)
+  }, [seasonId, season])
 
   // Check if email already used for this season
   useEffect(() => {
@@ -139,16 +184,23 @@ function PlayerSearchContent() {
     }
   }
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setSearchTerm(value)
-    
-    // Debounce search
+  // Add debounce state
+  useEffect(() => {
+    if (searchTerm.length < 2) {
+      setPlayers([])
+      return
+    }
+
+    // Reduce debounce to 150ms for faster response
     const timer = setTimeout(() => {
-      searchPlayers(value)
-    }, 300)
+      searchPlayers(searchTerm)
+    }, 150)
 
     return () => clearTimeout(timer)
+  }, [searchTerm, seasonId])
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value)
   }
 
   const handleSelectPlayer = (playerId: string) => {
@@ -237,6 +289,64 @@ function PlayerSearchContent() {
             </h1>
             {season && <p className="text-purple-100 text-sm mt-1">{season.name}</p>}
           </div>
+
+          {/* Registration Phase Status */}
+          {season && (
+            <div className="mb-6">
+              {(() => {
+                const phase = (season as any).registration_phase || 'confirmed';
+                const confirmedLimit = (season as any).confirmed_slots_limit || 999;
+                const confirmedFilled = (season as any).confirmed_slots_filled || 0;
+                const slotsRemaining = Math.max(0, confirmedLimit - confirmedFilled);
+                
+                if (phase === 'confirmed') {
+                  return (
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="font-bold text-green-900 text-lg">✨ Confirmed Slots Registration</p>
+                            <p className="text-sm text-green-700">You are registering for a CONFIRMED auction slot</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-3xl font-bold text-green-600 animate-pulse">{slotsRemaining}</p>
+                          <p className="text-xs text-green-700">slots remaining</p>
+                          <p className="text-xs text-green-600 flex items-center justify-end gap-1 mt-1">
+                            <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            Live
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                } else if (phase === 'unconfirmed') {
+                  return (
+                    <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-400 rounded-xl p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center">
+                          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-amber-900 text-lg">⚠️ Unconfirmed/Waitlist Registration</p>
+                          <p className="text-sm text-amber-800">You are registering for an UNCONFIRMED slot. Your participation in the auction is not guaranteed.</p>
+                          <p className="text-xs text-amber-700 mt-1">Confirmed slots ({confirmedFilled}/{confirmedLimit}) are full.</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+          )}
 
           {/* Step 1: Google Sign-in */}
           {!user ? (

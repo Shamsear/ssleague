@@ -39,7 +39,17 @@ export async function GET() {
       }
       
       const seasonDoc = recentSeasonSnapshot.docs[0];
-      const seasonData = { id: seasonDoc.id, ...seasonDoc.data() };
+      const seasonData = { id: seasonDoc.id, ...seasonDoc.data() } as any;
+      
+      // Generate name from ID if missing (for historical seasons like sspsls15)
+      if (!seasonData.name && seasonDoc.id) {
+        const seasonNum = seasonDoc.id.match(/\d+/);
+        if (seasonNum) {
+          seasonData.name = `Season ${seasonNum[0]}`;
+        } else {
+          seasonData.name = seasonDoc.id;
+        }
+      }
       
       return NextResponse.json({
         success: true,
@@ -50,6 +60,16 @@ export async function GET() {
     
     const seasonDoc = seasonsSnapshot.docs[0];
     const seasonData = { id: seasonDoc.id, ...seasonDoc.data() } as any;
+    
+    // Generate name from ID if missing (for historical seasons like sspsls15)
+    if (!seasonData.name && seasonDoc.id) {
+      const seasonNum = seasonDoc.id.match(/\d+/);
+      if (seasonNum) {
+        seasonData.name = `Season ${seasonNum[0]}`;
+      } else {
+        seasonData.name = seasonDoc.id;
+      }
+    }
     
     console.log(`✅ Found active season: ${seasonData.name} (${seasonDoc.id})`);
     

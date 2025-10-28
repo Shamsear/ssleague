@@ -178,19 +178,6 @@ export default function FantasyLeagueDashboard() {
       borderColor: 'border-purple-200',
     },
     {
-      title: 'Transfer Settings',
-      description: 'Configure transfer rules & point costs',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-        </svg>
-      ),
-      href: `/dashboard/committee/fantasy/transfer-settings/${leagueId}`,
-      color: 'from-cyan-500 to-blue-600',
-      bgColor: 'from-cyan-50 to-blue-50',
-      borderColor: 'border-cyan-200',
-    },
-    {
       title: 'Standings',
       description: 'View fantasy league standings and rankings',
       icon: (
@@ -217,17 +204,17 @@ export default function FantasyLeagueDashboard() {
       borderColor: 'border-red-200',
     },
     {
-      title: 'Transfer Windows',
-      description: 'Create & manage transfer periods',
+      title: 'Transfer Management',
+      description: 'Configure windows, settings & rules',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
         </svg>
       ),
-      href: `/dashboard/committee/fantasy/transfer-windows/${leagueId}`,
-      color: 'from-teal-500 to-cyan-600',
-      bgColor: 'from-teal-50 to-cyan-50',
-      borderColor: 'border-teal-200',
+      href: `/dashboard/committee/fantasy/transfers/${leagueId}`,
+      color: 'from-cyan-500 to-teal-600',
+      bgColor: 'from-cyan-50 to-teal-50',
+      borderColor: 'border-cyan-200',
     },
   ];
 

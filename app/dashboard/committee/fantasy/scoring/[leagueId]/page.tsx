@@ -14,6 +14,9 @@ interface ScoringRule {
   points_value: number;
   applies_to: string;
   is_active: boolean;
+  is_bonus_rule?: boolean;
+  bonus_conditions?: any;
+  priority?: number;
 }
 
 export default function CustomScoringRulesPage() {
@@ -34,6 +37,9 @@ export default function CustomScoringRulesPage() {
     description: '',
     points_value: 0,
     applies_to: 'player',
+    is_bonus_rule: false,
+    bonus_condition_type: '',
+    bonus_params: {} as any,
   });
 
   useEffect(() => {
@@ -71,15 +77,34 @@ export default function CustomScoringRulesPage() {
       alert('Please fill in rule name, type, and points value');
       return;
     }
+    
+    if (newRule.is_bonus_rule && !newRule.bonus_condition_type) {
+      alert('Please select a bonus condition type');
+      return;
+    }
 
     try {
+      const payload: any = {
+        league_id: leagueId,
+        rule_name: newRule.rule_name,
+        rule_type: newRule.rule_type,
+        description: newRule.description,
+        points_value: newRule.points_value,
+        applies_to: newRule.applies_to,
+        is_bonus_rule: newRule.is_bonus_rule,
+      };
+      
+      if (newRule.is_bonus_rule) {
+        payload.bonus_conditions = {
+          condition_type: newRule.bonus_condition_type,
+          ...newRule.bonus_params,
+        };
+      }
+      
       const response = await fetch('/api/fantasy/scoring-rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          league_id: leagueId,
-          ...newRule,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -277,6 +302,249 @@ export default function CustomScoringRulesPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
+              
+              {/* Bonus Rule Toggle */}
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newRule.is_bonus_rule}
+                    onChange={(e) => setNewRule({ ...newRule, is_bonus_rule: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-700">🎁 This is a Bonus/Conditional Rule</span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-6">Enable this for special conditions like new player bonus, streak bonus, etc.</p>
+              </div>
+              
+              {/* Conditional Fields for Bonus Rules */}
+              {newRule.is_bonus_rule && (
+                <>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Bonus Condition Type *</label>
+                    <select
+                      value={newRule.bonus_condition_type}
+                      onChange={(e) => setNewRule({ ...newRule, bonus_condition_type: e.target.value, bonus_params: {} })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select condition...</option>
+                      <option value="new_player">🆕 New Player Bonus (first X matches)</option>
+                      <option value="streak">🔥 Streak Bonus (consecutive events)</option>
+                      <option value="milestone">🎯 Milestone Bonus (reach X goals/assists)</option>
+                      <option value="match_result">🏆 Match Result Bonus (win/draw/loss)</option>
+                      <option value="comeback">💪 Comeback Bonus (winning after being behind)</option>
+                      <option value="clean_sheet_streak">🛡️ Clean Sheet Streak (consecutive clean sheets)</option>
+                      <option value="goal_difference">⚡ Goal Difference Bonus (winning by X+ goals)</option>
+                      <option value="against_top_team">👑 Top Team Bonus (performance vs top teams)</option>
+                      <option value="captain_bonus">©️ Captain/Vice Captain Bonus (multiplier)</option>
+                    </select>
+                  </div>
+                  
+                  {/* New Player Bonus Fields */}
+                  {newRule.bonus_condition_type === 'new_player' && (
+                    <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">First X Matches</label>
+                        <input
+                          type="number"
+                          value={newRule.bonus_params.matches_count || 1}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, matches_count: parseInt(e.target.value) } })}
+                          min="1"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Since Gameweek (optional)</label>
+                        <input
+                          type="number"
+                          value={newRule.bonus_params.since_gameweek || ''}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, since_gameweek: e.target.value ? parseInt(e.target.value) : null } })}
+                          placeholder="e.g., 5"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Streak Bonus Fields */}
+                  {newRule.bonus_condition_type === 'streak' && (
+                    <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+                        <select
+                          value={newRule.bonus_params.event_type || 'goal'}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, event_type: e.target.value } })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="goal">Goals</option>
+                          <option value="assist">Assists</option>
+                          <option value="clean_sheet">Clean Sheets</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Consecutive Matches</label>
+                        <input
+                          type="number"
+                          value={newRule.bonus_params.consecutive_matches || 3}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, consecutive_matches: parseInt(e.target.value) } })}
+                          min="2"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Milestone Bonus Fields */}
+                  {newRule.bonus_condition_type === 'milestone' && (
+                    <div className="md:col-span-2 grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+                        <select
+                          value={newRule.bonus_params.event_type || 'goal'}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, event_type: e.target.value } })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="goal">Goals</option>
+                          <option value="assist">Assists</option>
+                          <option value="clean_sheet">Clean Sheets</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Count</label>
+                        <input
+                          type="number"
+                          value={newRule.bonus_params.count || 10}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, count: parseInt(e.target.value) } })}
+                          min="1"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Scope</label>
+                        <select
+                          value={newRule.bonus_params.scope || 'season'}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, scope: e.target.value } })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="season">Season</option>
+                          <option value="tournament">Tournament</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Match Result Bonus Fields */}
+                  {newRule.bonus_condition_type === 'match_result' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Result Type</label>
+                      <select
+                        value={newRule.bonus_params.result_type || 'win'}
+                        onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, result_type: e.target.value } })}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="win">Team Wins</option>
+                        <option value="draw">Team Draws</option>
+                        <option value="loss">Team Loses</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">All players get this bonus if their team achieves this result</p>
+                    </div>
+                  )}
+                  
+                  {/* Comeback Bonus Fields */}
+                  {newRule.bonus_condition_type === 'comeback' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Goals Behind</label>
+                      <input
+                        type="number"
+                        value={newRule.bonus_params.goals_behind || 1}
+                        onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, goals_behind: parseInt(e.target.value) } })}
+                        min="1"
+                        placeholder="e.g., 1 or 2"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Bonus applied when team wins after being this many goals behind</p>
+                    </div>
+                  )}
+                  
+                  {/* Clean Sheet Streak Fields */}
+                  {newRule.bonus_condition_type === 'clean_sheet_streak' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Consecutive Clean Sheets</label>
+                      <input
+                        type="number"
+                        value={newRule.bonus_params.consecutive_count || 3}
+                        onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, consecutive_count: parseInt(e.target.value) } })}
+                        min="2"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Bonus for defenders/goalkeeper when team achieves consecutive clean sheets</p>
+                    </div>
+                  )}
+                  
+                  {/* Goal Difference Bonus Fields */}
+                  {newRule.bonus_condition_type === 'goal_difference' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Goal Difference</label>
+                      <input
+                        type="number"
+                        value={newRule.bonus_params.min_difference || 3}
+                        onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, min_difference: parseInt(e.target.value) } })}
+                        min="2"
+                        placeholder="e.g., 3 for winning 4-1"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Bonus when team wins by X or more goals</p>
+                    </div>
+                  )}
+                  
+                  {/* Against Top Team Fields */}
+                  {newRule.bonus_condition_type === 'against_top_team' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Top Teams (Rankings)</label>
+                      <input
+                        type="number"
+                        value={newRule.bonus_params.top_rank || 3}
+                        onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, top_rank: parseInt(e.target.value) } })}
+                        min="1"
+                        placeholder="e.g., 3 for top 3 teams"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Bonus for scoring/assisting against teams in top X positions</p>
+                    </div>
+                  )}
+                  
+                  {/* Captain Bonus Fields */}
+                  {newRule.bonus_condition_type === 'captain_bonus' && (
+                    <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Captain Multiplier</label>
+                        <input
+                          type="number"
+                          value={newRule.bonus_params.captain_multiplier || 2}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, captain_multiplier: parseFloat(e.target.value) } })}
+                          min="1"
+                          step="0.5"
+                          placeholder="e.g., 2 for double points"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Vice Captain Multiplier</label>
+                        <input
+                          type="number"
+                          value={newRule.bonus_params.vice_captain_multiplier || 1.5}
+                          onChange={(e) => setNewRule({ ...newRule, bonus_params: { ...newRule.bonus_params, vice_captain_multiplier: parseFloat(e.target.value) } })}
+                          min="1"
+                          step="0.5"
+                          placeholder="e.g., 1.5 for 1.5x points"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <p className="md:col-span-2 text-xs text-gray-500">Multiply points for captain and vice-captain</p>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <div className="flex gap-3">
               <button

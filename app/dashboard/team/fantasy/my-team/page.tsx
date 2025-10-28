@@ -67,9 +67,6 @@ export default function MyFantasyTeamPage() {
   const [otherTeams, setOtherTeams] = useState<OtherTeam[]>([]);
   const [showOtherTeams, setShowOtherTeams] = useState(false);
   const [loadingPlayerStats, setLoadingPlayerStats] = useState<Record<string, boolean>>({});
-  const [captainId, setCaptainId] = useState<string | null>(null);
-  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
-  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -103,12 +100,6 @@ export default function MyFantasyTeamPage() {
         setPlayers(data.players);
         setRecentRounds(data.recent_rounds || []);
         setLeagueId(data.team.fantasy_league_id);
-        
-        // Set current captain and vice-captain
-        const captain = data.players.find((p: Player) => p.is_captain);
-        const viceCaptain = data.players.find((p: Player) => p.is_vice_captain);
-        if (captain) setCaptainId(captain.real_player_id);
-        if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
         // Load other teams
         if (data.team.fantasy_league_id) {
@@ -136,42 +127,6 @@ export default function MyFantasyTeamPage() {
       setOtherTeams(others);
     } catch (error) {
       console.error('Error loading other teams:', error);
-    }
-  };
-
-  const saveCaptains = async () => {
-    if (!user) return;
-    
-    setIsSavingCaptains(true);
-    try {
-      const response = await fetch('/api/fantasy/squad/set-captain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.uid,
-          captain_player_id: captainId,
-          vice_captain_player_id: viceCaptainId,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save captains');
-      }
-
-      alert('Captain and vice-captain updated successfully!');
-      
-      // Refresh player data
-      const teamResponse = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
-      if (teamResponse.ok) {
-        const data = await teamResponse.json();
-        setPlayers(data.players);
-      }
-    } catch (error) {
-      console.error('Error saving captains:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save captains');
-    } finally {
-      setIsSavingCaptains(false);
     }
   };
 
@@ -348,75 +303,43 @@ export default function MyFantasyTeamPage() {
           </div>
         )}
 
-        {/* Captain Selection */}
-        {players.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Captain & Vice-Captain</h2>
-              <button
-                onClick={saveCaptains}
-                disabled={isSavingCaptains}
-                className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSavingCaptains ? 'Saving...' : 'Save Selection'}
-              </button>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Captain earns 2x points, vice-captain earns 1.5x points
-            </p>
+        {/* Captain & Vice-Captain Info (Display Only) */}
+        {players.some(p => p.is_captain || p.is_vice_captain) && (
+          <div className="bg-gradient-to-r from-yellow-50 to-blue-50 rounded-2xl shadow-xl border border-yellow-200 p-6 mb-8">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Captain & Vice-Captain</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Captain Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="text-2xl">👑</span>
-                    Captain (2x Points)
-                  </span>
-                </label>
-                <select
-                  value={captainId || ''}
-                  onChange={(e) => setCaptainId(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="">Select Captain...</option>
-                  {players.map((player) => (
-                    <option 
-                      key={player.real_player_id} 
-                      value={player.real_player_id}
-                      disabled={player.real_player_id === viceCaptainId}
-                    >
-                      {player.player_name} ({player.total_points} pts)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Vice-Captain Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="text-2xl">⭐</span>
-                    Vice-Captain (1.5x Points)
-                  </span>
-                </label>
-                <select
-                  value={viceCaptainId || ''}
-                  onChange={(e) => setViceCaptainId(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="">Select Vice-Captain...</option>
-                  {players.map((player) => (
-                    <option 
-                      key={player.real_player_id} 
-                      value={player.real_player_id}
-                      disabled={player.real_player_id === captainId}
-                    >
-                      {player.player_name} ({player.total_points} pts)
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {players.find(p => p.is_captain) && (
+                <div className="flex items-center gap-3 p-4 bg-white/60 rounded-xl border border-yellow-300">
+                  <span className="text-3xl">👑</span>
+                  <div>
+                    <p className="text-sm text-gray-600">Captain (2x Points)</p>
+                    <p className="font-bold text-gray-900">
+                      {players.find(p => p.is_captain)?.player_name}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {players.find(p => p.is_vice_captain) && (
+                <div className="flex items-center gap-3 p-4 bg-white/60 rounded-xl border border-blue-300">
+                  <span className="text-3xl">⭐</span>
+                  <div>
+                    <p className="text-sm text-gray-600">Vice-Captain (1.5x Points)</p>
+                    <p className="font-bold text-gray-900">
+                      {players.find(p => p.is_vice_captain)?.player_name}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
+            <Link
+              href="/dashboard/team/fantasy/transfers"
+              className="mt-4 inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+              </svg>
+              Change captain/VC during transfer window
+            </Link>
           </div>
         )}
 

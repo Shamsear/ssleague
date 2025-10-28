@@ -264,22 +264,21 @@ async function processPlayer(params: {
     fixture_id, round_number, scoringRules, sql, pointsCalculated, teamPointsMap
   } = params;
 
-  // Check if player is drafted
+  // Get ALL teams that have drafted this player
   const squads = await sql`
     SELECT team_id
     FROM fantasy_squad
     WHERE league_id = ${fantasy_league_id}
       AND real_player_id = ${player_id}
-    LIMIT 1
   `;
 
   if (squads.length === 0) {
-    return; // Player not drafted, skip
+    return; // Player not drafted by any team, skip
   }
 
-  const fantasy_team_id = squads[0].team_id;
+  console.log(`Player ${player_name} is owned by ${squads.length} team(s)`);
 
-  // Check if points already calculated for this player in this fixture
+  // Check if points already calculated for this player in this fixture for ANY team
   const existingPoints = await sql`
     SELECT id
     FROM fantasy_player_points
@@ -294,7 +293,7 @@ async function processPlayer(params: {
     return; // Already calculated
   }
 
-  // Calculate points breakdown
+  // Calculate points breakdown (same for all teams)
   const is_clean_sheet = goals_conceded === 0;
 
   const points_breakdown = {
@@ -309,56 +308,61 @@ async function processPlayer(params: {
 
   const total_points = Object.values(points_breakdown).reduce((sum, val) => sum + val, 0);
 
-  // Create fantasy_player_points record
-  await sql`
-    INSERT INTO fantasy_player_points (
-      league_id,
-      team_id,
-      real_player_id,
+  // Award points to EACH team that owns this player
+  for (const squad of squads) {
+    const fantasy_team_id = squad.team_id;
+
+    // Create fantasy_player_points record for this team
+    await sql`
+      INSERT INTO fantasy_player_points (
+        league_id,
+        team_id,
+        real_player_id,
+        player_name,
+        fixture_id,
+        round_number,
+        goals_scored,
+        goals_conceded,
+        result,
+        is_motm,
+        fine_goals,
+        substitution_penalty,
+        is_clean_sheet,
+        points_breakdown,
+        total_points,
+        calculated_at
+      ) VALUES (
+        ${fantasy_league_id},
+        ${fantasy_team_id},
+        ${player_id},
+        ${player_name},
+        ${fixture_id},
+        ${round_number},
+        ${goals_scored},
+        ${goals_conceded},
+        ${result},
+        ${is_motm},
+        ${fine_goals},
+        ${substitution_penalty},
+        ${is_clean_sheet},
+        ${JSON.stringify(points_breakdown)},
+        ${total_points},
+        NOW()
+      )
+    `;
+
+    // Track team points
+    const currentTeamPoints = teamPointsMap.get(fantasy_team_id) || 0;
+    teamPointsMap.set(fantasy_team_id, currentTeamPoints + total_points);
+
+    pointsCalculated.push({
+      player_id,
       player_name,
-      fixture_id,
-      round_number,
-      goals_scored,
-      goals_conceded,
-      result,
-      is_motm,
-      fine_goals,
-      substitution_penalty,
-      is_clean_sheet,
-      points_breakdown,
+      fantasy_team_id,
       total_points,
-      calculated_at
-    ) VALUES (
-      ${fantasy_league_id},
-      ${fantasy_team_id},
-      ${player_id},
-      ${player_name},
-      ${fixture_id},
-      ${round_number},
-      ${goals_scored},
-      ${goals_conceded},
-      ${result},
-      ${is_motm},
-      ${fine_goals},
-      ${substitution_penalty},
-      ${is_clean_sheet},
-      ${JSON.stringify(points_breakdown)},
-      ${total_points},
-      NOW()
-    )
-  `;
-
-  // Track team points
-  const currentTeamPoints = teamPointsMap.get(fantasy_team_id) || 0;
-  teamPointsMap.set(fantasy_team_id, currentTeamPoints + total_points);
-
-  pointsCalculated.push({
-    player_id,
-    player_name,
-    fantasy_team_id,
-    total_points,
-    breakdown: points_breakdown,
-  });
+      breakdown: points_breakdown,
+    });
+  }
 }
 
 // Helper function to recalculate leaderboard ranks

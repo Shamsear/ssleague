@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { triggerNews } from '@/lib/news/trigger';
 
 export async function POST(
   request: NextRequest,
@@ -78,13 +79,13 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Determine if this is a dual-currency season (Season 16+)
+    // Determine if this is a dual-currency season based on season type
     const seasonNumber = parseInt(seasonId.replace(/\D/g, '')) || 0;
-    const isDualCurrency = seasonNumber >= 16;
+    const isDualCurrency = seasonData.type === 'multi';
     
-    // Check if team has played before and get their last season's budget
-    let footballBudget = isDualCurrency ? 10000 : 0;
-    let realPlayerBudget = isDualCurrency ? 5000 : 0;
+    // Use season settings for budgets (with fallbacks)
+    let footballBudget = isDualCurrency ? (seasonData.euro_budget || 10000) : 0;
+    let realPlayerBudget = isDualCurrency ? (seasonData.dollar_budget || 5000) : 0;
     let startingBalance = seasonData.starting_balance || 15000;
     let skippedSeasons = 0;
     let penaltyAmount = 0;
@@ -186,7 +187,7 @@ export async function POST(
         // Create teamstats records in NEON for both seasons
         const sql = getTournamentDb();
         
-        // Insert current season stats to Neon
+        // Insert current season stats to Neon (tournament_id will be added when tournament is created)
         await sql`
           INSERT INTO teamstats (
             id, team_id, season_id, team_name,
@@ -200,10 +201,10 @@ export async function POST(
             0, 0, 0, 
             NOW(), NOW()
           )
-          ON CONFLICT (id) DO NOTHING
+          ON CONFLICT (team_id, season_id) DO NOTHING
         `;
         
-        // Insert next season stats to Neon
+        // Insert next season stats to Neon (tournament_id will be added when tournament is created)
         await sql`
           INSERT INTO teamstats (
             id, team_id, season_id, team_name,
@@ -217,7 +218,7 @@ export async function POST(
             0, 0, 0,
             NOW(), NOW()
           )
-          ON CONFLICT (id) DO NOTHING
+          ON CONFLICT (team_id, season_id) DO NOTHING
         `;
       } else {
         // Team doesn't exist, create new team with BOTH seasons (teamDocId already set to userId above)
@@ -276,7 +277,7 @@ export async function POST(
             0, 0, 0,
             NOW(), NOW()
           )
-          ON CONFLICT (id) DO NOTHING
+          ON CONFLICT (team_id, season_id) DO NOTHING
         `;
         
         await sql2`
@@ -292,7 +293,7 @@ export async function POST(
             0, 0, 0,
             NOW(), NOW()  
           )
-          ON CONFLICT (id) DO NOTHING
+          ON CONFLICT (team_id, season_id) DO NOTHING
         `;
       }
       
@@ -441,6 +442,30 @@ export async function POST(
         participant_count: FieldValue.increment(1),
         updated_at: FieldValue.serverTimestamp(),
       });
+
+      // Trigger news for team registration
+      try {
+        // Get updated participant count
+        const updatedSeasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
+        const updatedSeasonData = updatedSeasonDoc.data();
+        const totalTeams = updatedSeasonData?.participant_count || 1;
+
+        // Check if team is returning (has played before)
+        const teamDoc = await adminDb.collection('teams').doc(teamDocId).get();
+        const teamData = teamDoc.data();
+        const isReturning = teamData?.seasons && teamData.seasons.length > 2; // More than just current 2-season contract
+        const teamLogo = userData.teamLogo || teamData?.team_logo || null;
+
+        await triggerNews('team_registered', {
+          season_id: seasonId,
+          team_name: teamName,
+          total_teams: totalTeams,
+          is_returning: isReturning,
+          team_logo: teamLogo,
+        });
+      } catch (newsError) {
+        console.error('Failed to generate team registration news:', newsError);
+      }
 
       return NextResponse.json({
         success: true,

@@ -12,6 +12,8 @@ export default function SuperAdminDashboard() {
   const [pendingUsers, setPendingUsers] = useState(0);
   const [pendingResets, setPendingResets] = useState(0);
   const [loadingPending, setLoadingPending] = useState(true);
+  const [activeSeason, setActiveSeason] = useState<any>(null);
+  const [teamsCount, setTeamsCount] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -42,6 +44,34 @@ export default function SuperAdminDashboard() {
     };
 
     fetchPendingItems();
+  }, [user]);
+
+  useEffect(() => {
+    const fetchActiveSeason = async () => {
+      if (!user || user.role !== 'super_admin') return;
+      
+      try {
+        // Fetch active season
+        const seasonRes = await fetch('/api/seasons/active');
+        if (seasonRes.ok) {
+          const seasonData = await seasonRes.json();
+          if (seasonData.season) {
+            setActiveSeason(seasonData.season);
+            
+            // Fetch teams count for active season
+            const teamsRes = await fetch(`/api/teams?seasonId=${seasonData.season.id}`);
+            if (teamsRes.ok) {
+              const teamsData = await teamsRes.json();
+              setTeamsCount(teamsData.teams?.length || 0);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching active season:', error);
+      }
+    };
+
+    fetchActiveSeason();
   }, [user]);
 
   if (loading) {
@@ -76,13 +106,27 @@ export default function SuperAdminDashboard() {
             
             {/* Season Context */}
             <div className="bg-gradient-to-r from-[#0066FF]/10 to-[#9580FF]/10 border border-[#0066FF]/20 rounded-lg p-4">
-              <div className="text-sm font-medium text-gray-700 mb-1">
-                Active Season
-              </div>
-              <div className="font-bold text-[#0066FF] text-lg">Season 2024</div>
-              <div className="text-xs text-gray-600">
-                12 teams participating
-              </div>
+              {activeSeason ? (
+                <>
+                  <div className="text-sm font-medium text-gray-700 mb-1">
+                    Active Season
+                  </div>
+                  <div className="font-bold text-[#0066FF] text-lg">{activeSeason.name || activeSeason.short_name || 'Current Season'}</div>
+                  <div className="text-xs text-gray-600">
+                    {teamsCount} {teamsCount === 1 ? 'team' : 'teams'} participating
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-medium text-gray-700 mb-1">
+                    Active Season
+                  </div>
+                  <div className="font-bold text-gray-500 text-lg">No Active Season</div>
+                  <div className="text-xs text-gray-600">
+                    Create a season to get started
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
