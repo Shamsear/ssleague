@@ -11,6 +11,12 @@
  */
 
 import { neon } from '@neondatabase/serverless';
+import ws from 'ws';
+
+// Configure WebSocket for better connection reliability
+if (typeof WebSocket === 'undefined') {
+  (global as any).WebSocket = ws;
+}
 
 const connectionString = process.env.NEON_TOURNAMENT_DB_URL;
 
@@ -21,8 +27,16 @@ if (!connectionString) {
   );
 }
 
-// Create SQL query executor for tournament database
-export const tournamentSql = connectionString ? neon(connectionString) : null;
+// Create SQL query executor for tournament database with increased timeout
+// Neon free tier has cold starts that can take 5-15 seconds
+// Use WebSocket connection for better reliability in serverless environments
+export const tournamentSql = connectionString ? neon(connectionString, {
+  fetchConnectionTimeout: 30000, // 30 seconds (increased from default 10s)
+  connectionTimeout: 30000,
+  fetchOptions: {
+    cache: 'no-store', // Prevent caching issues
+  },
+}) : null;
 
 // Type-safe check for tournament database availability
 export function isTournamentDbAvailable(): boolean {

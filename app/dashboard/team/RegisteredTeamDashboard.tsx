@@ -641,8 +641,17 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/matches" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all text-xs sm:text-sm font-medium text-center">
                 📅 Matches
               </Link>
+              <Link href="/dashboard/team/all-teams" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
+                👥 All Teams
+              </Link>
               <Link href="/dashboard/team/team-leaderboard" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
-                🏆 Leaderboard
+                🏆 Team Standings
+              </Link>
+              <Link href="/dashboard/team/player-leaderboard" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
+                📋 Player Stats
+              </Link>
+              <Link href="/dashboard/team/statistics" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
+                📈 Statistics
               </Link>
               <Link href="/dashboard/team/fantasy/my-team" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Fantasy

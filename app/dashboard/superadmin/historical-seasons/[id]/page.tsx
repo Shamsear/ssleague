@@ -165,6 +165,8 @@ export default function HistoricalSeasonDetailPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [awards, setAwards] = useState<Award[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [trophies, setTrophies] = useState<any[]>([]);
+  const [playerAwards, setPlayerAwards] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'teams' | 'players' | 'stats' | 'standings' | 'import'>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
@@ -239,10 +241,49 @@ export default function HistoricalSeasonDetailPage() {
         
         // Set all data from the API response
         setSeason(data.season as Season);
-        setTeams(data.teams as Team[]);
+        
+        // Deduplicate teams by ID (in case API returns duplicates)
+        const uniqueTeamsMap = new Map();
+        (data.teams as Team[]).forEach(team => {
+          if (!uniqueTeamsMap.has(team.id)) {
+            uniqueTeamsMap.set(team.id, team);
+          }
+        });
+        const uniqueTeams = Array.from(uniqueTeamsMap.values());
+        console.log(`  - Teams: ${data.teams.length} raw, ${uniqueTeams.length} after dedup`);
+        setTeams(uniqueTeams);
+        
         setPlayers(data.players as Player[]);
         setAwards(data.awards as Award[]);
         setMatches(data.matches as Match[]);
+        
+        // Fetch trophies from team_trophies table
+        try {
+          const trophiesResponse = await fetch(`/api/trophies?season_id=${seasonId}`);
+          if (trophiesResponse.ok) {
+            const trophiesData = await trophiesResponse.json();
+            if (trophiesData.success) {
+              setTrophies(trophiesData.trophies || []);
+              console.log(`  - Trophies: ${trophiesData.trophies.length}`);
+            }
+          }
+        } catch (trophyError) {
+          console.error('Error fetching trophies:', trophyError);
+        }
+        
+        // Fetch player awards from player_awards table
+        try {
+          const awardsResponse = await fetch(`/api/player-awards?season_id=${seasonId}`);
+          if (awardsResponse.ok) {
+            const awardsData = await awardsResponse.json();
+            if (awardsData.success) {
+              setPlayerAwards(awardsData.awards || []);
+              console.log(`  - Player Awards: ${awardsData.awards.length}`);
+            }
+          }
+        } catch (awardError) {
+          console.error('Error fetching player awards:', awardError);
+        }
         
         console.log('✅ All data loaded successfully via API!');
         console.log(`  - Season: ${data.season.name}`);
@@ -1242,7 +1283,10 @@ export default function HistoricalSeasonDetailPage() {
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {teamStats.map((team, index) => (
-                          <tr key={team.id} className={`hover:bg-orange-50/50 transition-all duration-200 ${
+                          <tr 
+                            key={team.id} 
+                            onClick={() => router.push(`/dashboard/teams/${team.id}`)}
+                            className={`cursor-pointer hover:bg-orange-50/50 transition-all duration-200 ${
                             index % 2 === 0 ? 'bg-white/30' : 'bg-white/50'
                           }`}>
                             <td className="px-6 py-4">
@@ -1277,7 +1321,7 @@ export default function HistoricalSeasonDetailPage() {
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-green-500"></div>
                                 <span className="text-lg font-bold text-green-600">
-                                  {team.season_stats?.goals_scored || team.season_stats?.f || 0}
+                                  {team.totalGoals || 0}
                                 </span>
                               </div>
                             </td>
@@ -1303,7 +1347,10 @@ export default function HistoricalSeasonDetailPage() {
                   {/* Mobile/Tablet Cards */}
                   <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {teamStats.map((team, index) => (
-                      <div key={team.id} className="bg-white/70 rounded-xl p-5 border border-white/50 shadow-sm hover:shadow-md transition-all duration-300">
+                      <div 
+                        key={team.id} 
+                        onClick={() => router.push(`/dashboard/teams/${team.id}`)}
+                        className="cursor-pointer bg-white/70 rounded-xl p-5 border border-white/50 shadow-sm hover:shadow-md transition-all duration-300">
                         <div className="flex items-start gap-4 mb-4">
                           <div className="w-14 h-14 bg-gradient-to-r from-orange-500 to-orange-600 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
                             {team.team_code || team.team_name.substring(0, 2).toUpperCase()}
@@ -1324,7 +1371,7 @@ export default function HistoricalSeasonDetailPage() {
                             <div className="text-xs text-purple-700 font-medium">Players</div>
                           </div>
                           <div className="text-center bg-green-50 rounded-lg p-3">
-                            <div className="text-lg font-bold text-green-600">{team.season_stats?.goals_scored || team.season_stats?.f || 0}</div>
+                            <div className="text-lg font-bold text-green-600">{team.totalGoals || 0}</div>
                             <div className="text-xs text-green-700 font-medium">Goals</div>
                           </div>
                           <div className="text-center bg-blue-50 rounded-lg p-3">
@@ -1407,7 +1454,10 @@ export default function HistoricalSeasonDetailPage() {
                       <tbody className="divide-y divide-gray-200">
                         {players.map((player, index) => {
                           return (
-                            <tr key={player.id} className={`hover:bg-blue-50/50 transition-all duration-200 ${
+                            <tr 
+                              key={player.id} 
+                              onClick={() => router.push(`/dashboard/players/${player.player_id || player.id}`)}
+                              className={`cursor-pointer hover:bg-blue-50/50 transition-all duration-200 ${
                               index % 2 === 0 ? 'bg-white/30' : 'bg-white/50'
                             }`}>
                               <td className="px-6 py-4">
@@ -1454,7 +1504,10 @@ export default function HistoricalSeasonDetailPage() {
                   {/* Mobile Cards */}
                   <div className="md:hidden space-y-4">
                     {players.map((player, index) => (
-                      <div key={player.id} className="bg-white/70 rounded-xl p-4 border border-white/50 shadow-sm hover:shadow-md transition-all duration-300">
+                      <div 
+                        key={player.id} 
+                        onClick={() => router.push(`/dashboard/players/${player.player_id || player.id}`)}
+                        className="cursor-pointer bg-white/70 rounded-xl p-4 border border-white/50 shadow-sm hover:shadow-md transition-all duration-300">
                         <div className="flex items-start gap-4">
                           <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
                             {(player.name || 'U')[0].toUpperCase()}
@@ -1973,7 +2026,6 @@ export default function HistoricalSeasonDetailPage() {
                             <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">L</th>
                             <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Goals</th>
                             <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Pts</th>
-                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-800 uppercase tracking-wider">Trophies</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -2060,49 +2112,6 @@ export default function HistoricalSeasonDetailPage() {
                                       {points}
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 text-center">
-                                    {team.season_stats?.trophies ? (
-                                      <div className="flex items-center justify-center gap-2 flex-wrap max-w-xs mx-auto">
-                                        {Array.isArray(team.season_stats.trophies) ? (
-                                          team.season_stats.trophies.flatMap((trophy: any, idx: number) => {
-                                            // Handle nested array in name field: {name: ["trophy1", "trophy2"], type: "cup"}
-                                            if (typeof trophy === 'object' && Array.isArray(trophy.name)) {
-                                              return trophy.name.map((trophyName: string, subIdx: number) => (
-                                                <span key={`${idx}-${subIdx}`} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
-                                                  🏆 {trophyName}
-                                                </span>
-                                              ));
-                                            }
-                                            // Handle simple object: {name: "trophy", type: "cup"}
-                                            const trophyName = typeof trophy === 'object' ? trophy.name : trophy;
-                                            return (
-                                              <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
-                                                🏆 {trophyName}
-                                              </span>
-                                            );
-                                          })
-                                        ) : typeof team.season_stats.trophies === 'object' ? (
-                                          Array.isArray(team.season_stats.trophies.name) ? (
-                                            team.season_stats.trophies.name.map((trophyName: string, idx: number) => (
-                                              <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
-                                                🏆 {trophyName}
-                                              </span>
-                                            ))
-                                          ) : (
-                                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
-                                              🏆 {team.season_stats.trophies.name}
-                                            </span>
-                                          )
-                                        ) : (
-                                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 whitespace-nowrap">
-                                            🏆 {team.season_stats.trophies}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span className="text-gray-400 text-xs">—</span>
-                                    )}
-                                  </td>
                                 </tr>
                               );
                             })}
@@ -2180,48 +2189,6 @@ export default function HistoricalSeasonDetailPage() {
                                   {team.losses}L
                                 </span>
                               </div>
-                              {team.season_stats?.trophies && (
-                                <div className="mt-3 pt-3 border-t border-gray-200">
-                                  <div className="text-xs font-medium text-gray-600 mb-2">🏆 Trophies:</div>
-                                  <div className="flex items-center justify-center gap-2 flex-wrap">
-                                    {Array.isArray(team.season_stats.trophies) ? (
-                                      team.season_stats.trophies.flatMap((trophy: any, idx: number) => {
-                                        // Handle nested array in name field: {name: ["trophy1", "trophy2"], type: "cup"}
-                                        if (typeof trophy === 'object' && Array.isArray(trophy.name)) {
-                                          return trophy.name.map((trophyName: string, subIdx: number) => (
-                                            <span key={`${idx}-${subIdx}`} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
-                                              {trophyName}
-                                            </span>
-                                          ));
-                                        }
-                                        // Handle simple object: {name: "trophy", type: "cup"}
-                                        const trophyName = typeof trophy === 'object' ? trophy.name : trophy;
-                                        return (
-                                          <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
-                                            {trophyName}
-                                          </span>
-                                        );
-                                      })
-                                    ) : typeof team.season_stats.trophies === 'object' ? (
-                                      Array.isArray(team.season_stats.trophies.name) ? (
-                                        team.season_stats.trophies.name.map((trophyName: string, idx: number) => (
-                                          <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
-                                            {trophyName}
-                                          </span>
-                                        ))
-                                      ) : (
-                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
-                                          {team.season_stats.trophies.name}
-                                        </span>
-                                      )
-                                    ) : (
-                                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm">
-                                        {team.season_stats.trophies}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
                             </div>
                           );
                         })}
@@ -2229,6 +2196,59 @@ export default function HistoricalSeasonDetailPage() {
                   </>
                 )}
               </div>
+
+              {/* Team Trophies Section - Display trophies separately */}
+              {trophies.length > 0 && (
+                <div className="mt-8 glass rounded-2xl p-6 lg:p-8 border border-yellow-200/50 bg-gradient-to-br from-yellow-50/50 to-amber-50/30">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-yellow-100 rounded-xl">
+                      <svg className="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-.5a1.5 1.5 0 00-3 0v.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-3a1 1 0 00-1-1h-.5a1.5 1.5 0 010-3H4a1 1 0 001-1V6a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-bold text-gray-800">🏆 Team Trophies</h4>
+                      <p className="text-sm text-gray-600">Championship trophies and special achievements</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {trophies.map((trophy, index) => {
+                      const team = teamStats.find(t => t.id === trophy.team_id);
+                      return (
+                        <div key={index} className="bg-white/70 rounded-xl p-5 border border-yellow-300 hover:shadow-lg transition-all duration-300 hover:scale-105">
+                          <div className="flex items-start gap-3 mb-3">
+                            <div className="p-2 bg-yellow-100 rounded-lg flex-shrink-0">
+                              <span className="text-2xl">🏆</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h5 className="font-bold text-yellow-800 text-base truncate" title={trophy.trophy_name}>
+                                {trophy.trophy_name}
+                              </h5>
+                              {trophy.trophy_category && (
+                                <p className="text-xs text-yellow-600 mt-1">{trophy.trophy_category}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg p-3 border border-yellow-200">
+                            {trophy.trophy_position && (
+                              <p className="text-xs font-medium text-yellow-700 mb-1">{trophy.trophy_position}</p>
+                            )}
+                            <p className="text-sm font-bold text-gray-900 truncate" title={team?.team_name}>
+                              {team?.team_name || 'Unknown Team'}
+                            </p>
+                            {team?.owner_name && (
+                              <p className="text-xs text-gray-600 mt-1 truncate" title={team.owner_name}>
+                                {team.owner_name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Cup Winners Section - from team standings cup achievement data */}
               {teamStats.filter(t => t.cupAchievement && t.cupAchievement.trim() !== '').length > 0 && (
@@ -2313,6 +2333,91 @@ export default function HistoricalSeasonDetailPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Player Awards Section - from player_awards table */}
+              {playerAwards.length > 0 && (
+                <div className="mt-8 glass rounded-2xl p-6 lg:p-8 border border-purple-200/50 bg-gradient-to-br from-purple-50/50 to-pink-50/30">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-purple-100 rounded-xl">
+                      <svg className="w-6 h-6 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-bold text-gray-800">🎯 Player Awards</h4>
+                      <p className="text-sm text-gray-600">Individual and category awards</p>
+                    </div>
+                  </div>
+                  
+                  {/* Group by category */}
+                  <div className="space-y-6">
+                    {/* Individual Awards */}
+                    {playerAwards.filter(a => a.award_category === 'individual').length > 0 && (
+                      <div>
+                        <h5 className="text-lg font-semibold text-purple-800 mb-4 flex items-center gap-2">
+                          <span>🌟</span> Individual Awards
+                        </h5>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {playerAwards
+                            .filter(a => a.award_category === 'individual')
+                            .map((award) => (
+                              <div key={award.id} className="bg-white/70 rounded-xl p-4 border border-purple-200 hover:shadow-md transition-all duration-300">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {award.award_position === 1 && (
+                                    <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                  )}
+                                  <h6 className="text-sm font-bold text-purple-700">{award.award_type}</h6>
+                                </div>
+                                <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                  <p className="text-xs font-medium text-purple-600 mb-1">
+                                    {award.award_position === 1 ? 'Winner' : award.award_position === 2 ? 'Runner-up' : `Position ${award.award_position}`}
+                                  </p>
+                                  <p className="text-base font-bold text-gray-900">{award.player_name}</p>
+                                  {award.category && (
+                                    <p className="text-xs text-gray-500 mt-1">{award.category}</p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Category Awards */}
+                    {playerAwards.filter(a => a.award_category === 'category').length > 0 && (
+                      <div>
+                        <h5 className="text-lg font-semibold text-purple-800 mb-4 flex items-center gap-2">
+                          <span>🏅</span> Category Awards
+                        </h5>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {playerAwards
+                            .filter(a => a.award_category === 'category')
+                            .map((award) => (
+                              <div key={award.id} className="bg-white/70 rounded-xl p-4 border border-purple-200 hover:shadow-md transition-all duration-300">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {award.award_position === 1 && (
+                                    <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                  )}
+                                  <h6 className="text-sm font-bold text-purple-700">{award.award_type} - {award.category}</h6>
+                                </div>
+                                <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                  <p className="text-xs font-medium text-purple-600 mb-1">
+                                    {award.award_position === 1 ? 'Winner' : award.award_position === 2 ? 'Runner-up' : `Position ${award.award_position}`}
+                                  </p>
+                                  <p className="text-base font-bold text-gray-900">{award.player_name}</p>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -3168,18 +3273,30 @@ export default function HistoricalSeasonDetailPage() {
                                     />
                                   </td>
                                   <td className="px-2 py-3">
-                                    <div className="w-32 text-xs">
+                                    <div className="min-w-[200px] max-w-[400px] text-xs">
                                       {player.category_trophies && player.category_trophies.length > 0 ? (
-                                        <span className="text-gray-700">{player.category_trophies.join(', ')}</span>
+                                        <div className="flex flex-wrap gap-1">
+                                          {player.category_trophies.map((trophy, idx) => (
+                                            <span key={idx} className="inline-block bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs whitespace-nowrap">
+                                              {trophy}
+                                            </span>
+                                          ))}
+                                        </div>
                                       ) : (
                                         <span className="text-gray-400">None</span>
                                       )}
                                     </div>
                                   </td>
                                   <td className="px-2 py-3">
-                                    <div className="w-32 text-xs">
+                                    <div className="min-w-[200px] max-w-[400px] text-xs">
                                       {player.individual_trophies && player.individual_trophies.length > 0 ? (
-                                        <span className="text-gray-700">{player.individual_trophies.join(', ')}</span>
+                                        <div className="flex flex-wrap gap-1">
+                                          {player.individual_trophies.map((trophy, idx) => (
+                                            <span key={idx} className="inline-block bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs whitespace-nowrap">
+                                              {trophy}
+                                            </span>
+                                          ))}
+                                        </div>
                                       ) : (
                                         <span className="text-gray-400">None</span>
                                       )}

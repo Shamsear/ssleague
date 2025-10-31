@@ -32,6 +32,8 @@ function ImportProgressContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const importId = searchParams.get('id');
+  const [seasonId, setSeasonId] = useState<string | null>(searchParams.get('seasonId'));
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   const [progress, setProgress] = useState<ImportProgress>({
     status: 'running',
@@ -67,6 +69,11 @@ function ImportProgressContent() {
         
         if (result.success) {
           const apiProgress = result.progress;
+          
+          // Extract seasonId if available
+          if (apiProgress.seasonId && !seasonId) {
+            setSeasonId(apiProgress.seasonId);
+          }
           
           // Map API progress to our component structure
           setProgress(prev => {
@@ -404,25 +411,88 @@ function ImportProgressContent() {
         )}
 
         {progress.status === 'failed' && (
-          <div className="flex justify-center gap-4">
-            <button
-              onClick={() => router.push('/dashboard/superadmin/historical-seasons')}
-              className="inline-flex items-center px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Historical Seasons
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="inline-flex items-center px-6 py-3 bg-[#0066FF] hover:bg-[#0066FF]/90 text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Retry Import
-            </button>
+          <div className="space-y-6">
+            {/* Error Alert */}
+            <div className="glass rounded-2xl p-6 bg-red-50/50 border border-red-200">
+              <div className="flex items-start">
+                <svg className="w-6 h-6 text-red-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <h3 className="text-lg font-semibold text-red-800 mb-2">Import Failed</h3>
+                  <p className="text-sm text-red-700 mb-4">
+                    The import process encountered an error. You can clean up partial data and retry the import.
+                  </p>
+                  {seasonId && (
+                    <p className="text-xs text-red-600 mb-4">
+                      Season ID: <code className="bg-red-100 px-2 py-1 rounded">{seasonId}</code>
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <button
+                onClick={() => router.push('/dashboard/superadmin/historical-seasons')}
+                className="inline-flex items-center justify-center px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Historical Seasons
+              </button>
+              
+              {seasonId && (
+                <button
+                  onClick={async () => {
+                    if (!confirm('Are you sure you want to clean up all data for this failed import? This will delete teams, players, stats, awards, and trophies associated with this season.')) {
+                      return;
+                    }
+                    
+                    setIsCleaningUp(true);
+                    try {
+                      const response = await fetch(`/api/seasons/historical/${seasonId}/cleanup`, {
+                        method: 'DELETE',
+                      });
+                      
+                      const result = await response.json();
+                      
+                      if (result.success) {
+                        alert(`Cleanup successful!\n\nDeleted:\n- ${result.deleted.team_trophies} team trophies\n- ${result.deleted.player_awards} player awards\n- ${result.deleted.teamstats} team stats\n- ${result.deleted.realplayerstats} player stats\n\nYou can now retry the import.`);
+                        router.push('/dashboard/superadmin/historical-seasons/import');
+                      } else {
+                        alert(`Cleanup failed: ${result.error}`);
+                      }
+                    } catch (error: any) {
+                      alert(`Error during cleanup: ${error.message}`);
+                    } finally {
+                      setIsCleaningUp(false);
+                    }
+                  }}
+                  disabled={isCleaningUp}
+                  className="inline-flex items-center justify-center px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {isCleaningUp ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Cleaning Up...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Clean Up & Retry
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

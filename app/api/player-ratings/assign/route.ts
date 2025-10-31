@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { getMinimumAuctionValue, calculateRealPlayerSalary } from '@/lib/contracts';
+import { adminDb } from '@/lib/firebase/admin';
 
 // Base points by star rating (same as update-points API)
 const STAR_RATING_BASE_POINTS: { [key: number]: number } = {
@@ -31,6 +33,27 @@ export async function POST(request: NextRequest) {
 
     const sql = getTournamentDb();
     let updatedCount = 0;
+    
+    // Fetch star rating configuration from Firebase
+    const seasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
+    const seasonData = seasonDoc.exists ? seasonDoc.data() : null;
+    const starRatingConfigArray = seasonData?.star_rating_config || [];
+    
+    // Create a map for quick lookup
+    const configMap = new Map<number, { auctionValue: number; points: number }>();
+    if (Array.isArray(starRatingConfigArray)) {
+      starRatingConfigArray.forEach((config: any) => {
+        configMap.set(config.star_rating, {
+          auctionValue: config.base_auction_value || getMinimumAuctionValue(config.star_rating),
+          points: config.starting_points || STAR_RATING_BASE_POINTS[config.star_rating] || 100,
+        });
+      });
+    }
+    
+    console.log(`Loaded star rating config from Firebase for ${starRatingConfigArray.length} star ratings`);
+    if (starRatingConfigArray.length === 0) {
+      console.warn('No star rating config found in Firebase, will use fallback values');
+    }
 
     // Update players in Neon
     for (const player of players) {
@@ -38,8 +61,15 @@ export async function POST(request: NextRequest) {
       
       if (!id || !starRating) continue;
 
-      // Calculate base points based on star rating
-      const points = STAR_RATING_BASE_POINTS[starRating] || 100;
+      // Get config from database or use fallback
+      const config = configMap.get(starRating);
+      const points = config?.points || STAR_RATING_BASE_POINTS[starRating] || 100;
+      const auctionValue = config?.auctionValue || getMinimumAuctionValue(starRating);
+      
+      // Calculate salary based on auction value and star rating
+      const salaryPerMatch = calculateRealPlayerSalary(auctionValue, starRating);
+      
+      console.log(`Player ${id}: ${starRating}★ → Auction: $${auctionValue}, Points: ${points}, Salary: $${salaryPerMatch.toFixed(2)}/match`);
 
       if (isModernSeason(seasonId)) {
         // For Season 16+: Update player_seasons table
@@ -50,6 +80,8 @@ export async function POST(request: NextRequest) {
           UPDATE player_seasons
           SET star_rating = ${starRating}, 
               points = ${points},
+              auction_value = ${auctionValue},
+              salary_per_match = ${salaryPerMatch},
               category = ${categoryName || null},
               updated_at = NOW()
           WHERE id = ${compositeId}
@@ -65,6 +97,8 @@ export async function POST(request: NextRequest) {
           UPDATE realplayerstats
           SET star_rating = ${starRating},
               points = ${points},
+              auction_value = ${auctionValue},
+              salary_per_match = ${salaryPerMatch},
               category = ${categoryName || null},
               updated_at = NOW()
           WHERE id = ${compositeId}
@@ -77,7 +111,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully updated ${updatedCount} out of ${players.length} players with ratings, points, and categories`,
+      message: `Successfully updated ${updatedCount} out of ${players.length} players with ratings, points, auction values, and categories`,
       updatedCount,
     });
   } catch (error) {

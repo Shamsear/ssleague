@@ -1,4 +1,6 @@
 import { neon } from '@neondatabase/serverless';
+import { logAuctionWin } from './transaction-logger';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -345,6 +347,59 @@ export async function resolveTiebreaker(
     console.log(
       `✅ Tiebreaker ${tiebreakerId} resolved - Winner: Team ${winningBid.team_id}, Amount: £${winningBid.new_bid_amount}`
     );
+    
+    // Get player and round details for transaction logging
+    const bidsData = await sql`
+      SELECT b.player_id, b.player_name, b.round_id
+      FROM bids b
+      WHERE b.id = ${winningBid.original_bid_id}
+      LIMIT 1
+    `;
+    
+    if (bidsData.length > 0) {
+      const bidInfo = bidsData[0];
+      
+      // Get round season_id
+      const roundData = await sql`
+        SELECT season_id FROM rounds WHERE id = ${bidInfo.round_id} LIMIT 1
+      `;
+      
+      if (roundData.length > 0) {
+        const seasonId = roundData[0].season_id;
+        
+        // Update team balance and log transaction
+        const adminDb = getFirestore();
+        const teamSeasonId = `${winningBid.team_id}_${seasonId}`;
+        const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
+        const teamSeasonSnap = await teamSeasonRef.get();
+        
+        if (teamSeasonSnap.exists) {
+          const teamSeasonData = teamSeasonSnap.data();
+          const currentBalance = teamSeasonData?.euro_balance || 0;
+          const newBalance = currentBalance - winningBid.new_bid_amount;
+          
+          // Update balance
+          await teamSeasonRef.update({
+            euro_balance: newBalance,
+            updated_at: new Date()
+          });
+          
+          // Log auction win transaction
+          await logAuctionWin(
+            winningBid.team_id,
+            seasonId,
+            bidInfo.player_name || 'Unknown Player',
+            bidInfo.player_id,
+            'football',
+            winningBid.new_bid_amount,
+            currentBalance,
+            bidInfo.round_id
+          );
+          
+          console.log(`💰 Deducted £${winningBid.new_bid_amount} from team ${winningBid.team_id}`);
+        }
+      }
+    }
 
     return {
       success: true,

@@ -3,6 +3,7 @@ import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { triggerNews } from '@/lib/news/trigger';
+import { logInitialBalance } from '@/lib/transaction-logger';
 
 export async function POST(
   request: NextRequest,
@@ -366,6 +367,32 @@ export async function POST(
       }
       
       batch.set(teamSeasonRef, teamSeasonData);
+      
+      // Log initial balance transactions
+      if (isDualCurrency) {
+        // Log football budget
+        await logInitialBalance(
+          teamDocId,
+          seasonId,
+          footballBudget,
+          'football'
+        );
+        // Log real player budget
+        await logInitialBalance(
+          teamDocId,
+          seasonId,
+          realPlayerBudget,
+          'real_player'
+        );
+      } else {
+        // Log single budget
+        await logInitialBalance(
+          teamDocId,
+          seasonId,
+          startingBalance,
+          'football' // For legacy single currency system
+        );
+      }
       
       // Create team_seasons record for NEXT season (auto-registered)
       const nextTeamSeasonRef = adminDb.collection('team_seasons').doc(nextTeamSeasonId);

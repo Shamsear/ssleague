@@ -27,6 +27,21 @@ export default function CommitteeDashboard() {
   const [roundTiebreakers, setRoundTiebreakers] = useState<{[key: string]: any[]}>({});
   const [loadingRounds, setLoadingRounds] = useState(false);
   const [currentSeason, setCurrentSeason] = useState<any>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+  
+  // Collapsible sections state
+  const [expandedSections, setExpandedSections] = useState<{[key: string]: boolean}>({
+    teamPlayer: true,
+    ratings: true,
+    contracts: true,
+    auction: true,
+    fantasy: true,
+    content: false,
+  });
+  
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -37,108 +52,84 @@ export default function CommitteeDashboard() {
     }
   }, [user, loading, router]);
 
-  // Fetch season details
-  const fetchCurrentSeason = useCallback(async () => {
+  // Fetch all initial data in parallel
+  const fetchAllStats = useCallback(async () => {
       if (!user || user.role !== 'committee_admin' || !userSeasonId) return;
 
+      setLoadingStats(true);
+      
       try {
-        const cacheKey = `committee_season_${userSeasonId}`;
-        const cachedSeason = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
-        
-        if (cachedSeason) {
-          setCurrentSeason(cachedSeason);
-          return;
-        }
-        
-        const seasonRef = doc(db, 'seasons', userSeasonId);
-        const seasonSnapshot = await getDoc(seasonRef);
-        
-        if (seasonSnapshot.exists()) {
-          const seasonData = { id: seasonSnapshot.id, ...seasonSnapshot.data() };
-          setSmartCache(cacheKey, seasonData, CACHE_DURATIONS.MEDIUM);
-          setCurrentSeason(seasonData);
-        }
-      } catch (err) {
-        console.error('Error fetching season:', err);
-      }
-    }, [user, userSeasonId]);
-
-  useEffect(() => {
-    fetchCurrentSeason();
-  }, [fetchCurrentSeason]);
-
-  // Fetch player statistics
-  const fetchPlayerStats = useCallback(async () => {
-      if (!user || user.role !== 'committee_admin' || !userSeasonId) return;
-
-      try {
-        const cacheKey = `committee_player_stats_${userSeasonId}`;
-        const cachedStats = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
-        
-        if (cachedStats) {
-          setPlayerStats(cachedStats);
-          return;
-        }
-        
-        // Fetch from real-players endpoint (Neon database)
-        const response = await fetch(`/api/real-players?season_id=${userSeasonId}`);
-        const data = await response.json();
-
-        if (data.success && data.players) {
-          const players = data.players;
-          const eligible = players.filter((p: any) => p.is_auction_eligible);
-          
-          const positionGroups: { [key: string]: number } = {
-            'GK': 0, 'DEF': 0, 'MID': 0, 'FWD': 0
-          };
-
-          eligible.forEach((player: any) => {
-            const pos = player.position?.toUpperCase() as string;
-            for (const [group, positions] of Object.entries(POSITION_GROUPS)) {
-              if ((positions as readonly string[]).includes(pos)) {
-                positionGroups[group]++;
-                break;
+        // Fetch all data in parallel
+        await Promise.all([
+          // Fetch season
+          (async () => {
+            try {
+              const cacheKey = `committee_season_${userSeasonId}`;
+              const cachedSeason = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
+              
+              if (cachedSeason) {
+                setCurrentSeason(cachedSeason);
+                return;
               }
+              
+              const seasonRef = doc(db, 'seasons', userSeasonId);
+              const seasonSnapshot = await getDoc(seasonRef);
+              
+              if (seasonSnapshot.exists()) {
+                const seasonData = { id: seasonSnapshot.id, ...seasonSnapshot.data() };
+                setSmartCache(cacheKey, seasonData, CACHE_DURATIONS.MEDIUM);
+                setCurrentSeason(seasonData);
+              }
+            } catch (err) {
+              console.error('Error fetching season:', err);
             }
-          });
+          })(),
 
-          const stats = {
-            total: players.length,
-            eligible: eligible.length,
-            byPosition: positionGroups
-          };
-          
-          setSmartCache(cacheKey, stats, CACHE_DURATIONS.MEDIUM);
-          setPlayerStats(stats);
-        }
-      } catch (err) {
-        console.error('Error fetching player stats:', err);
+          // Fetch player stats from footballplayers (auction DB)
+          (async () => {
+            try {
+              const cacheKey = `committee_football_players_${userSeasonId}`;
+              const cachedStats = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
+              
+              if (cachedStats) {
+                setPlayerStats(cachedStats);
+                return;
+              }
+              
+              const response = await fetch(`/api/stats/registered-players?season_id=${userSeasonId}`);
+              const data = await response.json();
+
+              if (data.success && data.stats) {
+                setSmartCache(cacheKey, data.stats, CACHE_DURATIONS.MEDIUM);
+                setPlayerStats(data.stats);
+              }
+            } catch (err) {
+              console.error('Error fetching registered player stats:', err);
+            }
+          })(),
+
+          // Fetch teams
+          (async () => {
+            try {
+              const response = await fetchWithTokenRefresh(`/api/team/all?season_id=${userSeasonId}`);
+              const data = await response.json();
+
+              if (data.success && data.data?.teams) {
+                setTeams(data.data.teams);
+              }
+            } catch (err) {
+              console.error('Error fetching teams:', err);
+            }
+          })(),
+        ]);
+      } finally {
+        setLoadingStats(false);
       }
     }, [user, userSeasonId]);
 
   useEffect(() => {
-    fetchPlayerStats();
-  }, [fetchPlayerStats]);
-
-  // Fetch teams
-  const fetchTeams = useCallback(async () => {
-      if (!userSeasonId || !user || user.role !== 'committee_admin') return;
-
-      try {
-        const response = await fetchWithTokenRefresh(`/api/team/all?season_id=${userSeasonId}`);
-        const data = await response.json();
-
-        if (data.success && data.data?.teams) {
-          setTeams(data.data.teams);
-        }
-      } catch (err) {
-        console.error('Error fetching teams:', err);
-      }
-    }, [userSeasonId, user]);
-
-  useEffect(() => {
-    fetchTeams();
-  }, [fetchTeams]);
+    fetchAllStats();
+  }, [fetchAllStats]);
 
   // Fetch active rounds
   const fetchActiveRounds = useCallback(async () => {
@@ -181,7 +172,7 @@ export default function CommitteeDashboard() {
     return () => clearInterval(interval);
   }, [fetchActiveRounds]);
 
-  if (loading) {
+  if (loading || loadingStats) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -285,20 +276,34 @@ export default function CommitteeDashboard() {
           </div>
         </div>
 
-        {/* Main Navigation Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Organized Navigation with Collapsible Sections */}
+        <div className="space-y-6 mb-8">
           
-          {/* Team & Player Management */}
-          <div className="lg:col-span-2">
-            <div className="glass rounded-3xl p-6 shadow-xl border border-white/30 h-full">
-              <h2 className="text-2xl font-bold gradient-text mb-6 flex items-center">
+          {/* Team & Player Management Section */}
+          <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
+            <button
+              onClick={() => toggleSection('teamPlayer')}
+              className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+            >
+              <h2 className="text-2xl font-bold gradient-text flex items-center">
                 <svg className="w-7 h-7 mr-3 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
                 Team & Player Management
               </h2>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {expandedSections.teamPlayer ? (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+            
+            {expandedSections.teamPlayer && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Link href="/dashboard/committee/teams" className="group glass rounded-2xl p-4 border border-white/20 hover:border-[#0066FF]/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-[#0066FF]/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
                   <div className="relative">
@@ -389,6 +394,24 @@ export default function CommitteeDashboard() {
                   </div>
                 </Link>
 
+                <Link href="/dashboard/committee/players/transfers" className="group glass rounded-2xl p-4 border border-white/20 hover:border-emerald-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-emerald-600 transition-colors mb-1">Player Transfers</h4>
+                    <p className="text-xs text-gray-600">Release, transfer & swap players</p>
+                  </div>
+                </Link>
+
                 <Link href="/dashboard/committee/team-contracts" className="group glass rounded-2xl p-4 border border-white/20 hover:border-pink-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-pink-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
                   <div className="relative">
@@ -407,178 +430,360 @@ export default function CommitteeDashboard() {
                   </div>
                 </Link>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Quick Actions Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="glass rounded-3xl p-6 shadow-xl border border-white/30 h-full">
-              <h2 className="text-2xl font-bold gradient-text mb-6 flex items-center">
+          {/* Player Ratings & Configuration Section */}
+          <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
+            <button
+              onClick={() => toggleSection('ratings')}
+              className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+            >
+              <h2 className="text-2xl font-bold gradient-text flex items-center">
                 <svg className="w-7 h-7 mr-3 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                 </svg>
-                Quick Actions
+                Player Ratings & Configuration
               </h2>
-              
-              <div className="space-y-3">
-                <Link href="/dashboard/committee/player-ratings" className="block glass rounded-xl p-4 border border-white/20 hover:border-amber-500/50 transition-all hover:-translate-y-0.5 shadow-sm hover:shadow-md">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              {expandedSections.ratings ? (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+            
+            {expandedSections.ratings && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Link href="/dashboard/committee/player-ratings" className="group glass rounded-2xl p-4 border border-white/20 hover:border-amber-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">Player Ratings</h4>
-                      <p className="text-xs text-gray-600">Assign star ratings</p>
-                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-amber-600 transition-colors mb-1">Player Ratings</h4>
+                    <p className="text-xs text-gray-600">Assign star ratings</p>
                   </div>
                 </Link>
 
-                <Link href="/dashboard/committee/real-players" className="block glass rounded-xl p-4 border border-white/20 hover:border-emerald-500/50 transition-all hover:-translate-y-0.5 shadow-sm hover:shadow-md">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                <Link href="/dashboard/committee/star-rating-config" className="group glass rounded-2xl p-4 border border-white/20 hover:border-yellow-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-yellow-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-yellow-500 to-amber-500 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-yellow-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">SS Members</h4>
-                      <p className="text-xs text-gray-600">Real player assignments</p>
-                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-yellow-600 transition-colors mb-1">⭐ Star Config</h4>
+                    <p className="text-xs text-gray-600">Points & pricing setup</p>
                   </div>
                 </Link>
 
-                <Link href="/dashboard/committee/fantasy/create" className="block glass rounded-xl p-4 border border-white/20 hover:border-purple-500/50 transition-all hover:-translate-y-0.5 shadow-sm hover:shadow-md bg-gradient-to-br from-purple-50/50 to-pink-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                <Link href="/dashboard/committee/real-players" className="group glass rounded-2xl p-4 border border-white/20 hover:border-emerald-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">🏆 Fantasy League</h4>
-                      <p className="text-xs text-gray-600">Create & manage draft</p>
-                    </div>
-                  </div>
-                </Link>
-
-                <Link href="/dashboard/committee/team-management" className="block glass rounded-xl p-4 border border-white/20 hover:border-indigo-500/50 transition-all hover:-translate-y-0.5 shadow-sm hover:shadow-md">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">Team Management</h4>
-                      <p className="text-xs text-gray-600">Tournament operations</p>
-                    </div>
-                  </div>
-                </Link>
-
-                <Link href="/dashboard/committee/awards" className="block glass rounded-xl p-4 border border-white/20 hover:border-yellow-500/50 transition-all hover:-translate-y-0.5 shadow-sm hover:shadow-md bg-gradient-to-br from-yellow-50/50 to-amber-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-yellow-500 to-amber-600 text-white">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">🏆 Awards</h4>
-                      <p className="text-xs text-gray-600">POTD, POTW & more</p>
-                    </div>
-                  </div>
-                </Link>
-
-                <Link href="/admin/news" className="block glass rounded-xl p-4 border border-white/20 hover:border-blue-500/50 transition-all hover:-translate-y-0.5 shadow-sm hover:shadow-md bg-gradient-to-br from-blue-50/50 to-cyan-50/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 text-white">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">📰 News Management</h4>
-                      <p className="text-xs text-gray-600">View AI-generated news</p>
-                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-emerald-600 transition-colors mb-1">SS Members</h4>
+                    <p className="text-xs text-gray-600">Real player assignments</p>
                   </div>
                 </Link>
               </div>
-            </div>
+            )}
           </div>
-        </div>
 
-        {/* Auction Configuration Section */}
-        <div className="glass rounded-3xl p-6 shadow-xl border border-white/30 mb-8">
-          <h2 className="text-2xl font-bold gradient-text mb-6 flex items-center">
-            <svg className="w-7 h-7 mr-3 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Auction Configuration
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link href="/dashboard/committee/auction-settings" className="group glass rounded-2xl p-4 border border-white/20 hover:border-[#0066FF]/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-[#0066FF]/20 to-blue-500/20">
-                  <svg className="w-5 h-5 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                  </svg>
-                </div>
-                <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0066FF] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+          {/* Contracts & Financial Management Section */}
+          <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
+            <button
+              onClick={() => toggleSection('contracts')}
+              className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+            >
+              <h2 className="text-2xl font-bold gradient-text flex items-center">
+                <svg className="w-7 h-7 mr-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-              </div>
-              <h4 className="font-bold text-gray-800 group-hover:text-[#0066FF] transition-colors mb-1 text-sm">Auction Settings</h4>
-              <p className="text-xs text-gray-600">Configure rounds & rules</p>
-            </Link>
+                Contracts & Financial Management
+              </h2>
+              {expandedSections.contracts ? (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+            
+            {expandedSections.contracts && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Link href="/dashboard/committee/contracts/mid-season-salary" className="group glass rounded-2xl p-4 border border-white/20 hover:border-green-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-green-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-green-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-green-600 transition-colors mb-1">💰 Mid-Season Salary</h4>
+                    <p className="text-xs text-gray-600">Process football player salaries</p>
+                  </div>
+                </Link>
 
-            <Link href="/dashboard/committee/position-groups" className="group glass rounded-2xl p-4 border border-white/20 hover:border-cyan-500/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500/20 to-cyan-600/20">
-                  <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                  </svg>
-                </div>
-                <svg className="w-4 h-4 text-gray-400 group-hover:text-cyan-600 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
+                <Link href="/dashboard/committee/contracts/reconcile" className="group glass rounded-2xl p-4 border border-white/20 hover:border-red-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-red-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-red-500 to-orange-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-red-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-red-600 transition-colors mb-1">📄 Contract Reconciliation</h4>
+                    <p className="text-xs text-gray-600">Handle season transitions</p>
+                  </div>
+                </Link>
               </div>
-              <h4 className="font-bold text-gray-800 group-hover:text-cyan-600 transition-colors mb-1 text-sm">Position Groups</h4>
-              <p className="text-xs text-gray-600">Organize auction groups</p>
-            </Link>
+            )}
+          </div>
 
-            <Link href="/dashboard/committee/database" className="group glass rounded-2xl p-4 border border-white/20 hover:border-teal-500/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-teal-500/20 to-teal-600/20">
-                  <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                  </svg>
-                </div>
-                <svg className="w-4 h-4 text-gray-400 group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+          {/* Auction Management Section */}
+          <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
+            <button
+              onClick={() => toggleSection('auction')}
+              className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+            >
+              <h2 className="text-2xl font-bold gradient-text flex items-center">
+                <svg className="w-7 h-7 mr-3 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-              </div>
-              <h4 className="font-bold text-gray-800 group-hover:text-teal-600 transition-colors mb-1 text-sm">Database</h4>
-              <p className="text-xs text-gray-600">Import/export data</p>
-            </Link>
+                Auction Management
+              </h2>
+              {expandedSections.auction ? (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+            
+            {expandedSections.auction && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Link href="/dashboard/committee/auction-settings" className="group glass rounded-2xl p-4 border border-white/20 hover:border-[#0066FF]/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-[#0066FF]/20 to-blue-500/20">
+                      <svg className="w-5 h-5 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                      </svg>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0066FF] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <h4 className="font-bold text-gray-800 group-hover:text-[#0066FF] transition-colors mb-1 text-sm">Auction Settings</h4>
+                  <p className="text-xs text-gray-600">Configure rounds & rules</p>
+                </Link>
 
-            <Link href="/dashboard/committee/rounds" className="group glass rounded-2xl p-4 border border-white/20 hover:border-green-500/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-green-500/20 to-green-600/20">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <svg className="w-4 h-4 text-gray-400 group-hover:text-green-600 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                </svg>
+                <Link href="/dashboard/committee/position-groups" className="group glass rounded-2xl p-4 border border-white/20 hover:border-cyan-500/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500/20 to-cyan-600/20">
+                      <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                      </svg>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-400 group-hover:text-cyan-600 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <h4 className="font-bold text-gray-800 group-hover:text-cyan-600 transition-colors mb-1 text-sm">Position Groups</h4>
+                  <p className="text-xs text-gray-600">Organize auction groups</p>
+                </Link>
+
+                <Link href="/dashboard/committee/database" className="group glass rounded-2xl p-4 border border-white/20 hover:border-teal-500/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-teal-500/20 to-teal-600/20">
+                      <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                      </svg>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-400 group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <h4 className="font-bold text-gray-800 group-hover:text-teal-600 transition-colors mb-1 text-sm">Database</h4>
+                  <p className="text-xs text-gray-600">Import/export data</p>
+                </Link>
+
+                <Link href="/dashboard/committee/rounds" className="group glass rounded-2xl p-4 border border-white/20 hover:border-green-500/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-green-500/20 to-green-600/20">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-400 group-hover:text-green-600 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <h4 className="font-bold text-gray-800 group-hover:text-green-600 transition-colors mb-1 text-sm">Create Rounds</h4>
+                  <p className="text-xs text-gray-600">Manage auction rounds</p>
+                </Link>
               </div>
-              <h4 className="font-bold text-gray-800 group-hover:text-green-600 transition-colors mb-1 text-sm">Create Rounds</h4>
-              <p className="text-xs text-gray-600">Manage auction rounds</p>
-            </Link>
+            )}
+          </div>
+
+          {/* Fantasy & Content Management Section */}
+          <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
+            <button
+              onClick={() => toggleSection('fantasy')}
+              className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+            >
+              <h2 className="text-2xl font-bold gradient-text flex items-center">
+                <svg className="w-7 h-7 mr-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                Fantasy & Content Management
+              </h2>
+              {expandedSections.fantasy ? (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+            
+            {expandedSections.fantasy && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Link href="/dashboard/committee/fantasy/create" className="group glass rounded-2xl p-4 border border-white/20 hover:border-purple-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-purple-600 transition-colors mb-1">🏆 Fantasy League</h4>
+                    <p className="text-xs text-gray-600">Create & manage draft</p>
+                  </div>
+                </Link>
+
+                <Link href="/dashboard/committee/team-management" className="group glass rounded-2xl p-4 border border-white/20 hover:border-indigo-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-indigo-600 transition-colors mb-1">Team Management</h4>
+                    <p className="text-xs text-gray-600">Tournament operations</p>
+                  </div>
+                </Link>
+
+                <Link href="/dashboard/committee/trophies" className="group glass rounded-2xl p-4 border border-white/20 hover:border-yellow-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-yellow-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-yellow-500 to-amber-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m-3.75 1.5a3 3 0 11-6 0 3 3 0 016 0zm8.25 0a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-yellow-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-yellow-600 transition-colors mb-1">🏆 Trophy Management</h4>
+                    <p className="text-xs text-gray-600">Award season trophies</p>
+                  </div>
+                </Link>
+
+                <Link href="/dashboard/committee/awards" className="group glass rounded-2xl p-4 border border-white/20 hover:border-amber-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-amber-600 transition-colors mb-1">🏆 Awards</h4>
+                    <p className="text-xs text-gray-600">POTD, POTW & more</p>
+                  </div>
+                </Link>
+
+                <Link href="/admin/news" className="group glass rounded-2xl p-4 border border-white/20 hover:border-blue-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-blue-600 transition-colors mb-1">📰 News Management</h4>
+                    <p className="text-xs text-gray-600">View AI-generated news</p>
+                  </div>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 

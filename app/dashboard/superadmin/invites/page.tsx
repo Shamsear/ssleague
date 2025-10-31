@@ -34,7 +34,7 @@ interface SeasonAdmin {
 export default function AdminInvites() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +127,8 @@ export default function AdminInvites() {
   
   // Setup real-time listeners for live updates
   const setupRealTimeListeners = () => {
+    let latestInvites: AdminInvite[] = [];
+    
     // Listen to invites collection
     const invitesQuery = query(
       collection(db, 'invites'),
@@ -144,6 +146,7 @@ export default function AdminInvites() {
           createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
         } as AdminInvite);
       });
+      latestInvites = updatedInvites;
       setInvites(updatedInvites);
       
       // Update season admins data when invites change
@@ -159,8 +162,8 @@ export default function AdminInvites() {
     );
     
     const unsubscribeUsers = onSnapshot(usersQuery, () => {
-      // Reload season admins when users change
-      updateSeasonAdminsData(invites);
+      // Reload season admins when users change, using latest invites
+      updateSeasonAdminsData(latestInvites);
     }, (error) => {
       console.error('Error listening to users:', error);
     });
@@ -222,17 +225,14 @@ export default function AdminInvites() {
         user.username
       );
       
-      // Reload data
-      await loadData();
-      
-      // Reset form and close modal
+      // Reset form and close form (no reload needed - real-time listeners will update)
       setFormData({
         seasonId: formData.seasonId,
         description: '',
         maxUses: 1,
         expiresInHours: 24,
       });
-      setShowCreateModal(false);
+      setShowCreateForm(false);
       
       alert('Admin invite created successfully!');
     } catch (err: any) {
@@ -254,9 +254,7 @@ export default function AdminInvites() {
       setError(null);
       await deleteAdminInvite(inviteCode);
       
-      // Reload data
-      await loadData();
-      
+      // No reload needed - real-time listeners will update
       alert('Invite deleted successfully!');
     } catch (err: any) {
       console.error('Error deleting invite:', err);
@@ -330,13 +328,13 @@ export default function AdminInvites() {
               </div>
             </div>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => setShowCreateForm(!showCreateForm)}
               className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-semibold rounded-2xl text-white bg-gradient-to-r from-[#9580FF] to-[#0066FF] hover:from-[#9580FF]/90 hover:to-[#0066FF]/90 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 group w-full md:w-auto justify-center"
             >
               <svg className="w-4 h-4 mr-2 group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
-              Create Invite
+              {showCreateForm ? 'Cancel' : 'Create Invite'}
             </button>
           </div>
         </div>
@@ -458,7 +456,106 @@ export default function AdminInvites() {
             </div>
           </div>
           
-          {invites.filter(inv => inv.isActive && inv.usedCount < inv.maxUses).length > 0 ? (
+          {/* Create Invite Form */}
+          {showCreateForm && (
+            <div className="border-b border-gray-200/50 animate-slideDown">
+              <form onSubmit={handleCreateInvite} className="p-4 space-y-4 bg-gradient-to-br from-[#9580FF]/5 to-blue-50/30">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Season *
+                    </label>
+                    <select
+                      value={formData.seasonId}
+                      onChange={(e) => setFormData({ ...formData, seasonId: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] transition-all"
+                      required
+                    >
+                      <option value="">Select season</option>
+                      {seasons.map((season) => (
+                        <option key={season.id} value={season.id}>
+                          {season.name} ({season.year}) {season.isActive ? '✓' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Description
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] transition-all"
+                      placeholder="Brief description"
+                    />
+                  </div>
+                  
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Max Uses
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.maxUses}
+                      onChange={(e) => setFormData({ ...formData, maxUses: parseInt(e.target.value) || 1 })}
+                      min="1"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] transition-all"
+                    />
+                  </div>
+                  
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Expires (Hours)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.expiresInHours}
+                      onChange={(e) => setFormData({ ...formData, expiresInHours: parseInt(e.target.value) || 24 })}
+                      min="1"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] transition-all"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-2 col-span-full">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="px-4 py-2 border border-gray-300 text-xs font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreating || !formData.seasonId}
+                    className="px-4 py-2 text-xs font-semibold rounded-lg text-white bg-gradient-to-r from-[#9580FF] to-[#0066FF] hover:from-[#9580FF]/90 hover:to-[#0066FF]/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center"
+                  >
+                    {isCreating ? (
+                      <>
+                        <svg className="animate-spin w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Create
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+          
+          {invites.filter(inv => inv.isActive && inv.usedCount < inv.maxUses).length > 0 || showCreateForm ? (
             <div className="divide-y divide-gray-200/50">
               {invites.filter(inv => inv.isActive && inv.usedCount < inv.maxUses).map((invite) => (
                 <div key={invite.id} className="px-6 py-5 hover:bg-white/30 transition-all duration-200 group">
@@ -575,7 +672,7 @@ export default function AdminInvites() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Active Invitations</h3>
                 <p className="text-gray-500 mb-6">Create invitation codes to allow new administrators to join the system.</p>
                 <button
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => setShowCreateForm(true)}
                   className="inline-flex items-center px-4 py-2 rounded-xl bg-[#9580FF]/10 text-[#9580FF] text-sm font-medium hover:bg-[#9580FF]/20 transition-all duration-200"
                 >
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -588,148 +685,6 @@ export default function AdminInvites() {
           )}
         </div>
       </div>
-
-      {/* Create Invite Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-          <div className="relative glass rounded-3xl shadow-2xl border border-white/20 w-full max-w-md transform transition-all">
-            {/* Modal Header */}
-            <div className="px-8 py-6 bg-gradient-to-r from-[#9580FF]/5 to-[#9580FF]/10 border-b border-[#9580FF]/20 rounded-t-3xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#9580FF]/20 to-[#9580FF]/10 flex items-center justify-center mr-3">
-                    <svg className="w-5 h-5 text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-[#9580FF]">Create Admin Invite</h3>
-                </div>
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors duration-200 text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            
-            {/* Modal Content */}
-            <form onSubmit={handleCreateInvite} className="p-8 space-y-6">
-              <div className="group">
-                <label className="block text-sm font-semibold text-gray-700 mb-3 group-focus-within:text-[#9580FF] transition-colors">
-                  <span className="flex items-center">
-                    <svg className="w-4 h-4 mr-2 text-gray-400 group-focus-within:text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Season *
-                  </span>
-                </label>
-                <select
-                  value={formData.seasonId}
-                  onChange={(e) => setFormData({ ...formData, seasonId: e.target.value })}
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all duration-200 focus:ring-4 focus:ring-[#9580FF]/20 focus:border-[#9580FF] focus:bg-white hover:border-gray-300"
-                  required
-                >
-                  <option value="">Select a season...</option>
-                  {seasons.map((season) => (
-                    <option key={season.id} value={season.id}>
-                      {season.name} ({season.year}) {season.isActive ? '- Active' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="group">
-                <label className="block text-sm font-semibold text-gray-700 mb-3 group-focus-within:text-[#9580FF] transition-colors">
-                  <span className="flex items-center">
-                    <svg className="w-4 h-4 mr-2 text-gray-400 group-focus-within:text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7" />
-                    </svg>
-                    Description
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all duration-200 focus:ring-4 focus:ring-[#9580FF]/20 focus:border-[#9580FF] focus:bg-white hover:border-gray-300"
-                  placeholder="Brief description for this invite..."
-                />
-              </div>
-              
-              <div className="group">
-                <label className="block text-sm font-semibold text-gray-700 mb-3 group-focus-within:text-[#9580FF] transition-colors">
-                  <span className="flex items-center">
-                    <svg className="w-4 h-4 mr-2 text-gray-400 group-focus-within:text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                    </svg>
-                    Maximum Uses
-                  </span>
-                </label>
-                <input
-                  type="number"
-                  value={formData.maxUses}
-                  onChange={(e) => setFormData({ ...formData, maxUses: parseInt(e.target.value) || 1 })}
-                  min="1"
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all duration-200 focus:ring-4 focus:ring-[#9580FF]/20 focus:border-[#9580FF] focus:bg-white hover:border-gray-300"
-                />
-              </div>
-              
-              <div className="group">
-                <label className="block text-sm font-semibold text-gray-700 mb-3 group-focus-within:text-[#9580FF] transition-colors">
-                  <span className="flex items-center">
-                    <svg className="w-4 h-4 mr-2 text-gray-400 group-focus-within:text-[#9580FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Expires In (Hours)
-                  </span>
-                </label>
-                <input
-                  type="number"
-                  value={formData.expiresInHours}
-                  onChange={(e) => setFormData({ ...formData, expiresInHours: parseInt(e.target.value) || 24 })}
-                  min="1"
-                  className="w-full px-4 py-3 rounded-2xl border-2 border-gray-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all duration-200 focus:ring-4 focus:ring-[#9580FF]/20 focus:border-[#9580FF] focus:bg-white hover:border-gray-300"
-                />
-              </div>
-              
-              <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-6 py-3 border-2 border-gray-300 text-sm font-medium rounded-2xl text-gray-700 bg-white/80 backdrop-blur-sm hover:bg-white hover:border-gray-400 transition-all duration-200 shadow-sm hover:shadow-md transform hover:-translate-y-0.5 w-full sm:w-auto"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreating || !formData.seasonId}
-                  className="px-8 py-3 border border-transparent text-sm font-semibold rounded-2xl text-white bg-gradient-to-r from-[#9580FF] to-[#0066FF] hover:from-[#9580FF]/90 hover:to-[#0066FF]/90 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 w-full sm:w-auto group disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isCreating ? (
-                    <>
-                      <svg className="animate-spin w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 mr-2 inline group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      Create Invitation
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

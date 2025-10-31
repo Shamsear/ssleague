@@ -35,6 +35,7 @@ export interface Season {
   max_real_players?: number; // Maximum real players per team (default: 7)
   max_football_players?: number; // Maximum football players per team (default: 25)
   category_fine_amount?: number; // Fine for not meeting category requirements (default: 20)
+  category_fine_currency?: 'dollar' | 'euro'; // Currency for category fines (default: dollar)
   
   createdAt: Date;
   updatedAt: Date;
@@ -58,4 +59,5 @@ export interface CreateSeasonData {
   max_real_players?: number;
   max_football_players?: number;
   category_fine_amount?: number;
+  category_fine_currency?: 'dollar' | 'euro';
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
-import { generateNewsContent } from '@/lib/news/auto-generate';
+import { generateNewsContent, generateBilingualNews } from '@/lib/news/auto-generate';
 import { NewsGenerationInput, NewsItem } from '@/lib/news/types';
 import { generateNewsImage } from '@/lib/images/generate';
 
@@ -113,82 +113,98 @@ export async function POST(request: NextRequest) {
 
     // If requesting AI generation
     if (generate_with_ai && generation_input) {
-      const aiResult = await generateNewsContent(generation_input as NewsGenerationInput);
-      
-      if (!aiResult.success) {
+      try {
+        // Generate bilingual content (English + Malayalam)
+        const bilingualResult = await generateBilingualNews(generation_input as NewsGenerationInput);
+        
+        // Create draft news item with AI-generated content
+        const sql = getTournamentDb();
+        const newsId = `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Generate image for the news (async, non-blocking)
+        let imageUrl: string | null = null;
+        try {
+          console.log('🎨 Generating image for news...');
+          imageUrl = await generateNewsImage(
+            generation_input.event_type,
+            generation_input.metadata || {},
+            newsId
+          );
+          console.log(imageUrl ? '✅ Image generated!' : '⚠️ Image generation skipped');
+        } catch (imageError) {
+          console.error('Image generation failed (non-fatal):', imageError);
+        }
+        
+        // Insert into Neon database with bilingual content
+        await sql`
+          INSERT INTO news (
+            id, title_en, title_ml, content_en, content_ml, 
+            summary_en, summary_ml, category, event_type,
+            season_id, season_name, is_published, published_at,
+            generated_by, edited_by_admin, metadata, image_url,
+            tone, reporter_en, reporter_ml
+          ) VALUES (
+            ${newsId},
+            ${bilingualResult.en.title},
+            ${bilingualResult.ml.title},
+            ${bilingualResult.en.content},
+            ${bilingualResult.ml.content},
+            ${bilingualResult.en.summary},
+            ${bilingualResult.ml.summary},
+            ${generation_input.category},
+            ${generation_input.event_type},
+            ${generation_input.season_id || null},
+            ${generation_input.season_name || null},
+            true,
+            NOW(),
+            'ai',
+            false,
+            ${JSON.stringify(generation_input.metadata || {})},
+            ${imageUrl},
+            ${bilingualResult.en.tone},
+            ${bilingualResult.en.reporter},
+            ${bilingualResult.ml.reporter}
+          )
+        `;
+
+        const newsData = {
+          id: newsId,
+          title_en: bilingualResult.en.title,
+          title_ml: bilingualResult.ml.title,
+          content_en: bilingualResult.en.content,
+          content_ml: bilingualResult.ml.content,
+          summary_en: bilingualResult.en.summary,
+          summary_ml: bilingualResult.ml.summary,
+          category: generation_input.category,
+          event_type: generation_input.event_type,
+          season_id: generation_input.season_id || null,
+          season_name: generation_input.season_name || null,
+          is_published: true,
+          generated_by: 'ai',
+          edited_by_admin: false,
+          metadata: generation_input.metadata || {},
+          image_url: imageUrl,
+          tone: bilingualResult.en.tone,
+          reporter_en: bilingualResult.en.reporter,
+          reporter_ml: bilingualResult.ml.reporter,
+        };
+
+        return NextResponse.json({
+          success: true,
+          message: 'Bilingual news generated with AI successfully',
+          news_id: newsId,
+          news: { id: newsId, ...newsData },
+        });
+      } catch (error: any) {
+        console.error('Error generating bilingual news:', error);
         return NextResponse.json(
           {
             success: false,
-            error: aiResult.error || 'Failed to generate news with AI',
+            error: error.message || 'Failed to generate news with AI',
           },
           { status: 500 }
         );
       }
-
-      // Create draft news item with AI-generated content
-      const sql = getTournamentDb();
-      const newsId = `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Generate image for the news (async, non-blocking)
-      let imageUrl: string | null = null;
-      try {
-        console.log('🎨 Generating image for news...');
-        imageUrl = await generateNewsImage(
-          generation_input.event_type,
-          generation_input.metadata || {},
-          newsId
-        );
-        console.log(imageUrl ? '✅ Image generated!' : '⚠️ Image generation skipped');
-      } catch (imageError) {
-        console.error('Image generation failed (non-fatal):', imageError);
-      }
-      
-      // Insert into Neon database
-      await sql`
-        INSERT INTO news (
-          id, title, content, summary, category, event_type,
-          season_id, season_name, is_published, published_at,
-          generated_by, edited_by_admin, metadata, image_url
-        ) VALUES (
-          ${newsId},
-          ${aiResult.title},
-          ${aiResult.content},
-          ${aiResult.summary},
-          ${generation_input.category},
-          ${generation_input.event_type},
-          ${generation_input.season_id || null},
-          ${generation_input.season_name || null},
-          true,
-          NOW(),
-          'ai',
-          false,
-          ${JSON.stringify(generation_input.metadata || {})},
-          ${imageUrl}
-        )
-      `;
-
-      const newsData = {
-        id: newsId,
-        title: aiResult.title,
-        content: aiResult.content,
-        summary: aiResult.summary,
-        category: generation_input.category,
-        event_type: generation_input.event_type,
-        season_id: generation_input.season_id || null,
-        season_name: generation_input.season_name || null,
-        is_published: true,
-        generated_by: 'ai',
-        edited_by_admin: false,
-        metadata: generation_input.metadata || {},
-        image_url: imageUrl,
-      };
-
-      return NextResponse.json({
-        success: true,
-        message: 'News generated with AI successfully',
-        news_id: newsId,
-        news: { id: newsId, ...newsData },
-      });
     }
 
     // Manual create/update

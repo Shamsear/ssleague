@@ -19,6 +19,7 @@ export default function CreateSeason() {
     max_real_players: 7,
     max_football_players: 25,
     category_fine_amount: 20,
+    category_fine_currency: 'dollar' as 'dollar' | 'euro',
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export default function CreateSeason() {
           max_real_players: formData.max_real_players,
           max_football_players: formData.max_football_players,
           category_fine_amount: formData.category_fine_amount,
+          category_fine_currency: formData.category_fine_currency,
         }),
       });
 
@@ -321,7 +323,7 @@ export default function CreateSeason() {
                     </div>
                     
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Category Fine ($)</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Category Fine Amount</label>
                       <input
                         type="number"
                         value={formData.category_fine_amount}
@@ -329,6 +331,19 @@ export default function CreateSeason() {
                         className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
                       />
                       <p className="mt-1 text-xs text-gray-500">Fine for lineup violations</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Category Fine Currency</label>
+                      <select
+                        value={formData.category_fine_currency}
+                        onChange={(e) => setFormData({ ...formData, category_fine_currency: e.target.value as 'dollar' | 'euro' })}
+                        className="block w-full px-4 py-2 rounded-xl border-2 border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
+                      >
+                        <option value="dollar">💵 Dollar (Real Players)</option>
+                        <option value="euro">💶 Euro (Football Players)</option>
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500">Which balance to deduct fines from</p>
                     </div>
                   </div>
                 </div>

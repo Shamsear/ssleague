@@ -56,7 +56,17 @@ export async function GET(
       .where('seasons', 'array-contains', seasonId)
       .where('is_historical', '==', true);
     const teamsSnapshot = await teamsQuery.get();
-    const teamsData = teamsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const teamsDataRaw = teamsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Deduplicate teams by id (in case multiple team documents exist for same team)
+    const teamMap = new Map();
+    teamsDataRaw.forEach(team => {
+      if (!teamMap.has(team.id)) {
+        teamMap.set(team.id, team);
+      }
+    });
+    const teamsData = Array.from(teamMap.values());
+    console.log(`✅ Loaded ${teamsDataRaw.length} team records, deduplicated to ${teamsData.length} unique teams`);
     
     // Fetch team stats for this season from NEON
     console.log('📊 Fetching team stats data from NEON...');

@@ -178,8 +178,9 @@ export async function POST(request: NextRequest) {
       if (newConfirmedCount >= confirmedSlotsLimit && registrationPhase === 'confirmed') {
         await adminDb.collection('seasons').doc(season_id).update({
           registration_phase: 'paused',
+          is_player_registration_open: false, // Also close the registration link
         });
-        console.log(`📌 Registration auto-paused: Confirmed slots full (${confirmedSlotsLimit}/${confirmedSlotsLimit})`);
+        console.log(`📌 Registration auto-paused and closed: Confirmed slots full (${confirmedSlotsLimit}/${confirmedSlotsLimit})`);
         
         // Trigger news for confirmed slots filled
         triggerNewsGeneration({

@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { batchGetFirebaseFields } from '@/lib/firebase/batch';
+import { logAuctionWin } from '@/lib/transaction-logger';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -131,12 +132,47 @@ export async function POST(
     let immediatelyAssigned = 0;
     let tiebreakerCreated = 0;
 
+    // Get contract duration from auction settings
+    let contractDuration = 2;
+    try {
+      const settingsResult = await sql`
+        SELECT contract_duration FROM auction_settings WHERE season_id = ${round.season_id} LIMIT 1
+      `;
+      if (settingsResult.length > 0 && settingsResult[0].contract_duration) {
+        contractDuration = settingsResult[0].contract_duration;
+      }
+    } catch (error) {
+      console.warn('Could not fetch contract_duration, using default of 2');
+    }
+    
+    const seasonNum = parseInt(round.season_id?.replace(/\D/g, '') || '0');
+    const seasonPrefix = round.season_id?.replace(/\d+$/, '') || 'S';
+    const contractEndSeason = `${seasonPrefix}${seasonNum + contractDuration - 1}`;
+
+    // Get player details for single bidders
+    let singlePlayerDetailsMap = new Map();
+    if (singleBidders.length > 0) {
+      const singlePlayerDetails = await sql`
+        SELECT 
+          rp.player_id,
+          rp.player_name
+        FROM round_players rp
+        WHERE rp.round_id = ${roundId}
+        AND rp.player_id = ANY(${singleBidders})
+      `;
+      for (const p of singlePlayerDetails) {
+        singlePlayerDetailsMap.set(p.player_id, p);
+      }
+    }
+    
     // PART 1: Immediately assign players with single bidder
     if (singleBidders.length > 0) {
       console.log(`\n🎯 Assigning ${singleBidders.length} players with single bidders...`);
 
       for (const playerId of singleBidders) {
         const bid = bidsByPlayer.get(playerId)![0];
+        const playerInfo = singlePlayerDetailsMap.get(playerId);
+        const contractId = `contract_${playerId}_${round.season_id}_${Date.now()}`;
 
         // Update round_players
         await sql`
@@ -149,20 +185,56 @@ export async function POST(
           AND player_id = ${playerId}
         `;
 
-        // Update player in footballplayers table
+        // Update player in footballplayers table with contract info
         await sql`
           UPDATE footballplayers
           SET 
             is_sold = true,
             team_id = ${bid.team_id},
-            acquisition_value = ${round.base_price}
+            acquisition_value = ${round.base_price},
+            status = 'active',
+            contract_id = ${contractId},
+            contract_start_season = ${round.season_id},
+            contract_end_season = ${contractEndSeason},
+            contract_length = ${contractDuration},
+            season_id = ${round.season_id},
+            round_id = ${roundId},
+            updated_at = NOW()
           WHERE id = ${playerId}
         `;
 
-        // Deduct £10 from team balance (via Firebase)
-        // TODO: Implement balance deduction
-        // For now, log it
-        console.log(`💰 Deduct £${round.base_price} from team ${bid.team_id}`);
+        // Get team_season to update balance and log transaction
+        const teamSeasonId = `${bid.team_id}_${round.season_id}`;
+        const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
+        const teamSeasonSnap = await teamSeasonRef.get();
+        
+        if (teamSeasonSnap.exists) {
+          const teamSeasonData = teamSeasonSnap.data();
+          const currentBalance = teamSeasonData?.euro_balance || 0;
+          const newBalance = currentBalance - round.base_price;
+          
+          // Update balance
+          await teamSeasonRef.update({
+            euro_balance: newBalance,
+            updated_at: new Date()
+          });
+          
+          // Log transaction
+          await logAuctionWin(
+            bid.team_id,
+            round.season_id,
+            playerInfo?.player_name || 'Unknown Player',
+            playerId,
+            'football',
+            round.base_price,
+            currentBalance,
+            roundId
+          );
+          
+          console.log(`💰 Deducted £${round.base_price} from team ${bid.team_id}`);
+        } else {
+          console.warn(`⚠️ Team season ${teamSeasonId} not found - balance not updated`);
+        }
 
         immediatelyAssigned++;
       }

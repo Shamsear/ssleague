@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { triggerMatchPredictionPoll } from '@/lib/polls/auto-trigger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,6 +64,15 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Successfully inserted ${fixtures.length} fixtures`);
+
+    // Auto-create match prediction polls for scheduled fixtures (async, non-blocking)
+    Promise.all(
+      fixtures
+        .filter((f: any) => f.status === 'scheduled' && f.scheduled_date)
+        .map((f: any) => triggerMatchPredictionPoll(f.id))
+    ).catch(error => {
+      console.error('Error creating match prediction polls:', error);
+    });
 
     return NextResponse.json({ 
       success: true, 

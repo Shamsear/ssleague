@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { cookies } from 'next/headers';
 import { calculateFootballPlayerSalary, isMidSeasonRound } from '@/lib/contracts';
+import { logSalaryPayment } from '@/lib/transaction-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -116,6 +117,18 @@ export async function POST(request: NextRequest) {
           },
           updated_at: new Date().toISOString(),
         });
+        
+        // Log salary payment transaction
+        await logSalaryPayment(
+          teamDoc.id,
+          seasonId,
+          teamSalaryTotal,
+          currentEuroBalance,
+          'football',
+          undefined,
+          roundNumber,
+          footballPlayers.length
+        );
 
         teamsProcessed++;
         totalDeducted += teamSalaryTotal;

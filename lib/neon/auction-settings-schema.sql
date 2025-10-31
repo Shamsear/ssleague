@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS auction_settings (
     season_id VARCHAR(255),
     max_rounds INTEGER DEFAULT 25,
     min_balance_per_round INTEGER DEFAULT 30,
+    contract_duration INTEGER DEFAULT 2,  -- Default 2 seasons contract
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

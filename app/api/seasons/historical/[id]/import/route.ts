@@ -203,6 +203,14 @@ export async function POST(
     `;
     
     console.log(`  Deleted ${deletedTeamStats.length} team stats records from NEON`);
+    
+    // Delete all player awards for this season from NEON
+    const deletedAwards = await sql`
+      DELETE FROM player_awards
+      WHERE season_id = ${seasonId}
+    `;
+    
+    console.log(`  Deleted ${deletedAwards.length} player awards records from NEON`);
     console.log('  Cleanup phase completed');
     console.log('  Starting fresh import...\n');
 
@@ -465,9 +473,8 @@ export async function POST(
           const statsDocId = `${playerId}_${seasonId}`;
           console.log(`  🆕 Creating stats for ${normalizedPlayerName} in season ${seasonId}`);
           
-          // Parse all category and individual trophies dynamically
-          const categoryTrophies: string[] = [];
-          const individualTrophies: string[] = [];
+          // Parse all trophies based on column heading (category_wise or individual_wise)
+          const allAwards: Array<{ name: string; type: 'category' | 'individual' }> = [];
           
           // Check all possible column names for trophies
           Object.keys(row).forEach(key => {
@@ -475,13 +482,20 @@ export async function POST(
             const value = row[key];
             
             if (value && typeof value === 'string' && value.trim()) {
-              // Match: category_wise_trophy_N, Category Trophy N, etc.
-              if (lowerKey.includes('category') && lowerKey.includes('trophy')) {
-                categoryTrophies.push(value.trim());
-              }
-              // Match: individual_wise_trophy_N, Individual Trophy N, etc.
-              else if (lowerKey.includes('individual') && lowerKey.includes('trophy')) {
-                individualTrophies.push(value.trim());
+              // Match: trophy columns and determine type from column name
+              if (lowerKey.includes('trophy')) {
+                const awardName = value.trim();
+                
+                // Determine type based on column heading
+                let awardType: 'category' | 'individual' = 'individual';
+                if (lowerKey.includes('category') || lowerKey.includes('cat')) {
+                  awardType = 'category';
+                } else if (lowerKey.includes('individual') || lowerKey.includes('ind')) {
+                  awardType = 'individual';
+                }
+                
+                allAwards.push({ name: awardName, type: awardType });
+                console.log(`    🏆 Found trophy from column "${key}": ${awardName} (${awardType})`);
               }
             }
           });
@@ -489,13 +503,24 @@ export async function POST(
           // Also handle if trophies come as arrays (from preview)
           if (Array.isArray(row.category_trophies)) {
             row.category_trophies.forEach((trophy: string) => {
-              if (trophy && trophy.trim()) categoryTrophies.push(trophy.trim());
+              if (trophy && trophy.trim()) {
+                allAwards.push({ name: trophy.trim(), type: 'category' });
+                console.log(`    🏆 Found category trophy from array: ${trophy.trim()}`);
+              }
             });
           }
           if (Array.isArray(row.individual_trophies)) {
             row.individual_trophies.forEach((trophy: string) => {
-              if (trophy && trophy.trim()) individualTrophies.push(trophy.trim());
+              if (trophy && trophy.trim()) {
+                allAwards.push({ name: trophy.trim(), type: 'individual' });
+                console.log(`    🏆 Found individual trophy from array: ${trophy.trim()}`);
+              }
             });
+          }
+          
+          console.log(`  📊 Total awards found for ${normalizedPlayerName}: ${allAwards.length}`);
+          if (allAwards.length > 0) {
+            console.log(`  🏆 Awards: ${allAwards.map(a => `${a.name} (${a.type})`).join(', ')}`);
           }
           
           // Normalize team name: if it's a previous name, use the current name
@@ -539,7 +564,7 @@ export async function POST(
             }
           }
           
-          // Prepare stats data for Firestore
+          // Prepare stats data for Firestore (without trophies)
           const statsData: any = {
             player_id: playerId,
             player_name: normalizedPlayerName,
@@ -552,28 +577,18 @@ export async function POST(
             is_available: row.is_available !== false,
             // Flatten stats at document level for easier querying
             ...updatedStats,
-            // Trophy/Award fields (optional) - now as arrays
-            category_trophies: categoryTrophies,
-            individual_trophies: individualTrophies,
             created_at: FieldValue.serverTimestamp(),
             updated_at: FieldValue.serverTimestamp()
           };
           
-          // Combine trophies into JSON for Neon
-          const allTrophies = [
-            ...categoryTrophies.map((t: string) => ({ type: 'category', name: t })),
-            ...individualTrophies.map((t: string) => ({ type: 'individual', name: t }))
-          ];
-          const trophiesJson = JSON.stringify(allTrophies);
-          
-          // Write to NEON realplayerstats table
+          // Write to NEON realplayerstats table (without trophies)
           await sql`
             INSERT INTO realplayerstats (
               id, player_id, season_id, player_name,
               category, team, team_id,
               matches_played, matches_won, matches_drawn, matches_lost,
               goals_scored, goals_conceded, assists, wins, draws, losses,
-              clean_sheets, motm_awards, points, star_rating, trophies,
+              clean_sheets, motm_awards, points, star_rating,
               created_at, updated_at
             )
             VALUES (
@@ -585,7 +600,7 @@ export async function POST(
               ${statsData.assists || 0}, ${statsData.wins || statsData.matches_won || 0}, 
               ${statsData.draws || statsData.matches_drawn || 0}, ${statsData.losses || statsData.matches_lost || 0},
               ${statsData.clean_sheets || 0}, ${statsData.motm_awards || 0}, 
-              ${statsData.points || 0}, ${statsData.star_rating || 3}, ${trophiesJson}::jsonb,
+              ${statsData.points || 0}, ${statsData.star_rating || 3},
               NOW(), NOW()
             )
             ON CONFLICT (id) DO UPDATE
@@ -608,9 +623,36 @@ export async function POST(
               motm_awards = EXCLUDED.motm_awards,
               points = EXCLUDED.points,
               star_rating = EXCLUDED.star_rating,
-              trophies = EXCLUDED.trophies,
               updated_at = NOW()
           `;
+          
+          // Save awards to player_awards table with automatic type classification
+          for (const award of allAwards) {
+            try {
+              await sql`
+                INSERT INTO player_awards (
+                  player_id, player_name, season_id, 
+                  award_category, award_type,
+                  player_category, created_at, updated_at
+                )
+                VALUES (
+                  ${playerId}, ${normalizedPlayerName}, ${seasonId},
+                  ${award.type}, ${award.name},
+                  ${statsData.category || null}, NOW(), NOW()
+                )
+                ON CONFLICT (player_id, season_id, award_category, award_type) DO UPDATE
+                SET
+                  player_name = EXCLUDED.player_name,
+                  player_category = EXCLUDED.player_category,
+                  updated_at = NOW()
+              `;
+              stats.awards.updated++;
+              console.log(`    🏆 Saved award: ${award.name} (${award.type})`);
+            } catch (awardError: any) {
+              console.error(`    ❌ Error saving award ${award.name}:`, awardError.message);
+              stats.awards.errors.push(`Error saving award ${award.name} for ${normalizedPlayerName}: ${awardError.message}`);
+            }
+          }
           stats.players.updated++;
           console.log(`  ✅ Created player stats in NEON: ${statsData.player_name}`);
         } catch (error: any) {
@@ -627,6 +669,14 @@ export async function POST(
     console.log('✅ Import completed successfully');
     console.log(`  - Teams: ${stats.teams.updated} updated, ${stats.teams.unchanged} unchanged`);
     console.log(`  - Players: ${stats.players.updated} updated, ${stats.players.unchanged} unchanged`);
+    console.log(`  - Player Awards: ${stats.awards.updated} awards saved to player_awards table`);
+    console.log(`🏆 Summary:`);
+    console.log(`   • ${stats.teams.updated} team stats records`);
+    console.log(`   • ${stats.players.updated} player stats records`);
+    console.log(`   • ${stats.awards.updated} player awards/trophies`);
+    if (stats.awards.errors.length > 0) {
+      console.log(`   ⚠️ ${stats.awards.errors.length} award errors`);
+    }
 
     return NextResponse.json({
       success: true,
@@ -645,10 +695,10 @@ export async function POST(
           errors: stats.players.errors
         },
         awards: {
-          updated: 0,
-          unchanged: 0,
-          total: 0,
-          errors: []
+          updated: stats.awards.updated,
+          unchanged: stats.awards.unchanged,
+          total: stats.awards.updated + stats.awards.unchanged,
+          errors: stats.awards.errors
         },
         matches: {
           updated: 0,

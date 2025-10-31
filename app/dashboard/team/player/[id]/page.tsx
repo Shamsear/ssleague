@@ -97,6 +97,14 @@ const StatsBar: React.FC<StatsBarProps> = ({ label, value }) => {
   );
 };
 
+interface PlayerAward {
+  id: number;
+  award_name: string;
+  award_position?: string;
+  award_value?: number;
+  created_at: string;
+}
+
 export default function PlayerDetailPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -104,6 +112,7 @@ export default function PlayerDetailPage() {
   const playerId = params?.id as string;
   
   const [player, setPlayer] = useState<Player | null>(null);
+  const [awards, setAwards] = useState<PlayerAward[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,6 +155,26 @@ export default function PlayerDetailPage() {
 
     fetchPlayerDetails();
   }, [user, playerId]);
+
+  // Fetch player awards
+  useEffect(() => {
+    const fetchAwards = async () => {
+      if (!playerId) return;
+
+      try {
+        const response = await fetch(`/api/player-awards?player_id=${playerId}`);
+        const { success, data } = await response.json();
+
+        if (success && data) {
+          setAwards(data);
+        }
+      } catch (err) {
+        console.error('Error fetching awards:', err);
+      }
+    };
+
+    fetchAwards();
+  }, [playerId]);
 
   const getPositionColor = (position: string) => {
     switch (position) {
@@ -461,6 +490,52 @@ export default function PlayerDetailPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Player Awards */}
+            <div className="glass rounded-2xl p-6 shadow-md border border-white/20 bg-white/60 hover:bg-white/70 transition-all duration-300">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <svg className="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                Season Awards
+              </h3>
+              {awards.length > 0 ? (
+                <div className="space-y-2">
+                  {awards.map((award) => (
+                    <div
+                      key={award.id}
+                      className="flex items-center justify-between p-3 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg border border-yellow-200 hover:from-yellow-100 hover:to-amber-100 transition-all duration-200"
+                    >
+                      <div className="flex items-center flex-1">
+                        <div className="flex-shrink-0 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center mr-3">
+                          <svg className="w-5 h-5 text-yellow-900" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-800 text-sm">{award.award_name}</p>
+                          {award.award_position && (
+                            <p className="text-xs text-gray-600">{award.award_position}</p>
+                          )}
+                        </div>
+                      </div>
+                      {award.award_value && (
+                        <div className="flex-shrink-0 ml-3">
+                          <span className="text-2xl font-bold text-yellow-600">{award.award_value}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <svg className="w-12 h-12 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                  </svg>
+                  <p className="text-sm text-gray-500">No awards yet this season</p>
+                </div>
+              )}
             </div>
           </div>
 

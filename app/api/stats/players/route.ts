@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             id, player_id, player_name, season_id,
             team, team_id, category,
-            matches_played, goals_scored, assists, wins, draws, losses,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
             contract_id, contract_start_season, contract_end_season,
             is_auto_registered, registration_date,
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             id, player_id, player_name, season_id, tournament_id,
             team, team_id, category,
-            matches_played, goals_scored, assists, wins, draws, losses,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
             NULL as contract_id, NULL as contract_start_season, NULL as contract_end_season,
             NULL as is_auto_registered, NULL as registration_date,
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             id, player_id, player_name, season_id,
             team, team_id, category,
-            matches_played, goals_scored, assists, wins, draws, losses,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
             contract_id, contract_start_season, contract_end_season,
             is_auto_registered, registration_date
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             id, player_id, player_name, season_id, tournament_id,
             team, team_id, category,
-            matches_played, goals_scored, assists, wins, draws, losses,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating
           FROM realplayerstats 
           WHERE player_id = ${playerId} AND tournament_id = ${tournamentId}
@@ -141,10 +141,11 @@ export async function GET(request: NextRequest) {
           SELECT 
             id, player_id, player_name, season_id,
             team, team_id, category,
-            matches_played, goals_scored, assists, wins, draws, losses,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
             contract_id, contract_start_season, contract_end_season,
             is_auto_registered, registration_date, registration_type,
+            auction_value, salary_per_match,
             created_at, updated_at
           FROM player_seasons 
           WHERE season_id = ${seasonId}

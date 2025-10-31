@@ -90,7 +90,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    let body;
+    try {
+      const text = await request.text();
+      if (!text || text.trim() === '') {
+        return NextResponse.json(
+          { success: false, error: 'Request body is empty' },
+          { status: 400 }
+        );
+      }
+      body = JSON.parse(text);
+    } catch (parseError) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
+
     const {
       season_id,
       position,

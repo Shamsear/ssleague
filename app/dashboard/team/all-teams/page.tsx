@@ -7,6 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useCachedTeamSeasons, useCachedSeasons } from '@/hooks/useCachedFirebase';
 import ContractInfo from '@/components/ContractInfo';
+import type { Season } from '@/types/season';
 
 interface Team {
   id: string;
@@ -39,20 +40,11 @@ export default function AllTeamsPage() {
   const [teams, setTeams] = useState<TeamStats[]>([]);
   const [seasonName, setSeasonName] = useState('');
   const [seasonId, setSeasonId] = useState<string | null>(null);
+  const [maxPlayers, setMaxPlayers] = useState(25); // Default to 25
   const [error, setError] = useState('');
-
-  // Fetch user's team season to get seasonId (cached)
-  const { data: userTeamSeasons, loading: userTeamLoading } = useCachedTeamSeasons(
-    user?.role === 'team' ? { teamId: user.uid } : undefined
-  );
 
   // Fetch all team seasons for the season (cached, only after we have seasonId)
   const { data: allTeamSeasons, loading: allTeamsLoading } = useCachedTeamSeasons(
-    seasonId ? { seasonId } : undefined
-  );
-
-  // Fetch season details (cached)
-  const { data: seasons, loading: seasonsLoading } = useCachedSeasons(
     seasonId ? { seasonId } : undefined
   );
 
@@ -65,31 +57,72 @@ export default function AllTeamsPage() {
     }
   }, [user, loading, router]);
 
-  // Extract seasonId from user's team season
+  // Get active season (same approach as team-leaderboard)
   useEffect(() => {
-    if (!user || userTeamLoading || !userTeamSeasons) return;
+    const fetchActiveSeason = async () => {
+      if (!user || user.role !== 'team') return;
 
-    const registeredSeason = userTeamSeasons.find(
-      (ts: any) => ts.team_id === user.uid && ts.status === 'registered'
-    );
+      try {
+        const { collection, query, getDocs } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase/config');
+        
+        // Get all seasons
+        const seasonsQuery = query(collection(db, 'seasons'));
+        const seasonsSnapshot = await getDocs(seasonsQuery);
+        const nonCompletedSeasonIds: string[] = [];
+        const seasonsMap = new Map<string, { name: string; maxPlayers: number }>();
+        
+        seasonsSnapshot.forEach((doc) => {
+          const data = doc.data() as Season;
+          seasonsMap.set(doc.id, {
+            name: data.name || `Season ${data.season_number || 'Unknown'}`,
+            maxPlayers: data.max_football_players || 25
+          });
+          
+          // Include seasons that are NOT completed
+          if (data.status !== 'completed') {
+            nonCompletedSeasonIds.push(doc.id);
+          }
+        });
 
-    if (!registeredSeason) {
-      setError('You are not registered for any season');
-      return;
-    }
+        // Get active season
+        let targetSeasonId = null;
+        if (nonCompletedSeasonIds.length > 0) {
+          targetSeasonId = nonCompletedSeasonIds[0];
+          const seasonData = seasonsMap.get(targetSeasonId);
+          setSeasonName(seasonData?.name || 'Current Season');
+          setMaxPlayers(seasonData?.maxPlayers || 25);
+        } else if (seasonsSnapshot.size > 0) {
+          // Fallback: use the first active season
+          const firstActiveSeason = seasonsSnapshot.docs.find(doc => doc.data().isActive === true);
+          if (firstActiveSeason) {
+            targetSeasonId = firstActiveSeason.id;
+            const seasonData = seasonsMap.get(targetSeasonId);
+            setSeasonName(seasonData?.name || 'Current Season');
+            setMaxPlayers(seasonData?.maxPlayers || 25);
+          } else {
+            const firstSeason = seasonsSnapshot.docs[0];
+            targetSeasonId = firstSeason.id;
+            const seasonData = seasonsMap.get(targetSeasonId);
+            setSeasonName(seasonData?.name || 'Season');
+            setMaxPlayers(seasonData?.maxPlayers || 25);
+          }
+        }
 
-    setSeasonId(registeredSeason.season_id);
-  }, [user, userTeamSeasons, userTeamLoading]);
+        if (!targetSeasonId) {
+          setError('No active season found');
+          return;
+        }
 
-  // Set season name from cached season data
-  useEffect(() => {
-    if (!seasons || seasonsLoading) return;
+        setSeasonId(targetSeasonId);
+      } catch (error) {
+        console.error('Error fetching active season:', error);
+        setError('Failed to load active season');
+      }
+    };
 
-    const season = Array.isArray(seasons) ? seasons[0] : seasons;
-    if (season) {
-      setSeasonName(season.name || 'Current Season');
-    }
-  }, [seasons, seasonsLoading]);
+    fetchActiveSeason();
+  }, [user]);
 
   // Process all team seasons into TeamStats
   useEffect(() => {
@@ -97,7 +130,10 @@ export default function AllTeamsPage() {
 
     try {
       const teamsData: TeamStats[] = allTeamSeasons
-        .filter((ts: any) => ts.status === 'registered')
+        .filter((ts: any) => 
+          ts.status === 'registered' && 
+          !ts.is_auto_registered // Exclude auto-registered teams (next season entries)
+        )
         .map((teamSeasonData: any) => {
           const totalPlayers = teamSeasonData.players_count || 0;
           const avgRating = teamSeasonData.average_rating || 0;
@@ -154,7 +190,7 @@ export default function AllTeamsPage() {
   };
 
 
-  const isLoading = userTeamLoading || allTeamsLoading || seasonsLoading;
+  const isLoading = allTeamsLoading;
 
   if (loading || isLoading) {
     return (
@@ -258,7 +294,7 @@ export default function AllTeamsPage() {
                       <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
-                      {teamData.totalPlayers}/16
+                      {teamData.totalPlayers}/{maxPlayers}
                     </span>
                     <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
                       <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

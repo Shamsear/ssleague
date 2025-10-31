@@ -28,3 +28,17 @@ export {
   useUpdateTeamStats,
   useLeaderboard,
 } from './useStats';
+
+// Player Awards hooks
+export {
+  usePlayerAwards,
+  useSeasonAwards,
+} from './usePlayerAwards';
+export type { PlayerAward } from './usePlayerAwards';
+
+// Team Data hooks
+export {
+  useTeamTrophies,
+  useTeamSeasonStats,
+} from './useTeamData';
+export type { TeamTrophy, TeamStats } from './useTeamData';

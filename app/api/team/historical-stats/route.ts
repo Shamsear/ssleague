@@ -88,10 +88,18 @@ export async function GET(request: NextRequest) {
     const uniquePlayers = new Set(playerStats.map((p: any) => p.player_name));
     const totalPlayers = uniquePlayers.size;
 
-    // Count trophies/achievements (position 1 = champion)
-    const championships = teamStats.filter((stat: any) => stat.position === 1).length;
-    const runnerUps = teamStats.filter((stat: any) => stat.position === 2).length;
-    const cups = 0; // Cup data not in current schema
+    // ✅ Fetch trophies from team_trophies table
+    const teamTrophies = await sql`
+      SELECT trophy_type, trophy_name, season_id
+      FROM team_trophies
+      WHERE team_name = ${teamName}
+      ORDER BY season_id DESC
+    `;
+    
+    // Count trophies by type
+    const championships = teamTrophies.filter((t: any) => t.trophy_type === 'league').length;
+    const runnerUps = teamTrophies.filter((t: any) => t.trophy_type === 'runner_up').length;
+    const cups = teamTrophies.filter((t: any) => t.trophy_type === 'cup').length;
 
     // Get current season details
     const { searchParams } = new URL(request.url);

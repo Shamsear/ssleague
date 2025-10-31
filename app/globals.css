@@ -185,6 +185,24 @@ html {
   }
 }
 
+/* Slide down animation for collapsible forms */
+.animate-slideDown {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+    transform: translateY(0);
+  }
+}
+
 /* Pulse animation for active elements */
 .animate-pulse-slow {
   animation: pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;

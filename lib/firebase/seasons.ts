@@ -244,6 +244,24 @@ export const completeSeason = async (seasonId: string): Promise<void> => {
       updatedAt: serverTimestamp(),
       updated_at: serverTimestamp(),
     });
+    
+    // ✅ AUTO-AWARD TROPHIES: Award league position trophies (Winner, Runner Up)
+    // Note: This is async but we don't await it to avoid blocking season completion
+    // Committee can review and add additional trophies (cups, etc.) manually
+    try {
+      const { awardSeasonTrophies } = await import('../award-season-trophies');
+      awardSeasonTrophies(seasonId, 2).then((result) => {
+        if (result.success) {
+          console.log(`✅ Auto-awarded ${result.trophiesAwarded} trophies for season ${seasonId}`);
+        } else {
+          console.warn(`⚠️ Could not auto-award trophies: ${result.error}`);
+        }
+      }).catch((err) => {
+        console.error('❌ Trophy auto-award failed:', err);
+      });
+    } catch (importError) {
+      console.error('❌ Could not import trophy awarding module:', importError);
+    }
   } catch (error: any) {
     console.error('Error completing season:', error);
     throw new Error(error.message || 'Failed to complete season');

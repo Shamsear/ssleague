@@ -2,72 +2,52 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import Link from 'next/link';
-import Image from 'next/image';
-import { usePlayerStats, useFixtures } from '@/hooks';
 
-interface TeamData {
+interface TeamSeasonData {
   id: string;
   team_id: string;
   team_name: string;
-  owner_name?: string;
+  team_code: string;
+  season_id: string;
+  season_name: string;
   logo_url?: string;
-  rank?: number;
-  points?: number;
-  matches_played?: number;
-  wins?: number;
-  draws?: number;
-  losses?: number;
-  goals_scored?: number;
-  goals_conceded?: number;
-}
-
-interface Player {
-  id: string;
-  player_id: string;
-  name: string;
-  display_name?: string;
-  category?: string;
-  photo_url?: string;
-  stats?: any;
-}
-
-interface Fixture {
-  id: string;
-  home_team: string;
-  away_team: string;
-  home_score?: number;
-  away_score?: number;
-  status: string;
-  match_date?: any;
+  manager_name?: string;
+  
+  stats: {
+    matches_played: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    goals_for: number;
+    goals_against: number;
+    goal_difference: number;
+    points: number;
+    clean_sheets: number;
+    position?: number;
+    form?: string;
+  };
+  
+  players?: Array<{
+    player_id: string;
+    player_name: string;
+    matches_played: number;
+    goals: number;
+    assists: number;
+  }>;
 }
 
 export default function TeamDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const teamId = params.id as string;
-  const [team, setTeam] = useState<TeamData | null>(null);
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [team, setTeam] = useState<TeamSeasonData | null>(null);
+  const [allSeasonData, setAllSeasonData] = useState<TeamSeasonData[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [currentSeasonId, setCurrentSeasonId] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'all-time' | 'season'>('all-time');
-  const [seasonBreakdown, setSeasonBreakdown] = useState<any[]>([]);
-  const [achievements, setAchievements] = useState<any[]>([]);
-  const [allFixtures, setAllFixtures] = useState<Fixture[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedView, setSelectedView] = useState<'overall' | 'all-seasons' | 'season'>('overall');
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
 
-  // Use React Query hooks for player stats and fixtures
-  const { data: playerStats, isLoading: statsLoading } = usePlayerStats({
-    seasonId: currentSeasonId,
-    teamId: teamId
-  });
-
-  const { data: fixturesData, isLoading: fixturesLoading } = useFixtures({
-    seasonId: currentSeasonId,
-    teamId: teamId
-  });
+  const teamId = params.id as string;
 
   useEffect(() => {
     fetchTeamData();
@@ -78,142 +58,70 @@ export default function TeamDetailPage() {
       setLoading(true);
       setError(null);
 
-      // Check if we're coming from a season context via URL params
-      const urlParams = new URLSearchParams(window.location.search);
-      const seasonParam = urlParams.get('season');
-      
-      if (seasonParam) {
-        // Season-specific view - Fetch comprehensive season data
-        setViewMode('season');
-        setCurrentSeasonId(seasonParam);
-        
-        // Fetch team stats for specific season
-        const statsRes = await fetch(`/api/seasons/${seasonParam}/stats`);
-        const statsData = await statsRes.json();
-        
-        if (statsData.success && statsData.data?.teams) {
-          const teamStat = statsData.data.teams.find((t: TeamData) => t.team_id === teamId);
-          if (teamStat) {
-            setTeam(teamStat);
-          } else {
-            setError('Team not found in this season');
-          }
-          
-          // Set players with season-specific stats
-          const seasonPlayers = statsData.data.players?.filter((p: any) => p.team_id === teamId) || [];
-          setPlayers(seasonPlayers.map((p: any) => ({
-            id: p.player_id,
-            player_id: p.player_id,
-            name: p.player_name,
-            display_name: p.player_name,
-            category: p.category,
-            stats: {
-              matches_played: p.matches_played,
-              goals_scored: p.goals_scored,
-              clean_sheets: p.clean_sheets,
-              points: p.points
-            }
-          })));
-          
-          // Fetch season-specific fixtures
-          try {
-            const fixturesRes = await fetch(
-              `/api/tournament/fixtures?seasonId=${seasonParam}&teamId=${teamId}`
-            );
-            const fixturesData = await fixturesRes.json();
-            if (fixturesData.success && fixturesData.data) {
-              setAllFixtures(fixturesData.data);
-            }
-          } catch (err) {
-            console.log('Could not fetch fixtures:', err);
-          }
-        }
-      } else {
-        // All-time view (default from /teams page) - Fetch comprehensive details
-        setViewMode('all-time');
-        
-        // Fetch current season for context
-        const seasonRes = await fetch('/api/public/current-season');
-        const seasonData = await seasonRes.json();
-        if (seasonData.success) {
-          setCurrentSeasonId(seasonData.data.id);
-        }
-        
-        // Fetch comprehensive team details
-        const detailsRes = await fetch(`/api/teams/${teamId}/details`);
-        const detailsData = await detailsRes.json();
-        
-        if (detailsData.success && detailsData.data) {
-          // Set team with all-time stats
-          setTeam({
-            ...detailsData.data.team,
-            ...detailsData.data.allTimeStats
-          });
-          
-          // Set additional data
-          setSeasonBreakdown(detailsData.data.seasonBreakdown || []);
-          setAchievements(detailsData.data.achievements || []);
-          setAllFixtures(detailsData.data.fixtures || []);
-          
-          // Set players with aggregated stats
-          setPlayers(detailsData.data.players.map((p: any) => ({
-            id: p.player_id,
-            player_id: p.player_id,
-            name: p.player_name,
-            display_name: p.player_name,
-            category: p.category,
-            stats: {
-              matches_played: p.total_matches,
-              goals_scored: p.total_goals,
-              points: p.total_points
-            },
-            seasons: p.seasons
-          })));
-        } else {
-          setError('Team not found');
-        }
+      // Fetch team data across all seasons from Neon database
+      const response = await fetch(`/api/teams/${teamId}/all-seasons`);
+      const data = await response.json();
+
+      if (!data.success || !data.seasons || data.seasons.length === 0) {
+        setError('No team data found');
+        return;
       }
 
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching team data:', error);
+      setAllSeasonData(data.seasons);
+      setTeam(data.seasons[0]); // Set current season as default
+    } catch (err) {
+      console.error('Error fetching team data:', err);
       setError('Failed to load team data');
+    } finally {
       setLoading(false);
     }
   };
 
-  // Fetch player details from Firebase (master data) when we have stats
-  useEffect(() => {
-    const fetchPlayerDetails = async () => {
-      if (!playerStats || playerStats.length === 0) return;
-      
-      const playersData: Player[] = [];
-      for (const stat of playerStats) {
-        try {
-          const playerDoc = await getDoc(doc(db, 'realplayers', stat.player_id));
-          if (playerDoc.exists()) {
-            playersData.push({
-              id: playerDoc.id,
-              ...playerDoc.data(),
-              stats: stat // Include stats from Neon
-            } as Player);
-          }
-        } catch (err) {
-          console.error(`Error fetching player ${stat.player_id}:`, err);
-        }
-      }
-      setPlayers(playersData);
+  const calculateOverallStats = () => {
+    if (allSeasonData.length === 0) return {
+      matches_played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goals_for: 0,
+      goals_against: 0,
+      goal_difference: 0,
+      points: 0,
+      clean_sheets: 0,
     };
-    
-    fetchPlayerDetails();
-  }, [playerStats]);
 
-  if (loading || statsLoading || fixturesLoading) {
+    return allSeasonData.reduce((acc, season) => {
+      const s = season.stats;
+      return {
+        matches_played: acc.matches_played + s.matches_played,
+        wins: acc.wins + s.wins,
+        draws: acc.draws + s.draws,
+        losses: acc.losses + s.losses,
+        goals_for: acc.goals_for + s.goals_for,
+        goals_against: acc.goals_against + s.goals_against,
+        goal_difference: acc.goal_difference + s.goal_difference,
+        points: acc.points + s.points,
+        clean_sheets: acc.clean_sheets + s.clean_sheets,
+      };
+    }, {
+      matches_played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goals_for: 0,
+      goals_against: 0,
+      goal_difference: 0,
+      points: 0,
+      clean_sheets: 0,
+    });
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading team...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading team details...</p>
         </div>
       </div>
     );
@@ -221,337 +129,542 @@ export default function TeamDetailPage() {
 
   if (error || !team) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-gray-900 text-lg font-semibold mb-2">{error}</p>
-          <Link href="/teams" className="text-blue-600 hover:text-blue-700">
-            ← Back to Teams
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
+          <p className="text-gray-600 mb-4">{error || 'Team not found'}</p>
+          <Link
+            href="/teams"
+            className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Back to Teams
           </Link>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      {/* Back Button */}
-      <Link
-        href="/teams"
-        className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-6 font-medium"
-      >
-        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Back to Teams
-      </Link>
+  const overallStats = calculateOverallStats();
+  
+  // Get stats based on selected view
+  let displayStats;
+  let currentSeasonData = team;
+  
+  if (selectedView === 'overall') {
+    displayStats = overallStats;
+  } else if (selectedView === 'all-seasons') {
+    displayStats = overallStats;
+  } else if (selectedView === 'season' && selectedSeasonId) {
+    const selectedSeason = allSeasonData.find(s => s.season_id === selectedSeasonId);
+    if (selectedSeason) {
+      currentSeasonData = selectedSeason;
+      displayStats = selectedSeason.stats;
+    } else {
+      displayStats = team.stats;
+    }
+  } else {
+    displayStats = team.stats;
+  }
 
-      {/* Team Header */}
-      <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
-        <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
-          {/* Team Logo */}
-          {team.logo_url && (
-            <div className="w-32 h-32 rounded-xl overflow-hidden bg-white flex-shrink-0 p-4">
-              <Image
-                src={team.logo_url}
-                alt={team.team_name}
-                width={128}
-                height={128}
-                className="object-contain"
-              />
+  const stats = displayStats;
+  const winRate = stats.matches_played > 0 
+    ? Math.round((stats.wins / stats.matches_played) * 100) 
+    : 0;
+  const goalsPerGame = stats.matches_played > 0
+    ? (stats.goals_for / stats.matches_played).toFixed(2)
+    : '0.00';
+  const concededPerGame = stats.matches_played > 0
+    ? (stats.goals_against / stats.matches_played).toFixed(2)
+    : '0.00';
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="glass rounded-3xl p-6 md:p-8 shadow-xl">
+          {/* Header with Back Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+            <Link
+              href="/teams"
+              className="flex items-center text-gray-600 hover:text-primary transition-colors"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span>Back to Teams</span>
+            </Link>
+            
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-600">
+                Team ID: {team.team_id}
+              </span>
+              {allSeasonData.length > 1 && (
+                <span className="px-3 py-1 bg-blue-100 rounded-full text-sm text-blue-700 font-medium">
+                  {allSeasonData.length} Seasons
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* View Tabs */}
+          {allSeasonData.length > 0 && (
+            <div className="mb-6 bg-white rounded-xl p-2 shadow-sm border border-gray-200">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                {/* Overall Tab */}
+                <button
+                  onClick={() => {
+                    setSelectedView('overall');
+                    setSelectedSeasonId(null);
+                  }}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                    selectedView === 'overall'
+                      ? 'bg-green-500 text-white shadow-md'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Overall Stats
+                </button>
+                
+                {/* All Seasons Tab */}
+                <button
+                  onClick={() => {
+                    setSelectedView('all-seasons');
+                    setSelectedSeasonId(null);
+                  }}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                    selectedView === 'all-seasons'
+                      ? 'bg-purple-500 text-white shadow-md'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  All Seasons ({allSeasonData.length})
+                </button>
+                
+                {/* Divider */}
+                {allSeasonData.length > 0 && (
+                  <div className="flex items-center px-2">
+                    <div className="h-6 w-px bg-gray-300"></div>
+                  </div>
+                )}
+                
+                {/* Individual Season Tabs */}
+                {allSeasonData.map((seasonData, index) => {
+                  const isCurrentSeason = index === 0;
+                  const isSelected = selectedView === 'season' && selectedSeasonId === seasonData.season_id;
+                  
+                  return (
+                    <button
+                      key={`${seasonData.team_id}-${seasonData.season_id}-${index}`}
+                      onClick={() => {
+                        setSelectedView('season');
+                        setSelectedSeasonId(seasonData.season_id);
+                      }}
+                      className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-blue-500 text-white shadow-md'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {seasonData.season_name || `Season ${allSeasonData.length - index}`}
+                      {isCurrentSeason && (
+                        <span className="ml-1.5 inline-flex items-center justify-center w-2 h-2 bg-green-400 rounded-full"></span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          {/* Team Info */}
-          <div className="flex-1 text-center sm:text-left">
-            <h1 className="text-3xl sm:text-4xl font-bold mb-2 gradient-text">
-              {team.team_name}
-            </h1>
-            {team.owner_name && (
-              <p className="text-gray-600 mb-3">Owner: {team.owner_name}</p>
-            )}
-            
-            <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
-              {team.rank && (
-                <span className={`px-4 py-2 rounded-lg font-bold ${
-                  team.rank === 1 ? 'bg-amber-500 text-white' :
-                  team.rank === 2 ? 'bg-gray-300 text-gray-700' :
-                  team.rank === 3 ? 'bg-amber-700 text-white' :
-                  'bg-blue-100 text-blue-600'
-                }`}>
-                  Rank #{team.rank}
-                </span>
-              )}
-              <span className="px-4 py-2 rounded-lg bg-blue-500 text-white font-semibold">
-                {team.points || 0} Points
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Current Season Stats */}
-      <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
-        <h2 className="text-2xl font-bold mb-6 text-gray-900">Current Season Statistics</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <div className="bg-blue-50 rounded-xl p-4 text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-blue-600 mb-1">
-              {team.matches_played || 0}
-            </div>
-            <div className="text-sm text-gray-600">Matches</div>
-          </div>
-          <div className="bg-green-50 rounded-xl p-4 text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-green-600 mb-1">
-              {team.wins || 0}
-            </div>
-            <div className="text-sm text-gray-600">Wins</div>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-4 text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-gray-600 mb-1">
-              {team.draws || 0}
-            </div>
-            <div className="text-sm text-gray-600">Draws</div>
-          </div>
-          <div className="bg-red-50 rounded-xl p-4 text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-red-600 mb-1">
-              {team.losses || 0}
-            </div>
-            <div className="text-sm text-gray-600">Losses</div>
-          </div>
-          <div className="bg-purple-50 rounded-xl p-4 text-center">
-            <div className="text-2xl sm:text-3xl font-bold text-purple-600 mb-1">
-              {team.goals_scored || 0} - {team.goals_conceded || 0}
-            </div>
-            <div className="text-sm text-gray-600">Goals (F-A)</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Squad Roster */}
-      {players.length > 0 && (
-        <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">Squad Roster ({players.length} Players)</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(players || []).map((player) => (
-              <Link
-                key={player.id}
-                href={`/players/${player.id}`}
-                className="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all duration-200 hover:scale-105 flex items-center gap-3"
-              >
-                {player.photo_url ? (
-                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                    <Image
-                      src={player.photo_url}
-                      alt={player.name}
-                      width={48}
-                      height={48}
-                      className="object-cover"
+          {/* Two-column layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
+            {/* Left Column - Team Info */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* Team Card */}
+              <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                {/* Team Logo */}
+                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl overflow-hidden shadow-md">
+                  {team.logo_url ? (
+                    <img
+                      src={team.logo_url}
+                      alt={team.team_name}
+                      className="object-cover w-full h-full"
                     />
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                    </svg>
+                  ) : (
+                    <div className="bg-primary/10 w-full h-full flex items-center justify-center">
+                      <span className="text-5xl font-bold text-primary">{team.team_name[0]}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Team Basic Info */}
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-dark mb-1">{team.team_name}</h1>
+                  <p className="text-sm text-gray-500 mb-4">{team.team_code}</p>
+                  
+                  {currentSeasonData.manager_name && (
+                    <div className="mb-4">
+                      <span className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                        Manager: {currentSeasonData.manager_name}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Season Info */}
+                  {selectedView === 'season' && selectedSeasonId && (
+                    <div className="mb-4">
+                      <span className="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                        {currentSeasonData.season_name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* League Position */}
+                {selectedView === 'season' && currentSeasonData.stats.position && (
+                  <div className="mt-4 p-3 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg border border-yellow-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">League Position</span>
+                      <span className="text-2xl font-bold text-orange-600">#{currentSeasonData.stats.position}</span>
+                    </div>
                   </div>
                 )}
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-900 truncate">
-                    {player.display_name || player.name}
-                  </div>
-                  {player.category && (
-                    <div className={`text-xs font-medium ${
-                      player.category === 'Legend' ? 'text-amber-600' : 'text-blue-600'
-                    }`}>
-                      {player.category}
-                    </div>
-                  )}
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Achievements - Only in all-time view */}
-      {viewMode === 'all-time' && achievements.length > 0 && (
-        <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">🏆 Achievements</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {achievements.map((achievement: any, index: number) => (
-              <div key={index} className={`rounded-xl p-4 border-2 ${
-                achievement.type === 'champion'
-                  ? 'bg-amber-50 border-amber-300'
-                  : 'bg-gray-50 border-gray-300'
-              }`}>
-                <div className="text-2xl mb-2">{achievement.type === 'champion' ? '🥇' : '🥈'}</div>
-                <div className="font-bold text-lg text-gray-900">{achievement.achievement}</div>
-                <div className="text-sm text-gray-600">{achievement.season_name}</div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Season-by-Season Breakdown - Only in all-time view */}
-      {viewMode === 'all-time' && seasonBreakdown.length > 0 && (
-        <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">Season History</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b-2 border-gray-200">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Season</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Rank</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">MP</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">W</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">D</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">L</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">GF</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">GA</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">GD</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Pts</th>
-                </tr>
-              </thead>
-              <tbody>
-                {seasonBreakdown.map((season: any, index: number) => (
-                  <tr key={index} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
-                    <td className="py-3 px-4">
-                      <Link href={`/seasons/${season.season_id}`} className="text-blue-600 hover:underline font-medium">
-                        {season.season_id}
-                      </Link>
-                    </td>
-                    <td className="text-center py-3 px-4">
-                      {season.rank ? (
-                        <span className={`px-2 py-1 rounded font-bold ${
-                          season.rank === 1 ? 'bg-amber-100 text-amber-700' :
-                          season.rank === 2 ? 'bg-gray-200 text-gray-700' :
-                          season.rank === 3 ? 'bg-amber-50 text-amber-600' :
-                          'bg-blue-50 text-blue-600'
+              {/* Record Card */}
+              <div className="glass rounded-2xl p-6 shadow-md border border-white/20 bg-white/60">
+                <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                  <svg className="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Record
+                </h3>
+
+                {/* Win/Draw/Loss */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="glass rounded-xl p-3 bg-green-50/60 text-center">
+                    <p className="text-xs text-green-700 font-medium mb-1">WINS</p>
+                    <p className="text-2xl font-bold text-green-800">{stats.wins}</p>
+                  </div>
+                  <div className="glass rounded-xl p-3 bg-yellow-50/60 text-center">
+                    <p className="text-xs text-yellow-700 font-medium mb-1">DRAWS</p>
+                    <p className="text-2xl font-bold text-yellow-800">{stats.draws}</p>
+                  </div>
+                  <div className="glass rounded-xl p-3 bg-red-50/60 text-center">
+                    <p className="text-xs text-red-700 font-medium mb-1">LOSSES</p>
+                    <p className="text-2xl font-bold text-red-800">{stats.losses}</p>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="mt-4 space-y-3">
+                  <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
+                    <span className="text-sm text-gray-600">Goals For (GF):</span>
+                    <span className="text-sm font-bold text-green-600">{stats.goals_for}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
+                    <span className="text-sm text-gray-600">Goals Against (GA):</span>
+                    <span className="text-sm font-bold text-red-600">{stats.goals_against}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
+                    <span className="text-sm text-gray-600">Goal Difference (GD):</span>
+                    <span className={`text-sm font-bold ${stats.goal_difference > 0 ? 'text-green-600' : stats.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                      {stats.goal_difference > 0 ? '+' : ''}{stats.goal_difference}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
+                    <span className="text-sm text-gray-600">Points:</span>
+                    <span className="text-sm font-bold text-indigo-600">{stats.points}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
+                    <span className="text-sm text-gray-600">Clean Sheets:</span>
+                    <span className="text-sm font-bold text-blue-600">{stats.clean_sheets}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Stats */}
+            <div className="lg:col-span-3 space-y-6">
+              {/* All Seasons View */}
+              {selectedView === 'all-seasons' && allSeasonData.length > 0 && (
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-dark mb-6 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Season-by-Season Breakdown
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    {allSeasonData.map((seasonData, index) => {
+                      const isCurrentSeason = index === 0;
+                      const s = seasonData.stats;
+                      
+                      return (
+                        <div key={`all-seasons-${seasonData.team_id}-${seasonData.season_id}-${index}`} className={`rounded-xl p-5 border-2 ${
+                          isCurrentSeason 
+                            ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300' 
+                            : 'bg-white/50 border-gray-200'
                         }`}>
-                          #{season.rank}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="text-center py-3 px-4 text-gray-700">{season.matches_played}</td>
-                    <td className="text-center py-3 px-4 text-green-600 font-semibold">{season.wins}</td>
-                    <td className="text-center py-3 px-4 text-gray-600">{season.draws}</td>
-                    <td className="text-center py-3 px-4 text-red-600 font-semibold">{season.losses}</td>
-                    <td className="text-center py-3 px-4 text-gray-700">{season.goals_scored}</td>
-                    <td className="text-center py-3 px-4 text-gray-700">{season.goals_conceded}</td>
-                    <td className="text-center py-3 px-4 font-semibold text-gray-900">
-                      {season.goal_difference > 0 ? '+' : ''}{season.goal_difference}
-                    </td>
-                    <td className="text-center py-3 px-4 font-bold text-blue-600">{season.points}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                                isCurrentSeason ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
+                              }`}>
+                                {allSeasonData.length - index}
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-gray-900">
+                                  {seasonData.season_name || `Season ${allSeasonData.length - index}`}
+                                </h4>
+                                {s.position && (
+                                  <p className="text-sm text-gray-600">Position: #{s.position}</p>
+                                )}
+                              </div>
+                            </div>
+                            {isCurrentSeason && (
+                              <span className="px-3 py-1 bg-blue-500 text-white text-xs font-bold rounded-full">
+                                CURRENT
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-white/60 rounded-lg p-3 text-center">
+                              <p className="text-xs text-gray-500 mb-1">Matches</p>
+                              <p className="text-xl font-bold text-gray-900">{s.matches_played}</p>
+                            </div>
+                            <div className="bg-white/60 rounded-lg p-3 text-center">
+                              <p className="text-xs text-gray-500 mb-1">W-D-L</p>
+                              <p className="text-sm font-bold text-gray-900">
+                                {s.wins}-{s.draws}-{s.losses}
+                              </p>
+                            </div>
+                            <div className="bg-white/60 rounded-lg p-3 text-center">
+                              <p className="text-xs text-gray-500 mb-1">Goals</p>
+                              <p className="text-xl font-bold text-green-600">{s.goals_for}</p>
+                            </div>
+                            <div className="bg-white/60 rounded-lg p-3 text-center">
+                              <p className="text-xs text-gray-500 mb-1">Points</p>
+                              <p className="text-xl font-bold text-indigo-600">{s.points}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-      {/* All Fixtures - Only in all-time view */}
-      {viewMode === 'all-time' && allFixtures.length > 0 && (
-        <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">Recent Fixtures</h2>
-          <div className="space-y-3">
-            {allFixtures.slice(0, 10).map((fixture: any) => (
-              <div key={fixture.id} className="bg-white rounded-xl p-4 border border-gray-200">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-500">{fixture.season_id} - MD{fixture.match_day}</span>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    fixture.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {fixture.status}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className={`font-semibold ${
-                      fixture.is_home ? 'text-blue-600' : 'text-gray-900'
-                    }`}>
-                      {fixture.home_team_name}
-                    </div>
-                    <div className="text-xs text-gray-500">Home</div>
-                  </div>
-                  
-                  {fixture.status === 'completed' ? (
-                    <div className="px-4 py-2 bg-blue-50 rounded-lg font-bold text-blue-600">
-                      {fixture.home_score} - {fixture.away_score}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-2 bg-gray-100 rounded-lg text-gray-600 text-sm">
-                      vs
-                    </div>
-                  )}
-                  
-                  <div className="flex-1 text-right">
-                    <div className={`font-semibold ${
-                      !fixture.is_home ? 'text-blue-600' : 'text-gray-900'
-                    }`}>
-                      {fixture.away_team_name}
-                    </div>
-                    <div className="text-xs text-gray-500">Away</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+              {/* Stats Display (Overall or Individual Season) */}
+              {selectedView !== 'all-seasons' && (
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    {selectedView === 'overall' ? 'Overall Statistics' : `Statistics - ${currentSeasonData.season_name}`}
+                  </h3>
 
-      {/* Season-specific Fixtures */}
-      {viewMode === 'season' && allFixtures.length > 0 && (
-        <div className="glass rounded-2xl p-6 sm:p-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">Season Fixtures</h2>
-          <div className="space-y-3">
-            {allFixtures.map((fixture: any) => (
-              <div key={fixture.id} className="bg-white rounded-xl p-4 border border-gray-200">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-500">Match Day {fixture.match_day || fixture.matchDay}</span>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    fixture.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {fixture.status}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className={`font-semibold ${
-                      fixture.home_team_id === teamId || fixture.homeTeamId === teamId ? 'text-blue-600' : 'text-gray-900'
-                    }`}>
-                      {fixture.home_team_name || fixture.homeTeam || fixture.home_team}
+                  {/* Points display */}
+                  <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
+                        <p className="text-3xl font-bold text-blue-800">{stats.points}</p>
+                      </div>
+                      {selectedView === 'season' && currentSeasonData.stats.position && (
+                        <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
+                          <p className="text-xs text-gray-500">Position</p>
+                          <p className="text-2xl font-bold text-primary">#{currentSeasonData.stats.position}</p>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-xs text-gray-500">Home</div>
                   </div>
-                  
-                  {fixture.status === 'completed' ? (
-                    <div className="px-4 py-2 bg-blue-50 rounded-lg font-bold text-blue-600">
-                      {fixture.home_score || fixture.homeScore || 0} - {fixture.away_score || fixture.awayScore || 0}
+
+                  {/* Main Stats Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Matches</p>
+                      <p className="text-2xl font-bold text-dark">{stats.matches_played}</p>
                     </div>
-                  ) : (
-                    <div className="px-4 py-2 bg-gray-100 rounded-lg text-gray-600 text-sm">
-                      vs
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Goals For</p>
+                      <p className="text-2xl font-bold text-green-600">{stats.goals_for}</p>
                     </div>
-                  )}
-                  
-                  <div className="flex-1 text-right">
-                    <div className={`font-semibold ${
-                      fixture.away_team_id === teamId || fixture.awayTeamId === teamId ? 'text-blue-600' : 'text-gray-900'
-                    }`}>
-                      {fixture.away_team_name || fixture.awayTeam || fixture.away_team}
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Clean Sheets</p>
+                      <p className="text-2xl font-bold text-blue-600">{stats.clean_sheets}</p>
                     </div>
-                    <div className="text-xs text-gray-500">Away</div>
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">GD</p>
+                      <p className={`text-2xl font-bold ${
+                        stats.goal_difference > 0 ? 'text-green-600' : 
+                        stats.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
+                      }`}>
+                        {stats.goal_difference > 0 ? '+' : ''}{stats.goal_difference}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Secondary Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Win Rate</p>
+                      <p className="text-2xl font-bold text-green-600">{winRate}%</p>
+                    </div>
+                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Goals/Game</p>
+                      <p className="text-2xl font-bold text-orange-600">{goalsPerGame}</p>
+                    </div>
+                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Conceded/Game</p>
+                      <p className="text-2xl font-bold text-red-600">{concededPerGame}</p>
+                    </div>
+                  </div>
+
+                  {/* Performance Progress Bars */}
+                  <div className="mt-6">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Performance Metrics</h4>
+
+                    {/* Win Percentage */}
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs text-gray-600">Win Percentage</span>
+                        <span className="text-xs font-bold text-gray-700">{winRate}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="h-2.5 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full"
+                          style={{ width: `${winRate}%` }}
+                        ></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )}
+
+              {/* Players Section - Only for individual seasons */}
+              {selectedView === 'season' && currentSeasonData.players && currentSeasonData.players.length > 0 && (
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Squad Players ({currentSeasonData.players.length})
+                  </h3>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b-2 border-gray-200">
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Player</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Category</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Matches</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Goals</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Assists</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Points</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentSeasonData.players.map((player: any, index: number) => (
+                          <tr key={player.player_id} className={`border-b border-gray-100 hover:bg-blue-50 transition-colors ${index < 3 ? 'bg-yellow-50/30' : ''}`}>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                {index < 3 && (
+                                  <span className="text-yellow-500 font-bold text-sm">★</span>
+                                )}
+                                <span className="font-medium text-gray-900">{player.player_name}</span>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                                {player.category || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="text-center py-3 px-4 text-gray-700">{player.matches_played}</td>
+                            <td className="text-center py-3 px-4 text-green-600 font-semibold">{player.goals}</td>
+                            <td className="text-center py-3 px-4 text-blue-600 font-semibold">{player.assists}</td>
+                            <td className="text-center py-3 px-4 text-indigo-600 font-bold">{player.points}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Trophies Section */}
+              {((selectedView === 'overall' && allSeasonData.some(s => s.trophies && s.trophies.length > 0)) || 
+                (selectedView === 'season' && currentSeasonData.trophies && currentSeasonData.trophies.length > 0)) && (
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    {selectedView === 'overall' ? 'All Trophies' : 'Trophies Won This Season'}
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {selectedView === 'overall' ? (
+                      allSeasonData.flatMap(seasonData => 
+                        (seasonData.trophies || []).map((trophy: any) => ({
+                          ...trophy,
+                          season: seasonData.season_name
+                        }))
+                      ).map((trophy: any) => (
+                        <div key={trophy.id} className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-4 border-2 border-yellow-300 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="text-3xl">🏆</span>
+                            <div className="flex-1">
+                              <h4 className="font-bold text-gray-900 text-lg">{trophy.trophy_name}</h4>
+                              {trophy.trophy_position && (
+                                <p className="text-sm text-orange-600 font-bold">
+                                  {trophy.trophy_position}
+                                </p>
+                              )}
+                              {trophy.position && (
+                                <p className="text-xs text-gray-600">
+                                  League Position: #{trophy.position}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">{trophy.season}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      currentSeasonData.trophies?.map((trophy: any) => (
+                        <div key={trophy.id} className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-4 border-2 border-yellow-300 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="text-3xl">🏆</span>
+                            <div className="flex-1">
+                              <h4 className="font-bold text-gray-900 text-lg">{trophy.trophy_name}</h4>
+                              {trophy.trophy_position && (
+                                <p className="text-sm text-orange-600 font-bold">
+                                  {trophy.trophy_position}
+                                </p>
+                              )}
+                              {trophy.position && (
+                                <p className="text-xs text-gray-600">
+                                  League Position: #{trophy.position}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

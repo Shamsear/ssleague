@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { cookies } from 'next/headers';
 import { calculateRealPlayerSalary, getInitialPoints } from '@/lib/contracts';
+import { logRealPlayerFee } from '@/lib/transaction-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -82,7 +83,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate initial points from star rating
-    const initialPoints = getInitialPoints(starRating);
+    const seasonId = teamData?.season_id || startSeason;
+    const initialPoints = await getInitialPoints(starRating, seasonId);
 
     // Create player object
     const newPlayer = {
@@ -106,6 +108,16 @@ export async function POST(request: NextRequest) {
       real_players_count: realPlayers.length,
       updated_at: new Date().toISOString(),
     });
+    
+    // Log transaction for real player fee
+    await logRealPlayerFee(
+      teamId,
+      seasonId, // Already declared above at line 86
+      playerName,
+      `real_${playerName.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`, // Generate player ID
+      auctionValue,
+      currentDollarBalance
+    );
 
     return NextResponse.json({
       success: true,

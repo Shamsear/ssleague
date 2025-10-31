@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
 
 // WebSocket broadcast function (set by WebSocket server)
 declare global {
@@ -249,13 +250,20 @@ export async function POST(
     if (isWinner) {
       console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${userId} wins!`);
       
-      // Auto-finalize will be handled by a separate process or admin
-      // For now, just flag it
-      await sql`
-        UPDATE bulk_tiebreakers
-        SET status = 'auto_finalize_pending'
-        WHERE id = ${tiebreakerId}
-      `;
+      // Auto-finalize immediately
+      const finalizeResult = await finalizeBulkTiebreaker(tiebreakerId);
+      
+      if (!finalizeResult.success) {
+        console.error(`⚠️ Failed to auto-finalize tiebreaker: ${finalizeResult.error}`);
+        // Still mark as pending for manual finalization
+        await sql`
+          UPDATE bulk_tiebreakers
+          SET status = 'auto_finalize_pending'
+          WHERE id = ${tiebreakerId}
+        `;
+      } else {
+        console.log(`✅ Tiebreaker auto-finalized successfully`);
+      }
     }
 
     return NextResponse.json({

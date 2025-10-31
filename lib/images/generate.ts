@@ -1,4 +1,5 @@
 import { HfInference } from '@huggingface/inference';
+import sharp from 'sharp';
 
 const hf = new HfInference(process.env.HUGGING_FACE_TOKEN);
 
@@ -9,7 +10,35 @@ export interface ImageGenerationOptions {
 }
 
 /**
- * Generate an image using Hugging Face FLUX.1-schnell
+ * Generate an image using Stable Diffusion XL (better text than FLUX)
+ * @param prompt - The image description with text
+ * @returns Promise<Blob> - The generated image as a Blob
+ */
+export async function generateImageWithSDXL(
+  prompt: string
+): Promise<Blob> {
+  try {
+    console.log(`🎨 Generating image with SDXL: "${prompt}"`);
+    
+    const blob = await hf.textToImage({
+      model: 'stabilityai/stable-diffusion-xl-base-1.0',
+      inputs: prompt,
+      parameters: {
+        width: 1200,
+        height: 630,
+      },
+    });
+
+    console.log(`✅ Image generated successfully with SDXL (${blob.size} bytes)`);
+    return blob;
+  } catch (error) {
+    console.error('Failed to generate image with SDXL:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate an image using Hugging Face FLUX.1-schnell (fallback)
  * @param prompt - The image description
  * @param options - Image generation options
  * @returns Promise<Blob> - The generated image as a Blob
@@ -45,48 +74,230 @@ export async function generateImage(
 }
 
 /**
- * Generate a prompt optimized for news images based on event type
+ * Add text overlay to an image
+ */
+export async function addTextOverlay(
+  imageBuffer: Buffer,
+  eventType: string,
+  metadata: Record<string, any>
+): Promise<Buffer> {
+  try {
+    const width = 1200;
+    const height = 630;
+
+    // Create SVG text overlay based on event type
+    let svgOverlay = '';
+
+    switch (eventType) {
+      case 'match_result':
+        svgOverlay = `
+          <svg width="${width}" height="${height}">
+            <!-- Dark gradient background -->
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:rgba(0,0,0,0.3);stop-opacity:1" />
+                <stop offset="100%" style="stop-color:rgba(0,0,0,0.95);stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="400" width="${width}" height="230" fill="url(#grad1)" />
+            
+            <!-- Top accent line -->
+            <rect x="0" y="400" width="${width}" height="4" fill="#0066FF" />
+            
+            <!-- Title with glow -->
+            <text x="${width / 2}" y="450" font-family="Arial Black, sans-serif" font-size="28" font-weight="900" fill="#0066FF" text-anchor="middle" letter-spacing="2">
+              MATCH RESULT
+            </text>
+            
+            <!-- Score display -->
+            <text x="${width / 2}" y="530" font-family="Impact, sans-serif" font-size="80" font-weight="bold" fill="white" text-anchor="middle" stroke="#0066FF" stroke-width="3">
+              ${metadata.home_score} - ${metadata.away_score}
+            </text>
+            
+            <!-- Team names -->
+            <text x="250" y="600" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">
+              ${metadata.home_team_name}
+            </text>
+            <text x="${width - 250}" y="600" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">
+              ${metadata.away_team_name}
+            </text>
+          </svg>
+        `;
+        break;
+
+      case 'team_registered':
+        svgOverlay = `
+          <svg width="${width}" height="${height}">
+            <defs>
+              <linearGradient id="gradTeam" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:rgba(0,102,255,0.9);stop-opacity:1" />
+                <stop offset="100%" style="stop-color:rgba(0,0,139,0.95);stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="430" width="${width}" height="200" fill="url(#gradTeam)" />
+            <rect x="0" y="430" width="${width}" height="5" fill="#FFD700" />
+            
+            <text x="${width / 2}" y="490" font-family="Arial Black, sans-serif" font-size="32" font-weight="900" fill="white" text-anchor="middle" letter-spacing="3">
+              TEAM REGISTERED
+            </text>
+            <text x="${width / 2}" y="570" font-family="Impact, sans-serif" font-size="64" font-weight="bold" fill="#FFD700" text-anchor="middle" stroke="white" stroke-width="2">
+              ${metadata.team_name}
+            </text>
+          </svg>
+        `;
+        break;
+
+      case 'player_milestone':
+        svgOverlay = `
+          <svg width="${width}" height="${height}">
+            <defs>
+              <linearGradient id="gradMilestone" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:rgba(34,139,34,0.9);stop-opacity:1" />
+                <stop offset="100%" style="stop-color:rgba(0,100,0,0.95);stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="430" width="${width}" height="200" fill="url(#gradMilestone)" />
+            <rect x="0" y="430" width="${width}" height="5" fill="#FFD700" />
+            
+            <text x="${width / 2}" y="490" font-family="Arial Black, sans-serif" font-size="30" font-weight="900" fill="white" text-anchor="middle" letter-spacing="2">
+              REGISTRATION MILESTONE
+            </text>
+            <text x="${width / 2}" y="580" font-family="Impact, sans-serif" font-size="72" font-weight="bold" fill="#FFD700" text-anchor="middle" stroke="white" stroke-width="3">
+              ${metadata.milestone_number} PLAYERS
+            </text>
+          </svg>
+        `;
+        break;
+
+      case 'auction_results':
+        svgOverlay = `
+          <svg width="${width}" height="${height}">
+            <defs>
+              <linearGradient id="gradAuction" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:rgba(255,69,0,0.9);stop-opacity:1" />
+                <stop offset="100%" style="stop-color:rgba(139,0,0,0.95);stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="430" width="${width}" height="200" fill="url(#gradAuction)" />
+            <rect x="0" y="430" width="${width}" height="5" fill="#FFD700" />
+            
+            <text x="${width / 2}" y="490" font-family="Arial Black, sans-serif" font-size="36" font-weight="900" fill="white" text-anchor="middle" letter-spacing="3">
+              AUCTION COMPLETE
+            </text>
+            <text x="${width / 2}" y="570" font-family="Impact, sans-serif" font-size="64" font-weight="bold" fill="#FFD700" text-anchor="middle" stroke="white" stroke-width="2">
+              ${metadata.total_players} PLAYERS SIGNED
+            </text>
+          </svg>
+        `;
+        break;
+
+      default:
+        svgOverlay = `
+          <svg width="${width}" height="${height}">
+            <defs>
+              <linearGradient id="gradDefault" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:rgba(0,0,0,0.3);stop-opacity:1" />
+                <stop offset="100%" style="stop-color:rgba(0,0,0,0.95);stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="450" width="${width}" height="180" fill="url(#gradDefault)" />
+            <rect x="0" y="450" width="${width}" height="5" fill="#0066FF" />
+            
+            <text x="${width / 2}" y="555" font-family="Impact, sans-serif" font-size="56" font-weight="bold" fill="white" text-anchor="middle" stroke="#0066FF" stroke-width="2" letter-spacing="2">
+              SS PREMIER SUPER LEAGUE
+            </text>
+          </svg>
+        `;
+    }
+
+    // Composite the text overlay onto the image
+    const outputBuffer = await sharp(imageBuffer)
+      .resize(width, height, { fit: 'cover' })
+      .composite([{
+        input: Buffer.from(svgOverlay),
+        top: 0,
+        left: 0,
+      }])
+      .png()
+      .toBuffer();
+
+    console.log('✅ Text overlay added successfully');
+    return outputBuffer;
+  } catch (error) {
+    console.error('Failed to add text overlay:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate a prompt optimized for SDXL (WITH text instructions)
+ */
+export function generateSDXLPrompt(
+  eventType: string,
+  metadata: Record<string, any>
+): string {
+  const baseStyle = 'professional esports gaming banner, eFootball tournament, modern sports graphic design, stadium atmosphere, vibrant colors, high quality, digital art';
+
+  switch (eventType) {
+    case 'match_result':
+      return `${baseStyle}, text "MATCH RESULT" at top, large numbers "${metadata.home_score} - ${metadata.away_score}" in center, team names "${metadata.home_team_name}" and "${metadata.away_team_name}" below, blue and gold theme`;
+
+    case 'team_registered':
+      return `${baseStyle}, text "TEAM REGISTERED" at top, large text "${metadata.team_name}" in center, blue gradient background, celebration atmosphere`;
+
+    case 'player_milestone':
+      return `${baseStyle}, text "REGISTRATION MILESTONE" at top, large numbers "${metadata.milestone_number} PLAYERS" in center, green gradient, achievement celebration`;
+
+    case 'auction_results':
+      return `${baseStyle}, text "AUCTION COMPLETE" at top, text "${metadata.total_players} PLAYERS SIGNED" in center, orange and red gradient, excitement theme`;
+
+    default:
+      return `${baseStyle}, text "SS PREMIER SUPER LEAGUE" in center, tournament announcement banner`;
+  }
+}
+
+/**
+ * Generate a prompt optimized for FLUX (NO text, for overlay fallback)
  */
 export function generateNewsImagePrompt(
   eventType: string,
   metadata: Record<string, any>
 ): string {
-  const style = 'eFootball PES style, soccer esports tournament, dynamic football gaming graphics, modern design, vibrant stadium colors, high quality digital art';
+  const style = 'eFootball PES style, soccer esports tournament, dynamic football gaming graphics, modern design, vibrant stadium colors, high quality digital art, no text, clean background';
 
   switch (eventType) {
     case 'player_milestone':
-      return `eFootball esports tournament registration milestone, ${metadata.milestone_number} competitive players joined, gaming controllers and soccer ball, pro evolution soccer theme, ${style}`;
+      return `eFootball esports tournament registration celebration, gaming controllers and soccer ball, pro evolution soccer theme, ${style}`;
 
     case 'team_registered':
-      const teamStatus = metadata.is_returning ? 'returning champions' : 'new challengers';
-      return `eFootball team ${metadata.team_name} ${teamStatus} banner, esports soccer team announcement, competitive gaming atmosphere, ${style}`;
+      return `eFootball team registration announcement background, esports soccer team banner, competitive gaming atmosphere, ${style}`;
 
     case 'auction_start':
-      return `eFootball player auction live, ${metadata.position} position bidding war, virtual transfer market, gaming auction excitement, ${style}`;
+      return `eFootball player auction background, virtual transfer market, gaming auction excitement, ${style}`;
 
     case 'auction_results':
-      return `eFootball auction complete, ${metadata.total_players} pro players signed, esports transfer window closed, virtual squad building, ${style}`;
+      return `eFootball auction complete background, esports transfer window, virtual squad building celebration, ${style}`;
 
     case 'match_result':
-      return `eFootball match result screen: ${metadata.home_team_name} ${metadata.home_score}-${metadata.away_score} ${metadata.away_team_name}, victory celebration, esports soccer competition, gaming tournament atmosphere, ${style}`;
+      return `eFootball match result background, victory celebration stadium, esports soccer competition atmosphere, cheering crowd, ${style}`;
 
     case 'fantasy_draft':
-      return `eFootball fantasy draft, ${metadata.total_drafted} virtual players picked, esports fantasy league excitement, competitive gaming, ${style}`;
+      return `eFootball fantasy draft background, esports fantasy league excitement, competitive gaming atmosphere, ${style}`;
 
     case 'registration_phase_change':
-      return `eFootball tournament ${metadata.new_phase} registration open, competitive soccer gaming, join now esports call to action, ${style}`;
+      return `eFootball tournament registration background, competitive soccer gaming atmosphere, ${style}`;
 
     case 'confirmed_slots_filled':
-      return `eFootball tournament slots filled, ${metadata.confirmed_count} esports competitors confirmed, registration milestone reached, ${style}`;
+      return `eFootball tournament slots filled celebration background, esports competitors atmosphere, ${style}`;
 
     case 'season_launched':
-      return `New eFootball season launch, SS Premier Super League esports tournament begins, competitive soccer gaming, grand season opening, ${style}`;
+      return `New eFootball season launch background, grand season opening celebration, competitive soccer gaming stadium, ${style}`;
 
     case 'finals_result':
-      return `eFootball championship trophy celebration, esports tournament finals winner crowned, competitive soccer gaming victory, ${style}`;
+      return `eFootball championship trophy celebration background, esports tournament finals atmosphere, fireworks and confetti, ${style}`;
 
     default:
-      return `eFootball esports tournament news graphic, competitive soccer gaming announcement, ${style}`;
+      return `eFootball esports tournament background, competitive soccer gaming atmosphere, ${style}`;
   }
 }
 
@@ -173,36 +384,26 @@ export async function generateNewsImage(
   newsId: string
 ): Promise<string | null> {
   try {
-    // Check if AI generation is configured
     if (!process.env.HUGGING_FACE_TOKEN) {
       console.warn('⚠️ HUGGING_FACE_TOKEN not configured, skipping image generation');
       return null;
     }
 
-    // Fetch real data context (player photos, team logos, etc.)
-    const { hasRealData, context } = await fetchRealImageContext(eventType, metadata);
+    console.log('🎨 Generating image with FLUX.1-schnell...');
+
+    // Generate prompt with text instructions
+    const prompt = generateSDXLPrompt(eventType, metadata);
     
-    if (hasRealData) {
-      console.log(`🎨 Generating image WITH real data: ${context}`);
-    } else {
-      console.log('🎨 Generating generic tournament image');
-    }
+    // Generate image using FLUX
+    const imageBlob = await generateImage(prompt);
 
-    // Generate optimized prompt (includes real data context)
-    const basePrompt = generateNewsImagePrompt(eventType, metadata);
-    const enhancedPrompt = hasRealData 
-      ? `${basePrompt}, ${context}` 
-      : basePrompt;
-
-    // Generate image using real data context
-    const imageBlob = await generateImage(enhancedPrompt);
-
-    // Upload to storage (returns data URL for now)
+    // Upload to storage
     const imageUrl = await uploadImageToStorage(imageBlob, newsId);
 
+    console.log('✅ Successfully generated image with FLUX!');
     return imageUrl;
   } catch (error) {
-    console.error('Failed to generate news image:', error);
-    return null; // Return null instead of failing the whole operation
+    console.error('❌ Failed to generate news image:', error);
+    return null;
   }
 }

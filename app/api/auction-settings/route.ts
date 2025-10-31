@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
       // If no settings found, create default
       if (result.rows.length === 0) {
         result = await client.query(
-          `INSERT INTO auction_settings (season_id, max_rounds, min_balance_per_round) 
-           VALUES ($1, 25, 30) 
+          `INSERT INTO auction_settings (season_id, max_rounds, min_balance_per_round, contract_duration) 
+           VALUES ($1, 25, 30, 2) 
            RETURNING *`,
           [seasonId]
         );
@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
             season_id: settings.season_id,
             max_rounds: settings.max_rounds,
             min_balance_per_round: settings.min_balance_per_round,
+            contract_duration: settings.contract_duration || 2,
             created_at: settings.created_at,
             updated_at: settings.updated_at,
           },
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { season_id = 'default', max_rounds, min_balance_per_round } = body;
+    const { season_id = 'default', max_rounds, min_balance_per_round, contract_duration = 2 } = body;
 
     if (!max_rounds || !min_balance_per_round) {
       return NextResponse.json(
@@ -93,18 +94,18 @@ export async function POST(request: NextRequest) {
         // Update existing
         result = await client.query(
           `UPDATE auction_settings 
-           SET max_rounds = $1, min_balance_per_round = $2 
-           WHERE season_id = $3 
+           SET max_rounds = $1, min_balance_per_round = $2, contract_duration = $3 
+           WHERE season_id = $4 
            RETURNING *`,
-          [max_rounds, min_balance_per_round, season_id]
+          [max_rounds, min_balance_per_round, contract_duration, season_id]
         );
       } else {
         // Insert new
         result = await client.query(
-          `INSERT INTO auction_settings (season_id, max_rounds, min_balance_per_round) 
-           VALUES ($1, $2, $3) 
+          `INSERT INTO auction_settings (season_id, max_rounds, min_balance_per_round, contract_duration) 
+           VALUES ($1, $2, $3, $4) 
            RETURNING *`,
-          [season_id, max_rounds, min_balance_per_round]
+          [season_id, max_rounds, min_balance_per_round, contract_duration]
         );
       }
 

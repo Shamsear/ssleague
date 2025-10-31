@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { triggerNews } from '@/lib/news/trigger';
+import { triggerPlayerOfMatchPoll } from '@/lib/polls/auto-trigger';
 
 /**
  * PATCH - Edit fixture results (with stat reversion)
@@ -211,6 +212,11 @@ export async function PATCH(
     } catch (newsError) {
       console.error('Failed to generate match result news:', newsError);
     }
+
+    // Trigger player of the match poll (async, non-blocking)
+    triggerPlayerOfMatchPoll(fixtureId).catch(pollError => {
+      console.error('Failed to create player of match poll:', pollError);
+    });
 
     return NextResponse.json({
       success: true,

@@ -63,7 +63,8 @@ export async function POST(request: NextRequest) {
         won: homeWon,
         draw,
         lost: awayWon,
-        motm: homePlayerMotm
+        motm: homePlayerMotm,
+        clean_sheet: away_goals === 0
       });
 
       updates.push({
@@ -86,7 +87,8 @@ export async function POST(request: NextRequest) {
         won: awayWon,
         draw,
         lost: homeWon,
-        motm: awayPlayerMotm
+        motm: awayPlayerMotm,
+        clean_sheet: home_goals === 0
       });
 
       updates.push({
@@ -128,9 +130,10 @@ async function updatePlayerStats(data: {
   draw: boolean;
   lost: boolean;
   motm: boolean;
+  clean_sheet: boolean;
 }) {
   const sql = getTournamentDb();
-  const { player_id, player_name, season_id, fixture_id, goals_scored, goals_conceded, won, draw, lost, motm } = data;
+  const { player_id, player_name, season_id, fixture_id, goals_scored, goals_conceded, won, draw, lost, motm, clean_sheet } = data;
 
   const statsId = `${player_id}_${season_id}`;
 
@@ -148,10 +151,12 @@ async function updatePlayerStats(data: {
       SET
         matches_played = ${(current.matches_played || 0) + 1},
         goals_scored = ${(current.goals_scored || 0) + goals_scored},
+        goals_conceded = ${(current.goals_conceded || 0) + goals_conceded},
         assists = ${current.assists || 0},
         wins = ${(current.wins || 0) + (won ? 1 : 0)},
         draws = ${(current.draws || 0) + (draw ? 1 : 0)},
         losses = ${(current.losses || 0) + (lost ? 1 : 0)},
+        clean_sheets = ${(current.clean_sheets || 0) + (clean_sheet ? 1 : 0)},
         motm_awards = ${(current.motm_awards || 0) + (motm ? 1 : 0)},
         points = ${calculatePoints(
           (current.wins || 0) + (won ? 1 : 0),
@@ -174,13 +179,13 @@ async function updatePlayerStats(data: {
     await sql`
       INSERT INTO realplayerstats (
         id, player_id, season_id, player_name,
-        matches_played, goals_scored, assists, wins, draws, losses,
-        motm_awards, points, created_at, updated_at
+        matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
+        clean_sheets, motm_awards, points, created_at, updated_at
       )
       VALUES (
         ${statsId}, ${player_id}, ${season_id}, ${player_name},
-        1, ${goals_scored}, 0, ${won ? 1 : 0}, ${draw ? 1 : 0}, ${lost ? 1 : 0},
-        ${motm ? 1 : 0}, ${points}, NOW(), NOW()
+        1, ${goals_scored}, ${goals_conceded}, 0, ${won ? 1 : 0}, ${draw ? 1 : 0}, ${lost ? 1 : 0},
+        ${clean_sheet ? 1 : 0}, ${motm ? 1 : 0}, ${points}, NOW(), NOW()
       )
     `;
   }

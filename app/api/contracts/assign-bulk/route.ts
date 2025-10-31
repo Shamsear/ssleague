@@ -59,7 +59,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    // Parse request body with error handling
+    let body;
+    try {
+      const text = await request.text();
+      if (!text || text.trim() === '') {
+        return NextResponse.json(
+          { error: 'Empty request body' },
+          { status: 400 }
+        );
+      }
+      body = JSON.parse(text);
+    } catch (err) {
+      console.error('Error parsing request body:', err);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
     const {
       seasonId,
       startSeason,
@@ -104,7 +121,51 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Process all players - update both season documents for each player
+    // STEP 1: Unassign all existing players for these teams first
+    // This ensures we don't have old assignments lingering
+    if (isModernSeason) {
+      for (const teamId of uniqueTeamIds) {
+        console.log(`Unassigning all players from team ${teamId} in season ${startSeason}...`);
+        
+        // Clear team_id for all players currently assigned to this team
+        await sql`
+          UPDATE player_seasons
+          SET team_id = NULL,
+              team = NULL,
+              auction_value = NULL,
+              salary_per_match = NULL,
+              contract_id = NULL,
+              contract_start_season = NULL,
+              contract_end_season = NULL,
+              contract_length = NULL,
+              status = 'available',
+              updated_at = NOW()
+          WHERE team_id = ${teamId}
+            AND season_id = ${startSeason}
+        `;
+        
+        // Also clear for next season
+        await sql`
+          UPDATE player_seasons
+          SET team_id = NULL,
+              team = NULL,
+              auction_value = NULL,
+              salary_per_match = NULL,
+              contract_id = NULL,
+              contract_start_season = NULL,
+              contract_end_season = NULL,
+              contract_length = NULL,
+              status = 'available',
+              updated_at = NOW()
+          WHERE team_id = ${teamId}
+            AND season_id = ${endSeason}
+        `;
+        
+        console.log(`✅ Cleared existing assignments for team ${teamId}`);
+      }
+    }
+
+    // STEP 2: Process all players - update both season documents for each player
     const updateResults: any[] = [];
 
     if (isModernSeason) {
@@ -135,6 +196,7 @@ export async function POST(request: NextRequest) {
               contract_start_season = ${startSeason},
               contract_end_season = ${endSeason},
               contract_length = 2,
+              status = 'active',
               updated_at = NOW()
           WHERE id = ${currentSeasonCompositeId}
         `;
@@ -161,6 +223,7 @@ export async function POST(request: NextRequest) {
                 contract_start_season = ${startSeason},
                 contract_end_season = ${endSeason},
                 contract_length = 2,
+                status = 'active',
                 updated_at = NOW()
             WHERE id = ${nextSeasonCompositeId}
           `;
@@ -191,7 +254,7 @@ export async function POST(request: NextRequest) {
               matches_played, goals_scored, assists, wins, draws, losses,
               clean_sheets, motm_awards,
               contract_id, contract_start_season, contract_end_season, contract_length,
-              is_auto_registered, registration_date, created_at, updated_at
+              status, is_auto_registered, registration_date, created_at, updated_at
             ) VALUES (
               ${nextSeasonCompositeId}, ${endSeason}, ${playerId}, ${player.playerName},
               ${player.teamId}, ${teamName},
@@ -199,7 +262,7 @@ export async function POST(request: NextRequest) {
               ${starRating}, null, ${basePoints},
               0, 0, 0, 0, 0, 0, 0, 0,
               ${contractId}, ${startSeason}, ${endSeason}, 2,
-              true, NOW(), NOW(), NOW()
+              'active', true, NOW(), NOW(), NOW()
             )
           `;
         }
@@ -373,13 +436,88 @@ export async function POST(request: NextRequest) {
       
       if (currentTeamSeasonDoc.exists) {
         const currentTeamData = currentTeamSeasonDoc.data();
+        const newBalance = (currentTeamData?.real_player_starting_balance || 0) - data.totalSpent;
+        
         await currentTeamSeasonRef.update({
           players_count: data.count,
           real_player_spent: data.totalSpent,
-          real_player_budget: (currentTeamData?.real_player_starting_balance || 5000) - data.totalSpent,
+          real_player_budget: newBalance,
           updated_at: FieldValue.serverTimestamp(),
         });
         console.log(`Updated team_seasons ${currentSeasonDocId}: ${data.count} players, $${data.totalSpent} spent`);
+        
+        // Delete old real_player_fee transactions for this team
+        const oldTransactionsQuery = await adminDb
+          .collection('transactions')
+          .where('team_id', '==', teamId)
+          .where('season_id', '==', startSeason)
+          .where('transaction_type', '==', 'real_player_fee')
+          .get();
+        
+        const deleteBatch = adminDb.batch();
+        oldTransactionsQuery.docs.forEach(doc => {
+          deleteBatch.delete(doc.ref);
+        });
+        
+        if (!oldTransactionsQuery.empty) {
+          await deleteBatch.commit();
+          console.log(`✅ Deleted ${oldTransactionsQuery.size} old player transactions for team ${teamId}`);
+        }
+        
+        // Create transaction records for each player assigned to this team
+        const teamPlayers = players.filter(p => p.teamId === teamId);
+        const transactionBatch = adminDb.batch();
+        
+        // Get player's star ratings from Neon database
+        const playerStarRatings = new Map<string, number>();
+        for (const player of teamPlayers) {
+          try {
+            const playerSeasonId = `${player.id}_${startSeason}`;
+            const playerData = await sql`
+              SELECT star_rating FROM player_seasons
+              WHERE id = ${playerSeasonId}
+              LIMIT 1
+            `;
+            if (playerData.length > 0) {
+              playerStarRatings.set(player.id, playerData[0].star_rating || 0);
+            }
+          } catch (err) {
+            console.warn(`Could not fetch star rating for player ${player.id}`);
+          }
+        }
+        
+        // Calculate progressive balance for each transaction
+        let runningBalance = currentTeamData?.real_player_starting_balance || 0;
+        
+        for (const player of teamPlayers) {
+          const starRating = playerStarRatings.get(player.id) || 0;
+          runningBalance -= (player.auctionValue || 0);
+          
+          const transactionRef = adminDb.collection('transactions').doc();
+          transactionBatch.set(transactionRef, {
+            team_id: teamId,
+            season_id: startSeason,
+            transaction_type: 'real_player_fee',
+            currency_type: 'real_player',
+            amount: -(player.auctionValue || 0),
+            balance_after: runningBalance, // Progressive balance after this player
+            reason: `Assigned real player: ${player.playerName || 'Unknown'} (${starRating}⭐)`,
+            metadata: {
+              player_id: player.id || '',
+              player_name: player.playerName || '',
+              star_rating: starRating,
+              auction_value: player.auctionValue || 0,
+              salary_per_match: player.salaryPerMatch || 0,
+              contract_start: startSeason || '',
+              contract_end: endSeason || '',
+            },
+            created_at: FieldValue.serverTimestamp(),
+            updated_at: FieldValue.serverTimestamp(),
+          });
+        }
+        
+        await transactionBatch.commit();
+        console.log(`✅ Created ${teamPlayers.length} transaction records for team ${teamId}`);
       }
     }
 
@@ -393,31 +531,88 @@ export async function POST(request: NextRequest) {
       for (const [teamId, data] of teamPlayerMap.entries()) {
         const teamName = teamNames.get(teamId) || 'Unknown Team';
         const teamPlayers = players.filter(p => p.teamId === teamId);
-        const playerIdsList = teamPlayers.map(p => p.id);
+        
+        // Get team's current budget info
+        const currentSeasonDocId = `${teamId}_${startSeason}`;
+        const currentTeamSeasonDoc = await adminDb.collection('team_seasons').doc(currentSeasonDocId).get();
+        const currentTeamData = currentTeamSeasonDoc.exists ? currentTeamSeasonDoc.data() : null;
+        const remainingBudget = currentTeamData?.real_player_budget || 0;
+        const startingBudget = currentTeamData?.real_player_starting_balance || 0;
+        
+        // Fetch star ratings from database for news
+        const playerDetailsWithStars = await Promise.all(teamPlayers.map(async (p) => {
+          let starRating = 0;
+          try {
+            const playerSeasonId = `${p.id}_${startSeason}`;
+            const playerData = await sql`
+              SELECT star_rating FROM player_seasons
+              WHERE id = ${playerSeasonId}
+              LIMIT 1
+            `;
+            if (playerData.length > 0) {
+              starRating = playerData[0].star_rating || 0;
+            }
+          } catch (err) {
+            console.warn(`Could not fetch star rating for player ${p.id} in news`);
+          }
+          
+          return {
+            name: p.playerName || 'Unknown',
+            star_rating: starRating,
+            auction_value: p.auctionValue || 0,
+            salary_per_match: p.salaryPerMatch || 0,
+          };
+        }));
+        
+        const playerDetails = playerDetailsWithStars;
+        
+        // Helper function to sanitize strings for JSON context
+        const sanitizeForContext = (str: string) => {
+          return str
+            .replace(/[\r\n\t]/g, ' ')  // Replace newlines/tabs with spaces
+            .replace(/["\\']/g, '')     // Remove quotes and backslashes
+            .replace(/[^\x20-\x7E]/g, '')  // Remove non-printable ASCII
+            .trim();
+        };
         
         // Check if roster is complete (e.g., 5+ players typically means complete)
         const isRosterComplete = data.count >= 5;
         
         if (isRosterComplete) {
-          // Trigger "roster complete" news
+          // Trigger "roster complete" news with detailed info
+          const playerList = playerDetails
+            .map(p => `${sanitizeForContext(p.name)} (${p.star_rating} stars, $${p.auction_value})`)
+            .join(', ');
+          
           await triggerNews('team_roster_complete', {
             season_id: seasonId,
             season_name: seasonName,
             team_id: teamId,
-            team_name: teamName,
+            team_name: sanitizeForContext(teamName),
             player_count: data.count,
             total_spent: data.totalSpent,
+            starting_budget: startingBudget,
+            remaining_budget: remainingBudget,
+            players: playerDetails,
+            context: `${sanitizeForContext(teamName)} has completed their roster with ${data.count} SS Members for a total of $${data.totalSpent}. Starting budget was $${startingBudget}, remaining budget is $${remainingBudget}. Players: ${playerList}.`,
           });
         } else {
-          // Trigger "players assigned" news
+          // Trigger "players assigned" news with detailed info
+          const playerList = playerDetails
+            .map(p => `${sanitizeForContext(p.name)} (${p.star_rating} stars, $${p.auction_value})`)
+            .join(', ');
+          
           await triggerNews('team_players_assigned', {
             season_id: seasonId,
             season_name: seasonName,
             team_id: teamId,
-            team_name: teamName,
-            player_ids: playerIdsList,
+            team_name: sanitizeForContext(teamName),
             player_count: data.count,
             total_spent: data.totalSpent,
+            starting_budget: startingBudget,
+            remaining_budget: remainingBudget,
+            players: playerDetails,
+            context: `${sanitizeForContext(teamName)} has assigned ${data.count} SS Member(s) for a total of $${data.totalSpent}. Starting budget was $${startingBudget}, remaining budget is $${remainingBudget}. Players: ${playerList}.`,
           });
         }
       }

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { db, auth } from '@/lib/firebase/config'
 import { collection, doc, getDoc, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
@@ -19,6 +19,50 @@ interface Player {
   status: string
   status_text: string
 }
+
+// Memoized player row component for better performance
+const PlayerRow = memo(({ player, onSelect }: { 
+  player: Player; 
+  onSelect: (playerId: string) => void 
+}) => {
+  const statusClass = 
+    player.status === 'registered_current' ? 'bg-blue-100 text-blue-800' :
+    player.status === 'registered_other' ? 'bg-yellow-100 text-yellow-800' :
+    'bg-green-100 text-green-800'
+  
+  const rowClass =
+    player.status === 'registered_current' ? 'hover:bg-blue-50' :
+    player.status === 'registered_other' ? 'hover:bg-yellow-50' :
+    'hover:bg-green-50 cursor-pointer'
+
+  return (
+    <tr className={`${rowClass} transition-colors`}>
+      <td className="px-4 py-3 text-sm font-medium text-gray-900">{player.player_id}</td>
+      <td className="px-4 py-3 text-sm text-gray-900">{player.name}</td>
+      <td className="px-4 py-3">
+        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusClass}`}>
+          {player.status_text}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        {player.status === 'available' ? (
+          <button
+            onClick={() => onSelect(player.player_id)}
+            className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-1 rounded-lg transition-colors"
+          >
+            Select
+          </button>
+        ) : (
+          <span className="text-sm text-gray-500">
+            {player.status === 'registered_current' ? 'Already registered' : 'Unavailable'}
+          </span>
+        )}
+      </td>
+    </tr>
+  )
+})
+
+PlayerRow.displayName = 'PlayerRow'
 
 function PlayerSearchContent() {
   const router = useRouter()
@@ -55,39 +99,45 @@ function PlayerSearchContent() {
       }
 
       try {
-        // Fetch season data and registration stats in parallel
+        // Use cached API endpoint for faster initial load
         const [seasonDoc, statsResponse] = await Promise.all([
-          getDoc(doc(db, 'seasons', seasonId)),
-          fetch(`/api/admin/registration-phases?season_id=${seasonId}`).catch(() => null)
+          fetch(`/api/cached/firebase/seasons?seasonId=${seasonId}`, {
+            cache: 'default' // Use browser cache
+          }).then(r => r.json()),
+          fetch(`/api/admin/registration-phases?season_id=${seasonId}`, {
+            cache: 'default'
+          }).catch(() => null)
         ])
 
-        if (!seasonDoc.exists()) {
+        if (!seasonDoc.success || !seasonDoc.data) {
           setError('Season not found')
           setLoading(false)
           return
         }
 
-        const seasonData = { id: seasonDoc.id, ...seasonDoc.data() } as Season
-
-        if (!seasonData.is_player_registration_open) {
-          setError('Player registration is currently closed for this season')
-          setLoading(false)
-          return
-        }
+        const seasonData = seasonDoc.data as Season
 
         // Add registration phase info to season data
         if (statsResponse) {
           const statsResult = await statsResponse.json()
           if (statsResult.success) {
             Object.assign(seasonData, statsResult.data)
-            
-            // Check if registration is paused
-            if (statsResult.data.registration_phase === 'paused') {
-              setError('Player registration is currently paused. Confirmed slots are full and Phase 2 has not been enabled yet.')
-              setLoading(false)
-              return
-            }
           }
+        }
+
+        // Check registration status with detailed messages
+        if (!seasonData.is_player_registration_open) {
+          const phase = (seasonData as any).registration_phase || 'closed'
+          
+          if (phase === 'paused') {
+            setError('⏸️ Registration Temporarily Closed\n\nAll confirmed slots are currently full. Registration will reopen for Phase 2 (Waitlist) soon. Check back later or contact the committee for updates.')
+          } else if (phase === 'closed') {
+            setError('Player registration is currently closed for this season')
+          } else {
+            setError('Player registration is currently closed for this season')
+          }
+          setLoading(false)
+          return
         }
 
         setSeason(seasonData)
@@ -102,13 +152,17 @@ function PlayerSearchContent() {
     fetchSeason()
   }, [seasonId])
 
-  // Auto-refresh slot availability every 5 seconds
+  // Auto-refresh slot availability every 10 seconds (reduced from 5s)
+  // Only refresh if user is actively searching or viewing
   useEffect(() => {
-    if (!seasonId || !season) return
+    if (!seasonId || !season || !user) return
 
     const refreshSlots = async () => {
       try {
-        const statsResponse = await fetch(`/api/admin/registration-phases?season_id=${seasonId}`)
+        const statsResponse = await fetch(`/api/admin/registration-phases?season_id=${seasonId}`, {
+          // Use cache when possible
+          cache: 'no-cache'
+        })
         if (statsResponse.ok) {
           const statsResult = await statsResponse.json()
           if (statsResult.success) {
@@ -122,10 +176,10 @@ function PlayerSearchContent() {
       }
     }
 
-    // Refresh every 5 seconds
-    const interval = setInterval(refreshSlots, 5000)
+    // Refresh every 10 seconds (reduced frequency)
+    const interval = setInterval(refreshSlots, 10000)
     return () => clearInterval(interval)
-  }, [seasonId, season])
+  }, [seasonId, season, user])
 
   // Check if email already used for this season
   useEffect(() => {
@@ -153,7 +207,7 @@ function PlayerSearchContent() {
     checkEmailUsage()
   }, [user, seasonId])
 
-  const searchPlayers = async (term: string) => {
+  const searchPlayers = useCallback(async (term: string) => {
     if (!seasonId) return
 
     // Only search if term has at least 2 characters
@@ -164,9 +218,13 @@ function PlayerSearchContent() {
 
     setSearching(true)
     try {
-      // Use API endpoint for optimized search
+      // Use API endpoint for optimized search with caching
       const response = await fetch(
-        `/api/players/search?term=${encodeURIComponent(term)}&seasonId=${seasonId}&limit=20`
+        `/api/players/search?term=${encodeURIComponent(term)}&seasonId=${seasonId}&limit=20`,
+        {
+          // Let browser cache identical searches
+          cache: 'default'
+        }
       )
       
       if (!response.ok) {
@@ -182,19 +240,19 @@ function PlayerSearchContent() {
     } finally {
       setSearching(false)
     }
-  }
+  }, [seasonId])
 
-  // Add debounce state
+  // Add debounce state - optimized to 100ms for instant feel
   useEffect(() => {
     if (searchTerm.length < 2) {
       setPlayers([])
       return
     }
 
-    // Reduce debounce to 150ms for faster response
+    // Reduced debounce to 100ms for faster response
     const timer = setTimeout(() => {
       searchPlayers(searchTerm)
-    }, 150)
+    }, 100)
 
     return () => clearTimeout(timer)
   }, [searchTerm, seasonId])
@@ -203,9 +261,9 @@ function PlayerSearchContent() {
     setSearchTerm(e.target.value)
   }
 
-  const handleSelectPlayer = (playerId: string) => {
+  const handleSelectPlayer = useCallback((playerId: string) => {
     router.push(`/register/player/verify?season=${seasonId}&player=${playerId}`)
-  }
+  }, [router, seasonId])
 
   const handleGoogleSignIn = async () => {
     setSigningIn(true)
@@ -252,18 +310,41 @@ function PlayerSearchContent() {
   }
 
   if (error) {
+    const isPausedError = error.includes('Temporarily Closed')
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0066FF]/5 via-white to-[#00D4FF]/5 flex items-center justify-center p-4">
-        <div className="glass rounded-3xl p-8 shadow-lg border border-white/20 max-w-md w-full">
+        <div className="glass rounded-3xl p-8 shadow-lg border border-white/20 max-w-lg w-full">
           <div className="flex items-center justify-center mb-4">
-            <div className="p-3 rounded-full bg-red-100">
-              <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+            <div className={`p-3 rounded-full ${isPausedError ? 'bg-amber-100' : 'bg-red-100'}`}>
+              {isPausedError ? (
+                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              )}
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2 text-center">Registration Unavailable</h2>
-          <p className="text-gray-600 text-center mb-6">{error}</p>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">Registration Unavailable</h2>
+          <div className={`text-center mb-6 ${isPausedError ? 'text-gray-700' : 'text-gray-600'}`}>
+            {error.split('\n').map((line, index) => (
+              <p key={index} className={`${index === 0 ? 'font-semibold text-lg mb-2' : 'mb-2'}`}>
+                {line}
+              </p>
+            ))}
+          </div>
+          {isPausedError && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-blue-800 flex items-start">
+                <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>What's Phase 2?</strong> Phase 2 allows waitlist registrations. If confirmed slots become available or are increased, waitlist players may be promoted.</span>
+              </p>
+            </div>
+          )}
           <button
             onClick={() => router.push('/')}
             className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#0066FF] to-[#00D4FF] text-white font-medium hover:shadow-lg transition-all"
@@ -506,43 +587,13 @@ function PlayerSearchContent() {
                     </td>
                   </tr>
                 ) : (
-                  players.map((player) => {
-                    const statusClass = 
-                      player.status === 'registered_current' ? 'bg-blue-100 text-blue-800' :
-                      player.status === 'registered_other' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    
-                    const rowClass =
-                      player.status === 'registered_current' ? 'hover:bg-blue-50' :
-                      player.status === 'registered_other' ? 'hover:bg-yellow-50' :
-                      'hover:bg-green-50 cursor-pointer'
-
-                    return (
-                      <tr key={player.id} className={`${rowClass} transition-colors`}>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{player.player_id}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{player.name}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusClass}`}>
-                            {player.status_text}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {player.status === 'available' ? (
-                            <button
-                              onClick={() => handleSelectPlayer(player.player_id)}
-                              className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-1 rounded-lg transition-colors"
-                            >
-                              Select
-                            </button>
-                          ) : (
-                            <span className="text-sm text-gray-500">
-                              {player.status === 'registered_current' ? 'Already registered' : 'Unavailable'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })
+                  players.map((player) => (
+                    <PlayerRow 
+                      key={player.id} 
+                      player={player} 
+                      onSelect={handleSelectPlayer}
+                    />
+                  ))
                 )}
               </tbody>
             </table>

@@ -7,6 +7,7 @@ import MobileNav from "@/components/layout/MobileNav";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { QueryProvider } from "@/contexts/QueryProvider";
 import { TournamentProvider } from "@/contexts/TournamentContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,12 +53,14 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             <TournamentProvider>
-              <Navbar />
-              <main className="flex-grow">
-                {children}
-              </main>
-              <Footer />
-              <MobileNav />
+              <LanguageProvider>
+                <Navbar />
+                <main className="flex-grow">
+                  {children}
+                </main>
+                <Footer />
+                <MobileNav />
+              </LanguageProvider>
             </TournamentProvider>
           </AuthProvider>
         </QueryProvider>

@@ -482,7 +482,27 @@ export async function applyFinalizationResults(
         // Continue with finalization even if update fails
       }
 
-      // 4. Update player: mark as sold, assign to team, and set season/round
+      // 5. Calculate contract end season
+      const seasonNum = parseInt(seasonId?.replace(/\D/g, '') || '0');
+      const seasonPrefix = seasonId?.replace(/\d+$/, '') || 'S';
+      
+      // Get contract duration from auction settings (default 2 seasons)
+      let contractDuration = 2;
+      try {
+        const settingsResult = await sql`
+          SELECT contract_duration FROM auction_settings WHERE season_id = ${seasonId} LIMIT 1
+        `;
+        if (settingsResult.length > 0 && settingsResult[0].contract_duration) {
+          contractDuration = settingsResult[0].contract_duration;
+        }
+      } catch (error) {
+        console.warn('Could not fetch contract_duration, using default of 2');
+      }
+      
+      const contractEndSeason = `${seasonPrefix}${seasonNum + contractDuration - 1}`;
+      const contractId = `contract_${allocation.player_id}_${seasonId}_${Date.now()}`;
+      
+      // 6. Update player: mark as sold, assign to team, set contract and status
       await sql`
         UPDATE footballplayers
         SET 
@@ -490,7 +510,13 @@ export async function applyFinalizationResults(
           team_id = ${allocation.team_id},
           acquisition_value = ${allocation.amount},
           season_id = ${seasonId},
-          round_id = ${roundId}
+          round_id = ${roundId},
+          status = 'active',
+          contract_id = ${contractId},
+          contract_start_season = ${seasonId},
+          contract_end_season = ${contractEndSeason},
+          contract_length = ${contractDuration},
+          updated_at = NOW()
         WHERE id = ${allocation.player_id}
       `;
     }

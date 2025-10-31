@@ -49,15 +49,37 @@ interface PlayerStat {
   points: number;
 }
 
+interface PlayerAward {
+  id: string;
+  player_id: string;
+  player_name: string;
+  award_category: string;
+  award_type: string;
+  award_position?: string;
+  player_category?: string;
+}
+
+interface Trophy {
+  id: string;
+  team_id: string;
+  team_name: string;
+  trophy_type: string;
+  trophy_name: string;
+  trophy_position?: string;
+  position?: number;
+}
+
 export default function SeasonDetailPage() {
   const params = useParams();
   const seasonId = params.id as string;
   const [season, setSeason] = useState<Season | null>(null);
   const [teams, setTeams] = useState<TeamStat[]>([]);
   const [players, setPlayers] = useState<PlayerStat[]>([]);
+  const [playerAwards, setPlayerAwards] = useState<PlayerAward[]>([]);
+  const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'teams' | 'players'>('teams');
+  const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'awards' | 'trophies'>('teams');
 
   useEffect(() => {
     fetchSeasonData();
@@ -97,12 +119,29 @@ export default function SeasonDetailPage() {
       } as Season);
 
       // Fetch team and player stats for this season
-      const statsRes = await fetch(`/api/seasons/${seasonId}/stats`);
-      const statsData = await statsRes.json();
+      const [statsRes, awardsRes, trophiesRes] = await Promise.all([
+        fetch(`/api/seasons/${seasonId}/stats`),
+        fetch(`/api/player-awards?season_id=${seasonId}`),
+        fetch(`/api/trophies?season_id=${seasonId}`)
+      ]);
+      
+      const [statsData, awardsData, trophiesData] = await Promise.all([
+        statsRes.json(),
+        awardsRes.json(),
+        trophiesRes.json()
+      ]);
       
       if (statsData.success && statsData.data) {
         setTeams(statsData.data.teams || []);
         setPlayers(statsData.data.players || []);
+      }
+
+      if (awardsData.success) {
+        setPlayerAwards(awardsData.awards || []);
+      }
+
+      if (trophiesData.success) {
+        setTrophies(trophiesData.trophies || []);
       }
 
       setLoading(false);
@@ -298,26 +337,46 @@ export default function SeasonDetailPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={() => setActiveTab('teams')}
-          className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+          className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
             activeTab === 'teams'
               ? 'bg-blue-600 text-white shadow-lg'
               : 'glass text-gray-700 hover:bg-gray-100'
           }`}
         >
-          Teams ({teams.length})
+          🏆 Teams ({teams.length})
         </button>
         <button
           onClick={() => setActiveTab('players')}
-          className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+          className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
             activeTab === 'players'
               ? 'bg-blue-600 text-white shadow-lg'
               : 'glass text-gray-700 hover:bg-gray-100'
           }`}
         >
-          Players ({players.length})
+          ⚽ Players ({players.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('awards')}
+          className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
+            activeTab === 'awards'
+              ? 'bg-blue-600 text-white shadow-lg'
+              : 'glass text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          ⭐ Awards ({playerAwards.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('trophies')}
+          className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
+            activeTab === 'trophies'
+              ? 'bg-blue-600 text-white shadow-lg'
+              : 'glass text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          🏆 Trophies ({trophies.length})
         </button>
       </div>
 
@@ -537,6 +596,136 @@ export default function SeasonDetailPage() {
                 </div>
               </Link>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Player Awards */}
+      {activeTab === 'awards' && playerAwards.length > 0 && (
+        <div className="glass rounded-2xl p-6 sm:p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">⭐ Player Awards</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {playerAwards.map((award) => {
+              const isWinner = award.award_position?.toLowerCase().includes('winner');
+              const isRunnerUp = award.award_position?.toLowerCase().includes('runner');
+              const isThird = award.award_position?.toLowerCase().includes('third');
+              
+              return (
+                <div
+                  key={award.id}
+                  className={`bg-white rounded-xl p-4 border-2 hover:shadow-lg transition-all ${
+                    isWinner ? 'border-yellow-400' :
+                    isRunnerUp ? 'border-gray-300' :
+                    isThird ? 'border-orange-300' :
+                    'border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="text-3xl flex-shrink-0">⭐</div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-gray-900 text-sm sm:text-base mb-1">
+                        {award.award_type}
+                      </h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${
+                          award.award_category === 'individual'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-indigo-100 text-indigo-700'
+                        }`}>
+                          {award.award_category === 'individual' ? 'Individual' : 'Category'}
+                        </span>
+                        {award.award_position && (
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
+                            isWinner ? 'bg-yellow-100 text-yellow-800' :
+                            isRunnerUp ? 'bg-gray-200 text-gray-700' :
+                            isThird ? 'bg-orange-100 text-orange-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {award.award_position}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`rounded-lg p-3 ${
+                    isWinner ? 'bg-gradient-to-br from-yellow-50 to-amber-50' :
+                    isRunnerUp ? 'bg-gradient-to-br from-gray-50 to-slate-50' :
+                    isThird ? 'bg-gradient-to-br from-orange-50 to-amber-50' :
+                    'bg-gradient-to-br from-blue-50 to-indigo-50'
+                  }`}>
+                    <div className="font-bold text-lg text-gray-900 mb-1">
+                      <Link href={`/players/${award.player_id}`} className="hover:text-blue-600">
+                        {award.player_name}
+                      </Link>
+                    </div>
+                    {award.player_category && (
+                      <div className="text-xs text-gray-600">{award.player_category}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Trophies */}
+      {activeTab === 'trophies' && trophies.length > 0 && (
+        <div className="glass rounded-2xl p-6 sm:p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">🏆 Trophies</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {trophies.map((trophy) => {
+              const isChampion = trophy.position === 1 || trophy.trophy_position?.toLowerCase().includes('champion');
+              const isRunnerUp = trophy.position === 2 || trophy.trophy_position?.toLowerCase().includes('runner');
+              const isThird = trophy.position === 3 || trophy.trophy_position?.toLowerCase().includes('third');
+              
+              return (
+                <div
+                  key={trophy.id}
+                  className={`bg-white rounded-xl p-4 border-2 hover:shadow-lg transition-all ${
+                    isChampion ? 'border-yellow-400' :
+                    isRunnerUp ? 'border-gray-300' :
+                    isThird ? 'border-orange-300' :
+                    'border-blue-200'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="text-3xl flex-shrink-0">🏆</div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-gray-900 text-sm sm:text-base mb-1">
+                        {trophy.trophy_name}
+                      </h3>
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium capitalize ${
+                        trophy.trophy_type === 'league' ? 'bg-yellow-100 text-yellow-800' :
+                        trophy.trophy_type === 'runner_up' ? 'bg-gray-200 text-gray-700' :
+                        trophy.trophy_type === 'cup' ? 'bg-orange-100 text-orange-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {trophy.trophy_type.replace('_', ' ')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`rounded-lg p-3 ${
+                    isChampion ? 'bg-gradient-to-br from-yellow-50 to-amber-50' :
+                    isRunnerUp ? 'bg-gradient-to-br from-gray-50 to-slate-50' :
+                    isThird ? 'bg-gradient-to-br from-orange-50 to-amber-50' :
+                    'bg-gradient-to-br from-blue-50 to-indigo-50'
+                  }`}>
+                    <div className="font-bold text-lg text-gray-900 mb-1">
+                      <Link href={`/teams/${trophy.team_id}`} className="hover:text-blue-600">
+                        {trophy.team_name}
+                      </Link>
+                    </div>
+                    {trophy.trophy_position && (
+                      <div className="text-xs font-semibold text-orange-600">{trophy.trophy_position}</div>
+                    )}
+                    {trophy.position && (
+                      <div className="text-xs text-gray-600">League Position: #{trophy.position}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

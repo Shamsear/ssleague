@@ -48,6 +48,7 @@ export async function processMatchResultWithContracts(
     // Multi-season processing
     const batch = writeBatch(db);
     const categoryFine = season.category_fine_amount || 20;
+    const categoryFineCurrency = season.category_fine_currency || 'dollar'; // Default to dollar
     
     // Process home team
     const homeTeamRef = doc(db, 'teams', homeTeamId);
@@ -79,14 +80,24 @@ export async function processMatchResultWithContracts(
       const lineupValid = validateMatchLineup(playersWithCategories);
       const lineupFine = lineupValid ? 0 : categoryFine;
       
-      // Update team
-      const newDollarBalance = (homeTeamData.dollarBalance || 0) - totalSalaryDeducted - lineupFine;
-      
-      batch.update(homeTeamRef, {
+      // Update team - deduct salary and fine from appropriate balances
+      const newDollarBalance = (homeTeamData.dollarBalance || 0) - totalSalaryDeducted;
+      const updateData: any = {
         real_players: playersWithCategories,
         dollarBalance: newDollarBalance,
         updated_at: Timestamp.fromDate(getISTNow()),
-      });
+      };
+      
+      // Deduct fine from the specified currency
+      if (lineupFine > 0) {
+        if (categoryFineCurrency === 'euro') {
+          updateData.euroBalance = (homeTeamData.euroBalance || 0) - lineupFine;
+        } else {
+          updateData.dollarBalance = newDollarBalance - lineupFine;
+        }
+      }
+      
+      batch.update(homeTeamRef, updateData);
     }
     
     // Process away team
@@ -119,14 +130,24 @@ export async function processMatchResultWithContracts(
       const lineupValid = validateMatchLineup(playersWithCategories);
       const lineupFine = lineupValid ? 0 : categoryFine;
       
-      // Update team
-      const newDollarBalance = (awayTeamData.dollarBalance || 0) - totalSalaryDeducted - lineupFine;
-      
-      batch.update(awayTeamRef, {
+      // Update team - deduct salary and fine from appropriate balances
+      const newDollarBalance = (awayTeamData.dollarBalance || 0) - totalSalaryDeducted;
+      const updateData: any = {
         real_players: playersWithCategories,
         dollarBalance: newDollarBalance,
         updated_at: Timestamp.fromDate(getISTNow()),
-      });
+      };
+      
+      // Deduct fine from the specified currency
+      if (lineupFine > 0) {
+        if (categoryFineCurrency === 'euro') {
+          updateData.euroBalance = (awayTeamData.euroBalance || 0) - lineupFine;
+        } else {
+          updateData.dollarBalance = newDollarBalance - lineupFine;
+        }
+      }
+      
+      batch.update(awayTeamRef, updateData);
     }
     
     // Commit all updates

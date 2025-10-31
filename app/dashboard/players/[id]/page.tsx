@@ -6,7 +6,7 @@ import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebas
 import { db } from '@/lib/firebase/config';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
-import { usePlayerStats } from '@/hooks';
+import { usePlayerStats, usePlayerAwards, useTeamTrophies, useTeamSeasonStats, type PlayerAward, type TeamTrophy, type TeamStats } from '@/hooks';
 
 interface PlayerData {
   id: string;
@@ -99,11 +99,51 @@ export default function PlayerDetailPage() {
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
 
   const playerId = params.id as string;
+  const [firebaseSeasons, setFirebaseSeasons] = useState<any[]>([]);
   
   // Use React Query hook for player stats from Neon
   const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
     playerId: playerId
   });
+  
+  // Fetch seasons from Firebase to check start dates
+  useEffect(() => {
+    const fetchSeasons = async () => {
+      try {
+        const seasonsRef = collection(db, 'seasons');
+        const seasonsSnapshot = await getDocs(seasonsRef);
+        const seasonsData = seasonsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setFirebaseSeasons(seasonsData);
+      } catch (error) {
+        console.error('Error fetching seasons:', error);
+      }
+    };
+    fetchSeasons();
+  }, []);
+  
+  // Fetch player awards for currently selected season
+  const currentSeasonIdForAwards = selectedView === 'season' && selectedSeasonId ? selectedSeasonId : null;
+  const { data: playerAwards = [], isLoading: awardsLoading } = usePlayerAwards(
+    playerId,
+    currentSeasonIdForAwards || undefined
+  );
+  
+  // Fetch team trophies and stats for currently selected season
+  const currentTeamId = selectedView === 'season' && selectedSeasonId ? 
+    allSeasonData.find(s => (s.season_id || s.id) === selectedSeasonId)?.team_id : null;
+  
+  const { data: teamTrophies = [], isLoading: trophiesLoading } = useTeamTrophies(
+    currentTeamId || undefined,
+    currentSeasonIdForAwards || undefined
+  );
+  
+  const { data: teamStats, isLoading: teamStatsLoading } = useTeamSeasonStats(
+    currentTeamId || undefined,
+    currentSeasonIdForAwards || undefined
+  );
 
   useEffect(() => {
     if (authLoading) return;
@@ -130,6 +170,11 @@ export default function PlayerDetailPage() {
       return;
     }
     
+    // Wait for Firebase seasons to load before filtering
+    if (firebaseSeasons.length === 0) {
+      return;
+    }
+    
     // Only show error if done loading and no data
     if (!playerStatsData || playerStatsData.length === 0) {
       setError('No season stats found for this player');
@@ -139,9 +184,35 @@ export default function PlayerDetailPage() {
     // Clear error when we have data
     setError(null);
     
+    // Only show seasons that exist in Firebase and have started
+    const startedSeasons = playerStatsData.filter((statsData: any) => {
+      const seasonId = statsData.season_id;
+      
+      // Find the season in Firebase
+      const fbSeason = firebaseSeasons.find(s => s.id === seasonId);
+      
+      // If season not found in Firebase, exclude it
+      if (!fbSeason) return false;
+      
+      // Check if season has started
+      if (fbSeason.start_date) {
+        const startDate = fbSeason.start_date.toDate ? fbSeason.start_date.toDate() : new Date(fbSeason.start_date);
+        const now = new Date();
+        return startDate <= now;
+      }
+      
+      // If no start_date field, include it (for backward compatibility with old seasons)
+      return true;
+    });
+    
     // Process all season data from Neon
-    const allData = playerStatsData.map((statsData: any) => {
+    const allData = startedSeasons.map((statsData: any) => {
       const seasonName = statsData.season_name || statsData.season_id;
+      
+      const matchesPlayed = statsData.matches_played || 0;
+      const goalsScored = statsData.goals_scored || 0;
+      const goalsConceded = statsData.goals_conceded || 0;
+      const wins = statsData.wins || 0;
       
       return {
         ...statsData,
@@ -153,17 +224,21 @@ export default function PlayerDetailPage() {
         team_id: statsData.team_id,
         category: statsData.category,
         stats: {
-          matches_played: statsData.matches_played || 0,
-          matches_won: statsData.wins || 0,
+          matches_played: matchesPlayed,
+          matches_won: wins,
           matches_lost: statsData.losses || 0,
           matches_drawn: statsData.draws || 0,
-          goals_scored: statsData.goals_scored || 0,
-          goals_conceded: statsData.goals_conceded || 0,
+          goals_scored: goalsScored,
+          goals_conceded: goalsConceded,
           assists: statsData.assists || 0,
           clean_sheets: statsData.clean_sheets || 0,
           points: statsData.points || 0,
-          win_rate: statsData.matches_played > 0 
-            ? parseFloat(((statsData.wins / statsData.matches_played) * 100).toFixed(1))
+          // Calculate derived stats
+          net_goals: goalsScored - goalsConceded,
+          goals_per_game: matchesPlayed > 0 ? (goalsScored / matchesPlayed).toFixed(2) : '0.00',
+          conceded_per_game: matchesPlayed > 0 ? (goalsConceded / matchesPlayed).toFixed(2) : '0.00',
+          win_rate: matchesPlayed > 0 
+            ? parseFloat(((wins / matchesPlayed) * 100).toFixed(1))
             : 0
         }
       };
@@ -175,8 +250,11 @@ export default function PlayerDetailPage() {
     if (allData.length > 0) {
       setPlayer(allData[0]);
       setSeasonName(allData[0].season_name || 'Season');
+    } else if (startedSeasons.length === 0 && playerStatsData.length > 0) {
+      // If we have data but all seasons were filtered out, show message
+      setError('No active seasons found for this player');
     }
-  }, [playerStatsData, statsLoading]);
+  }, [playerStatsData, statsLoading, firebaseSeasons]);
 
 
   const fetchSeasonName = async (seasonId: string) => {
@@ -248,7 +326,7 @@ export default function PlayerDetailPage() {
     }
   };
 
-  if (authLoading || statsLoading) {
+  if (authLoading || statsLoading || (firebaseSeasons.length === 0 && !error)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
@@ -883,118 +961,172 @@ export default function PlayerDetailPage() {
               </div>
               )}
 
-              {/* Trophies & Achievements - Only for Individual Season View with trophies */}
-              {selectedView === 'season' && selectedSeasonId && (
-                (() => {
-                  const trophies = [];
-                  const teamName = currentSeasonData.team || 'Team';
+              {/* Team Trophies - Only for Individual Season View */}
+              {selectedView === 'season' && selectedSeasonId && !trophiesLoading && teamTrophies.length > 0 && (
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    🏆 Team Trophies
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-4">
+                    {currentSeasonData.season_name || 'This Season'} - with {currentSeasonData.team}
+                  </p>
                   
-                  // Team trophies (League & Cup)
-                  if (currentSeasonData.has_league_trophy) {
-                    const rankText = currentSeasonData.team_rank === 1 ? '🏆 League Champion' :
-                                    currentSeasonData.team_rank === 2 ? '🥈 League Runner-up' :
-                                    currentSeasonData.team_rank === 3 ? '🥉 League 3rd Place' :
-                                    `League Finalist (Rank ${currentSeasonData.team_rank})`;
-                    trophies.push({ 
-                      type: 'team', 
-                      name: rankText,
-                      team: teamName
-                    });
-                  }
-                  
-                  if (currentSeasonData.cup_achievement) {
-                    trophies.push({ 
-                      type: 'team', 
-                      name: currentSeasonData.cup_achievement,
-                      team: teamName
-                    });
-                  }
-                  
-                  // Category trophies (support unlimited)
-                  if (currentSeasonData.category_trophies && currentSeasonData.category_trophies.length > 0) {
-                    currentSeasonData.category_trophies.forEach(trophy => {
-                      if (trophy && trophy.trim()) {
-                        trophies.push({ 
-                          type: 'category', 
-                          name: trophy.trim(),
-                          team: teamName
-                        });
-                      }
-                    });
-                  }
-                  
-                  // Individual trophies (support unlimited)
-                  if (currentSeasonData.individual_trophies && currentSeasonData.individual_trophies.length > 0) {
-                    currentSeasonData.individual_trophies.forEach(trophy => {
-                      if (trophy && trophy.trim()) {
-                        trophies.push({ 
-                          type: 'individual', 
-                          name: trophy.trim(),
-                          team: teamName
-                        });
-                      }
-                    });
-                  }
-                  
-                  return trophies.length > 0 ? (
-                    <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
-                      <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
-                        <svg className="w-5 h-5 mr-2 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        🏆 Trophies & Achievements
-                      </h3>
-                      <p className="text-xs text-gray-500 mb-4">{currentSeasonData.season_name || 'This Season'}</p>
+                  {/* League Position from teamstats */}
+                  {teamStats && teamStats.position && (
+                    <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                          </svg>
+                          <span className="text-sm font-semibold text-blue-800">League Position</span>
+                        </div>
+                        <span className="text-2xl font-bold text-blue-700">#{teamStats.position}</span>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1">
+                        {teamStats.points} points • {teamStats.wins}W-{teamStats.draws}D-{teamStats.losses}L
+                      </p>
+                    </div>
+                  )}
 
-                      <div className="space-y-3">
-                        {trophies.map((trophy, index) => (
-                          <div key={index} className={`glass rounded-xl p-4 border-2 ${
-                            trophy.type === 'team'
-                              ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300'
-                              : trophy.type === 'category' 
-                              ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300' 
-                              : 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300'
-                          }`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                trophy.type === 'team' ? 'bg-green-500' :
-                                trophy.type === 'category' ? 'bg-blue-500' : 'bg-yellow-500'
+                  <div className="space-y-3">
+                    {teamTrophies.map((trophy) => {
+                      const isLeague = trophy.trophy_type === 'league';
+                      const isCup = trophy.trophy_type === 'cup';
+                      const isRunnerUp = trophy.trophy_type === 'runner_up';
+                      
+                      const bgGradient = isLeague
+                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300'
+                        : isCup
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300'
+                        : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-300';
+                      
+                      const iconBg = isLeague
+                        ? 'bg-green-500'
+                        : isCup
+                        ? 'bg-blue-500'
+                        : 'bg-gray-400';
+
+                      return (
+                        <div key={trophy.id} className={`glass rounded-xl p-4 border-2 ${bgGradient}`}>
+                          <div className="flex items-start gap-3">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+                              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-.5a1.5 1.5 0 00-3 0v.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-3a1 1 0 00-1-1h-.5a1.5 1.5 0 010-3H4a1 1 0 001-1V6a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-xs font-semibold mb-1 ${
+                                isLeague ? 'text-green-700' :
+                                isCup ? 'text-blue-700' : 'text-gray-700'
                               }`}>
-                                {trophy.type === 'team' ? (
-                                  <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-.5a1.5 1.5 0 00-3 0v.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-3a1 1 0 00-1-1h-.5a1.5 1.5 0 010-3H4a1 1 0 001-1V6a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
-                                  </svg>
-                                ) : (
-                                  <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                  </svg>
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <p className={`text-xs font-semibold mb-1 ${
-                                  trophy.type === 'team' ? 'text-green-700' :
-                                  trophy.type === 'category' ? 'text-blue-600' : 'text-yellow-700'
-                                }`}>
-                                  {trophy.type === 'team' ? '🏆 Team Trophy' :
-                                   trophy.type === 'category' ? '🏅 Category Award' : '⭐ Individual Award'}
+                                🏆 Team Trophy
+                              </p>
+                              <p className="text-sm font-bold text-gray-900">{trophy.trophy_name}</p>
+                              {trophy.position && (
+                                <p className="text-xs text-gray-600 mt-1">
+                                  Position: #{trophy.position}
                                 </p>
-                                <p className="text-sm font-bold text-gray-900">{trophy.name}</p>
-                                {trophy.team && (
-                                  <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
-                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                                    </svg>
-                                    with {trophy.team}
-                                  </p>
-                                )}
-                              </div>
+                              )}
+                              {trophy.notes && (
+                                <p className="text-xs text-gray-500 mt-1 italic">{trophy.notes}</p>
+                              )}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null;
-                })()
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Player Awards - Only for Individual Season View */}
+              {selectedView === 'season' && selectedSeasonId && !awardsLoading && playerAwards.length > 0 && (
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    ⭐ Player Awards
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-4">{currentSeasonData.season_name || 'This Season'}</p>
+
+                  <div className="space-y-3">
+                    {playerAwards.map((award) => {
+                      const isWinner = award.award_position?.toLowerCase() === 'winner' || !award.award_position;
+                      const bgGradient = isWinner
+                        ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-400'
+                        : award.award_position?.toLowerCase() === 'runner-up'
+                        ? 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-300'
+                        : 'bg-gradient-to-r from-orange-50 to-amber-50 border-orange-300';
+                      
+                      const iconBg = isWinner
+                        ? 'bg-purple-500'
+                        : award.award_position?.toLowerCase() === 'runner-up'
+                        ? 'bg-gray-400'
+                        : 'bg-orange-500';
+                      
+                      const textColor = isWinner
+                        ? 'text-purple-700'
+                        : award.award_position?.toLowerCase() === 'runner-up'
+                        ? 'text-gray-700'
+                        : 'text-orange-700';
+
+                      return (
+                        <div key={award.id} className={`glass rounded-xl p-4 border-2 ${bgGradient}`}>
+                          <div className="flex items-start gap-3">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+                              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className={`text-xs font-semibold ${textColor}`}>
+                                  {award.award_category === 'category' ? '🎯 Category Award' : '🌟 Individual Award'}
+                                </p>
+                                {award.award_position && (
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                    isWinner ? 'bg-purple-100 text-purple-700' :
+                                    award.award_position.toLowerCase() === 'runner-up' ? 'bg-gray-200 text-gray-700' :
+                                    'bg-orange-100 text-orange-700'
+                                  }`}>
+                                    {award.award_position}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm font-bold text-gray-900">{award.award_type}</p>
+                              {award.player_category && (
+                                <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.788l1.599.799L11 4.323V3a1 1 0 011-1zm-5 8.274l-.818 2.552c-.25.78.057 1.62.754 2.062.629.4 1.446.45 2.122.085.577-.312.998-.835 1.187-1.452l.818-2.552-4.063-1.094zm10 0l-4.063 1.094.818 2.552c.189.617.61 1.14 1.187 1.452.676.365 1.493.315 2.122-.085.697-.442 1.004-1.282.754-2.062L15 10.274z" clipRule="evenodd" />
+                                  </svg>
+                                  {award.player_category}
+                                </p>
+                              )}
+                              {award.performance_stats && Object.keys(award.performance_stats).length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {Object.entries(award.performance_stats).map(([key, value]) => (
+                                    <span key={key} className="text-xs bg-white/70 px-2 py-1 rounded-md">
+                                      <span className="font-medium text-gray-600">{key}:</span>{' '}
+                                      <span className="font-bold text-gray-900">{String(value)}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {award.notes && (
+                                <p className="text-xs text-gray-500 mt-2 italic">{award.notes}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
 
               {/* Round Performance - Only for Individual Season View */}

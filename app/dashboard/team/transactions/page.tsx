@@ -33,6 +33,8 @@ export default function TransactionsPage() {
   const [realPlayerData, setRealPlayerData] = useState<CurrencyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [seasonId, setSeasonId] = useState<string>('');
+  const [filterType, setFilterType] = useState<string>('all');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -52,23 +54,23 @@ export default function TransactionsPage() {
 
   const loadTransactions = async () => {
     try {
-      // First get current season
-      const seasonResponse = await fetch('/api/seasons/current');
-      if (!seasonResponse.ok) {
-        throw new Error('Failed to fetch current season');
+      setErrorMessage(null);
+      
+      // Try to fetch transactions - the API will determine which season the team is registered for
+      const response = await fetch('/api/team/transactions');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Transaction API error:', errorData);
+        
+        // Special handling for "not registered" error
+        if (errorData.error?.includes('not registered') || errorData.error === 'Season ID is required') {
+          setErrorMessage('You are not registered for any season yet. Please register to view transactions.');
+        } else {
+          setErrorMessage(errorData.error || 'Failed to load transactions');
+        }
+        throw new Error(errorData.error || 'Failed to load transactions');
       }
-      const seasonData = await seasonResponse.json();
-      const currentSeasonId = seasonData.season?.id;
-      
-      if (!currentSeasonId) {
-        throw new Error('No active season found');
-      }
-      
-      setSeasonId(currentSeasonId);
-      
-      // Fetch transactions for this season
-      const response = await fetch(`/api/team/transactions?season_id=${currentSeasonId}`);
-      if (!response.ok) throw new Error('Failed to load transactions');
       
       const data = await response.json();
       
@@ -80,62 +82,20 @@ export default function TransactionsPage() {
       }
     } catch (error) {
       console.error('Error loading transactions:', error);
-      // Mock data for now
+      // Set empty data instead of mock data
       setFootballData({
-        current_balance: 7500,
-        starting_balance: 10000,
-        total_spent: 2500,
+        current_balance: 0,
+        starting_balance: 0,
+        total_spent: 0,
         total_earned: 0,
-        transactions: [
-          {
-            id: '1',
-            date: '2025-01-22T10:00:00Z',
-            type: 'fine',
-            amount: -200,
-            reason: '2 Yellow cards in Match vs Team Alpha',
-            balance_after: 7500,
-          },
-          {
-            id: '2',
-            date: '2025-01-20T18:00:00Z',
-            type: 'salary',
-            amount: -800,
-            reason: 'Match 1 player salaries',
-            balance_after: 7700,
-          },
-          {
-            id: '3',
-            date: '2025-01-15T14:30:00Z',
-            type: 'auction',
-            amount: -1500,
-            reason: 'Won bid for Player Ronaldo',
-            balance_after: 8500,
-          },
-        ],
+        transactions: [],
       });
       setRealPlayerData({
-        current_balance: 4200,
-        starting_balance: 5000,
-        total_spent: 800,
+        current_balance: 0,
+        starting_balance: 0,
+        total_spent: 0,
         total_earned: 0,
-        transactions: [
-          {
-            id: '4',
-            date: '2025-01-22T09:00:00Z',
-            type: 'fine',
-            amount: -300,
-            reason: 'Late lineup submission',
-            balance_after: 4200,
-          },
-          {
-            id: '5',
-            date: '2025-01-18T12:00:00Z',
-            type: 'real_player_fee',
-            amount: -500,
-            reason: 'Registered Real Player: John Doe',
-            balance_after: 4500,
-          },
-        ],
+        transactions: [],
       });
     } finally {
       setIsLoading(false);
@@ -149,8 +109,38 @@ export default function TransactionsPage() {
       case 'auction': return '🔨';
       case 'real_player_fee': return '👤';
       case 'bonus': return '🎁';
+      case 'adjustment': return '🔧';
+      case 'transfer_payment': return '➡️';
+      case 'transfer_compensation': return '⬅️';
+      case 'swap_fee_paid': return '🔄';
+      case 'swap_fee_received': return '🔁';
+      case 'player_release_refund': return '↩️';
+      case 'initial_balance': return '🏦';
       default: return '📝';
     }
+  };
+
+  const getTransactionTypes = () => {
+    return [
+      { value: 'all', label: 'All Transactions' },
+      { value: 'auction', label: 'Auction Wins' },
+      { value: 'salary', label: 'Salaries' },
+      { value: 'fine', label: 'Fines' },
+      { value: 'bonus', label: 'Bonuses' },
+      { value: 'adjustment', label: 'Adjustments' },
+      { value: 'transfer_payment', label: 'Transfer Payments' },
+      { value: 'transfer_compensation', label: 'Transfer Compensation' },
+      { value: 'swap_fee_paid', label: 'Swap Fees Paid' },
+      { value: 'swap_fee_received', label: 'Swap Fees Received' },
+      { value: 'player_release_refund', label: 'Release Refunds' },
+      { value: 'real_player_fee', label: 'Real Player Fees' },
+      { value: 'initial_balance', label: 'Initial Balance' },
+    ];
+  };
+
+  const filterTransactions = (transactions: Transaction[]) => {
+    if (filterType === 'all') return transactions;
+    return transactions.filter(t => t.type === filterType);
   };
 
   const getTransactionColor = (amount: number) => {
@@ -239,8 +229,30 @@ export default function TransactionsPage() {
           )}
         </div>
 
-        {/* Export Button */}
-        <div className="flex justify-end">
+        {/* Filter and Export Bar */}
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Filter className="w-5 h-5 text-gray-500" />
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {getTransactionTypes().map(type => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+            {filterType !== 'all' && (
+              <button
+                onClick={() => setFilterType('all')}
+                className="text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
           <button
             onClick={() => exportTransactions(currencyType)}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
@@ -274,14 +286,14 @@ export default function TransactionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {data.transactions.length === 0 ? (
+                {filterTransactions(data.transactions).length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                      No transactions yet
+                      {data.transactions.length === 0 ? 'No transactions yet' : 'No transactions match the selected filter'}
                     </td>
                   </tr>
                 ) : (
-                  data.transactions.map((transaction) => (
+                  filterTransactions(data.transactions).map((transaction) => (
                     <tr key={transaction.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {formatDate(transaction.date)}
@@ -341,6 +353,21 @@ export default function TransactionsPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Transaction History</h1>
           <p className="text-gray-600">View all your financial transactions and budget breakdown</p>
         </div>
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <h3 className="font-semibold text-yellow-900">Unable to Load Transactions</h3>
+                <p className="text-yellow-800 text-sm mt-1">{errorMessage}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="bg-white rounded-t-xl shadow-lg border border-gray-200 border-b-0">

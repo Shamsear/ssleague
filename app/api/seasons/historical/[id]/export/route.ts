@@ -123,6 +123,28 @@ export async function GET(
     
     console.log(`✅ Retrieved permanent data for ${playerDataMap.size} players`);
     
+    // Fetch player awards from Neon for this season
+    const awardsData = await sql`
+      SELECT player_id, award_category, award_type, season_id
+      FROM player_awards
+      WHERE season_id = ${sessionId}
+    `;
+    console.log(`🏆 Player awards fetched: ${awardsData.length}`);
+    
+    // Group awards by player_id
+    const playerAwardsMap = new Map<string, { category_trophies: string[], individual_trophies: string[] }>();
+    awardsData.forEach((award: any) => {
+      if (!playerAwardsMap.has(award.player_id)) {
+        playerAwardsMap.set(award.player_id, { category_trophies: [], individual_trophies: [] });
+      }
+      const awards = playerAwardsMap.get(award.player_id)!;
+      if (award.award_category === 'category') {
+        awards.category_trophies.push(award.award_type);
+      } else if (award.award_category === 'individual') {
+        awards.individual_trophies.push(award.award_type);
+      }
+    });
+    
     // Debug: Log first team if exists
     if (teamsSnapshot.docs.length > 0) {
       const firstTeam = teamsSnapshot.docs[0].data();
@@ -195,6 +217,7 @@ export async function GET(
     // Process players data - merge permanent data with season stats from Neon
     const players = playerStatsData.map((statsData: any) => {
       const permanentData = playerDataMap.get(statsData.player_id) || {};
+      const playerAwards = playerAwardsMap.get(statsData.player_id) || { category_trophies: [], individual_trophies: [] };
       
       return {
         player_id: statsData.player_id || statsData.id,
@@ -228,9 +251,9 @@ export async function GET(
         potm: statsData.potm || statsData.stats?.potm || null, // Player of the Match (nullable)
         current_season_matches: statsData.current_season_matches || statsData.stats?.current_season_matches || 0,
         current_season_wins: statsData.current_season_wins || statsData.stats?.current_season_wins || 0,
-        // Trophy arrays
-        category_trophies: statsData.category_trophies || [],
-        individual_trophies: statsData.individual_trophies || []
+        // Trophy arrays from player_awards table
+        category_trophies: playerAwards.category_trophies,
+        individual_trophies: playerAwards.individual_trophies
       };
     });
 

@@ -165,6 +165,7 @@ function PlayerRegistrationContent() {
           relationship: formData.emergency_contact_relationship
         },
         is_active: true,
+        status: 'free_agent', // Default status is free_agent until assigned to team
         registration_status: 'pending',
         created_at: Timestamp.now(),
         updated_at: Timestamp.now()

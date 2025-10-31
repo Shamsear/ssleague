@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
         await seasonRef.update({
           registration_phase: 'unconfirmed',
           unconfirmed_registration_enabled: true,
+          is_player_registration_open: true, // Re-open registration link for Phase 2
           updated_at: new Date(),
         });
 

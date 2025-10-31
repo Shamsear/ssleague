@@ -13,6 +13,53 @@ import { PlayerCategory } from '@/types/season';
 export const CONTRACT_DURATION_SEASONS = 2; // All contracts are 2 seasons
 
 /**
+ * Get minimum auction value for a star rating (synchronous fallback)
+ */
+export function getMinimumAuctionValue(starRating: number): number {
+  const mapping: { [key: number]: number } = {
+    3: 100,
+    4: 120,
+    5: 150,
+    6: 180,
+    7: 220,
+    8: 270,
+    9: 330,
+    10: 400,
+  };
+  return mapping[starRating] || 100;
+}
+
+/**
+ * Get base auction value for a star rating from season config
+ */
+export async function getBaseAuctionValue(starRating: number, seasonId: string): Promise<number> {
+  try {
+    const response = await fetch(`/api/star-rating-config?seasonId=${seasonId}`);
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      const config = result.data.find((item: any) => item.star_rating === starRating);
+      return config?.base_auction_value || 100;
+    }
+  } catch (error) {
+    console.error('Error fetching star rating config:', error);
+  }
+  
+  // Fallback to hardcoded defaults
+  const mapping: { [key: number]: number } = {
+    3: 100,
+    4: 120,
+    5: 150,
+    6: 180,
+    7: 220,
+    8: 270,
+    9: 330,
+    10: 400,
+  };
+  return mapping[starRating] || 100;
+}
+
+/**
  * Calculate salary per match for real players
  * Formula: (auction_value ÷ 100) × star_rating ÷ 10
  */
@@ -105,8 +152,22 @@ export function calculateStarRating(points: number): number {
 
 /**
  * Get initial points based on star rating
+ * Fetches from season configuration in Firebase
  */
-export function getInitialPoints(starRating: number): number {
+export async function getInitialPoints(starRating: number, seasonId: string): Promise<number> {
+  try {
+    const response = await fetch(`/api/star-rating-config?seasonId=${seasonId}`);
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      const config = result.data.find((item: any) => item.star_rating === starRating);
+      return config?.starting_points || 100;
+    }
+  } catch (error) {
+    console.error('Error fetching star rating config:', error);
+  }
+  
+  // Fallback to hardcoded defaults
   const mapping: { [key: number]: number } = {
     3: 100,
     4: 120,

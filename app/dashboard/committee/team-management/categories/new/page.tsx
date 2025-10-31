@@ -55,7 +55,8 @@ export default function NewCategoryPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to create category');
+        setError(result.error || 'Failed to create category');
+        return;
       }
 
       router.push('/dashboard/committee/team-management/categories?success=created');

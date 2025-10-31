@@ -140,7 +140,7 @@ export default function ContractsPage() {
   }, [user, userSeasonId]);
 
   const handleCancelContract = async (contractId: string, playerName: string) => {
-    if (!confirm(`Are you sure you want to cancel the contract for ${playerName}? This will remove both season registrations.`)) {
+    if (!confirm(`Are you sure you want to cancel the contract for ${playerName}? This will release the player and apply refund logic.`)) {
       return;
     }
 
@@ -148,17 +148,43 @@ export default function ContractsPage() {
       const contractDocs = groupedContracts.get(contractId);
       if (!contractDocs) return;
 
-      // Delete all documents associated with this contract
-      for (const doc of contractDocs) {
-        const docId = `${doc.player_id}_${doc.season_id}`;
-        await deleteDoc(doc(db, 'realplayer', docId));
+      const firstDoc = contractDocs[0];
+      
+      // Call the release API to properly handle the contract cancellation
+      const response = await fetch('/api/players/release', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          player_id: firstDoc.player_id,
+          season_id: userSeasonId,
+          released_by: user?.email || 'admin',
+          released_by_name: user?.email || 'Admin'
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to cancel contract');
       }
 
-      alert('Contract cancelled successfully');
+      // After successful release, delete the contract season documents
+      for (const doc of contractDocs) {
+        const docId = `${doc.player_id}_${doc.season_id}`;
+        try {
+          await deleteDoc(doc(db, 'realplayer', docId));
+        } catch (err) {
+          console.warn(`Failed to delete contract doc ${docId}:`, err);
+        }
+      }
+
+      alert(`Contract cancelled successfully. ${result.refund_amount > 0 ? `Refund: $${result.refund_amount}` : 'No refund applicable.'}`);
       window.location.reload();
     } catch (error) {
       console.error('Error cancelling contract:', error);
-      alert('Failed to cancel contract');
+      alert(`Failed to cancel contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 

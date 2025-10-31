@@ -675,31 +675,72 @@ async function importTeams(
       const teamStatsDocId = `${teamId}_${seasonId}`;
       const sql = getTournamentDb();
       
+      // Helper function to parse trophy strings like "UCL CHAMPIONS" or "CUP RUNNERS UP"
+      const parseTrophyName = (rawName: string): { name: string; position: string | null } => {
+        const normalized = rawName.trim().toUpperCase();
+        
+        // Check for common position indicators
+        if (normalized.endsWith('CHAMPIONS') || normalized.endsWith('CHAMPION')) {
+          const trophyName = normalized.replace(/CHAMPIONS?$/, '').trim();
+          return { name: trophyName, position: 'Champions' };
+        }
+        if (normalized.endsWith('RUNNERS UP') || normalized.endsWith('RUNNER UP')) {
+          const trophyName = normalized.replace(/RUNNERS? UP$/, '').trim();
+          return { name: trophyName, position: 'Runner Up' };
+        }
+        if (normalized.endsWith('WINNER') || normalized.endsWith('WINNERS')) {
+          const trophyName = normalized.replace(/WINNERS?$/, '').trim();
+          return { name: trophyName, position: 'Winner' };
+        }
+        if (normalized.endsWith('THIRD PLACE')) {
+          const trophyName = normalized.replace(/THIRD PLACE$/, '').trim();
+          return { name: trophyName, position: 'Third Place' };
+        }
+        
+        // If no position indicator found, return name with null position
+        return { name: rawName.trim(), position: null };
+      };
+      
       // Parse team trophies/cups from Excel (cup_1, cup_2, etc.)
-      const teamTrophies: any[] = [];
+      const teamTrophies: Array<{ type: string; name: string; position: string | null }> = [];
       Object.keys(team).forEach((key) => {
         const lowerKey = key.toLowerCase();
         const value = (team as any)[key];
         if (!value || value === '') return;
         if (lowerKey.includes('cup')) {
-          teamTrophies.push({ type: 'cup', name: value });
+          // Check if value contains multiple trophies separated by comma
+          const valueStr = String(value).trim();
+          if (valueStr.includes(',')) {
+            // Split by comma and process each trophy separately
+            const trophyNames = valueStr.split(',').map(t => t.trim()).filter(t => t);
+            trophyNames.forEach(trophyName => {
+              const parsed = parseTrophyName(trophyName);
+              if (parsed.name) {
+                teamTrophies.push({ type: 'cup', name: parsed.name, position: parsed.position });
+              }
+            });
+          } else {
+            // Single trophy
+            const parsed = parseTrophyName(valueStr);
+            if (parsed.name) {
+              teamTrophies.push({ type: 'cup', name: parsed.name, position: parsed.position });
+            }
+          }
         }
       });
-      const teamTrophiesJson = JSON.stringify(teamTrophies);
       
       await sql`
         INSERT INTO teamstats (
           id, team_id, season_id, team_name, tournament_id,
           points, matches_played, wins, draws, losses,
-          goals_for, goals_against, goal_difference, position, trophies,
+          goals_for, goals_against, goal_difference, position,
           created_at, updated_at
         )
         VALUES (
-          ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, ${'historical'},
+          ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, 'historical',
           ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
           ${team.d || 0}, ${team.l || 0},
           ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
-          ${teamTrophiesJson}::jsonb,
           NOW(), NOW()
         )
         ON CONFLICT (team_id, season_id) DO UPDATE
@@ -714,11 +755,50 @@ async function importTeams(
           goals_against = EXCLUDED.goals_against,
           goal_difference = EXCLUDED.goal_difference,
           position = EXCLUDED.position,
-          trophies = EXCLUDED.trophies,
           updated_at = NOW()
       `;
       
       console.log(`✅ Updated teamstats in NEON for: ${normalizedTeamName}`);
+      
+      // ✅ Insert trophies into team_trophies table with separate name and position
+      // 1. Add league position trophies
+      const leaguePosition = team.rank || team.position;
+      if (leaguePosition === 1) {
+        await sql`
+          INSERT INTO team_trophies (
+            team_id, team_name, season_id, trophy_type, trophy_name, trophy_position, position, awarded_by
+          )
+          VALUES (
+            ${teamId}, ${normalizedTeamName}, ${seasonId}, 'league', 'League', 'Winner', 1, 'system'
+          )
+          ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
+        `;
+      } else if (leaguePosition === 2) {
+        await sql`
+          INSERT INTO team_trophies (
+            team_id, team_name, season_id, trophy_type, trophy_name, trophy_position, position, awarded_by
+          )
+          VALUES (
+            ${teamId}, ${normalizedTeamName}, ${seasonId}, 'runner_up', 'League', 'Runner Up', 2, 'system'
+          )
+          ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
+        `;
+      }
+      
+      // 2. Add cup trophies from Excel with separate name and position
+      for (const trophy of teamTrophies) {
+        await sql`
+          INSERT INTO team_trophies (
+            team_id, team_name, season_id, trophy_type, trophy_name, trophy_position, awarded_by
+          )
+          VALUES (
+            ${teamId}, ${normalizedTeamName}, ${seasonId}, 'cup', ${trophy.name}, ${trophy.position}, 'system'
+          )
+          ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
+        `;
+      }
+      
+      console.log(`✅ Inserted ${teamTrophies.length + (leaguePosition <= 2 ? 1 : 0)} trophies for ${normalizedTeamName}`);
       
     } else {
       // Team doesn't exist, create new team with custom ID
@@ -834,31 +914,76 @@ async function importTeams(
         const teamStatsDocId = `${teamId}_${seasonId}`;
         const sqlTeam = getTournamentDb();
         
+        // Helper function to parse trophy strings like "UCL CHAMPIONS" or "CUP RUNNERS UP"
+        const parseTrophyNameNew = (rawName: any): { name: string; position: string | null } => {
+          // Convert to string and handle non-string values
+          const nameStr = String(rawName || '').trim();
+          if (!nameStr) return { name: '', position: null };
+          
+          const normalized = nameStr.toUpperCase();
+          
+          // Check for common position indicators
+          if (normalized.endsWith('CHAMPIONS') || normalized.endsWith('CHAMPION')) {
+            const trophyName = normalized.replace(/CHAMPIONS?$/, '').trim();
+            return { name: trophyName, position: 'Champions' };
+          }
+          if (normalized.endsWith('RUNNERS UP') || normalized.endsWith('RUNNER UP')) {
+            const trophyName = normalized.replace(/RUNNERS? UP$/, '').trim();
+            return { name: trophyName, position: 'Runner Up' };
+          }
+          if (normalized.endsWith('WINNER') || normalized.endsWith('WINNERS')) {
+            const trophyName = normalized.replace(/WINNERS?$/, '').trim();
+            return { name: trophyName, position: 'Winner' };
+          }
+          if (normalized.endsWith('THIRD PLACE')) {
+            const trophyName = normalized.replace(/THIRD PLACE$/, '').trim();
+            return { name: trophyName, position: 'Third Place' };
+          }
+          
+          // If no position indicator found, return name with null position
+          return { name: nameStr, position: null };
+        };
+        
         // Parse team trophies/cups
-        const teamTrophies2: any[] = [];
+        const teamTrophies2: Array<{ type: string; name: string; position: string | null }> = [];
         Object.keys(team).forEach((key) => {
           const lowerKey = key.toLowerCase();
           const value = (team as any)[key];
           if (!value || value === '') return;
           if (lowerKey.includes('cup')) {
-            teamTrophies2.push({ type: 'cup', name: value });
+            // Check if value contains multiple trophies separated by comma
+            const valueStr = String(value).trim();
+            if (valueStr.includes(',')) {
+              // Split by comma and process each trophy separately
+              const trophyNames = valueStr.split(',').map(t => t.trim()).filter(t => t);
+              trophyNames.forEach(trophyName => {
+                const parsed = parseTrophyNameNew(trophyName);
+                if (parsed.name) {
+                  teamTrophies2.push({ type: 'cup', name: parsed.name, position: parsed.position });
+                }
+              });
+            } else {
+              // Single trophy
+              const parsed = parseTrophyNameNew(valueStr);
+              if (parsed.name) {
+                teamTrophies2.push({ type: 'cup', name: parsed.name, position: parsed.position });
+              }
+            }
           }
         });
-        const teamTrophiesJson2 = JSON.stringify(teamTrophies2);
         
         await sqlTeam`
           INSERT INTO teamstats (
             id, team_id, season_id, team_name, tournament_id,
             points, matches_played, wins, draws, losses,
-            goals_for, goals_against, goal_difference, position, trophies,
+            goals_for, goals_against, goal_difference, position,
             created_at, updated_at
           )
           VALUES (
-            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, ${'historical'},
+            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, 'historical',
             ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
             ${team.d || 0}, ${team.l || 0},
             ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
-            ${teamTrophiesJson2}::jsonb,
             NOW(), NOW()
           )
           ON CONFLICT (team_id, season_id) DO UPDATE
@@ -873,11 +998,50 @@ async function importTeams(
             goals_against = EXCLUDED.goals_against,
             goal_difference = EXCLUDED.goal_difference,
             position = EXCLUDED.position,
-            trophies = EXCLUDED.trophies,
             updated_at = NOW()
         `;
         
         console.log(`✅ Created teamstats in NEON for new team: ${normalizedTeamName}`);
+        
+        // ✅ Insert trophies into team_trophies table with separate name and position
+        // 1. Add league position trophies
+        const positionNew = team.rank || team.position;
+        if (positionNew === 1) {
+          await sqlTeam`
+            INSERT INTO team_trophies (
+              team_id, team_name, season_id, trophy_type, trophy_name, trophy_position, position, awarded_by
+            )
+            VALUES (
+              ${teamId}, ${normalizedTeamName}, ${seasonId}, 'league', 'League', 'Winner', 1, 'system'
+            )
+            ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
+          `;
+        } else if (positionNew === 2) {
+          await sqlTeam`
+            INSERT INTO team_trophies (
+              team_id, team_name, season_id, trophy_type, trophy_name, trophy_position, position, awarded_by
+            )
+            VALUES (
+              ${teamId}, ${normalizedTeamName}, ${seasonId}, 'runner_up', 'League', 'Runner Up', 2, 'system'
+            )
+            ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
+          `;
+        }
+        
+        // 2. Add cup trophies from Excel with separate name and position
+        for (const trophy of teamTrophies2) {
+          await sqlTeam`
+            INSERT INTO team_trophies (
+              team_id, team_name, season_id, trophy_type, trophy_name, trophy_position, awarded_by
+            )
+            VALUES (
+              ${teamId}, ${normalizedTeamName}, ${seasonId}, 'cup', ${trophy.name}, ${trophy.position}, 'system'
+            )
+            ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
+          `;
+        }
+        
+        console.log(`✅ Inserted ${teamTrophies2.length + (positionNew <= 2 ? 1 : 0)} trophies for ${normalizedTeamName}`);
         
       } catch (userError: any) {
         console.error(`❌ Error creating user for team ${normalizedTeamName}:`, userError);
@@ -913,31 +1077,18 @@ async function importTeams(
         const teamStatsDocId = `${teamId}_${seasonId}`;
         const sql3 = getTournamentDb();
         
-        // Parse team trophies/cups
-        const teamTrophies3: any[] = [];
-        Object.keys(team).forEach((key) => {
-          const lowerKey = key.toLowerCase();
-          const value = (team as any)[key];
-          if (!value || value === '') return;
-          if (lowerKey.includes('cup')) {
-            teamTrophies3.push({ type: 'cup', name: value });
-          }
-        });
-        const teamTrophiesJson3 = JSON.stringify(teamTrophies3);
-        
         await sql3`
           INSERT INTO teamstats (
             id, team_id, season_id, team_name, tournament_id,
             points, matches_played, wins, draws, losses,
-            goals_for, goals_against, goal_difference, position, trophies,
+            goals_for, goals_against, goal_difference, position,
             created_at, updated_at
           )
           VALUES (
-            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, ${'historical'},
+            ${teamStatsDocId}, ${teamId}, ${seasonId}, ${normalizedTeamName}, 'historical',
             ${team.p || 0}, ${team.mp || 0}, ${team.w || 0}, 
             ${team.d || 0}, ${team.l || 0},
             ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
-            ${teamTrophiesJson3}::jsonb,
             NOW(), NOW()
           )
           ON CONFLICT (team_id, season_id) DO UPDATE
@@ -952,7 +1103,6 @@ async function importTeams(
             goals_against = EXCLUDED.goals_against,
             goal_difference = EXCLUDED.goal_difference,
             position = EXCLUDED.position,
-            trophies = EXCLUDED.trophies,
             updated_at = NOW()
         `;
         
@@ -1204,27 +1354,92 @@ async function importPlayers(
     const teamIdForPlayer = teamMap.get(normalizedPlayerTeam) || null;
     
     // Parse trophies from Excel data (handles numbered columns like category_wise_trophy_1, category_wise_trophy_2, etc.)
-    const trophiesArray: any[] = [];
+    const playerAwards: Array<{ award_name: string; award_position: string | null; type: 'category' | 'individual' }> = [];
     
-    // Scan all player properties for trophy columns
+    // Helper function to parse trophy/award name and extract position
+    const parseAwardName = (rawName: any): { name: string; position: string | null } => {
+      // Convert to string and handle non-string values
+      const nameStr = String(rawName || '').trim();
+      if (!nameStr) return { name: '', position: null };
+      
+      const normalized = nameStr.toUpperCase();
+      
+      // Check for position indicators
+      if (normalized.endsWith('RUNNER UP') || normalized.endsWith('RUNNER-UP')) {
+        const awardName = normalized.replace(/RUNNER[\s-]*UP$/, '').trim();
+        return { name: awardName, position: 'Runner-up' };
+      }
+      if (normalized.endsWith('WINNER') || normalized.endsWith('WINNERS')) {
+        const awardName = normalized.replace(/WINNERS?$/, '').trim();
+        return { name: awardName, position: 'Winner' };
+      }
+      if (normalized.endsWith('THIRD PLACE') || normalized.endsWith('3RD PLACE')) {
+        const awardName = normalized.replace(/(THIRD|3RD)\s+PLACE$/, '').trim();
+        return { name: awardName, position: 'Third Place' };
+      }
+      
+      // If no position indicator found, return name with null position
+      return { name: nameStr, position: null };
+    };
+    
+    // First, check if trophies come as arrays from preview (category_trophies, individual_trophies)
+    if (Array.isArray((player as any).category_trophies)) {
+      (player as any).category_trophies.forEach((trophy: string) => {
+        if (trophy && trophy.trim()) {
+          const parsed = parseAwardName(trophy);
+          if (parsed.name) {
+            playerAwards.push({ award_name: parsed.name, award_position: parsed.position, type: 'category' });
+          }
+        }
+      });
+    }
+    
+    if (Array.isArray((player as any).individual_trophies)) {
+      (player as any).individual_trophies.forEach((trophy: string) => {
+        if (trophy && trophy.trim()) {
+          const parsed = parseAwardName(trophy);
+          if (parsed.name) {
+            playerAwards.push({ award_name: parsed.name, award_position: parsed.position, type: 'individual' });
+          }
+        }
+      });
+    }
+    
+    // Also scan all player properties for trophy columns (for direct Excel imports)
     Object.keys(player).forEach((key) => {
       const lowerKey = key.toLowerCase();
       const value = (player as any)[key];
       
+      // Skip if already processed as arrays
+      if (lowerKey === 'category_trophies' || lowerKey === 'individual_trophies') return;
+      
       // Skip empty values
       if (!value || value === '') return;
       
-      // Check for category trophies (category_trophies, category_wise_trophy, category_wise_trophy_1, etc.)
-      if (lowerKey.includes('category') && lowerKey.includes('trophy')) {
-        trophiesArray.push({ type: 'category', name: value });
-      }
-      // Check for individual trophies (individual_trophies, individual_wise_trophy, individual_wise_trophy_1, etc.)
-      else if (lowerKey.includes('individual') && lowerKey.includes('trophy')) {
-        trophiesArray.push({ type: 'individual', name: value });
+      const parsed = parseAwardName(value);
+      
+      // Only add if award name is not empty
+      if (parsed.name) {
+        // Check for category trophies (Cat Trophy, category_wise_trophy_1, etc.)
+        if ((lowerKey.includes('category') || lowerKey.includes('cat')) && lowerKey.includes('trophy')) {
+          playerAwards.push({ award_name: parsed.name, award_position: parsed.position, type: 'category' });
+          console.log(`    🏆 Found category trophy from column "${key}": ${parsed.name}`);
+        }
+        // Check for individual trophies (Ind Trophy, individual_wise_trophy_1, etc.)
+        else if ((lowerKey.includes('individual') || lowerKey.includes('ind')) && lowerKey.includes('trophy')) {
+          playerAwards.push({ award_name: parsed.name, award_position: parsed.position, type: 'individual' });
+          console.log(`    🏆 Found individual trophy from column "${key}": ${parsed.name}`);
+        }
       }
     });
     
-    const trophiesJson = JSON.stringify(trophiesArray);
+    console.log(`  🏆 Total awards found for ${normalizedPlayerName}: ${playerAwards.length}`);
+    if (playerAwards.length > 0) {
+      console.log(`  🏆 Awards: ${playerAwards.map(a => `${a.award_name} (${a.type})`).join(', ')}`);
+    }
+    
+    // For backward compatibility, still store in trophies JSONB (but we'll use player_awards table as primary)
+    const trophiesJson = JSON.stringify(playerAwards.map(a => ({ type: a.type, name: a.award_name })));
     
     await sqlPlayer`
       INSERT INTO realplayerstats (
@@ -1236,7 +1451,7 @@ async function importPlayers(
         created_at, updated_at
       )
       VALUES (
-        ${statsDocId}, ${playerId}, ${seasonId}, ${normalizedPlayerName}, ${'historical'},
+        ${statsDocId}, ${playerId}, ${seasonId}, ${normalizedPlayerName}, 'historical',
         ${player.category || ''}, ${normalizedPlayerTeam}, ${teamIdForPlayer},
         ${newStats.matches_played || 0}, ${newStats.matches_won || 0}, 
         ${newStats.matches_drawn || 0}, ${newStats.matches_lost || 0},
@@ -1271,6 +1486,39 @@ async function importPlayers(
     `;
     
     console.log(`✅ Created/Updated player stats in NEON: ${normalizedPlayerName}`);
+    
+    // ✅ Insert player awards into player_awards table with separate name and position
+    for (const award of playerAwards) {
+      try {
+        // Determine player_category: use player's position category
+        const playerCategory = player.category || null;
+        
+        await sqlPlayer`
+          INSERT INTO player_awards (
+            player_id, player_name, season_id, 
+            award_category, award_type, award_position,
+            player_category, created_at, updated_at
+          )
+          VALUES (
+            ${playerId}, ${normalizedPlayerName}, ${seasonId},
+            ${award.type}, ${award.award_name}, ${award.award_position},
+            ${playerCategory}, NOW(), NOW()
+          )
+          ON CONFLICT (player_id, season_id, award_category, award_type, award_position) 
+          DO UPDATE SET
+            player_name = EXCLUDED.player_name,
+            player_category = EXCLUDED.player_category,
+            updated_at = NOW()
+        `;
+      } catch (awardError) {
+        console.error(`⚠️  Error inserting award for ${normalizedPlayerName}:`, awardError);
+        // Continue with other awards even if one fails
+      }
+    }
+    
+    if (playerAwards.length > 0) {
+      console.log(`✅ Inserted ${playerAwards.length} awards for ${normalizedPlayerName}`);
+    }
     
     // Update team statistics
     const teamStats = normalizedPlayerTeam ? teamStatsMap.get(normalizedPlayerTeam.toLowerCase()) : null;

@@ -7,6 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
 import Link from 'next/link';
+import * as XLSX from 'xlsx';
 
 interface Player {
   id: string;
@@ -52,6 +53,7 @@ export default function PlayerRatingsPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [pageReady, setPageReady] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [starRatingConfig, setStarRatingConfig] = useState<any>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -79,6 +81,18 @@ export default function PlayerRatingsPage() {
         if (categoriesResult.success && categoriesResult.data) {
           setCategories(categoriesResult.data);
           console.log(`Loaded ${categoriesResult.data.length} categories`);
+        }
+        
+        // Fetch star rating config for base prices
+        try {
+          const configResponse = await fetch(`/api/star-rating-config?seasonId=${userSeasonId}`);
+          const configResult = await configResponse.json();
+          if (configResult.success && configResult.data) {
+            setStarRatingConfig(configResult.data);
+            console.log('Loaded star rating config with base prices');
+          }
+        } catch (err) {
+          console.warn('Could not load star rating config:', err);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -181,6 +195,61 @@ export default function PlayerRatingsPage() {
       }
       return p;
     }));
+  };
+
+  const handleExportToXLSX = () => {
+    try {
+      // Prepare data for export
+      const exportData = players.map(player => {
+        // Find the config for this star rating
+        const ratingConfig = Array.isArray(starRatingConfig) 
+          ? starRatingConfig.find((c: any) => c.star_rating === player.starRating)
+          : null;
+        const basePrice = ratingConfig?.base_auction_value || 100; // Fallback to 100 if not found
+        
+        return {
+          'Player Name': player.playerName,
+          'Star Rating': player.starRating,
+          'Category': player.categoryName || 'Not Assigned',
+          'Points': player.points,
+          'Base Price': basePrice,
+        };
+      });
+
+      // Sort by star rating (descending) for better readability
+      exportData.sort((a, b) => b['Star Rating'] - a['Star Rating']);
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 30 }, // Player Name
+        { wch: 12 }, // Star Rating
+        { wch: 20 }, // Category
+        { wch: 10 }, // Points
+        { wch: 12 }, // Base Price
+      ];
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Player Ratings');
+
+      // Generate filename with season and date
+      const seasonName = currentSeason?.name?.replace(/\s+/g, '_') || 'Season';
+      const date = new Date().toISOString().split('T')[0];
+      const filename = `Player_Ratings_${seasonName}_${date}.xlsx`;
+
+      // Download
+      XLSX.writeFile(wb, filename);
+
+      setSuccess(`Exported ${players.length} players to ${filename}`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Error exporting to XLSX:', err);
+      setError('Failed to export to XLSX');
+      setTimeout(() => setError(null), 3000);
+    }
   };
 
   const handleRecalculateCategories = async () => {
@@ -350,7 +419,7 @@ export default function PlayerRatingsPage() {
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Categories Required</h2>
-            <p className="text-amber-600 mb-6">You must create categories before assigning player ratings. Categories will be equally distributed among players based on their star ratings.</p>
+            <p className="text-amber-600 mb-6">You must create categories before assigning player ratings. Categories will be equally distributed among players based on their points.</p>
             <Link 
               href="/dashboard/committee/team-management/categories"
               className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:shadow-lg transition-all transform hover:scale-105"
@@ -395,7 +464,7 @@ export default function PlayerRatingsPage() {
             ⭐ Player Ratings & Categories
           </h1>
           <p className="text-gray-600">
-            Assign star ratings to players. Categories will be auto-distributed equally based on ratings.
+            Assign star ratings to players. Categories will be auto-distributed equally based on points.
           </p>
         </div>
 
@@ -500,19 +569,34 @@ export default function PlayerRatingsPage() {
               </div>
 
               {/* Action buttons */}
-              <div className="mt-6 flex justify-between items-center gap-4">
-                {/* Recalculate button */}
-                <button
-                  onClick={handleRecalculateCategories}
-                  disabled={recalculating || submitting}
-                  className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title="Recalculate categories based on current star ratings without saving"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  {recalculating ? 'Recalculating...' : 'Recalculate Categories'}
-                </button>
+              <div className="mt-6 flex flex-wrap justify-between items-center gap-4">
+                <div className="flex items-center gap-3">
+                  {/* Recalculate button */}
+                  <button
+                    onClick={handleRecalculateCategories}
+                    disabled={recalculating || submitting}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    title="Recalculate categories based on current star ratings without saving"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {recalculating ? 'Recalculating...' : 'Recalculate Categories'}
+                  </button>
+
+                  {/* Export button */}
+                  <button
+                    onClick={handleExportToXLSX}
+                    disabled={submitting || recalculating || players.length === 0}
+                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    title="Export player ratings to Excel file"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export to XLSX
+                  </button>
+                </div>
 
                 {/* Save button */}
                 <button

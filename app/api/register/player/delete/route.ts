@@ -78,16 +78,54 @@ export async function DELETE(request: NextRequest) {
       console.warn('Firebase next season realplayer deletion failed (may not exist):', fbError);
     }
 
-    // Decrement confirmed_slots_filled counter if this was a confirmed registration
+    // Auto-promote unconfirmed player if this was a confirmed registration
+    let promotedPlayer = null;
     if (registrationType === 'confirmed') {
       const seasonDoc = await adminDb.collection('seasons').doc(season_id).get();
       if (seasonDoc.exists) {
-        const currentFilled = seasonDoc.data()?.confirmed_slots_filled || 0;
+        const seasonData = seasonDoc.data()!;
+        const currentFilled = seasonData.confirmed_slots_filled || 0;
+        const confirmedLimit = seasonData.confirmed_slots_limit || 999;
+        
         if (currentFilled > 0) {
+          // Decrement the counter first
           await adminDb.collection('seasons').doc(season_id).update({
             confirmed_slots_filled: currentFilled - 1,
           });
           console.log(`✅ Decremented confirmed_slots_filled for season ${season_id}`);
+          
+          // Check if we're still below the limit (meaning we have space)
+          if (currentFilled <= confirmedLimit) {
+            // Get the oldest unconfirmed player
+            const unconfirmedPlayers = await sql`
+              SELECT id, player_id, player_name, registration_date
+              FROM player_seasons
+              WHERE season_id = ${season_id}
+                AND registration_type = 'unconfirmed'
+              ORDER BY registration_date ASC
+              LIMIT 1
+            `;
+            
+            if (unconfirmedPlayers.length > 0) {
+              const playerToPromote = unconfirmedPlayers[0];
+              
+              // Promote to confirmed
+              await sql`
+                UPDATE player_seasons
+                SET registration_type = 'confirmed',
+                    updated_at = NOW()
+                WHERE id = ${playerToPromote.id}
+              `;
+              
+              // Increment counter back
+              await adminDb.collection('seasons').doc(season_id).update({
+                confirmed_slots_filled: currentFilled, // Back to original count
+              });
+              
+              promotedPlayer = playerToPromote;
+              console.log(`✅ Auto-promoted unconfirmed player ${playerToPromote.player_name} to confirmed`);
+            }
+          }
         }
       }
     }
@@ -136,12 +174,19 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: 'Player registration deleted successfully (both seasons removed)',
+        message: promotedPlayer 
+          ? `Player registration deleted successfully. Auto-promoted ${promotedPlayer.player_name} from unconfirmed to confirmed.`
+          : 'Player registration deleted successfully (both seasons removed)',
         data: {
           player_id,
           season_id,
           next_season_id: nextSeasonId,
           deleted_registrations: [currentRegistrationId, nextRegistrationId],
+          promoted_player: promotedPlayer ? {
+            player_id: promotedPlayer.player_id,
+            player_name: promotedPlayer.player_name,
+            registration_date: promotedPlayer.registration_date,
+          } : null,
         },
       },
       { status: 200 }

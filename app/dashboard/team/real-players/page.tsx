@@ -4,10 +4,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import OptimizedImage from '@/components/OptimizedImage';
 
 interface RealPlayer {
   player_id: string;
   player_name: string;
+  display_name?: string;
+  photo_url?: string;
   team: string;
   team_id: string;
   category: string;
@@ -30,7 +33,10 @@ export default function RealPlayersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [teamFilter, setTeamFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'name' | 'points' | 'rating' | 'matches' | 'goals'>('points');
   const [activeSeason, setActiveSeason] = useState<any>(null);
+  const [teams, setTeams] = useState<string[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -89,6 +95,11 @@ export default function RealPlayersPage() {
             // Filter to show only players with star ratings (real players)
             const realPlayers = playersData.data?.filter((p: any) => p.star_rating && p.star_rating > 0) || [];
             setPlayers(realPlayers);
+            
+            // Extract unique teams for filter
+            const uniqueTeams = Array.from(new Set(realPlayers.map((p: any) => p.team).filter(Boolean))) as string[];
+            setTeams(uniqueTeams.sort());
+            
             console.log(`✅ Loaded ${realPlayers.length} real players for ${season.name}`);
           } else {
             console.error('Players API error:', playersData.error);
@@ -104,31 +115,32 @@ export default function RealPlayersPage() {
     fetchData();
   }, [user]);
 
-  const filteredPlayers = players.filter(player => {
-    const matchesSearch = player.player_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         player.team.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || player.category?.toLowerCase() === categoryFilter.toLowerCase();
-    return matchesSearch && matchesCategory;
-  });
+  const filteredPlayers = players
+    .filter(player => {
+      const matchesSearch = player.player_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (player.display_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                           player.team.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = categoryFilter === 'all' || player.category?.toLowerCase() === categoryFilter.toLowerCase();
+      const matchesTeam = teamFilter === 'all' || player.team === teamFilter;
+      return matchesSearch && matchesCategory && matchesTeam;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.player_name.localeCompare(b.player_name);
+        case 'points':
+          return (b.points || 0) - (a.points || 0);
+        case 'rating':
+          return (b.star_rating || 0) - (a.star_rating || 0);
+        case 'matches':
+          return (b.matches_played || 0) - (a.matches_played || 0);
+        case 'goals':
+          return (b.goals_scored || 0) - (a.goals_scored || 0);
+        default:
+          return (b.points || 0) - (a.points || 0);
+      }
+    });
 
-  const getStarRatingDisplay = (rating: number) => {
-    return '⭐'.repeat(Math.min(rating, 10));
-  };
-
-  const getCategoryBadge = (category: string) => {
-    if (!category) return null;
-    
-    const isLegend = category.toLowerCase() === 'legend';
-    return (
-      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-        isLegend 
-          ? 'bg-yellow-100 text-yellow-800' 
-          : 'bg-blue-100 text-blue-800'
-      }`}>
-        {category}
-      </span>
-    );
-  };
 
   if (loading || isLoading) {
     return (
@@ -182,132 +194,266 @@ export default function RealPlayersPage() {
 
         {/* Filters */}
         <div className="glass rounded-3xl p-6 mb-8 shadow-xl backdrop-blur-md border border-white/20">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Search */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search Players
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
               <input
                 type="text"
-                placeholder="Search by name or team..."
+                placeholder="Search players..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#0066FF] focus:border-transparent"
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
             {/* Category Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Category
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#0066FF] focus:border-transparent"
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Categories</option>
                 <option value="legend">Legend</option>
                 <option value="classic">Classic</option>
               </select>
             </div>
+
+            {/* Team Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+              <select
+                value={teamFilter}
+                onChange={(e) => setTeamFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="all">All Teams</option>
+                {teams.map(team => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sort */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="name">Name (A-Z)</option>
+                <option value="points">Points</option>
+                <option value="goals">Goals</option>
+                <option value="matches">Matches Played</option>
+                <option value="rating">Star Rating</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Results Count */}
+          <div className="mt-4 text-sm text-gray-600">
+            Showing {filteredPlayers.length} of {players.length} players
           </div>
         </div>
 
-        {/* Players Grid */}
-        {filteredPlayers.length === 0 ? (
-          <div className="glass rounded-3xl p-12 text-center shadow-xl backdrop-blur-md border border-white/20">
-            <div className="text-6xl mb-4">🎮</div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">No Players Found</h3>
-            <p className="text-gray-600">
-              {searchTerm || categoryFilter !== 'all' 
-                ? 'Try adjusting your filters' 
-                : 'No players registered for this season yet'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredPlayers.map((player) => (
-              <Link
-                key={player.player_id}
-                href={`/dashboard/players/${player.player_id}`}
-                className="glass rounded-3xl p-6 shadow-xl backdrop-blur-md border border-white/20 hover:shadow-2xl hover:scale-105 transition-all duration-300"
-              >
-                {/* Player Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-1">
-                      {player.player_name}
+        {/* Mobile Cards */}
+        <div className="block lg:hidden">
+          {filteredPlayers.length === 0 ? (
+            <div className="glass rounded-3xl p-12 text-center shadow-xl backdrop-blur-md border border-white/20">
+              <div className="text-6xl mb-4">👥</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">No Players Found</h3>
+              <p className="text-gray-600">
+                {searchTerm || categoryFilter !== 'all' || teamFilter !== 'all'
+                  ? 'Try adjusting your filters'
+                  : 'No players available'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredPlayers.map((player) => (
+                <Link
+                  key={player.player_id}
+                  href={`/dashboard/players/${player.player_id}`}
+                  className="glass rounded-3xl p-5 shadow-lg backdrop-blur-md border border-white/30 hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center gap-4"
+                >
+                  {/* Circular Photo with gradient border */}
+                  <div className="relative flex-shrink-0">
+                    <div className="absolute -inset-0.5 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full opacity-75"></div>
+                    <div className="relative w-20 h-20 rounded-full overflow-hidden shadow-lg bg-white p-0.5">
+                      {player.photo_url ? (
+                        <OptimizedImage
+                          src={player.photo_url}
+                          alt={player.player_name}
+                          width={80}
+                          height={80}
+                          quality={85}
+                          className="w-full h-full object-cover rounded-full"
+                          fallback={
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100 rounded-full">
+                              <span className="text-2xl font-bold text-blue-600">{player.player_name[0]}</span>
+                            </div>
+                          }
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100 rounded-full">
+                          <span className="text-2xl font-bold text-blue-600">{player.player_name[0]}</span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Category Badge */}
+                    {player.category && (
+                      <div className={`absolute -bottom-1 left-1/2 transform -translate-x-1/2 px-2 py-0.5 rounded-full text-xs font-bold shadow-md ${
+                        player.category.toLowerCase() === 'legend'
+                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white'
+                          : 'bg-gradient-to-r from-blue-400 to-blue-600 text-white'
+                      }`}>
+                        {player.category.toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Player Info */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-gray-900 text-lg mb-1 truncate">
+                      {player.display_name || player.player_name}
                     </h3>
+                    <p className="text-sm text-gray-600 truncate mb-3">{player.team}</p>
+                    {/* Stats Pills */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-blue-50 to-blue-100 rounded-full border border-blue-200">
+                        <span className="text-xs font-bold text-[#0066FF]">{player.points || 0}</span>
+                        <span className="text-xs text-gray-600">pts</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-green-50 to-green-100 rounded-full border border-green-200">
+                        <span className="text-xs">⚽</span>
+                        <span className="text-xs font-semibold text-green-700">{player.goals_scored || 0}</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-purple-50 to-purple-100 rounded-full border border-purple-200">
+                        <span className="text-xs font-semibold text-purple-700">{player.matches_played || 0}</span>
+                        <span className="text-xs text-gray-600">games</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-full border border-yellow-200">
+                        <span className="text-xs font-semibold text-yellow-700">{player.star_rating || 3}</span>
+                        <span className="text-xs">⭐</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Arrow */}
+                  <svg className="w-6 h-6 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop List */}
+        <div className="hidden lg:block glass rounded-3xl overflow-hidden shadow-xl backdrop-blur-md border border-white/20">
+          {filteredPlayers.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="text-6xl mb-4">👥</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">No Players Found</h3>
+              <p className="text-gray-600">
+                {searchTerm || categoryFilter !== 'all' || teamFilter !== 'all'
+                  ? 'Try adjusting your filters'
+                  : 'No players available'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {filteredPlayers.map((player) => (
+                <Link
+                  key={player.player_id}
+                  href={`/dashboard/players/${player.player_id}`}
+                  className="flex items-center gap-6 p-4 hover:bg-white/50 transition-all duration-200"
+                >
+                  {/* Circular Photo */}
+                  <div className="w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-md border-2 border-white/50">
+                    {player.photo_url ? (
+                      <OptimizedImage
+                        src={player.photo_url}
+                        alt={player.player_name}
+                        width={80}
+                        height={80}
+                        quality={85}
+                        className="w-full h-full object-cover"
+                        fallback={
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+                            <span className="text-2xl font-bold text-blue-600">{player.player_name[0]}</span>
+                          </div>
+                        }
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+                        <span className="text-2xl font-bold text-blue-600">{player.player_name[0]}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Player Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="font-bold text-gray-900 text-lg">
+                        {player.display_name || player.player_name}
+                      </h3>
+                      {player.category && (
+                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                          player.category.toLowerCase() === 'legend'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {player.category}
+                        </span>
+                      )}
+                      <span className="px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                        {player.star_rating || 3} ⭐
+                      </span>
+                    </div>
                     <p className="text-sm text-gray-600">{player.team}</p>
                   </div>
-                  {getCategoryBadge(player.category)}
-                </div>
 
-                {/* Star Rating */}
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-700">Rating</span>
-                    <span className="text-sm font-bold text-[#0066FF]">
-                      {player.star_rating || 3} ⭐
-                    </span>
+                  {/* Stats */}
+                  <div className="flex items-center gap-4">
+                    <div className="text-center px-4 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                      <div className="text-xl font-bold text-[#0066FF]">{player.points || 0}</div>
+                      <div className="text-xs text-gray-600">Points</div>
+                    </div>
+                    <div className="text-center px-4 py-2 rounded-lg bg-green-50 border border-green-200">
+                      <div className="text-xl font-bold text-green-600">{player.goals_scored || 0}</div>
+                      <div className="text-xs text-gray-600">Goals</div>
+                    </div>
+                    <div className="text-center px-4 py-2 rounded-lg bg-gray-50 border border-gray-200">
+                      <div className="text-xl font-bold text-gray-900">{player.matches_played || 0}</div>
+                      <div className="text-xs text-gray-600">Matches</div>
+                    </div>
+                    <div className="text-center px-4 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                      <div className="text-xl font-bold text-blue-600">{player.clean_sheets || 0}</div>
+                      <div className="text-xs text-gray-600">CS</div>
+                    </div>
+                    <div className="text-center px-4 py-2 rounded-lg bg-purple-50 border border-purple-200">
+                      <div className="text-xl font-bold text-purple-600">{player.assists || 0}</div>
+                      <div className="text-xs text-gray-600">Assists</div>
+                    </div>
+                    <div className="text-center px-4 py-2 rounded-lg bg-yellow-50 border border-yellow-200">
+                      <div className="text-xl font-bold text-yellow-600">{player.motm_awards || 0}</div>
+                      <div className="text-xs text-gray-600">MOTM</div>
+                    </div>
                   </div>
-                  <div className="text-2xl">
-                    {getStarRatingDisplay(player.star_rating || 3)}
-                  </div>
-                </div>
 
-                {/* Points */}
-                <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">Points</span>
-                    <span className="text-2xl font-bold text-[#0066FF]">
-                      {player.points || 0}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="text-center p-2 bg-white/50 rounded-lg">
-                    <div className="text-xs text-gray-600">Matches</div>
-                    <div className="text-lg font-bold text-gray-900">{player.matches_played || 0}</div>
-                  </div>
-                  <div className="text-center p-2 bg-white/50 rounded-lg">
-                    <div className="text-xs text-gray-600">Goals</div>
-                    <div className="text-lg font-bold text-green-600">{player.goals_scored || 0}</div>
-                  </div>
-                  <div className="text-center p-2 bg-white/50 rounded-lg">
-                    <div className="text-xs text-gray-600">Assists</div>
-                    <div className="text-lg font-bold text-blue-600">{player.assists || 0}</div>
-                  </div>
-                  <div className="text-center p-2 bg-white/50 rounded-lg">
-                    <div className="text-xs text-gray-600">MOTM</div>
-                    <div className="text-lg font-bold text-yellow-600">{player.motm_awards || 0}</div>
-                  </div>
-                </div>
-
-                {/* Win/Draw/Loss */}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-green-600 font-medium">W: {player.wins || 0}</span>
-                  <span className="text-gray-600 font-medium">D: {player.draws || 0}</span>
-                  <span className="text-red-600 font-medium">L: {player.losses || 0}</span>
-                </div>
-
-                {/* View Details Button */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex items-center justify-center text-[#0066FF] font-medium text-sm">
-                    View Details
-                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+                  {/* Arrow */}
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

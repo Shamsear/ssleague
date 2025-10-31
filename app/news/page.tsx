@@ -2,12 +2,21 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useLanguage } from '@/contexts/LanguageContext'
+import NewsCard from '@/components/NewsCard'
 
 interface NewsItem {
   id: string
-  title: string
-  content: string
+  // Bilingual support - prefer title_en/title_ml, fallback to title
+  title?: string
+  title_en?: string
+  title_ml?: string
+  content?: string
+  content_en?: string
+  content_ml?: string
   summary?: string
+  summary_en?: string
+  summary_ml?: string
   category: string
   event_type: string
   season_id?: string
@@ -42,12 +51,24 @@ export default function NewsPage() {
   const searchParams = useSearchParams()
   const seasonFilter = searchParams?.get('season')
   const categoryFilter = searchParams?.get('category')
+  const { language, setLanguage } = useLanguage()
 
   const [news, setNews] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFilter)
   const [selectedSeason, setSelectedSeason] = useState<string | null>(seasonFilter)
+
+  // Helper to get localized text
+  const getLocalizedText = (item: NewsItem, field: 'title' | 'content' | 'summary'): string => {
+    if (language === 'ml') {
+      const mlField = `${field}_ml` as keyof NewsItem
+      if (item[mlField]) return item[mlField] as string
+    }
+    // Fallback: English or legacy single field
+    const enField = `${field}_en` as keyof NewsItem
+    return (item[enField] || item[field] || '') as string
+  }
 
   useEffect(() => {
     fetchNews()
@@ -140,11 +161,38 @@ export default function NewsPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-            <span className="text-4xl">📰</span>
-            Tournament News & Updates
-          </h1>
-          <p className="text-gray-600">Stay updated with the latest happenings in SS Premier Super League</p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+                <span className="text-4xl">📰</span>
+                Tournament News & Updates
+              </h1>
+              <p className="text-gray-600">Stay updated with the latest happenings in SS Premier Super League</p>
+            </div>
+            {/* Language Toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  language === 'en'
+                    ? 'bg-gradient-to-r from-[#0066FF] to-[#00D4FF] text-white shadow-lg'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                English
+              </button>
+              <button
+                onClick={() => setLanguage('ml')}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  language === 'ml'
+                    ? 'bg-gradient-to-r from-[#0066FF] to-[#00D4FF] text-white shadow-lg'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                മലയാളം
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Category Filter */}
@@ -198,7 +246,7 @@ export default function NewsPage() {
                     <div className="h-96 lg:h-full overflow-hidden bg-gradient-to-br from-blue-50 to-purple-50">
                       <img
                         src={news[0].image_url}
-                        alt={news[0].title}
+                        alt={getLocalizedText(news[0], 'title')}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="eager"
                       />
@@ -218,12 +266,12 @@ export default function NewsPage() {
 
                     {/* Title */}
                     <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4 leading-tight group-hover:text-blue-600 transition-colors">
-                      {news[0].title}
+                      {getLocalizedText(news[0], 'title')}
                     </h2>
 
                     {/* Summary */}
                     <p className="text-gray-700 text-lg leading-relaxed mb-6 line-clamp-3">
-                      {news[0].summary || news[0].content.substring(0, 200) + '...'}
+                      {getLocalizedText(news[0], 'summary') || getLocalizedText(news[0], 'content').substring(0, 200) + '...'}
                     </p>
 
                     {/* Read More */}
@@ -247,45 +295,13 @@ export default function NewsPage() {
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {news.slice(1).map((item) => (
-                    <a
+                    <NewsCard
                       key={item.id}
-                      href={`/news/${item.id}`}
-                      className="block bg-white rounded-xl shadow-lg hover:shadow-xl transition-all overflow-hidden border border-gray-100 group"
-                    >
-                      {/* Image */}
-                      {item.image_url && (
-                        <div className="h-48 overflow-hidden bg-gradient-to-br from-blue-50 to-purple-50">
-                          <img
-                            src={item.image_url}
-                            alt={item.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                          />
-                        </div>
-                      )}
-                      <div className="p-5">
-                        {/* Category & Date */}
-                        <div className="flex items-center justify-between mb-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${CATEGORY_COLORS[item.category] || 'bg-gray-100 text-gray-800'}`}>
-                            <span>{CATEGORY_ICONS[item.category]}</span>
-                            {item.category.toUpperCase()}
-                          </span>
-                          <time className="text-xs text-gray-500">
-                            {formatDate(item.published_at || item.created_at).split(',')[0]}
-                          </time>
-                        </div>
-
-                        {/* Title */}
-                        <h3 className="text-lg font-bold text-gray-900 mb-2 leading-tight group-hover:text-blue-600 transition-colors line-clamp-2">
-                          {item.title}
-                        </h3>
-
-                        {/* Summary */}
-                        <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
-                          {item.summary || item.content.substring(0, 120) + '...'}
-                        </p>
-                      </div>
-                    </a>
+                      news={item as any}
+                      showLink={true}
+                      showImage={true}
+                      compact={false}
+                    />
                   ))}
                 </div>
               </div>
