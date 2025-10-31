@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { generateSeasonCreatedNews, generateSeasonActiveNews } from '@/lib/news/season-events';
 
 // GET - List all tournaments or filter by season
 export async function GET(request: NextRequest) {
@@ -238,9 +239,21 @@ export async function POST(request: NextRequest) {
         updated_at = NOW()
     `;
 
+    // Auto-generate news for season creation
+    const tournament = result[0];
+    const seasonName = season_id.replace('SSPSLS', 'Season ');
+    
+    // Generate news asynchronously (non-blocking)
+    if (tournament.is_primary) {
+      // Only generate news for primary tournaments (usually the league)
+      generateSeasonCreatedNews(season_id, seasonName).catch(error => {
+        console.error('Failed to generate season creation news:', error);
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      tournament: result[0],
+      tournament: tournament,
       message: 'Tournament created successfully',
     });
   } catch (error) {

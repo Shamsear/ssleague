@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { generateSeasonActiveNews, generateSeasonCompleteNews } from '@/lib/news/season-events';
 
 // GET - Get a single tournament by ID
 export async function GET(
@@ -77,9 +78,25 @@ export async function PATCH(
       );
     }
 
+    const updatedTournament = result[0];
+    const seasonName = updatedTournament.season_id.replace('SSPSLS', 'Season ');
+
+    // Auto-generate news on status change (non-blocking)
+    if (status && updatedTournament.is_primary) {
+      if (status === 'active') {
+        generateSeasonActiveNews(updatedTournament.season_id, seasonName).catch(error => {
+          console.error('Failed to generate season active news:', error);
+        });
+      } else if (status === 'completed') {
+        generateSeasonCompleteNews(updatedTournament.season_id, seasonName).catch(error => {
+          console.error('Failed to generate season complete news:', error);
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      tournament: result[0],
+      tournament: updatedTournament,
       message: 'Tournament updated successfully',
     });
   } catch (error) {

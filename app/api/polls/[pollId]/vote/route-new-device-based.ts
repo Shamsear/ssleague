@@ -4,6 +4,9 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 /**
  * POST /api/polls/[pollId]/vote
  * Submit a vote with device tracking and name validation
+ * 
+ * REPLACE THE EXISTING route.ts WITH THIS FILE
+ * Rename this to route.ts and delete the old one
  */
 export async function POST(
   request: NextRequest,

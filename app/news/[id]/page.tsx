@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useLanguage } from '@/contexts/LanguageContext'
+import NewsReactions from '@/components/NewsReactions'
 
 interface NewsItem {
   id: string
@@ -280,6 +281,9 @@ export default function NewsArticlePage() {
                 {getLocalizedText('content')}
               </div>
             </div>
+
+            {/* News Reactions */}
+            <NewsReactions newsId={news.id} />
 
             {/* Season Tag */}
             {news.season_name && (
