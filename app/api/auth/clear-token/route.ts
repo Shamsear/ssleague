@@ -5,7 +5,7 @@ export async function POST() {
   try {
     // Clear token cookie
     const cookieStore = await cookies();
-    cookieStore.delete('token');
+    cookieStore.delete('auth-token');
 
     return NextResponse.json({ success: true });
   } catch (error) {

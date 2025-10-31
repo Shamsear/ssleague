@@ -14,7 +14,7 @@ export interface AuthResult {
 export async function verifyAuth(requiredRoles?: string[]): Promise<AuthResult> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    const token = cookieStore.get('auth-token')?.value;
 
     if (!token) {
       return {

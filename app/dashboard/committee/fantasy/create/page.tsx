@@ -53,15 +53,29 @@ export default function CreateFantasyLeaguePage() {
         if (userSeasonId) {
           try {
             const response = await fetch(`/api/fantasy/leagues/${userSeasonId}`);
-            if (response.ok) {
-              const data = await response.json();
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
               console.log('Existing league data:', data);
               setExistingLeague(data.league); // Extract the league object from the response
               setIsLoading(false);
               return;
+            } else if (response.status === 404 && data.message && data.message.includes('tournament')) {
+              // Season/tournament doesn't exist - show specific error
+              console.log('Tournament not created for season:', userSeasonId);
+              showAlert({
+                type: 'error',
+                title: 'Tournament Not Created',
+                message: data.message || 'Please create the tournament/season first before creating a fantasy league.',
+              });
+              setIsLoading(false);
+              return;
+            } else {
+              console.log('League API returned error:', data.error || 'Unknown error');
+              console.log('Will attempt to load seasons and auto-create league');
             }
           } catch (error) {
-            console.log('No existing league found, proceeding with season loading');
+            console.log('Error checking for existing league:', error);
           }
         }
         
@@ -164,7 +178,8 @@ export default function CreateFantasyLeaguePage() {
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create fantasy league');
+        // Use detailed message if available
+        throw new Error(errorData.message || errorData.error || 'Failed to create fantasy league');
       }
 
       const data = await response.json();

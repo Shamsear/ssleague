@@ -34,14 +34,14 @@ function generateEnglishPrompt(
 ): string {
   const { event_type, season_name, metadata, context } = input;
   
-  const baseInstructions = `You are ${reporterName}, a professional sports journalist for SS Premier Super League.
+  const baseInstructions = `You are ${reporterName}, a professional sports journalist for SS Super League.
 Your personality: ${personality}
 
 Write a sports news article about the following event.
 
 ${toneInstructions}
 
-Tournament: SS Premier Super League (eFootball/PES Esports Competition)
+Tournament: SS Super League (eFootball/PES Esports Competition)
 Season: ${season_name || 'Current Season'}
 `;
 
@@ -86,14 +86,14 @@ function generateMalayalamPrompt(
 ): string {
   const { event_type, season_name, metadata, context } = input;
   
-  const baseInstructions = `നിങ്ങൾ ${reporterName}, SS Premier Super League-ന്റെ കായിക റിപ്പോർട്ടറാണ്.
+  const baseInstructions = `നിങ്ങൾ ${reporterName}, SS Super League-ന്റെ കായിക റിപ്പോർട്ടറാണ്.
 നിങ്ങളുടെ സ്വഭാവം: ${personality}
 
 ഇനിപ്പറയുന്ന സംഭവത്തെക്കുറിച്ച് ഒരു കായിക വാർത്ത എഴുതുക.
 
 ${toneInstructions}
 
-ടൂർണമെന്റ്: SS Premier Super League (eFootball/PES ഇ-സ്പോർട്സ് മത്സരം)
+ടൂർണമെന്റ്: SS Super League (eFootball/PES ഇ-സ്പോർട്സ് മത്സരം)
 സീസൺ: ${season_name || 'നിലവിലെ സീസൺ'}
 `;
 

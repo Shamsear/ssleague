@@ -66,7 +66,11 @@ export async function GET(
         if (tournaments.length === 0) {
           console.error('Season not found in tournaments:', leagueId);
           return NextResponse.json(
-            { error: 'Fantasy league not found and could not auto-create (season not found)' },
+            { 
+              error: 'Season not found',
+              message: `Season ${leagueId} does not exist. Please create the tournament/season first before creating a fantasy league.`,
+              details: 'A tournament must be created for this season before the fantasy league can be initialized.'
+            },
             { status: 404 }
           );
         }

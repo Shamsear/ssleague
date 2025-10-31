@@ -161,19 +161,19 @@ export default function NewsPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-                <span className="text-4xl">📰</span>
-                Tournament News & Updates
+          <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+            <div className="flex-1">
+              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+                <span className="text-3xl md:text-4xl">📰</span>
+                <span className="break-words">Tournament News & Updates</span>
               </h1>
-              <p className="text-gray-600">Stay updated with the latest happenings in SS Premier Super League</p>
+              <p className="text-sm md:text-base text-gray-600">Stay updated with the latest happenings in SS Super League</p>
             </div>
             {/* Language Toggle */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <button
                 onClick={() => setLanguage('en')}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`px-3 md:px-4 py-2 rounded-lg text-sm md:text-base font-medium transition-all whitespace-nowrap ${
                   language === 'en'
                     ? 'bg-gradient-to-r from-[#0066FF] to-[#00D4FF] text-white shadow-lg'
                     : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
@@ -183,7 +183,7 @@ export default function NewsPage() {
               </button>
               <button
                 onClick={() => setLanguage('ml')}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`px-3 md:px-4 py-2 rounded-lg text-sm md:text-base font-medium transition-all whitespace-nowrap ${
                   language === 'ml'
                     ? 'bg-gradient-to-r from-[#0066FF] to-[#00D4FF] text-white shadow-lg'
                     : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'

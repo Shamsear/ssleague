@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { triggerNews } from '@/lib/news/trigger';
 import { logInitialBalance } from '@/lib/transaction-logger';
+import { getFantasyDb } from '@/lib/neon/fantasy-config';
 
 export async function POST(
   request: NextRequest,
@@ -469,6 +470,55 @@ export async function POST(
         participant_count: FieldValue.increment(1),
         updated_at: FieldValue.serverTimestamp(),
       });
+
+      // Create fantasy team if user opted in
+      if (joinFantasy) {
+        try {
+          const fantasySql = getFantasyDb();
+          
+          // Determine league ID (format: SSPSLFLS + season number)
+          const seasonNumber = seasonId.replace('SSPSLS', '');
+          const leagueId = `SSPSLFLS${seasonNumber}`;
+          const fantasyTeamId = `${leagueId}_${teamDocId}`;
+          
+          console.log(`🎮 Creating fantasy team for ${teamName} in league ${leagueId}`);
+          
+          // Create fantasy team entry
+          await fantasySql`
+            INSERT INTO fantasy_teams (
+              team_id,
+              league_id,
+              team_name,
+              owner_uid,
+              owner_name,
+              total_points,
+              rank,
+              is_enabled,
+              created_at,
+              updated_at
+            ) VALUES (
+              ${fantasyTeamId},
+              ${leagueId},
+              ${teamName},
+              ${userId},
+              ${userData.username || teamName},
+              0,
+              999,
+              true,
+              NOW(),
+              NOW()
+            )
+            ON CONFLICT (team_id) DO UPDATE SET
+              is_enabled = true,
+              updated_at = NOW()
+          `;
+          
+          console.log(`✅ Fantasy team created: ${fantasyTeamId}`);
+        } catch (fantasyError) {
+          console.error('Failed to create fantasy team:', fantasyError);
+          // Don't fail the registration if fantasy team creation fails
+        }
+      }
 
       // Trigger news for team registration
       try {

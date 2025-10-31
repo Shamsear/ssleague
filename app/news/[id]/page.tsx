@@ -82,6 +82,58 @@ export default function NewsArticlePage() {
     }
   }, [id])
 
+  // Update meta tags dynamically for social sharing
+  useEffect(() => {
+    if (!news) return
+
+    const title = getLocalizedText('title')
+    const description = getLocalizedText('summary') || getLocalizedText('content').substring(0, 160)
+    const imageUrl = news.image_url || ''
+    const url = window.location.href
+
+    // Update document title
+    document.title = `${title} | SS Super League`
+
+    // Update or create meta tags
+    const updateMetaTag = (property: string, content: string, isProperty = true) => {
+      const attribute = isProperty ? 'property' : 'name'
+      let tag = document.querySelector(`meta[${attribute}="${property}"]`)
+      if (!tag) {
+        tag = document.createElement('meta')
+        tag.setAttribute(attribute, property)
+        document.head.appendChild(tag)
+      }
+      tag.setAttribute('content', content)
+    }
+
+    // Standard meta tags
+    updateMetaTag('description', description, false)
+
+    // Open Graph tags
+    updateMetaTag('og:type', 'article')
+    updateMetaTag('og:url', url)
+    updateMetaTag('og:title', title)
+    updateMetaTag('og:description', description)
+    updateMetaTag('og:site_name', 'SS Super League')
+    
+    if (imageUrl) {
+      updateMetaTag('og:image', imageUrl)
+      updateMetaTag('og:image:secure_url', imageUrl)
+      updateMetaTag('og:image:width', '1200')
+      updateMetaTag('og:image:height', '630')
+      updateMetaTag('og:image:alt', title)
+    }
+
+    // Twitter Card tags
+    updateMetaTag('twitter:card', 'summary_large_image', false)
+    updateMetaTag('twitter:url', url, false)
+    updateMetaTag('twitter:title', title, false)
+    updateMetaTag('twitter:description', description, false)
+    if (imageUrl) {
+      updateMetaTag('twitter:image', imageUrl, false)
+    }
+  }, [news, language])
+
   const fetchNewsItem = async () => {
     setLoading(true)
     setError(null)

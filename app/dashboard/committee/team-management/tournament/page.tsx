@@ -12,6 +12,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
+import RoundFixturesShareButton from '@/components/RoundFixturesShareButton';
 
 interface Match {
   id: string;
@@ -363,7 +364,7 @@ export default function TournamentDashboardPage() {
       return;
     }
     
-    if (selectedTeams.length < 2) {
+    if (selectedTeamsForTournament.length < 2) {
       showAlert({
         type: 'warning',
         title: 'Insufficient Teams',
@@ -375,7 +376,7 @@ export default function TournamentDashboardPage() {
     const confirmed = await showConfirm({
       type: 'info',
       title: 'Generate Fixtures',
-      message: `Generate fixtures for ${selectedTeams.length} teams? This will create a complete round-robin schedule.`,
+      message: `Generate fixtures for ${selectedTeamsForTournament.length} teams? This will create a complete round-robin schedule.`,
       confirmText: 'Generate',
       cancelText: 'Cancel'
     });
@@ -388,7 +389,7 @@ export default function TournamentDashboardPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_ids: selectedTeams,
+          team_ids: selectedTeamsForTournament,
           is_two_legged: true
         })
       });
@@ -1239,19 +1240,28 @@ export default function TournamentDashboardPage() {
                     📋 Fixtures ({fixturesForSelectedTournament.length})
                   </h3>
                   
-                  {/* Round Selector */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-700">Round:</label>
-                    <select
-                      value={selectedRound}
-                      onChange={(e) => setSelectedRound(parseInt(e.target.value))}
-                      className="px-3 py-1.5 bg-white/60 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70"
-                    >
-                      <option value={0}>All Rounds</option>
-                      {Array.from({ length: maxRounds }, (_, i) => i + 1).map(round => (
-                        <option key={round} value={round}>Round {round}</option>
-                      ))}
-                    </select>
+                  {/* Round Selector & Share Button */}
+                  <div className="flex items-center gap-3">
+                    {selectedRound > 0 && filteredFixtures.length > 0 && (
+                      <RoundFixturesShareButton 
+                        roundNumber={selectedRound}
+                        fixtures={filteredFixtures}
+                        tournamentName={selectedTournament?.tournament_name || "SSPS League"}
+                      />
+                    )}
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-700">Round:</label>
+                      <select
+                        value={selectedRound}
+                        onChange={(e) => setSelectedRound(parseInt(e.target.value))}
+                        className="px-3 py-1.5 bg-white/60 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70"
+                      >
+                        <option value={0}>All Rounds</option>
+                        {Array.from({ length: maxRounds }, (_, i) => i + 1).map(round => (
+                          <option key={round} value={round}>Round {round}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -1558,6 +1568,27 @@ export default function TournamentDashboardPage() {
                         <div className="flex-1">
                           <span className="font-medium text-gray-900">Include Group Stage</span>
                           <p className="text-xs text-gray-500 mt-1">Divide teams into groups</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 cursor-pointer hover:border-blue-500 transition-all shadow-sm">
+                        <input
+                          type="checkbox"
+                          checked={newTournament.is_primary}
+                          onChange={(e) => setNewTournament({ ...newTournament, is_primary: e.target.checked })}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900">⭐ Set as Primary Tournament</span>
+                            <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">IMPORTANT</span>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-2 font-medium">Primary tournament is the main league competition for this season:</p>
+                          <ul className="text-xs text-gray-600 mt-1 ml-4 list-disc space-y-1">
+                            <li>Automatically generates news on season lifecycle events (creation, activation, completion)</li>
+                            <li>Shown as the main tournament on dashboard and public pages</li>
+                            <li>Only ONE tournament should be marked as primary per season</li>
+                          </ul>
                         </div>
                       </label>
 

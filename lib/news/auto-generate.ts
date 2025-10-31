@@ -18,7 +18,7 @@ Generate a sports news article reporting on a tournament registration milestone.
 Context:
 - Season: ${input.season_name || 'Current Season'}
 - Milestone: ${input.metadata.milestone_number || input.metadata.player_count} competitive eFootball players registered!
-- Tournament: SS Premier Super League (eFootball/PES Esports Competition)
+- Tournament: SS Super League (eFootball/PES Esports Competition)
 
 Requirements:
 - Write as a sports JOURNALIST/REPORTER covering esports news (third-person perspective)
@@ -30,7 +30,7 @@ Requirements:
 - Keep tone energetic and professional (2-3 paragraphs, ~150 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "The SS Premier Super League has reached a major milestone with ${input.metadata.player_count} players registered for the upcoming season..."
+Example style: "The SS Super League has reached a major milestone with ${input.metadata.player_count} players registered for the upcoming season..."
 
 Format your response as JSON:
 {
@@ -46,7 +46,7 @@ Generate a sports news article reporting on tournament registration phase change
 Context:
 - Season: ${input.season_name || 'Current Season'}
 - Phase Change: From "${input.metadata.phase_from}" to "${input.metadata.phase_to}"
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write as a sports JOURNALIST/REPORTER (third-person perspective)
@@ -58,7 +58,7 @@ Requirements:
 - Keep tone professional and informative (2 paragraphs, ~120 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "The SS Premier Super League registration has transitioned to the ${input.metadata.phase_to} phase, tournament officials announced..."
+Example style: "The SS Super League registration has transitioned to the ${input.metadata.phase_to} phase, tournament officials announced..."
 
 Format your response as JSON:
 {
@@ -80,7 +80,7 @@ Context:
 - Number of Players: ${input.metadata.player_count || input.metadata.player_ids?.length || 'Multiple'}
 - Total Spent: $${input.metadata.total_spent || 'Amount'}
 - Remaining Budget: $${input.metadata.remaining_budget || 'Unknown'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 ${input.context ? `
 Detailed Info:
 ${input.context}` : ''}
@@ -116,7 +116,7 @@ Context:
 - Total Spent: $${input.metadata.total_spent || 'Amount'}
 - Starting Budget: $${input.metadata.starting_budget || 'Initial'}
 - Remaining Budget: $${input.metadata.remaining_budget || 'Balance'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 ${input.context ? `
 Detailed Roster Info:
 ${input.context}` : ''}
@@ -148,7 +148,7 @@ Generate a sports news article reporting on scheduled auction.
 
 Context:
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 ${input.context ? `- Additional Info: ${input.context}` : ''}
 
 Requirements:
@@ -161,7 +161,7 @@ Requirements:
 - Build anticipation (2-3 paragraphs, ~150 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "The SS Premier Super League auction has been scheduled for [date], tournament officials announced today..."
+Example style: "The SS Super League auction has been scheduled for [date], tournament officials announced today..."
 
 Format your response as JSON:
 {
@@ -176,7 +176,7 @@ Generate a LIVE announcement that the auction has started.
 
 Context:
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write an urgent, exciting headline with "LIVE" (under 80 characters)
@@ -199,7 +199,7 @@ Generate a sports news article reporting on completed auction.
 Context:
 - Season: ${input.season_name || 'Current Season'}
 - Total Spent: ${input.metadata.total_spent ? `₹${input.metadata.total_spent}` : 'Significant amount'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write as a sports JOURNALIST/REPORTER (third-person perspective)
@@ -211,7 +211,7 @@ Requirements:
 - Keep tone celebratory and analytical (2-3 paragraphs, ~150 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "The SS Premier Super League auction concluded today with teams spending a combined ₹X million on players..."
+Example style: "The SS Super League auction concluded today with teams spending a combined ₹X million on players..."
 
 Format your response as JSON:
 {
@@ -254,7 +254,7 @@ Generate a sports news article analyzing auction highlights.
 Context:
 - Season: ${input.season_name || 'Current Season'}
 - Top Sales: ${input.metadata.highlights?.map((h: any) => `${h.player_name} to ${h.team_name} for ₹${h.amount}`).join(', ')}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write as a sports JOURNALIST/REPORTER (third-person perspective)
@@ -266,7 +266,7 @@ Requirements:
 - Keep tone exciting and analytical (2-3 paragraphs, ~180 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "The SS Premier Super League auction produced several blockbuster signings, with [player] commanding the highest bid of ₹X..."
+Example style: "The SS Super League auction produced several blockbuster signings, with [player] commanding the highest bid of ₹X..."
 
 Format your response as JSON:
 {
@@ -282,7 +282,7 @@ Generate an announcement that fantasy league is open.
 
 Context:
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write an exciting headline (under 80 characters)
@@ -304,7 +304,7 @@ Generate an announcement that fantasy draft is complete.
 
 Context:
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write a headline (under 80 characters)
@@ -349,7 +349,7 @@ Generate an update for fantasy league standings.
 
 Context:
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write an informative headline (under 80 characters)
@@ -449,7 +449,7 @@ Generate a tournament standings update.
 
 Context:
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write an informative headline (under 80 characters)
@@ -512,7 +512,7 @@ Requirements:
 - Keep tone celebratory and grand (3 paragraphs, ~200 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "${input.metadata.winner} are the new SS Premier Super League champions after defeating ${input.metadata.home_team === input.metadata.winner ? input.metadata.away_team : input.metadata.home_team} in a thrilling final..."
+Example style: "${input.metadata.winner} are the new SS Super League champions after defeating ${input.metadata.home_team === input.metadata.winner ? input.metadata.away_team : input.metadata.home_team} in a thrilling final..."
 
 Format your response as JSON:
 {
@@ -528,7 +528,7 @@ Generate a sports news article announcing new season launch.
 
 Context:
 - Season: ${input.season_name || 'New Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write as a sports JOURNALIST/REPORTER (third-person perspective)
@@ -540,7 +540,7 @@ Requirements:
 - Keep tone very exciting and professional (3 paragraphs, ~200 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "The SS Premier Super League has officially launched its ${input.season_name}, marking the return of competitive eFootball action, organizers announced today..."
+Example style: "The SS Super League has officially launched its ${input.season_name}, marking the return of competitive eFootball action, organizers announced today..."
 
 Format your response as JSON:
 {
@@ -556,7 +556,7 @@ Generate a sports news article announcing season champions.
 Context:
 - Champion: ${input.metadata.winner || input.metadata.team_name}
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 
 Requirements:
 - Write as a sports JOURNALIST/REPORTER (third-person perspective)
@@ -568,7 +568,7 @@ Requirements:
 - Keep tone celebratory and conclusive (3 paragraphs, ~200 words)
 - Include a short summary (1 sentence, under 100 characters)
 
-Example style: "${input.metadata.winner || input.metadata.team_name} have been crowned ${input.season_name} champions, capping off a dominant campaign in the SS Premier Super League..."
+Example style: "${input.metadata.winner || input.metadata.team_name} have been crowned ${input.season_name} champions, capping off a dominant campaign in the SS Super League..."
 
 Format your response as JSON:
 {
@@ -584,7 +584,7 @@ Generate a general tournament news announcement.
 
 Context:
 - Season: ${input.season_name || 'Current Season'}
-- Tournament: SS Premier Super League
+- Tournament: SS Super League
 - Additional Context: ${input.context || 'General announcement'}
 
 Requirements:

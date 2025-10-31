@@ -9,6 +9,7 @@ import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import PromptModal from '@/components/modals/PromptModal';
+import FixtureShareButton from '@/components/FixtureShareButton';
 
 interface Matchup {
   id: number;
@@ -495,6 +496,11 @@ export default function CommitteeFixtureDetailPage() {
           <div className="bg-white rounded-2xl shadow-xl p-6">
             <h3 className="text-xl font-bold mb-4">Committee Actions</h3>
             <div className="space-y-3">
+              {/* Share Button */}
+              <div className="flex justify-center">
+                <FixtureShareButton fixture={fixture} matchups={matchups} />
+              </div>
+              
               <button
                 onClick={() => setShowTimeline(true)}
                 className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 font-medium flex items-center justify-center"

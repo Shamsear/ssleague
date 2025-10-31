@@ -53,6 +53,8 @@ export async function PATCH(
       description,
       is_primary,
       display_order,
+      include_in_fantasy,
+      include_in_awards,
     } = body;
 
     const result = await sql`
@@ -66,6 +68,8 @@ export async function PATCH(
         description = COALESCE(${description}, description),
         is_primary = COALESCE(${is_primary}::boolean, is_primary),
         display_order = COALESCE(${display_order}::integer, display_order),
+        include_in_fantasy = COALESCE(${include_in_fantasy}::boolean, include_in_fantasy),
+        include_in_awards = COALESCE(${include_in_awards}::boolean, include_in_awards),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *

@@ -77,6 +77,10 @@ export default function MyFantasyTeamPage() {
     }
   }, [user, loading, router]);
 
+  const [canRegister, setCanRegister] = useState(false);
+  const [registrationInfo, setRegistrationInfo] = useState<any>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
+
   useEffect(() => {
     const loadFantasyTeam = async () => {
       if (!user) return;
@@ -86,7 +90,9 @@ export default function MyFantasyTeamPage() {
         const response = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
         
         if (response.status === 404) {
-          // No fantasy league exists yet
+          const errorData = await response.json();
+          setCanRegister(errorData.can_register || false);
+          setRegistrationInfo(errorData.registration_info || null);
           setIsLoading(false);
           return;
         }
@@ -164,6 +170,36 @@ export default function MyFantasyTeamPage() {
     );
   }
 
+  const handleRegister = async () => {
+    if (!user || !canRegister) return;
+
+    setIsRegistering(true);
+    try {
+      const response = await fetch('/api/fantasy/teams/my-team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          league_id: registrationInfo?.league_id
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to register');
+      }
+
+      const data = await response.json();
+      // Reload the page to show the newly created team
+      window.location.reload();
+    } catch (error) {
+      console.error('Error registering for fantasy:', error);
+      alert(error instanceof Error ? error.message : 'Failed to register for fantasy league');
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
   if (!user) return null;
 
   if (!fantasyTeam) {
@@ -175,16 +211,45 @@ export default function MyFantasyTeamPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">No Fantasy League Yet</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">
+            {canRegister ? 'Join Fantasy League' : 'No Fantasy League Yet'}
+          </h2>
           <p className="text-gray-600 mb-6">
-            The committee hasn't created a fantasy league for this season yet.
+            {canRegister 
+              ? `Register for the fantasy league and start building your dream team!`
+              : 'The committee hasn\'t created a fantasy league for this season yet.'}
           </p>
-          <Link
-            href="/dashboard/team"
-            className="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
-          >
-            Back to Dashboard
-          </Link>
+          {canRegister ? (
+            <div className="space-y-3">
+              <button
+                onClick={handleRegister}
+                disabled={isRegistering}
+                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRegistering ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Registering...
+                  </span>
+                ) : (
+                  '🎮 Register for Fantasy League'
+                )}
+              </button>
+              <Link
+                href="/dashboard/team"
+                className="inline-block w-full px-6 py-3 bg-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-300 transition-colors"
+              >
+                Back to Dashboard
+              </Link>
+            </div>
+          ) : (
+            <Link
+              href="/dashboard/team"
+              className="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+            >
+              Back to Dashboard
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -247,7 +312,9 @@ export default function MyFantasyTeamPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
             <p className="text-sm text-gray-600 mb-1">League Rank</p>
-            <p className="text-3xl font-bold text-purple-600">#{fantasyTeam.rank}</p>
+            <p className="text-3xl font-bold text-purple-600">
+              {fantasyTeam.rank && fantasyTeam.rank < 999 ? `#${fantasyTeam.rank}` : 'Unranked'}
+            </p>
           </div>
 
           <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">

@@ -155,32 +155,42 @@ export default function FantasyTeamsPage() {
               <h2 className="text-xl font-bold text-gray-900 mb-4">Teams ({teams.length})</h2>
               
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {teams.map((team) => (
-                  <button
-                    key={team.id}
-                    onClick={() => loadTeamPlayers(team)}
-                    className={`w-full text-left p-4 rounded-xl transition-all ${
-                      selectedTeam?.id === team.id
-                        ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg'
-                        : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="font-semibold">{team.team_name}</p>
-                        <p className={`text-sm ${selectedTeam?.id === team.id ? 'text-indigo-100' : 'text-gray-600'}`}>
-                          {team.owner_name}
-                        </p>
+                {teams.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <p className="text-gray-500 font-medium mb-2">No teams registered yet</p>
+                    <p className="text-sm text-gray-400">Teams will appear here once players register for the fantasy league</p>
+                  </div>
+                ) : (
+                  teams.map((team) => (
+                    <button
+                      key={team.id}
+                      onClick={() => loadTeamPlayers(team)}
+                      className={`w-full text-left p-4 rounded-xl transition-all ${
+                        selectedTeam?.id === team.id
+                          ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg'
+                          : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-semibold">{team.team_name}</p>
+                          <p className={`text-sm ${selectedTeam?.id === team.id ? 'text-indigo-100' : 'text-gray-600'}`}>
+                            {team.owner_name}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold">{team.total_points}</p>
+                          <p className={`text-xs ${selectedTeam?.id === team.id ? 'text-indigo-100' : 'text-gray-500'}`}>
+                            {team.player_count} players
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold">{team.total_points}</p>
-                        <p className={`text-xs ${selectedTeam?.id === team.id ? 'text-indigo-100' : 'text-gray-500'}`}>
-                          {team.player_count} players
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>
