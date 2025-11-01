@@ -428,7 +428,7 @@ export async function GET(request: NextRequest) {
           max_football_players: seasonData?.max_football_players || 25,
         },
         stats: {
-          playerCount: teamSeasonData?.players_count || 0,
+          playerCount: players.length, // Count actual football players from query, not from teamstats
           balance: teamSeasonData?.budget || 0,
           totalSpent: teamSeasonData?.total_spent || 0,
           avgRating: Math.round(avgRating * 10) / 10,
