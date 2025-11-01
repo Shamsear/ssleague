@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       WHERE team_id = ${teamId}
     `;
 
-    // Validation 1: Check if already drafted
+    // Validation 1: Check if already drafted by THIS team
     const alreadyDrafted = currentSquad.some(
       (p: any) => p.real_player_id === real_player_id
     );
@@ -191,6 +191,19 @@ export async function POST(request: NextRequest) {
       } catch (newsError) {
         console.error('Failed to generate fantasy draft news:', newsError);
       }
+    }
+
+    // Broadcast to WebSocket subscribers
+    if (typeof global.wsBroadcast === 'function') {
+      global.wsBroadcast(`fantasy_league:${leagueId}`, {
+        type: 'player_drafted',
+        data: {
+          team_id: teamId,
+          player_name,
+          position,
+          draft_price,
+        },
+      });
     }
 
     return NextResponse.json({
@@ -311,6 +324,18 @@ export async function DELETE(request: NextRequest) {
     `;
 
     console.log(`✅ Undrafted player: ${player.player_name} from team ${teamId}, refunded $${refundPrice}M`);
+
+    // Broadcast to WebSocket subscribers
+    if (typeof global.wsBroadcast === 'function') {
+      global.wsBroadcast(`fantasy_league:${leagueId}`, {
+        type: 'player_undrafted',
+        data: {
+          team_id: teamId,
+          player_name: player.player_name,
+          refunded_amount: refundPrice,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,

@@ -40,7 +40,7 @@ export async function GET(
     // Get leaderboard with team stats
     const leaderboard = await sql`
       SELECT 
-        ft.id as fantasy_team_id,
+        ft.team_id as fantasy_team_id,
         ft.team_name,
         ft.owner_name,
         ft.total_points,
@@ -62,7 +62,7 @@ export async function GET(
       FROM fantasy_teams ft
       LEFT JOIN fantasy_squad fs ON ft.team_id = fs.team_id
       WHERE ft.league_id = ${leagueId}
-      GROUP BY ft.id, ft.team_name, ft.owner_name, ft.total_points, ft.rank
+      GROUP BY ft.team_id, ft.team_name, ft.owner_name, ft.total_points, ft.rank
       ORDER BY ft.rank ASC NULLS LAST, ft.total_points DESC
     `;
 

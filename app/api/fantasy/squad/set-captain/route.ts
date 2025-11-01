@@ -99,6 +99,19 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Updated captain/vice-captain for team ${team_id}`);
 
+    // Broadcast to WebSocket subscribers
+    const leagueId = teams[0].league_id;
+    if (typeof global.wsBroadcast === 'function') {
+      global.wsBroadcast(`fantasy_league:${leagueId}`, {
+        type: 'team_update',
+        data: {
+          team_id,
+          captain_player_id,
+          vice_captain_player_id,
+        },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Captain and vice-captain updated successfully',

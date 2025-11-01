@@ -43,16 +43,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get all drafted player IDs from PostgreSQL
-    const draftedPlayers = await fantasySql`
-      SELECT DISTINCT real_player_id
-      FROM fantasy_squad
-      WHERE league_id = ${league_id}
-    `;
-
-    const draftedPlayerIds = new Set(
-      draftedPlayers.map((p: any) => p.real_player_id)
-    );
+    // Note: Since multiple teams can draft the same player,
+    // we don't filter out drafted players anymore.
+    // All players are available for all teams to pick.
 
     // Get all players directly from player_seasons table (always fresh data)
     // Exclude players without teams (team_id and team must not be null/empty)
@@ -74,9 +67,8 @@ export async function GET(request: NextRequest) {
         AND team != ''
     `;
 
-    // Filter out drafted players and map to fantasy format
+    // Map all players to fantasy format (no filtering since players can be drafted by multiple teams)
     const availablePlayers = allPlayers
-      .filter((player: any) => !draftedPlayerIds.has(player.player_id))
       .map((player: any) => {
         const starRating = player.star_rating || 5;
         const draftPrice = starPricing[starRating] || 10;
@@ -107,7 +99,6 @@ export async function GET(request: NextRequest) {
       success: true,
       available_players: availablePlayers,
       total_available: availablePlayers.length,
-      total_drafted: draftedPlayerIds.size,
     });
   } catch (error) {
     console.error('Error fetching available players:', error);

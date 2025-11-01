@@ -2,10 +2,11 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface FantasyTeam {
   id: string;
@@ -34,11 +35,30 @@ export default function DraftResultsPage() {
   const [league, setLeague] = useState<any>(null);
   const [fantasyTeams, setFantasyTeams] = useState<FantasyTeam[]>([]);
   const [teamPlayers, setTeamPlayers] = useState<Record<string, DraftedPlayer[]>>({});
+  const [teamDetails, setTeamDetails] = useState<Record<string, any>>({});
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [starPricing, setStarPricing] = useState<Record<number, number>>({});
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const { alertState, showAlert, closeAlert } = useModal();
+
+  // WebSocket for live updates
+  const { isConnected } = useWebSocket({
+    channel: `fantasy_league:${leagueId}`,
+    enabled: !!leagueId && !!user,
+    onMessage: useCallback((message: any) => {
+      console.log('[Draft Results] WebSocket message:', message);
+      
+      // Reload data when draft updates occur
+      if (message.type === 'draft_update' || 
+          message.type === 'team_update' ||
+          message.type === 'player_drafted' ||
+          message.type === 'draft_submitted') {
+        loadData();
+      }
+    }, []),
+  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -50,8 +70,7 @@ export default function DraftResultsPage() {
     }
   }, [user, loading, router]);
 
-  useEffect(() => {
-    const loadData = async () => {
+  const loadData = useCallback(async () => {
       if (!leagueId) return;
 
       try {
@@ -89,11 +108,30 @@ export default function DraftResultsPage() {
           
           setTeamPlayers(playersByTeam);
           
-          // Auto-select first team
-          if (leagueData.teams.length > 0) {
+          // Get team details (passive team, captain, VC) for all teams
+          const detailsMap: Record<string, any> = {};
+          await Promise.all(
+            leagueData.teams.map(async (team: any) => {
+              try {
+                const detailsResponse = await fetch(`/api/fantasy/teams/${team.id}`);
+                if (detailsResponse.ok) {
+                  const details = await detailsResponse.json();
+                  detailsMap[team.id] = details;
+                }
+              } catch (err) {
+                console.error(`Failed to load details for team ${team.id}`);
+              }
+            })
+          );
+          setTeamDetails(detailsMap);
+          
+          // Auto-select first team if not already selected
+          if (!selectedTeam && leagueData.teams.length > 0) {
             setSelectedTeam(leagueData.teams[0].id);
           }
         }
+        
+        setLastUpdated(new Date());
       } catch (error) {
         console.error('Error loading data:', error);
         showAlert({
@@ -104,18 +142,24 @@ export default function DraftResultsPage() {
       } finally {
         setIsLoading(false);
       }
-    };
+    }, [leagueId, selectedTeam]);
 
+  useEffect(() => {
     if (user) {
       loadData();
     }
-  }, [user, leagueId]);
+  }, [user, loadData]);
 
   const currentTeamPlayers = teamPlayers[selectedTeam] || [];
   const selectedTeamData = fantasyTeams.find(t => t.id === selectedTeam);
+  const currentTeamDetails = teamDetails[selectedTeam];
   
   const totalSpent = currentTeamPlayers.reduce((sum, p) => sum + (p.draft_price || 0), 0);
   const totalPoints = currentTeamPlayers.reduce((sum, p) => sum + p.total_points, 0);
+  
+  const captain = currentTeamDetails?.players?.find((p: any) => p.is_captain);
+  const viceCaptain = currentTeamDetails?.players?.find((p: any) => p.is_vice_captain);
+  const passiveTeam = currentTeamDetails?.team?.supported_team_name;
 
   if (loading || isLoading) {
     return (
@@ -153,9 +197,22 @@ export default function DraftResultsPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Draft Results</h1>
+            <div className="flex-1">
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl font-bold text-gray-900">Draft Results</h1>
+                {isConnected && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-green-100 border border-green-300 rounded-full">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs font-medium text-green-700">Live</span>
+                  </div>
+                )}
+              </div>
               <p className="text-gray-600 mt-1">{league.name} - View team squads</p>
+              {lastUpdated && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Last updated: {lastUpdated.toLocaleTimeString()}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -230,6 +287,31 @@ export default function DraftResultsPage() {
                       )}
                     </div>
                     <p className="text-gray-600">Owner: {selectedTeamData.owner_name}</p>
+                    
+                    {/* Captain, VC, and Passive Team */}
+                    {(captain || viceCaptain || passiveTeam) && (
+                      <div className="flex flex-wrap gap-3 mt-3 mb-3">
+                        {captain && (
+                          <div className="px-3 py-1 bg-yellow-100 border border-yellow-300 rounded-lg text-sm">
+                            <span className="font-bold text-yellow-700">👑 Captain:</span>
+                            <span className="text-gray-900 ml-1">{captain.player_name}</span>
+                          </div>
+                        )}
+                        {viceCaptain && (
+                          <div className="px-3 py-1 bg-blue-100 border border-blue-300 rounded-lg text-sm">
+                            <span className="font-bold text-blue-700">⭐ Vice-Captain:</span>
+                            <span className="text-gray-900 ml-1">{viceCaptain.player_name}</span>
+                          </div>
+                        )}
+                        {passiveTeam && (
+                          <div className="px-3 py-1 bg-green-100 border border-green-300 rounded-lg text-sm">
+                            <span className="font-bold text-green-700">🏟️ Passive Team:</span>
+                            <span className="text-gray-900 ml-1">{passiveTeam}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     <div className="flex gap-6 mt-3">
                       <div>
                         <p className="text-sm text-gray-500">Squad Size</p>

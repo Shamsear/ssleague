@@ -44,6 +44,23 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Fantasy team ${teamId} now supporting ${supported_team_name}`);
 
+    // Get league ID for broadcasting
+    const team = await fantasySql`
+      SELECT league_id FROM fantasy_teams WHERE team_id = ${teamId} LIMIT 1
+    `;
+    
+    // Broadcast to WebSocket subscribers
+    if (team.length > 0 && typeof global.wsBroadcast === 'function') {
+      global.wsBroadcast(`fantasy_league:${team[0].league_id}`, {
+        type: 'team_update',
+        data: {
+          team_id: teamId,
+          supported_team_id,
+          supported_team_name,
+        },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: `Now supporting ${supported_team_name}`,
