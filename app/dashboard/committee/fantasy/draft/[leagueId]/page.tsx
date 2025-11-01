@@ -12,6 +12,7 @@ interface FantasyTeam {
   team_name: string;
   owner_name: string;
   player_count: number;
+  draft_submitted: boolean;
 }
 
 interface DraftedPlayer {
@@ -174,13 +175,24 @@ export default function DraftResultsPage() {
                     <button
                       key={team.id}
                       onClick={() => setSelectedTeam(team.id)}
-                      className={`w-full text-left p-4 rounded-xl transition-all ${
+                      className={`w-full text-left p-4 rounded-xl transition-all relative ${
                         selectedTeam === team.id
                           ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg'
                           : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
                       }`}
                     >
-                      <div className="font-semibold">{team.team_name}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold">{team.team_name}</div>
+                        {team.draft_submitted && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            selectedTeam === team.id 
+                              ? 'bg-green-400 text-green-900' 
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            ✓ Submitted
+                          </span>
+                        )}
+                      </div>
                       <div className={`text-sm mt-1 ${
                         selectedTeam === team.id ? 'text-blue-100' : 'text-gray-600'
                       }`}>
@@ -199,7 +211,24 @@ export default function DraftResultsPage() {
               {selectedTeamData && (
                 <>
                   <div className="mb-6 pb-4 border-b border-gray-200">
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedTeamData.team_name}</h2>
+                    <div className="flex items-center gap-3 mb-2">
+                      <h2 className="text-2xl font-bold text-gray-900">{selectedTeamData.team_name}</h2>
+                      {selectedTeamData.draft_submitted ? (
+                        <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          Draft Submitted
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 bg-amber-100 text-amber-700 text-sm font-semibold rounded-full flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                          Not Submitted
+                        </span>
+                      )}
+                    </div>
                     <p className="text-gray-600">Owner: {selectedTeamData.owner_name}</p>
                     <div className="flex gap-6 mt-3">
                       <div>

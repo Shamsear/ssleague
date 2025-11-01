@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star, Trash2 } from 'lucide-react';
+import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star, Trash2, Lock, Edit } from 'lucide-react';
 
 interface Player {
   real_player_id: string;
@@ -40,6 +40,7 @@ interface MyTeam {
   player_count: number;
   supported_team_id?: string;
   supported_team_name?: string;
+  draft_submitted?: boolean;
 }
 
 interface RealTeam {
@@ -64,6 +65,7 @@ export default function TeamDraftPage() {
   const [captainId, setCaptainId] = useState<string | null>(null);
   const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
   const [isSavingCaptains, setIsSavingCaptains] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -92,6 +94,12 @@ export default function TeamDraftPage() {
       const teamData = await teamRes.json();
       setMyTeam(teamData.team);
       setMySquad(teamData.players || []);
+      
+      // Set captain/VC from existing squad
+      const captain = teamData.players?.find((p: any) => p.is_captain);
+      const viceCaptain = teamData.players?.find((p: any) => p.is_vice_captain);
+      if (captain) setCaptainId(captain.real_player_id);
+      if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
       // Get draft settings and league info
       const settingsRes = await fetch(`/api/fantasy/draft/settings?league_id=${teamData.team.fantasy_league_id}`);
@@ -313,6 +321,85 @@ export default function TeamDraftPage() {
     }
   };
 
+  const submitDraft = async () => {
+    if (!user || !myTeam) return;
+
+    // Validation 1: Minimum players (at least 1)
+    if (mySquad.length === 0) {
+      alert('❌ Please draft at least one player before submitting');
+      return;
+    }
+
+    // Validation 2: Captain and Vice-Captain
+    if (!captainId || !viceCaptainId) {
+      alert('❌ Please select both captain and vice-captain before submitting');
+      return;
+    }
+
+    // Validation 3: Passive team selection (supported team)
+    if (!myTeam.supported_team_id || !myTeam.supported_team_name) {
+      alert('❌ Please select a Supported Team for passive points before submitting.\n\nScroll down to the "Select Your Supported Team" section.');
+      return;
+    }
+
+    // Show summary before confirming
+    const confirmMessage = `Submit your draft?\n\n✓ Players: ${mySquad.length}\n✓ Captain: ${mySquad.find(p => p.real_player_id === captainId)?.player_name}\n✓ Vice-Captain: ${mySquad.find(p => p.real_player_id === viceCaptainId)?.player_name}\n✓ Supported Team: ${myTeam.supported_team_name}\n\nYou will need to click "Edit Draft" to make changes after submitting.`;
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/fantasy/draft/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.uid }),
+      });
+
+      if (res.ok) {
+        await loadDraftData();
+        alert('Draft submitted successfully! Click "Edit Draft" if you need to make changes.');
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to submit draft');
+      }
+    } catch (error) {
+      console.error('Failed to submit draft:', error);
+      alert('Failed to submit draft');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const unlockDraft = async () => {
+    if (!user) return;
+
+    if (!confirm('Edit your draft? This will unlock your squad for changes.')) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/fantasy/draft/submit?user_id=${user.uid}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        await loadDraftData();
+        alert('Draft unlocked! You can now make changes.');
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to unlock draft');
+      }
+    } catch (error) {
+      console.error('Failed to unlock draft:', error);
+      alert('Failed to unlock draft');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const remainingBudget = draftSettings
     ? draftSettings.budget - mySquad.reduce((sum, p) => sum + p.draft_price, 0)
     : 0;
@@ -392,17 +479,58 @@ export default function TeamDraftPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <Link
-            href="/dashboard/team/fantasy/my-team"
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors mb-4"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to My Team
-          </Link>
+          <div className="flex items-center justify-between mb-4">
+            <Link
+              href="/dashboard/team/fantasy/my-team"
+              className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to My Team
+            </Link>
+            
+            {/* Submit/Edit Draft Button */}
+            {myTeam?.draft_submitted ? (
+              <button
+                onClick={unlockDraft}
+                disabled={isSubmitting || !draftSettings?.is_draft_active}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+              >
+                <Edit className="w-5 h-5" />
+                {isSubmitting ? 'Unlocking...' : 'Edit Draft'}
+              </button>
+            ) : (
+              <button
+                onClick={submitDraft}
+                disabled={
+                  isSubmitting || 
+                  mySquad.length === 0 || 
+                  !captainId || 
+                  !viceCaptainId || 
+                  !myTeam?.supported_team_id || 
+                  !draftSettings?.is_draft_active
+                }
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+                title={
+                  !captainId || !viceCaptainId ? 'Select captain and vice-captain first' : 
+                  !myTeam?.supported_team_id ? 'Select a supported team first' :
+                  mySquad.length === 0 ? 'Draft at least one player' : ''
+                }
+              >
+                <Check className="w-5 h-5" />
+                {isSubmitting ? 'Submitting...' : 'Submit Draft'}
+              </button>
+            )}
+          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Fantasy Draft</h1>
           <p className="text-gray-600">Build your squad within budget</p>
+          {myTeam?.draft_submitted && (
+            <div className="mt-3 flex items-center gap-2 text-green-700 bg-green-50 border border-green-300 rounded-lg px-4 py-2 w-fit">
+              <Lock className="w-4 h-4" />
+              <span className="text-sm font-medium">Draft Submitted - Click "Edit Draft" to make changes</span>
+            </div>
+          )}
         </div>
 
         {/* Draft Status Banner */}
@@ -646,7 +774,8 @@ export default function TeamDraftPage() {
                       disabled={
                         isDrafting === player.real_player_id || 
                         player.draft_price > remainingBudget ||
-                        !draftSettings?.is_draft_active
+                        !draftSettings?.is_draft_active ||
+                        myTeam?.draft_submitted
                       }
                       className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition flex-shrink-0"
                       title={!draftSettings?.is_draft_active ? 'Draft is not active' : ''}
@@ -681,9 +810,9 @@ export default function TeamDraftPage() {
                       </div>
                       <button
                         onClick={() => removePlayer(player.real_player_id, player.player_name)}
-                        disabled={isRemoving === player.real_player_id || !draftSettings?.is_draft_active}
+                        disabled={isRemoving === player.real_player_id || !draftSettings?.is_draft_active || myTeam?.draft_submitted}
                         className="p-1.5 text-red-600 hover:bg-red-100 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={!draftSettings?.is_draft_active ? 'Draft is not active' : 'Remove player'}
+                        title={myTeam?.draft_submitted ? 'Draft is submitted - click Edit Draft to make changes' : !draftSettings?.is_draft_active ? 'Draft is not active' : 'Remove player'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -718,7 +847,7 @@ export default function TeamDraftPage() {
               </div>
               <button
                 onClick={saveCaptains}
-                disabled={isSavingCaptains || !captainId || !viceCaptainId}
+                disabled={isSavingCaptains || !captainId || !viceCaptainId || myTeam?.draft_submitted}
                 className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
               >
                 {isSavingCaptains ? 'Saving...' : 'Save Captains'}
@@ -737,7 +866,8 @@ export default function TeamDraftPage() {
                 <select
                   value={captainId || ''}
                   onChange={(e) => setCaptainId(e.target.value)}
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                  disabled={myTeam?.draft_submitted}
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">Select Captain...</option>
                   {mySquad.map((player) => (
@@ -766,7 +896,8 @@ export default function TeamDraftPage() {
                 <select
                   value={viceCaptainId || ''}
                   onChange={(e) => setViceCaptainId(e.target.value)}
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={myTeam?.draft_submitted}
+                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">Select Vice-Captain...</option>
                   {mySquad.map((player) => (
