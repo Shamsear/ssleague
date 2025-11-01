@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { addFantasyPointsForAward } from '@/lib/fantasy-award-points';
 
 // POST - Manually add a player award
 export async function POST(request: NextRequest) {
@@ -89,10 +90,21 @@ export async function POST(request: NextRequest) {
       WHERE player_id = ${player_id} AND season_id = ${season_id}
     `;
 
+    // Add fantasy points if there's a matching fantasy scoring rule
+    const fantasyResult = await addFantasyPointsForAward(
+      player_id,
+      player_name,
+      season_id,
+      award_type
+    );
+
+    console.log('Fantasy points result:', fantasyResult);
+
     return NextResponse.json({
       success: true,
       award: result[0],
-      message: 'Player award added successfully'
+      message: 'Player award added successfully',
+      fantasy_points: fantasyResult
     });
   } catch (error: any) {
     console.error('Error adding player award:', error);

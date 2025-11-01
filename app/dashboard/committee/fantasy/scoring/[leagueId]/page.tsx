@@ -120,6 +120,9 @@ export default function CustomScoringRulesPage() {
         description: '',
         points_value: 0,
         applies_to: 'player',
+        is_bonus_rule: false,
+        bonus_condition_type: '',
+        bonus_params: {},
       });
       loadRules();
     } catch (error) {
@@ -186,19 +189,19 @@ export default function CustomScoringRulesPage() {
   };
 
   const commonRuleTypes = [
-    { value: 'goal', label: 'Goal Scored', icon: '⚽' },
-    { value: 'assist', label: 'Assist', icon: '🎯' },
+    { value: 'goals_scored', label: 'Goal Scored', icon: '⚽' },
     { value: 'clean_sheet', label: 'Clean Sheet', icon: '🛡️' },
-    { value: 'goal_conceded', label: 'Goal Conceded', icon: '🥅' },
+    { value: 'goals_conceded', label: 'Goal Conceded', icon: '🥅' },
     { value: 'motm', label: 'Man of the Match', icon: '⭐' },
-    { value: 'team_win', label: 'Team Win', icon: '✅' },
-    { value: 'team_draw', label: 'Team Draw', icon: '🤝' },
-    { value: 'team_loss', label: 'Team Loss', icon: '❌' },
-    { value: 'yellow_card', label: 'Yellow Card', icon: '🟨' },
-    { value: 'red_card', label: 'Red Card', icon: '🟥' },
-    { value: 'penalty_scored', label: 'Penalty Scored', icon: '🎯' },
-    { value: 'penalty_missed', label: 'Penalty Missed', icon: '❌' },
-    { value: 'own_goal', label: 'Own Goal', icon: '🚫' },
+    { value: 'win', label: 'Win', icon: '✅' },
+    { value: 'draw', label: 'Draw', icon: '🤝' },
+    { value: 'loss', label: 'Loss', icon: '❌' },
+    { value: 'fine_goals', label: 'Fine Goals', icon: '💸' },
+    { value: 'substitution_penalty', label: 'Substitution Penalty', icon: '🔄' },
+    { value: 'hat_trick', label: 'Hat-trick (3+ goals)', icon: '🎩' },
+    { value: 'brace', label: 'Brace (2 goals)', icon: '⚽⚽' },
+    { value: 'golden_boot', label: 'Golden Boot Award', icon: '👢' },
+    { value: 'best_attacker', label: 'Best Attacker Award', icon: '⚔️' },
     { value: 'custom', label: 'Custom Rule', icon: '📊' },
   ];
 

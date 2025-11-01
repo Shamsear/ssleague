@@ -82,6 +82,18 @@ export async function GET(
 
         console.log('Creating league:', newLeagueId, 'for season:', seasonId);
 
+        // Default star rating prices (3-10 stars)
+        const defaultStarPrices = [
+          { stars: 3, price: 5 },
+          { stars: 4, price: 7 },
+          { stars: 5, price: 10 },
+          { stars: 6, price: 13 },
+          { stars: 7, price: 16 },
+          { stars: 8, price: 20 },
+          { stars: 9, price: 25 },
+          { stars: 10, price: 30 },
+        ];
+
         // Create the league
         const newLeague = await sql`
           INSERT INTO fantasy_leagues (
@@ -93,6 +105,7 @@ export async function GET(
             max_squad_size,
             max_transfers_per_window,
             points_cost_per_transfer,
+            star_rating_prices,
             is_active
           ) VALUES (
             ${newLeagueId},
@@ -103,6 +116,7 @@ export async function GET(
             15,
             2,
             4,
+            ${JSON.stringify(defaultStarPrices)},
             true
           )
           RETURNING *

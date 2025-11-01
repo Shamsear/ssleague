@@ -296,7 +296,7 @@ async function processPlayer(params: {
   // Calculate points breakdown (same for all teams)
   const is_clean_sheet = goals_conceded === 0;
 
-  const points_breakdown = {
+  const points_breakdown: any = {
     goals: goals_scored * (scoringRules.get('goals_scored') || 0),
     conceded: goals_conceded * (scoringRules.get('goals_conceded') || 0),
     result: scoringRules.get(result) || 0,
@@ -305,6 +305,14 @@ async function processPlayer(params: {
     clean_sheet: is_clean_sheet ? (scoringRules.get('clean_sheet') || 0) : 0,
     substitution: substitution_penalty > 0 ? (scoringRules.get('substitution_penalty') || 0) : 0,
   };
+  
+  // Conditional bonuses based on goal milestones
+  if (goals_scored === 2) {
+    points_breakdown.brace = scoringRules.get('brace') || 0;
+  }
+  if (goals_scored >= 3) {
+    points_breakdown.hat_trick = scoringRules.get('hat_trick') || 0;
+  }
 
   const total_points = Object.values(points_breakdown).reduce((sum, val) => sum + val, 0);
 

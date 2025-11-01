@@ -204,6 +204,10 @@ export async function POST(request: NextRequest) {
 
     const userData = userDoc.data()!;
     const teamName = userData.teamName || userData.username || 'Team';
+    // Get owner's actual name (firstName + lastName or username as fallback)
+    const ownerActualName = userData.firstName && userData.lastName 
+      ? `${userData.firstName} ${userData.lastName}`.trim()
+      : userData.firstName || userData.username || teamName;
 
     // If league_id not provided, get current season
     let finalLeagueId = league_id;
@@ -313,7 +317,7 @@ export async function POST(request: NextRequest) {
         ${teamName},
         ${teamName},
         ${user_id},
-        ${userData.username || teamName},
+        ${ownerActualName},
         ${budgetPerTeam},
         0,
         999,

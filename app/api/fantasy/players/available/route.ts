@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 /**
  * GET /api/fantasy/players/available?league_id=xxx
@@ -31,6 +32,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const league = leagues[0];
+    const season_id = league.season_id;
+
+    // Get star pricing for the league
+    const starPricing: Record<number, number> = {};
+    if (league.star_rating_prices) {
+      league.star_rating_prices.forEach((p: any) => {
+        starPricing[p.stars] = p.price;
+      });
+    }
+
     // Get all drafted player IDs from PostgreSQL
     const draftedPlayers = await fantasySql`
       SELECT DISTINCT real_player_id
@@ -42,39 +54,46 @@ export async function GET(request: NextRequest) {
       draftedPlayers.map((p: any) => p.real_player_id)
     );
 
-    // Get all players from fantasy_players table in PostgreSQL
-    const allPlayers = await fantasySql`
+    // Get all players directly from player_seasons table (always fresh data)
+    // Exclude players without teams (team_id and team must not be null/empty)
+    const tournamentSql = getTournamentDb();
+    const allPlayers = await tournamentSql`
       SELECT 
-        real_player_id,
+        player_id,
         player_name,
-        position,
-        real_team_id,
-        real_team_name,
+        team_id,
+        team,
         star_rating,
-        draft_price,
-        current_price,
-        total_points,
-        is_available
-      FROM fantasy_players
-      WHERE league_id = ${league_id}
-        AND is_available = true
+        category
+      FROM player_seasons
+      WHERE season_id = ${season_id}
+        AND player_name IS NOT NULL
+        AND team_id IS NOT NULL
+        AND team_id != ''
+        AND team IS NOT NULL
+        AND team != ''
     `;
 
-    // Filter out drafted players
+    // Filter out drafted players and map to fantasy format
     const availablePlayers = allPlayers
-      .filter((player: any) => !draftedPlayerIds.has(player.real_player_id))
-      .map((player: any) => ({
-        real_player_id: player.real_player_id,
-        player_name: player.player_name,
-        position: player.position || 'Unknown',
-        team: player.real_team_name || 'Unknown',
-        team_id: player.real_team_id,
-        star_rating: player.star_rating || 5,
-        draft_price: parseFloat(player.draft_price) || 10,
-        points: player.total_points || 100,
-        category: 'Classic',
-        is_available: true,
-      }));
+      .filter((player: any) => !draftedPlayerIds.has(player.player_id))
+      .map((player: any) => {
+        const starRating = player.star_rating || 5;
+        const draftPrice = starPricing[starRating] || 10;
+        
+        return {
+          real_player_id: player.player_id,
+          player_name: player.player_name,
+          position: player.category || 'Unknown',
+          team: player.team || 'Unknown',
+          team_id: player.team_id,
+          star_rating: starRating,
+          draft_price: draftPrice,
+          points: 0,
+          category: player.category || 'Classic',
+          is_available: true,
+        };
+      });
 
     // Sort by star rating (highest first), then by name
     availablePlayers.sort((a, b) => {

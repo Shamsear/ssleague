@@ -1,4 +1,5 @@
 import { getTournamentDb } from './neon/tournament-config';
+import { addFantasyPointsForAward } from './fantasy-award-points';
 
 interface PlayerAwardResult {
   success: boolean;
@@ -94,6 +95,14 @@ export async function autoAwardPlayerAwards(
           SET awards_count = COALESCE(awards_count, 0) + 1
           WHERE player_id = ${player.player_id} AND season_id = ${seasonId}
         `;
+        
+        // Add fantasy points
+        await addFantasyPointsForAward(
+          player.player_id,
+          player.player_name,
+          seasonId,
+          'Golden Boot'
+        );
       }
     }
 
@@ -145,6 +154,14 @@ export async function autoAwardPlayerAwards(
           SET awards_count = COALESCE(awards_count, 0) + 1
           WHERE player_id = ${player.player_id} AND season_id = ${seasonId}
         `;
+        
+        // Add fantasy points
+        await addFantasyPointsForAward(
+          player.player_id,
+          player.player_name,
+          seasonId,
+          'Most Assists'
+        );
       }
     }
 
@@ -196,6 +213,14 @@ export async function autoAwardPlayerAwards(
           SET awards_count = COALESCE(awards_count, 0) + 1
           WHERE player_id = ${player.player_id} AND season_id = ${seasonId}
         `;
+        
+        // Add fantasy points
+        await addFantasyPointsForAward(
+          player.player_id,
+          player.player_name,
+          seasonId,
+          'Most Clean Sheets'
+        );
       }
     }
 
@@ -264,6 +289,14 @@ export async function autoAwardPlayerAwards(
             SET awards_count = COALESCE(awards_count, 0) + 1
             WHERE player_id = ${player.player_id} AND season_id = ${seasonId}
           `;
+          
+          // Add fantasy points
+          await addFantasyPointsForAward(
+            player.player_id,
+            player.player_name,
+            seasonId,
+            `Best ${category}`
+          );
         }
       }
     }

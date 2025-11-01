@@ -15,15 +15,15 @@ export async function PUT(
     const { rule_name, description, points_value, is_active, applies_to } = body;
 
     const result = await fantasySql`
-      UPDATE scoring_rules
+      UPDATE fantasy_scoring_rules
       SET 
         rule_name = COALESCE(${rule_name}, rule_name),
         description = COALESCE(${description}, description),
         points_value = COALESCE(${points_value}, points_value),
-        is_active = COALESCE(${is_active}, is_active),
         applies_to = COALESCE(${applies_to}, applies_to),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE rule_id = ${ruleId}
+        is_active = COALESCE(${is_active}, is_active),
+        updated_at = NOW()
+      WHERE id = ${parseInt(ruleId)}
       RETURNING *
     `;
 
@@ -40,9 +40,10 @@ export async function PUT(
       success: true,
       message: 'Scoring rule updated successfully',
       rule: {
-        rule_id: result[0].rule_id,
+        rule_id: result[0].id || result[0].rule_id,
         rule_name: result[0].rule_name,
         points_value: Number(result[0].points_value),
+        applies_to: result[0].applies_to,
         is_active: result[0].is_active,
       },
     });
@@ -67,8 +68,8 @@ export async function DELETE(
     const { ruleId } = await params;
 
     const result = await fantasySql`
-      DELETE FROM scoring_rules
-      WHERE rule_id = ${ruleId}
+      DELETE FROM fantasy_scoring_rules
+      WHERE id = ${parseInt(ruleId)}
       RETURNING rule_name
     `;
 
