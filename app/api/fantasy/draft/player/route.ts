@@ -214,3 +214,115 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * DELETE /api/fantasy/draft/player
+ * Remove a drafted player from squad (during draft period only)
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const user_id = searchParams.get('user_id');
+    const real_player_id = searchParams.get('real_player_id');
+
+    if (!user_id || !real_player_id) {
+      return NextResponse.json(
+        { error: 'Missing required parameters: user_id, real_player_id' },
+        { status: 400 }
+      );
+    }
+
+    // Get user's fantasy team
+    const fantasyTeams = await fantasySql`
+      SELECT * FROM fantasy_teams
+      WHERE owner_uid = ${user_id} AND is_enabled = true
+      LIMIT 1
+    `;
+
+    if (fantasyTeams.length === 0) {
+      return NextResponse.json(
+        { error: 'No fantasy team found for this user' },
+        { status: 404 }
+      );
+    }
+
+    const team = fantasyTeams[0];
+    const teamId = team.team_id;
+    const leagueId = team.league_id;
+
+    // Get league settings to check draft status
+    const leagues = await fantasySql`
+      SELECT * FROM fantasy_leagues
+      WHERE league_id = ${leagueId}
+      LIMIT 1
+    `;
+
+    if (leagues.length === 0) {
+      return NextResponse.json(
+        { error: 'Fantasy league not found' },
+        { status: 404 }
+      );
+    }
+
+    const league = leagues[0];
+
+    // Check if draft is active (only allow removal during draft)
+    if (league.draft_status !== 'active') {
+      return NextResponse.json(
+        { 
+          error: `Cannot remove players when draft is ${league.draft_status}`,
+          message: 'Players can only be removed during active draft period'
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the player from squad
+    const squadPlayer = await fantasySql`
+      SELECT * FROM fantasy_squad
+      WHERE team_id = ${teamId}
+        AND real_player_id = ${real_player_id}
+      LIMIT 1
+    `;
+
+    if (squadPlayer.length === 0) {
+      return NextResponse.json(
+        { error: 'Player not found in squad' },
+        { status: 404 }
+      );
+    }
+
+    const player = squadPlayer[0];
+    const refundPrice = Number(player.purchase_price);
+
+    // Remove from fantasy_squad
+    await fantasySql`
+      DELETE FROM fantasy_squad
+      WHERE team_id = ${teamId}
+        AND real_player_id = ${real_player_id}
+    `;
+
+    // Update team's budget (refund the price)
+    await fantasySql`
+      UPDATE fantasy_teams
+      SET budget_remaining = budget_remaining + ${refundPrice},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE team_id = ${teamId}
+    `;
+
+    console.log(`✅ Undrafted player: ${player.player_name} from team ${teamId}, refunded $${refundPrice}M`);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Player removed from squad',
+      refunded_amount: refundPrice,
+      player_name: player.player_name
+    });
+  } catch (error) {
+    console.error('Error removing player:', error);
+    return NextResponse.json(
+      { error: 'Failed to remove player', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}

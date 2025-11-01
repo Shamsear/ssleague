@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star } from 'lucide-react';
+import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star, Trash2 } from 'lucide-react';
 
 interface Player {
   real_player_id: string;
@@ -59,6 +59,7 @@ export default function TeamDraftPage() {
   const [filter, setFilter] = useState({ position: 'all', team: 'all', search: '', stars: 'all' });
   const [isLoading, setIsLoading] = useState(true);
   const [isDrafting, setIsDrafting] = useState<string | null>(null);
+  const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [isSelectingTeam, setIsSelectingTeam] = useState(false);
   const [captainId, setCaptainId] = useState<string | null>(null);
   const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
@@ -208,7 +209,7 @@ export default function TeamDraftPage() {
         throw new Error(errorMessage);
       }
 
-      alert('Captain and vice-captain saved successfully! Your draft is complete.');
+      alert('Captain and vice-captain saved successfully!');
       
       // Refresh squad data to show captain badges
       await loadDraftData();
@@ -273,6 +274,42 @@ export default function TeamDraftPage() {
       alert('Failed to draft player');
     } finally {
       setIsDrafting(null);
+    }
+  };
+
+  const removePlayer = async (playerId: string, playerName: string) => {
+    if (!user) return;
+
+    if (!confirm(`Remove ${playerName} from your squad?`)) {
+      return;
+    }
+
+    setIsRemoving(playerId);
+    try {
+      const res = await fetch(
+        `/api/fantasy/draft/player?user_id=${user.uid}&real_player_id=${playerId}`,
+        { method: 'DELETE' }
+      );
+
+      if (res.ok) {
+        await loadDraftData();
+        const data = await res.json();
+        alert(`${playerName} removed. Refunded $${data.refunded_amount}M`);
+      } else {
+        let errorMessage = 'Failed to remove player';
+        try {
+          const error = await res.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          // Response body is empty or not JSON
+        }
+        alert(errorMessage);
+      }
+    } catch (error) {
+      console.error('Failed to remove player:', error);
+      alert('Failed to remove player');
+    } finally {
+      setIsRemoving(null);
     }
   };
 
@@ -637,9 +674,19 @@ export default function TeamDraftPage() {
                     key={player.real_player_id}
                     className="p-3 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200"
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <Shield className="w-4 h-4 text-green-600" />
-                      <p className="font-medium text-gray-900 text-sm">{player.player_name}</p>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2 flex-1">
+                        <Shield className="w-4 h-4 text-green-600" />
+                        <p className="font-medium text-gray-900 text-sm">{player.player_name}</p>
+                      </div>
+                      <button
+                        onClick={() => removePlayer(player.real_player_id, player.player_name)}
+                        disabled={isRemoving === player.real_player_id || !draftSettings?.is_draft_active}
+                        className="p-1.5 text-red-600 hover:bg-red-100 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={!draftSettings?.is_draft_active ? 'Draft is not active' : 'Remove player'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-600">
@@ -655,24 +702,18 @@ export default function TeamDraftPage() {
                 )}
               </div>
 
-              {mySquad.length === draftSettings.max_squad_size && (
-                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                  <Check className="w-6 h-6 text-green-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-green-700">Squad Complete!</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
-        {/* Captain Selection (shown when squad is complete) */}
-        {mySquad.length === draftSettings.max_squad_size && (
+        {/* Captain Selection (shown when at least 1 player drafted) */}
+        {mySquad.length > 0 && (
           <div className="mt-8 glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Captain & Vice-Captain</h2>
                 <p className="text-sm text-gray-600">
-                  Captain earns 2x points, Vice-Captain earns 1.5x points
+                  Captain earns 2x points, Vice-Captain earns 1.5x points. You can change these selections anytime during the draft.
                 </p>
               </div>
               <button
@@ -680,7 +721,7 @@ export default function TeamDraftPage() {
                 disabled={isSavingCaptains || !captainId || !viceCaptainId}
                 className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
               >
-                {isSavingCaptains ? 'Saving...' : 'Complete Draft'}
+                {isSavingCaptains ? 'Saving...' : 'Save Captains'}
               </button>
             </div>
 
@@ -745,9 +786,17 @@ export default function TeamDraftPage() {
             </div>
 
             {(!captainId || !viceCaptainId) && (
-              <div className="mt-4 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-xl">
-                <p className="text-sm text-yellow-800 font-medium text-center">
-                  ⚠️ Please select both captain and vice-captain to complete your draft
+              <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
+                <p className="text-sm text-blue-800 font-medium text-center">
+                  💡 Select both captain and vice-captain from your squad above
+                </p>
+              </div>
+            )}
+            
+            {captainId && viceCaptainId && (
+              <div className="mt-4 p-4 bg-green-50 border-2 border-green-300 rounded-xl">
+                <p className="text-sm text-green-800 font-medium text-center">
+                  ✅ Captain and Vice-Captain selected! Click "Save Captains" to confirm.
                 </p>
               </div>
             )}
