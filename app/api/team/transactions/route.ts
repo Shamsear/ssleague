@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 
 export async function GET(request: NextRequest) {
   try {
-    // Get Firebase ID token from cookie
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    // Get token from Authorization header or cookie
+    const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json({

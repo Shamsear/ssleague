@@ -57,7 +57,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       tournament_id,
-      tournament_name,
       squad_size,
       tournament_system,
       home_deadline_time,
@@ -68,10 +67,7 @@ export async function POST(request: NextRequest) {
       playoff_teams,
       direct_semifinal_teams,
       qualification_threshold,
-      is_two_legged,
-      num_teams,
-      awards_enabled,
-      awards_config
+      lineup_category_requirements
     } = body;
 
     if (!tournament_id) {
@@ -81,11 +77,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get season_id from tournament
+    const tournamentResult = await sql`
+      SELECT season_id FROM tournaments WHERE id = ${tournament_id} LIMIT 1
+    `;
+    
+    if (tournamentResult.length === 0) {
+      return NextResponse.json(
+        { error: 'Tournament not found' },
+        { status: 404 }
+      );
+    }
+    
+    const season_id = tournamentResult[0].season_id;
+
     // Upsert (insert or update if exists)
     await sql`
       INSERT INTO tournament_settings (
         tournament_id,
-        tournament_name,
+        season_id,
         squad_size,
         tournament_system,
         home_deadline_time,
@@ -96,15 +106,12 @@ export async function POST(request: NextRequest) {
         playoff_teams,
         direct_semifinal_teams,
         qualification_threshold,
-        is_two_legged,
-        num_teams,
-        awards_enabled,
-        awards_config,
+        lineup_category_requirements,
         created_at,
         updated_at
       ) VALUES (
         ${tournament_id},
-        ${tournament_name || null},
+        ${season_id},
         ${squad_size ?? null},
         ${tournament_system || 'match_round'},
         ${home_deadline_time || '17:00'},
@@ -115,15 +122,11 @@ export async function POST(request: NextRequest) {
         ${playoff_teams ?? null},
         ${direct_semifinal_teams ?? null},
         ${qualification_threshold ?? null},
-        ${is_two_legged !== undefined ? is_two_legged : true},
-        ${num_teams || null},
-        ${awards_enabled ?? true},
-        ${JSON.stringify(awards_config || {})},
+        ${JSON.stringify(lineup_category_requirements || {})},
         NOW(),
         NOW()
       )
       ON CONFLICT (tournament_id) DO UPDATE SET
-        tournament_name = EXCLUDED.tournament_name,
         squad_size = EXCLUDED.squad_size,
         tournament_system = EXCLUDED.tournament_system,
         home_deadline_time = EXCLUDED.home_deadline_time,
@@ -134,10 +137,7 @@ export async function POST(request: NextRequest) {
         playoff_teams = EXCLUDED.playoff_teams,
         direct_semifinal_teams = EXCLUDED.direct_semifinal_teams,
         qualification_threshold = EXCLUDED.qualification_threshold,
-        is_two_legged = EXCLUDED.is_two_legged,
-        num_teams = EXCLUDED.num_teams,
-        awards_enabled = EXCLUDED.awards_enabled,
-        awards_config = EXCLUDED.awards_config,
+        lineup_category_requirements = EXCLUDED.lineup_category_requirements,
         updated_at = NOW()
     `;
 

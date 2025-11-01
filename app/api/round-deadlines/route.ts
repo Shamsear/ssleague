@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
           round_number,
           leg,
           scheduled_date::text as scheduled_date,
+          round_start_time,
           home_fixture_deadline_time,
           away_fixture_deadline_time,
           result_entry_deadline_day_offset,
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
           round_number,
           leg,
           scheduled_date::text as scheduled_date,
+          round_start_time,
           home_fixture_deadline_time,
           away_fixture_deadline_time,
           result_entry_deadline_day_offset,
@@ -93,6 +95,7 @@ export async function POST(request: NextRequest) {
       round_number, 
       leg = 'first',
       scheduled_date,
+      round_start_time,
       home_fixture_deadline_time,
       away_fixture_deadline_time,
       result_entry_deadline_day_offset,
@@ -146,6 +149,20 @@ export async function POST(request: NextRequest) {
     } else if (dateOnly) {
       console.log('📅 Using date as-is:', dateOnly);
     }
+
+    // Calculate current IST time if starting round for the first time
+    let startTime = round_start_time;
+    if (status === 'active' && !round_start_time) {
+      // Only set round_start_time if starting for the first time (not provided)
+      const now = new Date();
+      const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const istOffset = 5.5 * 60 * 60000; // IST is UTC+5:30
+      const istNow = new Date(utcTime + istOffset);
+      const hours = istNow.getHours().toString().padStart(2, '0');
+      const minutes = istNow.getMinutes().toString().padStart(2, '0');
+      startTime = `${hours}:${minutes}`;
+      console.log('🕐 Setting round_start_time to current IST:', startTime);
+    }
     
     // Upsert
     console.log('Inserting round_deadline:', {
@@ -153,6 +170,7 @@ export async function POST(request: NextRequest) {
       round_number,
       leg,
       scheduled_date: dateOnly,
+      round_start_time: startTime,
       homeTime,
       awayTime,
       resultOffset,
@@ -167,6 +185,7 @@ export async function POST(request: NextRequest) {
         round_number,
         leg,
         scheduled_date,
+        round_start_time,
         home_fixture_deadline_time,
         away_fixture_deadline_time,
         result_entry_deadline_day_offset,
@@ -180,6 +199,7 @@ export async function POST(request: NextRequest) {
         ${round_number},
         ${leg},
         ${dateOnly ? sql`${dateOnly}::date` : null},
+        ${startTime || '14:00'},
         ${homeTime},
         ${awayTime},
         ${resultOffset},
@@ -190,6 +210,10 @@ export async function POST(request: NextRequest) {
       )
       ON CONFLICT (tournament_id, round_number, leg) DO UPDATE SET
         scheduled_date = ${dateOnly ? sql`${dateOnly}::date` : sql`EXCLUDED.scheduled_date`},
+        round_start_time = CASE 
+          WHEN EXCLUDED.status = 'active' AND round_deadlines.status != 'active' THEN COALESCE(EXCLUDED.round_start_time, '14:00')
+          ELSE COALESCE(round_deadlines.round_start_time, EXCLUDED.round_start_time, '14:00')
+        END,
         home_fixture_deadline_time = EXCLUDED.home_fixture_deadline_time,
         away_fixture_deadline_time = EXCLUDED.away_fixture_deadline_time,
         result_entry_deadline_day_offset = EXCLUDED.result_entry_deadline_day_offset,

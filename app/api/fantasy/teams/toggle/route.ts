@@ -54,45 +54,58 @@ export async function POST(request: NextRequest) {
     const budgetPerTeam = leagueResult[0]?.budget_per_team || 100.00;
 
     if (enable) {
-      // Create or enable fantasy team in PostgreSQL
-      await fantasySql`
-        INSERT INTO fantasy_teams (
-          team_id,
-          league_id,
-          real_team_id,
-          real_team_name,
-          owner_uid,
-          owner_name,
-          team_name,
-          budget_remaining,
-          is_enabled
-        ) VALUES (
-          ${team_id},
-          ${league_id},
-          ${team_id},
-          ${teamName},
-          ${ownerUid},
-          ${ownerName},
-          ${teamName},
-          ${budgetPerTeam},
-          true
-        )
-        ON CONFLICT (team_id)
-        DO UPDATE SET 
-          is_enabled = true,
-          owner_uid = EXCLUDED.owner_uid,
-          owner_name = EXCLUDED.owner_name,
-          updated_at = CURRENT_TIMESTAMP
+      // Check if fantasy team already exists for this league
+      const existingTeams = await fantasySql`
+        SELECT team_id FROM fantasy_teams
+        WHERE real_team_id = ${team_id} AND league_id = ${league_id}
+        LIMIT 1
       `;
-
-      console.log(`✅ ${teamName} - fantasy enabled in PostgreSQL`);
+      
+      if (existingTeams.length > 0) {
+        // Update existing team
+        await fantasySql`
+          UPDATE fantasy_teams
+          SET is_enabled = true,
+              owner_uid = ${ownerUid},
+              owner_name = ${ownerName},
+              updated_at = CURRENT_TIMESTAMP
+          WHERE real_team_id = ${team_id} AND league_id = ${league_id}
+        `;
+        console.log(`✅ ${teamName} - fantasy re-enabled (existing record updated)`);
+      } else {
+        // Create new fantasy team in PostgreSQL
+        await fantasySql`
+          INSERT INTO fantasy_teams (
+            team_id,
+            league_id,
+            real_team_id,
+            real_team_name,
+            owner_uid,
+            owner_name,
+            team_name,
+            budget_remaining,
+            is_enabled
+          ) VALUES (
+            ${team_id},
+            ${league_id},
+            ${team_id},
+            ${teamName},
+            ${ownerUid},
+            ${ownerName},
+            ${teamName},
+            ${budgetPerTeam},
+            true
+          )
+        `;
+        console.log(`✅ ${teamName} - fantasy enabled (new record created)`);
+      }
     } else {
       // Disable fantasy team
       await fantasySql`
         UPDATE fantasy_teams
         SET is_enabled = false,
             updated_at = CURRENT_TIMESTAMP
-        WHERE team_id = ${team_id}
+        WHERE real_team_id = ${team_id} AND league_id = ${league_id}
       `;
 
       console.log(`❌ ${teamName} - fantasy disabled`);

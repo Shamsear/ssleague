@@ -99,6 +99,19 @@ export default function FantasyLeagueDashboard() {
 
   const managementCards = [
     {
+      title: 'Enable Teams',
+      description: 'Enable/disable teams for fantasy participation',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/enable-teams`,
+      color: 'from-teal-500 to-cyan-600',
+      bgColor: 'from-teal-50 to-cyan-50',
+      borderColor: 'border-teal-200',
+    },
+    {
       title: 'Draft Settings',
       description: 'Configure budget and squad size limits',
       icon: (

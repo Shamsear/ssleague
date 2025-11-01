@@ -89,7 +89,20 @@ export default function FantasyTeamsPage() {
 
     try {
       const response = await fetch(`/api/fantasy/teams/${team.id}`);
-      if (!response.ok) throw new Error('Failed to load team players');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        
+        // If team not found in Firebase, show empty state gracefully
+        if (response.status === 404) {
+          console.log('Team has not completed draft setup yet - showing empty state');
+          setTeamPlayers([]);
+          return;
+        }
+        
+        console.error('API Error:', response.status, errorData);
+        throw new Error(errorData.error || 'Failed to load team players');
+      }
 
       const data = await response.json();
       setTeamPlayers(data.players || []);
@@ -98,8 +111,9 @@ export default function FantasyTeamsPage() {
       showAlert({
         type: 'error',
         title: 'Error',
-        message: 'Failed to load team players',
+        message: error instanceof Error ? error.message : 'Failed to load team players',
       });
+      setTeamPlayers([]);
     } finally {
       setIsLoadingPlayers(false);
     }
@@ -229,7 +243,8 @@ export default function FantasyTeamsPage() {
                       <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                       </svg>
-                      <p className="text-gray-500">No players drafted yet</p>
+                      <p className="text-gray-500 font-medium mb-2">No players drafted yet</p>
+                      <p className="text-sm text-gray-400">This team hasn't participated in the draft</p>
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-[600px] overflow-y-auto">

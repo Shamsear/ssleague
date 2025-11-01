@@ -11,9 +11,13 @@ import { Timestamp } from 'firebase/firestore';
 
 /**
  * Get current date/time in IST
+ * Returns the current moment in time (same as new Date())
+ * Use this when comparing with IST deadlines created by createISTDateTime
  */
 export function getISTNow(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  // Just return current time - the actual moment in time
+  // This will be compared with deadlines that have proper timezone offsets
+  return new Date();
 }
 
 /**
@@ -21,7 +25,9 @@ export function getISTNow(): Date {
  */
 export function toIST(date: Date | string | number): Date {
   const d = new Date(date);
-  return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const utcTime = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const istOffset = 5.5 * 60 * 60000; // IST is UTC+5:30
+  return new Date(utcTime + istOffset);
 }
 
 /**

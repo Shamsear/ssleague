@@ -39,9 +39,14 @@ export default function SelectOpponentLineupPage() {
 
       // Fetch fixture details
       const fixtureRes = await fetch(`/api/fixtures/${fixtureId}`);
+      
+      if (!fixtureRes.ok) {
+        throw new Error('Fixture not found');
+      }
+
       const fixtureData = await fixtureRes.json();
       
-      if (!fixtureData.success) {
+      if (!fixtureData.fixture) {
         throw new Error('Fixture not found');
       }
 

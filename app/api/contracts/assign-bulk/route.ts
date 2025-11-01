@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { fantasySql } from '@/lib/neon/fantasy-config';

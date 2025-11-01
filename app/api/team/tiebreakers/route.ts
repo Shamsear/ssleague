@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
@@ -11,8 +11,7 @@ const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json(

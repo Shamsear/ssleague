@@ -15,7 +15,6 @@ import { db } from './config';
 export interface TournamentSettings {
   id?: string;
   season_id: string;
-  tournament_name: string;
   squad_size: number;
   tournament_system: 'match_round' | 'legacy';
   home_deadline_time: string;

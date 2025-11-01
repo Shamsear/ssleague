@@ -112,7 +112,7 @@ export default function EnableFantasyTeamsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           team_id: teamId,
-          league_id: `fantasy-${userSeasonId}`, // Use season_id as league_id
+          league_id: userSeasonId.replace('SSPSLS', 'SSPSLFLS'), // Convert season ID to fantasy league ID
           enable: !currentStatus 
         }),
       });

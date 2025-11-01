@@ -17,22 +17,38 @@ export async function GET(
       );
     }
 
+    console.log('🔍 Fetching roster for:', { teamId, seasonId });
+
     const sql = getTournamentDb();
     
-    // Get all active players for this team in this season
+    // Get all active players for this team in this season from player_seasons table
     const players = await sql`
       SELECT 
-        rp.player_id,
-        rp.name,
-        rps.category,
-        rps.is_active
-      FROM realplayers rp
-      INNER JOIN realplayerstats rps ON rp.player_id = rps.player_id
-      WHERE rps.team_id = ${teamId}
-        AND rps.season_id = ${seasonId}
-        AND rps.is_active = true
-      ORDER BY rp.name
+        player_id,
+        player_name as name,
+        category,
+        CASE 
+          WHEN registration_status = 'active' THEN true
+          ELSE false
+        END as is_active
+      FROM player_seasons
+      WHERE team_id = ${teamId}
+        AND season_id = ${seasonId}
+        AND registration_status = 'active'
+      ORDER BY player_name
     `;
+
+    console.log('✅ Found players:', players.length);
+    if (players.length === 0) {
+      console.log('⚠️ No players found. Checking all records for this team/season...');
+      const allPlayers = await sql`
+        SELECT COUNT(*) as total, registration_status
+        FROM player_seasons
+        WHERE team_id = ${teamId} AND season_id = ${seasonId}
+        GROUP BY registration_status
+      `;
+      console.log('📊 All player records:', allPlayers);
+    }
 
     return NextResponse.json({
       success: true,

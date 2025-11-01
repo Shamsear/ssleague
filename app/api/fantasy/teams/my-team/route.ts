@@ -247,23 +247,60 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get team ID from Firebase teams collection
-    const teamsQuery = await adminDb.collection('teams')
+    // Get team ID from Firebase team_seasons or teams collection
+    let teamDocId = null;
+    
+    // First try to get from current season's team_seasons
+    const seasonId = finalLeagueId.replace('SSPSLFLS', 'SSPSLS');
+    const teamSeasonsQuery = await adminDb.collection('team_seasons')
       .where('user_id', '==', user_id)
+      .where('season_id', '==', seasonId)
+      .where('status', '==', 'registered')
       .limit(1)
       .get();
+    
+    if (!teamSeasonsQuery.empty) {
+      teamDocId = teamSeasonsQuery.docs[0].data().team_id;
+    } else {
+      // Fallback to teams collection
+      const teamsQuery = await adminDb.collection('teams')
+        .where('uid', '==', user_id)
+        .limit(1)
+        .get();
+      
+      if (!teamsQuery.empty) {
+        teamDocId = teamsQuery.docs[0].id;
+      }
+    }
+    
+    if (!teamDocId) {
+      return NextResponse.json(
+        { error: 'No team found for user. Please register for the season first.' },
+        { status: 404 }
+      );
+    }
+    
+    const fantasyTeamId = teamDocId;
 
-    const teamDocId = !teamsQuery.empty ? teamsQuery.docs[0].id : user_id;
-    const fantasyTeamId = `${finalLeagueId}_${teamDocId}`;
-
-    // Create fantasy team
+    // Get league budget
+    const leagueResult = await fantasySql`
+      SELECT budget_per_team FROM fantasy_leagues 
+      WHERE league_id = ${finalLeagueId}
+      LIMIT 1
+    `;
+    const budgetPerTeam = leagueResult[0]?.budget_per_team || 100.00;
+    
+    // Create fantasy team in PostgreSQL
     await fantasySql`
       INSERT INTO fantasy_teams (
         team_id,
         league_id,
+        real_team_id,
+        real_team_name,
         team_name,
         owner_uid,
         owner_name,
+        budget_remaining,
         total_points,
         rank,
         is_enabled,
@@ -272,9 +309,12 @@ export async function POST(request: NextRequest) {
       ) VALUES (
         ${fantasyTeamId},
         ${finalLeagueId},
+        ${teamDocId},
+        ${teamName},
         ${teamName},
         ${user_id},
         ${userData.username || teamName},
+        ${budgetPerTeam},
         0,
         999,
         true,
@@ -283,8 +323,9 @@ export async function POST(request: NextRequest) {
       )
     `;
 
-    // Update Firebase team document
-    if (!teamsQuery.empty) {
+    // Update Firebase team document if it exists
+    const teamDoc = await adminDb.collection('teams').doc(teamDocId).get();
+    if (teamDoc.exists) {
       await adminDb.collection('teams').doc(teamDocId).update({
         fantasy_participating: true,
         fantasy_league_id: finalLeagueId,

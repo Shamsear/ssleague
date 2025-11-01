@@ -35,11 +35,21 @@ export async function GET(
     const teamData = teamDoc.data();
 
     // Get drafted players
-    const draftsSnap = await adminDb
-      .collection('fantasy_drafts')
-      .where('fantasy_team_id', '==', teamId)
-      .orderBy('draft_order', 'asc')
-      .get();
+    let draftsSnap;
+    try {
+      draftsSnap = await adminDb
+        .collection('fantasy_drafts')
+        .where('fantasy_team_id', '==', teamId)
+        .orderBy('draft_order', 'asc')
+        .get();
+    } catch (indexError: any) {
+      // If index doesn't exist or query fails, try without orderBy
+      console.log('Falling back to query without orderBy:', indexError.message);
+      draftsSnap = await adminDb
+        .collection('fantasy_drafts')
+        .where('fantasy_team_id', '==', teamId)
+        .get();
+    }
 
     const draftedPlayers = await Promise.all(
       draftsSnap.docs.map(async (doc) => {

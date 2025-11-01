@@ -17,9 +17,10 @@ export default function FixtureLineupPage() {
   const [teamId, setTeamId] = useState<string>('');
   const [existingLineup, setExistingLineup] = useState<any>(null);
   const [loadingData, setLoadingData] = useState(true);
+  const [deadline, setDeadline] = useState<string | null>(null);
 
   // Auto-lock lineups when deadline passes
-  useAutoLockLineups(fixtureId, fixture?.lineup_deadline);
+  useAutoLockLineups(fixtureId, deadline);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -39,27 +40,99 @@ export default function FixtureLineupPage() {
 
       // Fetch fixture details
       const fixtureRes = await fetch(`/api/fixtures/${fixtureId}`);
+      
+      if (!fixtureRes.ok) {
+        throw new Error('Fixture not found');
+      }
+
       const fixtureData = await fixtureRes.json();
       
-      if (!fixtureData.success) {
+      if (!fixtureData.fixture) {
         throw new Error('Fixture not found');
       }
 
       setFixture(fixtureData.fixture);
 
+      // Fetch deadline information from editable API
+      const editableRes = await fetch(`/api/fixtures/${fixtureId}/editable`);
+      const editableData = await editableRes.json();
+      
+      if (editableData.deadline) {
+        setDeadline(editableData.deadline);
+      }
+
+      // Fetch user's team_id from team_seasons for this season
+      const teamSeasonsRes = await fetch(`/api/team-seasons?user_id=${user?.uid}&season_id=${fixtureData.fixture.season_id}`);
+      const teamSeasonsData = await teamSeasonsRes.json();
+      
+      console.log('🔍 DEBUG - Team seasons data:', teamSeasonsData);
+      
+      if (!teamSeasonsData.success || !teamSeasonsData.team_season) {
+        throw new Error('You are not registered for this season');
+      }
+      
+      const actualTeamId = teamSeasonsData.team_season.team_id;
+      
       // Determine which team the user belongs to
-      const userTeamId = fixtureData.fixture.home_team_id === user?.team_id
+      console.log('🔍 DEBUG - Fixture data:', {
+        fixtureId,
+        home_team_id: fixtureData.fixture.home_team_id,
+        away_team_id: fixtureData.fixture.away_team_id,
+        home_team_name: fixtureData.fixture.home_team_name,
+        away_team_name: fixtureData.fixture.away_team_name,
+        user_uid: user?.uid,
+        actual_team_id: actualTeamId
+      });
+      
+      console.log('🔍 DEBUG - Team matching:', {
+        is_home_team: fixtureData.fixture.home_team_id === actualTeamId,
+        is_away_team: fixtureData.fixture.away_team_id === actualTeamId
+      });
+      
+      const userTeamId = fixtureData.fixture.home_team_id === actualTeamId
         ? fixtureData.fixture.home_team_id
         : fixtureData.fixture.away_team_id;
       
+      console.log('🔍 DEBUG - Determined userTeamId:', userTeamId);
+      
+      // Verify user's team is actually in this fixture
+      if (userTeamId !== fixtureData.fixture.home_team_id && userTeamId !== fixtureData.fixture.away_team_id) {
+        console.error('❌ User team not in fixture!');
+        throw new Error('You are not part of this fixture');
+      }
+      
       setTeamId(userTeamId);
 
-      // Fetch existing lineup if any
-      const lineupRes = await fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${userTeamId}`);
+      // Fetch existing lineup if any - only for the user's team
+      const lineupUrl = `/api/lineups?fixture_id=${fixtureId}&team_id=${userTeamId}`;
+      console.log('🔍 DEBUG - Fetching lineup from:', lineupUrl);
+      const lineupRes = await fetch(lineupUrl);
       const lineupData = await lineupRes.json();
       
-      if (lineupData.success && lineupData.lineups) {
-        setExistingLineup(lineupData.lineups);
+      console.log('🔍 DEBUG - Lineup API response:', lineupData);
+      
+      // Verify the returned lineup belongs to this team
+      if (lineupData.success && lineupData.lineups !== null && lineupData.lineups !== undefined) {
+        console.log('🔍 DEBUG - Checking lineup team_id:', {
+          returned_team_id: lineupData.lineups.team_id,
+          expected_team_id: userTeamId,
+          match: lineupData.lineups.team_id === userTeamId,
+          lineupData: lineupData.lineups
+        });
+        
+        // Double-check that the lineup's team_id matches
+        if (lineupData.lineups.team_id === userTeamId) {
+          console.log('✅ DEBUG - Team ID matches, setting lineup');
+          setExistingLineup(lineupData.lineups);
+        } else {
+          console.error('❌ CRITICAL - Lineup team_id mismatch!', {
+            returned: lineupData.lineups.team_id,
+            expected: userTeamId
+          });
+        }
+      } else {
+        console.log('ℹ️ DEBUG - No existing lineup found for this team (lineups is null/undefined)');
+        setExistingLineup(null);
       }
     } catch (error) {
       console.error('Error fetching data:', error);

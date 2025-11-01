@@ -55,6 +55,7 @@ interface Fixture {
 
 interface RoundDeadlines {
   scheduled_date: string;
+  round_start_time?: string;
   home_fixture_deadline_time: string;
   away_fixture_deadline_time: string;
   result_entry_deadline_day_offset: number;
@@ -72,12 +73,14 @@ export default function FixturePage() {
   const [teamId, setTeamId] = useState<string>('');
   const [isHomeTeam, setIsHomeTeam] = useState(false);
   const [roundDeadlines, setRoundDeadlines] = useState<RoundDeadlines | null>(null);
-  const [phase, setPhase] = useState<'home_fixture' | 'fixture_entry' | 'result_entry' | 'closed'>('closed');
+  const [phase, setPhase] = useState<'draft' | 'home_fixture' | 'fixture_entry' | 'result_entry' | 'closed'>('closed');
   const [isLoading, setIsLoading] = useState(true);
   
   // Player data
   const [homePlayers, setHomePlayers] = useState<any[]>([]);
   const [awayPlayers, setAwayPlayers] = useState<any[]>([]);
+  const [homeStartingXI, setHomeStartingXI] = useState<any[]>([]);
+  const [awayStartingXI, setAwayStartingXI] = useState<any[]>([]);
   
   // Matchup state
   const [matchups, setMatchups] = useState<Matchup[]>([]);
@@ -106,6 +109,12 @@ export default function FixturePage() {
   // Penalty goals state
   const [homePenaltyGoals, setHomePenaltyGoals] = useState(0);
   const [awayPenaltyGoals, setAwayPenaltyGoals] = useState(0);
+  
+  // Lineup submission tracking
+  const [homeLineupSubmitted, setHomeLineupSubmitted] = useState(false);
+  const [awayLineupSubmitted, setAwayLineupSubmitted] = useState(false);
+  const [lineupDeadline, setLineupDeadline] = useState<Date | null>(null);
+  const [canSubmitLineup, setCanSubmitLineup] = useState(false);
 
   // Modal system
   const {
@@ -250,6 +259,38 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
     }
   }, [user, loading, router]);
 
+  // Poll lineup status
+  useEffect(() => {
+    if (!fixtureId || !fixture) return;
+
+    const pollLineupStatus = async () => {
+      try {
+        const [homeLineupResponse, awayLineupResponse] = await Promise.all([
+          fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${fixture.home_team_id}`),
+          fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${fixture.away_team_id}`)
+        ]);
+
+        if (homeLineupResponse.ok) {
+          const homeLineupData = await homeLineupResponse.json();
+          const hasHomeLineup = homeLineupData.success && homeLineupData.lineups && homeLineupData.lineups.starting_xi && homeLineupData.lineups.starting_xi.length > 0;
+          setHomeLineupSubmitted(hasHomeLineup);
+        }
+
+        if (awayLineupResponse.ok) {
+          const awayLineupData = await awayLineupResponse.json();
+          const hasAwayLineup = awayLineupData.success && awayLineupData.lineups && awayLineupData.lineups.starting_xi && awayLineupData.lineups.starting_xi.length > 0;
+          setAwayLineupSubmitted(hasAwayLineup);
+        }
+      } catch (error) {
+        console.error('Error polling lineup status:', error);
+      }
+    };
+
+    // Poll every 5 seconds
+    const interval = setInterval(pollLineupStatus, 5000);
+    return () => clearInterval(interval);
+  }, [fixtureId, fixture]);
+
   useEffect(() => {
     const loadFixture = async () => {
       if (!user || !fixtureId) return;
@@ -321,16 +362,22 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
           season_id: fixtureData.season_id
         });
 
-        const [roundResponse, homePlayersResponse, awayPlayersResponse, matchupsResponse] = await Promise.all([
+        const [roundResponse, homePlayersResponse, awayPlayersResponse, matchupsResponse, homeLineupResponse, awayLineupResponse] = await Promise.all([
           fetch(`/api/round-deadlines?tournament_id=${fixtureData.tournament_id}&round_number=${fixtureData.round_number}&leg=${fixtureData.leg || 'first'}`),
           fetch(`/api/player-seasons?team_id=${fixtureData.home_team_id}&season_id=${fixtureData.season_id}`),
           fetch(`/api/player-seasons?team_id=${fixtureData.away_team_id}&season_id=${fixtureData.season_id}`),
-          fetch(`/api/fixtures/${fixtureId}/matchups`)
+          fetch(`/api/fixtures/${fixtureId}/matchups`),
+          fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${fixtureData.home_team_id}`),
+          fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${fixtureData.away_team_id}`)
         ]);
 
         // Parse player responses
         let homePlayersList: any[] = [];
         let awayPlayersList: any[] = [];
+        
+        // Track actual lineup submission status (used later for matchup permissions)
+        let actualHomeLineupSubmitted = false;
+        let actualAwayLineupSubmitted = false;
 
         if (homePlayersResponse.ok) {
           const homePlayersData = await homePlayersResponse.json();
@@ -352,6 +399,39 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
         
         setHomePlayers(homePlayersList);
         setAwayPlayers(awayPlayersList);
+        
+        // Process lineup submissions
+        if (homeLineupResponse.ok) {
+          const homeLineupData = await homeLineupResponse.json();
+          if (homeLineupData.success && homeLineupData.lineups && homeLineupData.lineups.starting_xi && homeLineupData.lineups.starting_xi.length > 0) {
+            setHomeLineupSubmitted(true);
+            actualHomeLineupSubmitted = true;
+            // Get starting XI player details
+            const homeStartingPlayers = homeLineupData.lineups.starting_xi
+              .map((playerId: string) => homePlayersList.find((p: any) => p.player_id === playerId))
+              .filter(Boolean);
+            setHomeStartingXI(homeStartingPlayers);
+          }
+        }
+        
+        if (awayLineupResponse.ok) {
+          const awayLineupData = await awayLineupResponse.json();
+          if (awayLineupData.success && awayLineupData.lineups && awayLineupData.lineups.starting_xi && awayLineupData.lineups.starting_xi.length > 0) {
+            setAwayLineupSubmitted(true);
+            actualAwayLineupSubmitted = true;
+            // Get starting XI player details
+            const awayStartingPlayers = awayLineupData.lineups.starting_xi
+              .map((playerId: string) => awayPlayersList.find((p: any) => p.player_id === playerId))
+              .filter(Boolean);
+            setAwayStartingXI(awayStartingPlayers);
+          }
+        }
+        
+        console.log('📋 Lineup Status Check:', {
+          homeLineupSubmitted: actualHomeLineupSubmitted,
+          awayLineupSubmitted: actualAwayLineupSubmitted,
+          bothSubmitted: actualHomeLineupSubmitted && actualAwayLineupSubmitted
+        });
 
         // Process matchups
         let matchupsList: any[] = [];
@@ -368,9 +448,19 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
         if (roundResponse.ok) {
           const { roundDeadline } = await roundResponse.json();
           
-          if (roundDeadline) {
+          if (roundDeadline && roundDeadline.home_fixture_deadline_time && roundDeadline.away_fixture_deadline_time) {
             const deadlines = roundDeadline as RoundDeadlines;
             setRoundDeadlines(deadlines);
+
+            // Skip deadline calculation if round hasn't been scheduled yet
+            if (!deadlines.scheduled_date) {
+              console.log('⏰ Round not scheduled yet - allowing draft lineup creation');
+              setPhase('draft'); // Draft state for unscheduled matches
+              setCanSubmitLineup(true); // Allow saving drafts
+              setCanCreateMatchups(false); // No matchups until scheduled
+              setCanEditMatchups(false);
+              return; // Skip rest of deadline logic
+            }
 
             // Calculate current phase
             // All times in database are IST (UTC+5:30)
@@ -385,7 +475,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
 
             // Result deadline is offset by days
             const resultDate = new Date(deadlines.scheduled_date);
-            resultDate.setDate(resultDate.getDate() + deadlines.result_entry_deadline_day_offset);
+            resultDate.setDate(resultDate.getDate() + (deadlines.result_entry_deadline_day_offset || 2));
             const resultDateStr = resultDate.toISOString().split('T')[0];
             const resultDeadline = new Date(`${resultDateStr}T${deadlines.result_entry_deadline_time}:00+05:30`);
 
@@ -410,15 +500,59 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
             }
 
             setPhase(currentPhase);
+            
+            // Calculate lineup deadline (round start + 1 hour grace period)
+            // Use round_start_time if available (actual time round started/restarted)
+            // Otherwise fall back to home_fixture_deadline_time (scheduled start time)
+            const actualRoundStartTimeStr = deadlines.round_start_time || deadlines.home_fixture_deadline_time;
+            const roundStartTime = new Date(`${deadlines.scheduled_date}T${actualRoundStartTimeStr}:00+05:30`);
+            const lineupDeadlineTime = new Date(roundStartTime.getTime() + (60 * 60 * 1000)); // +1 hour grace
+            setLineupDeadline(lineupDeadlineTime);
+            
+            console.log('⏰ Lineup Deadline Debug:', {
+              scheduled_date: deadlines.scheduled_date,
+              round_start_time: deadlines.round_start_time,
+              home_fixture_deadline_time: deadlines.home_fixture_deadline_time,
+              actualRoundStartTimeStr,
+              roundStartTime: roundStartTime.toISOString(),
+              roundStartLocal: roundStartTime.toLocaleString(),
+              lineupDeadlineTime: lineupDeadlineTime.toISOString(),
+              lineupDeadlineLocal: lineupDeadlineTime.toLocaleString(),
+              now: now.toISOString(),
+              nowLocal: now.toLocaleString(),
+              canSubmit: now < lineupDeadlineTime
+            });
+            
+            // Can submit lineup if before deadline AND matchups haven't been created yet
+            // Once matchups are created, lineups are locked to prevent inconsistencies
+            const canSubmit = now < lineupDeadlineTime && matchupsList.length === 0;
+            setCanSubmitLineup(canSubmit);
+            
+            console.log('\ud83d\udd12 Lineup Edit Permission:', {
+              beforeDeadline: now < lineupDeadlineTime,
+              matchupsExist: matchupsList.length > 0,
+              canSubmitLineup: canSubmit,
+              reason: matchupsList.length > 0 ? 'Matchups created - lineups locked' : 'OK'
+            });
 
             // Determine matchup permissions
+            // NEW: Matchups can only be created after BOTH teams submit lineups
             const matchupsExist = matchupsList.length > 0;
             const isAfterHomeDeadline = now >= homeDeadline;
+            const bothLineupsSubmitted = actualHomeLineupSubmitted && actualAwayLineupSubmitted;
+            
+            console.log('🎮 Matchup Permissions Check:', {
+              currentPhase,
+              bothLineupsSubmitted,
+              matchupsExist,
+              isHome,
+              isAfterHomeDeadline
+            });
 
             let canCreate = false;
             let canEditMatch = false;
 
-            if (currentPhase === 'home_fixture') {
+            if (currentPhase === 'home_fixture' && bothLineupsSubmitted) {
               // Home fixture phase lasts until away deadline
               if (!isAfterHomeDeadline) {
                 // Before home deadline: only home can create/edit
@@ -445,12 +579,14 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
             setCanEditMatchups(canEditMatch);
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error loading fixture:', error);
+        console.error('Error stack:', error?.stack);
+        console.error('Error message:', error?.message);
         showAlert({
           type: 'error',
           title: 'Load Failed',
-          message: 'Failed to load fixture'
+          message: `Failed to load fixture: ${error?.message || 'Unknown error'}`
         });
       } finally {
         setIsLoading(false);
@@ -461,27 +597,18 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
   }, [user, fixtureId, router]);
 
   const handleCreateMatchups = async () => {
-    // Check if players are loaded
-    if (homePlayers.length === 0) {
+    // Validate lineups are submitted
+    if (homeStartingXI.length === 0 || awayStartingXI.length === 0) {
       showAlert({
         type: 'error',
-        title: 'No Players',
-        message: 'No home players found. Please ensure players are registered for this season.'
-      });
-      return;
-    }
-
-    if (awayPlayers.length === 0) {
-      showAlert({
-        type: 'error',
-        title: 'No Players',
-        message: 'No away players found. Please ensure players are registered for this season.'
+        title: 'Lineups Required',
+        message: 'Both teams must submit their lineups before creating matchups'
       });
       return;
     }
 
     // Validate all matchups are selected
-    if (Object.keys(selectedAwayPlayers).length !== homePlayers.length) {
+    if (Object.keys(selectedAwayPlayers).length !== homeStartingXI.length) {
       showAlert({
         type: 'warning',
         title: 'Incomplete Selection',
@@ -490,17 +617,18 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
       return;
     }
 
-    console.log('🏠 Home players:', homePlayers.length, homePlayers[0]);
-    console.log('✈️ Away players:', awayPlayers.length, awayPlayers[0]);
+    console.log('🏠 Home starting XI:', homeStartingXI.length, 'players');
+    console.log('✈️ Away starting XI:', awayStartingXI.length, 'players');
     console.log('🔗 Selected away players:', selectedAwayPlayers);
 
     setIsSaving(true);
     try {
-      const matchupsToSave: Matchup[] = homePlayers.map((homePlayer, idx) => ({
+      // Create matchups from starting XI
+      const matchupsToSave: Matchup[] = homeStartingXI.map((homePlayer, idx) => ({
         home_player_id: homePlayer.player_id,
         home_player_name: homePlayer.player_name,
         away_player_id: selectedAwayPlayers[idx],
-        away_player_name: awayPlayers.find(p => p.player_id === selectedAwayPlayers[idx])?.player_name || '',
+        away_player_name: awayStartingXI.find(p => p.player_id === selectedAwayPlayers[idx])?.player_name || '',
         position: idx + 1,
         match_duration: matchDurations[idx] || 6, // Use individual match duration (default 6)
       }));
@@ -529,7 +657,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
       showAlert({
         type: 'success',
         title: 'Success',
-        message: 'Matchups created successfully!'
+        message: 'Matchups created successfully from starting XI!'
       });
       window.location.reload();
     } catch (error: any) {
@@ -739,11 +867,17 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
 
   const getPhaseInfo = () => {
     switch (phase) {
+      case 'draft':
+        return {
+          label: 'Draft Mode',
+          color: 'yellow',
+          description: 'Match not scheduled yet. You can prepare and save draft lineups.',
+        };
       case 'home_fixture':
         return {
           label: 'Home Fixture Phase',
           color: 'blue',
-          description: 'Home team can set their lineup',
+          description: 'Both teams can set their lineup',
         };
       case 'fixture_entry':
         return {
@@ -820,6 +954,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
               </div>
               <div className="flex flex-col gap-2">
                 <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shadow-lg whitespace-nowrap ${
+                  phaseInfo.color === 'yellow' ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-white' :
                   phaseInfo.color === 'blue' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' :
                   phaseInfo.color === 'purple' ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' :
                   phaseInfo.color === 'green' ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' :
@@ -917,6 +1052,145 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
           </div>
         </div>
 
+        {/* Lineup Submission Section */}
+        <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-xl border border-white/20 p-5 sm:p-8 overflow-hidden mb-6">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full blur-3xl opacity-20 -z-10"></div>
+          
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 to-purple-900 bg-clip-text text-transparent">Team Lineups</h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">Submit your starting XI and substitutes</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Lineup Deadline Info */}
+          {lineupDeadline && (
+            <div className={`mb-4 p-4 rounded-xl border-2 ${
+              canSubmitLineup 
+                ? 'bg-green-50 border-green-300' 
+                : 'bg-red-50 border-red-300'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <svg className={`w-5 h-5 ${
+                  canSubmitLineup ? 'text-green-600' : 'text-red-600'
+                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className={`text-sm font-semibold ${
+                  canSubmitLineup ? 'text-green-900' : 'text-red-900'
+                }`}>
+                  {canSubmitLineup ? '✓ Lineup Submission Open' : '⏰ Lineup Submission Closed'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-700">
+                {matchups.length > 0 && !canSubmitLineup
+                  ? '🔒 Lineups locked: Matchups have been created'
+                  : `Deadline: ${lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (Round start + 1 hour grace period)`
+                }
+              </p>
+            </div>
+          )}
+
+          {/* Lineup Status Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            {/* Home Team Lineup Status */}
+            <div className={`p-4 rounded-xl border-2 transition-all ${
+              homeLineupSubmitted 
+                ? 'bg-green-50 border-green-300' 
+                : 'bg-gray-50 border-gray-300'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                  </svg>
+                  <span className="text-sm font-semibold text-gray-900">🏠 {fixture.home_team_name}</span>
+                </div>
+                {homeLineupSubmitted && (
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <p className={`text-xs font-medium ${
+                homeLineupSubmitted ? 'text-green-700' : 'text-gray-600'
+              }`}>
+                {homeLineupSubmitted ? '✓ Lineup Submitted' : '⏳ Waiting for lineup'}
+              </p>
+            </div>
+
+            {/* Away Team Lineup Status */}
+            <div className={`p-4 rounded-xl border-2 transition-all ${
+              awayLineupSubmitted 
+                ? 'bg-green-50 border-green-300' 
+                : 'bg-gray-50 border-gray-300'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  <span className="text-sm font-semibold text-gray-900">✈️ {fixture.away_team_name}</span>
+                </div>
+                {awayLineupSubmitted && (
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <p className={`text-xs font-medium ${
+                awayLineupSubmitted ? 'text-green-700' : 'text-gray-600'
+              }`}>
+                {awayLineupSubmitted ? '✓ Lineup Submitted' : '⏳ Waiting for lineup'}
+              </p>
+            </div>
+          </div>
+
+          {/* Submit/Edit Lineup Button */}
+          {canSubmitLineup && (
+            <Link
+              href={`/dashboard/team/fixture/${fixtureId}/lineup`}
+              className="group relative w-full px-5 py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 text-white font-bold rounded-2xl hover:from-purple-700 hover:via-pink-700 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.02] flex items-center justify-center gap-3 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 group-hover:animate-shimmer"></div>
+              <div className="relative flex items-center gap-3">
+                <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                <span className="text-base sm:text-lg">
+                  {isHomeTeam && homeLineupSubmitted ? '✏️ Edit Your Lineup' : 
+                   !isHomeTeam && awayLineupSubmitted ? '✏️ Edit Your Lineup' : 
+                   '📝 Submit Your Lineup'}
+                </span>
+              </div>
+            </Link>
+          )}
+
+          {!canSubmitLineup && (
+            <div className="text-center py-4 text-gray-600">
+              <p className="text-sm font-medium">
+                {matchups.length > 0 
+                  ? '🔒 Lineups locked: Matchups created' 
+                  : '⏰ Lineup submission deadline has passed'
+                }
+              </p>
+              <p className="text-xs mt-1">
+                {matchups.length > 0
+                  ? 'Lineups cannot be edited once matchups are created to maintain fair play'
+                  : 'Lineups are now locked for this fixture'
+                }
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Matchups Section */}
         <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-xl border border-white/20 p-5 sm:p-8 overflow-hidden">
           {/* Decorative elements */}
@@ -954,7 +1228,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
 
 
               <div className="space-y-2 sm:space-y-3">
-                {homePlayers.map((homePlayer, idx) => (
+                {homeStartingXI.map((homePlayer, idx) => (
                   <div key={idx} className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold text-gray-500">Match #{idx + 1}</span>
@@ -990,7 +1264,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           required
                         >
                           <option value="">Select player...</option>
-                          {awayPlayers
+                          {awayStartingXI
                             .filter(p => !Object.values(selectedAwayPlayers).includes(p.player_id) || selectedAwayPlayers[idx] === p.player_id)
                             .map(player => (
                               <option key={player.player_id} value={player.player_id}>
@@ -2230,8 +2504,11 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
             </svg>
             <p className="text-sm font-medium text-gray-700 mb-2">Waiting for Matchups</p>
             <p className="text-xs text-gray-600">
-              {phase === 'home_fixture' && 'Home team will create player matchups during this phase'}
-              {phase === 'fixture_entry' && 'First team to create matchups gets edit rights'}
+              {!homeLineupSubmitted || !awayLineupSubmitted 
+                ? '⌛ Both teams must submit their lineups before matchups can be created.'
+                : phase === 'home_fixture' && 'Home team will create player matchups during this phase.'
+              }
+              {phase === 'fixture_entry' && homeLineupSubmitted && awayLineupSubmitted && 'First team to create matchups gets edit rights'}
               {phase === 'result_entry' && 'Matchups are finalized'}
             </p>
           </div>

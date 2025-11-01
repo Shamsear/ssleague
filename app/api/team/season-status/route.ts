@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { adminAuth } from '@/lib/firebase/admin';
 
 export async function GET(request: NextRequest) {
   try {
-    // Get token from cookie
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    // Get token from Authorization header or cookie
+    const token = await getAuthToken(request);
     
     if (!token) {
       return NextResponse.json({

@@ -343,26 +343,29 @@ export default function TeamMatchesPage() {
     return null;
   }
 
-  // Completed: matches that have results (scores) entered
+  // Completed: matches that BOTH have valid scores AND completed/closed status
+  // This ensures we don't show matches as completed just because of incorrect status
   const completedMatches = matches.filter(m => 
-    (m.home_score !== undefined && m.away_score !== undefined) || 
-    m.status === 'completed' || 
-    m.status === 'closed'
+    (m.home_score !== null && m.home_score !== undefined && 
+     m.away_score !== null && m.away_score !== undefined) &&
+    (m.status === 'completed' || m.status === 'closed')
   );
+  
+  // Get IDs of completed matches for exclusion
+  const completedMatchIds = new Set(completedMatches.map(m => m.id));
   
   // Active: matches in an active round that aren't completed yet
   // These are matches where teams can work on fixtures, matchups, or results
   const activeMatches = matches.filter(m => 
-    m.round_status === 'active' && 
-    m.status !== 'completed' && 
-    m.status !== 'closed'
+    !completedMatchIds.has(m.id) &&
+    m.round_status === 'active'
   );
   
-  // Upcoming: matches in pending/inactive rounds
+  // Upcoming: matches in pending/inactive rounds that aren't completed or active
   const upcomingMatches = matches.filter(m => 
-    (m.round_status === 'pending' || m.round_status === 'paused' || !m.round_status) && 
-    m.status !== 'completed' && 
-    m.status !== 'closed'
+    !completedMatchIds.has(m.id) &&
+    m.round_status !== 'active' &&
+    (m.round_status === 'pending' || m.round_status === 'paused' || !m.round_status)
   );
 
   const getMatchResultClass = (match: Match) => {
@@ -557,7 +560,16 @@ export default function TeamMatchesPage() {
               </div>
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {upcomingMatches.map(match => (
+                  {upcomingMatches
+                    .sort((a, b) => {
+                      // Sort by round number (ascending - earliest first)
+                      if (a.round_number !== b.round_number) {
+                        return a.round_number - b.round_number;
+                      }
+                      // Then by match number within same round
+                      return a.match_number - b.match_number;
+                    })
+                    .map(match => (
                     <div key={match.id} className="glass p-4 rounded-xl border border-white/10 hover:border-primary/20 transition-all duration-300">
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-xs font-medium text-gray-500">Round {match.round_number} • Match {match.match_number}</span>
@@ -583,15 +595,15 @@ export default function TeamMatchesPage() {
                           {new Date(match.match_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                         </div>
                       )}
-                      <button
-                        disabled
-                        className="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-400 bg-gray-100 rounded-lg cursor-not-allowed"
+                      <Link
+                        href={`/dashboard/team/fixture/${match.id}`}
+                        className="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all duration-200 border border-blue-200"
                       >
                         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
-                        Not Started
-                      </button>
+                        Prepare Draft Lineup
+                      </Link>
                     </div>
                   ))}
                 </div>

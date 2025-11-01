@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
     let lineups;
 
     if (teamId) {
-      // Get specific team's lineup
+      // Get specific team's lineup - ONLY for that team
+      // This ensures Team A cannot fetch Team B's lineup by accident
       lineups = await sql`
         SELECT 
           l.*,
@@ -43,8 +44,20 @@ export async function GET(request: NextRequest) {
         AND l.team_id = ${teamId}
         LIMIT 1
       `;
+      
+      // Additional verification: ensure the returned lineup matches requested team_id
+      if (lineups.length > 0 && lineups[0].team_id !== teamId) {
+        console.error('❌ SECURITY: Lineup team_id mismatch!', {
+          requested: teamId,
+          returned: lineups[0].team_id
+        });
+        return NextResponse.json(
+          { error: 'Unauthorized access to lineup' },
+          { status: 403 }
+        );
+      }
     } else {
-      // Get both teams' lineups
+      // Get both teams' lineups (for admin/committee views)
       lineups = await sql`
         SELECT 
           l.*,
@@ -76,9 +89,16 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    // If requesting specific team and no lineup found, return null
+    // If requesting specific team and lineup found, return the lineup object
+    // If requesting all lineups, return the array
+    const response = teamId 
+      ? (lineups.length > 0 ? lineups[0] : null)
+      : lineups;
+    
     return NextResponse.json({
       success: true,
-      lineups: teamId && lineups.length > 0 ? lineups[0] : lineups,
+      lineups: response,
     });
   } catch (error: any) {
     console.error('Error fetching lineups:', error);
@@ -105,11 +125,51 @@ export async function POST(request: NextRequest) {
       submitted_by_name,
     } = body;
 
+    console.log('📥 Lineup API - Received request:', {
+      fixture_id,
+      team_id,
+      starting_xi_count: starting_xi?.length,
+      substitutes_count: substitutes?.length,
+      starting_xi,
+      substitutes,
+      submitted_by
+    });
+
     // Validation
     if (!fixture_id || !team_id || !starting_xi || !substitutes || !submitted_by) {
+      console.error('❌ Missing required fields:', { fixture_id, team_id, starting_xi, substitutes, submitted_by });
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
+      );
+    }
+
+    // CRITICAL: Verify the team_id is actually part of this fixture
+    const fixtureCheck = await sql`
+      SELECT home_team_id, away_team_id
+      FROM fixtures
+      WHERE id = ${fixture_id}
+      LIMIT 1
+    `;
+    
+    if (fixtureCheck.length === 0) {
+      return NextResponse.json(
+        { error: 'Fixture not found' },
+        { status: 404 }
+      );
+    }
+    
+    const { home_team_id, away_team_id } = fixtureCheck[0];
+    if (team_id !== home_team_id && team_id !== away_team_id) {
+      console.error('❌ SECURITY: Team not part of fixture!', {
+        team_id,
+        home_team_id,
+        away_team_id,
+        fixture_id
+      });
+      return NextResponse.json(
+        { error: 'Team is not part of this fixture' },
+        { status: 403 }
       );
     }
 
@@ -140,13 +200,17 @@ export async function POST(request: NextRequest) {
     const fixture = fixtures[0];
 
     // Validate lineup
+    console.log('🔍 Validating lineup for:', { season_id: fixture.season_id, team_id, tournament_id: fixture.tournament_id });
     const validation = await validateLineup(
       { starting_xi, substitutes },
       fixture.season_id,
-      team_id
+      team_id,
+      fixture.tournament_id
     );
+    console.log('🔍 Validation result:', validation);
 
     if (!validation.isValid) {
+      console.error('❌ Lineup validation failed:', validation.errors);
       return NextResponse.json(
         { 
           error: 'Lineup validation failed', 
@@ -156,76 +220,63 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate lineup ID
+    // Generate lineup ID based on fixture and team
+    // This ensures each team has a unique lineup entry per fixture
     const lineupId = generateLineupId(fixture_id, team_id);
+    
+    console.log('💾 Saving lineup:', { lineupId, fixture_id, team_id });
 
-    // Check if lineup already exists
-    const existingLineup = await hasSubmittedLineup(fixture_id, team_id);
+    // Use UPSERT to handle both create and update in a single query
+    // This prevents race conditions and handles both cases reliably
+    await sql`
+      INSERT INTO lineups (
+        id,
+        fixture_id,
+        team_id,
+        round_number,
+        season_id,
+        tournament_id,
+        starting_xi,
+        substitutes,
+        classic_player_count,
+        is_valid,
+        validation_errors,
+        submitted_by,
+        submitted_at,
+        created_at,
+        updated_at
+      ) VALUES (
+        ${lineupId},
+        ${fixture_id},
+        ${team_id},
+        ${fixture.round_number},
+        ${fixture.season_id},
+        ${fixture.tournament_id},
+        ${JSON.stringify(starting_xi)},
+        ${JSON.stringify(substitutes)},
+        ${validation.classicPlayerCount},
+        ${validation.isValid},
+        ${JSON.stringify(validation.errors)},
+        ${submitted_by},
+        NOW(),
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        starting_xi = EXCLUDED.starting_xi,
+        substitutes = EXCLUDED.substitutes,
+        classic_player_count = EXCLUDED.classic_player_count,
+        is_valid = EXCLUDED.is_valid,
+        validation_errors = EXCLUDED.validation_errors,
+        updated_at = NOW()
+    `;
 
-    if (existingLineup) {
-      // Update existing lineup
-      await sql`
-        UPDATE lineups SET
-          starting_xi = ${JSON.stringify(starting_xi)},
-          substitutes = ${JSON.stringify(substitutes)},
-          classic_player_count = ${validation.classicPlayerCount},
-          is_valid = ${validation.isValid},
-          validation_errors = ${JSON.stringify(validation.errors)},
-          updated_at = NOW()
-        WHERE id = ${lineupId}
-      `;
-
-      return NextResponse.json({
-        success: true,
-        message: 'Lineup updated successfully',
-        lineup_id: lineupId,
-        validation,
-      });
-    } else {
-      // Insert new lineup
-      await sql`
-        INSERT INTO lineups (
-          id,
-          fixture_id,
-          team_id,
-          round_number,
-          season_id,
-          tournament_id,
-          starting_xi,
-          substitutes,
-          classic_player_count,
-          is_valid,
-          validation_errors,
-          submitted_by,
-          submitted_at,
-          created_at,
-          updated_at
-        ) VALUES (
-          ${lineupId},
-          ${fixture_id},
-          ${team_id},
-          ${fixture.round_number},
-          ${fixture.season_id},
-          ${fixture.tournament_id},
-          ${JSON.stringify(starting_xi)},
-          ${JSON.stringify(substitutes)},
-          ${validation.classicPlayerCount},
-          ${validation.isValid},
-          ${JSON.stringify(validation.errors)},
-          ${submitted_by},
-          NOW(),
-          NOW(),
-          NOW()
-        )
-      `;
-
-      return NextResponse.json({
-        success: true,
-        message: 'Lineup submitted successfully',
-        lineup_id: lineupId,
-        validation,
-      });
-    }
+    return NextResponse.json({
+      success: true,
+      message: 'Lineup saved successfully',
+      lineup_id: lineupId,
+      validation,
+    });
   } catch (error: any) {
     console.error('Error submitting lineup:', error);
     return NextResponse.json(

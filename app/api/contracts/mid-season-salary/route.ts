@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { calculateFootballPlayerSalary, isMidSeasonRound } from '@/lib/contracts';
 import { logSalaryPayment } from '@/lib/transaction-logger';
 
 export async function POST(request: NextRequest) {
   try {
     // Get Firebase ID token from cookie
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json(

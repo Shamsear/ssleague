@@ -74,7 +74,8 @@ export default function TournamentDashboardPage() {
     playoff_teams: 4,
     direct_semifinal_teams: 2,
     qualification_threshold: 75,
-    is_pure_knockout: false
+    is_pure_knockout: false,
+    lineup_category_requirements: {}
   });
   
   // Teams State
@@ -96,6 +97,9 @@ export default function TournamentDashboardPage() {
   const [selectedTournamentForStandings, setSelectedTournamentForStandings] = useState<string>('');
   const [standingsTab, setStandingsTab] = useState<'table' | 'bracket'>('table');
   const [tournamentStandings, setTournamentStandings] = useState<any[]>([]);
+  
+  // Categories State
+  const [categories, setCategories] = useState<any[]>([]);
   
   // Modal system
   const {
@@ -177,6 +181,9 @@ export default function TournamentDashboardPage() {
           
           // Load tournaments
           await loadTournaments(seasonId);
+          
+          // Fetch categories
+          await fetchCategories();
         }
       } catch (error) {
         console.error('Error fetching tournament data:', error);
@@ -187,6 +194,18 @@ export default function TournamentDashboardPage() {
 
     fetchData();
   }, [user, userSeasonId]);
+  
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch('/api/categories');
+      const data = await res.json();
+      if (data.success) {
+        setCategories(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
   
   const loadTournaments = async (seasonId: string) => {
     try {
@@ -275,7 +294,8 @@ export default function TournamentDashboardPage() {
           playoff_teams: 4,
           direct_semifinal_teams: 2,
           qualification_threshold: 75,
-          is_pure_knockout: false
+          is_pure_knockout: false,
+          lineup_category_requirements: {}
         });
         
         setShowCreateForm(false);
@@ -1525,6 +1545,33 @@ export default function TournamentDashboardPage() {
                         className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        👥 Squad Size (Players per Match)
+                      </label>
+                      <input
+                        type="number"
+                        value={newTournament.squad_size}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val) && val >= 1 && val <= 18) {
+                            setNewTournament({ ...newTournament, squad_size: val });
+                          } else if (e.target.value === '') {
+                            setNewTournament({ ...newTournament, squad_size: '' as any });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                            setNewTournament({ ...newTournament, squad_size: 11 });
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        placeholder="11"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Number of players each team can field (1-18)</p>
+                    </div>
                   </div>
 
                   <div>
@@ -1636,6 +1683,49 @@ export default function TournamentDashboardPage() {
                     </div>
                   </div>
 
+                  {/* Lineup Category Requirements */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">⚔️ Lineup Category Requirements</h3>
+                    <p className="text-sm text-gray-600 mb-4">Set the minimum number of players required from each category in the starting 11</p>
+                    
+                    {categories.length === 0 ? (
+                      <div className="text-center py-8 bg-gray-50 rounded-xl">
+                        <p className="text-gray-500">No categories available</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {categories.map((category) => (
+                          <div key={category.id} className="p-4 bg-white/50 rounded-xl border border-gray-200">
+                            <label className="flex flex-col">
+                              <span className="font-medium text-gray-900 mb-2">
+                                {category.icon || '⭐'} {category.name}
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="5"
+                                value={newTournament.lineup_category_requirements?.[category.id] || 0}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  setNewTournament({
+                                    ...newTournament,
+                                    lineup_category_requirements: {
+                                      ...newTournament.lineup_category_requirements,
+                                      [category.id]: val
+                                    }
+                                  });
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                                placeholder="0"
+                              />
+                              <span className="text-xs text-gray-500 mt-1">Min players in starting XI</span>
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Submit Button */}
                   <div className="flex justify-end gap-3 pt-4">
                     <button
@@ -1671,6 +1761,210 @@ export default function TournamentDashboardPage() {
                 </form>
               )}
             </div>
+
+            {/* Edit Tournament Form */}
+            {editingTournament && (
+              <div className="glass rounded-3xl p-4 sm:p-6 shadow-xl border border-blue-300 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    ✏️ Edit Tournament: {editingTournament.tournament_name}
+                  </h2>
+                  <button
+                    onClick={() => setEditingTournament(null)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-all text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    // Update tournament basic info
+                    const tournamentRes = await fetch(`/api/tournaments/${editingTournament.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tournament_name: editingTournament.tournament_name,
+                        tournament_code: editingTournament.tournament_code,
+                        status: editingTournament.status,
+                        start_date: editingTournament.start_date,
+                        end_date: editingTournament.end_date,
+                        description: editingTournament.description,
+                        is_primary: editingTournament.is_primary,
+                        include_in_fantasy: editingTournament.include_in_fantasy,
+                        include_in_awards: editingTournament.include_in_awards,
+                      })
+                    });
+                    
+                    // Update tournament settings (squad_size, etc.)
+                    const settingsRes = await fetch('/api/tournament-settings', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tournament_id: editingTournament.id,
+                        squad_size: editingTournament.squad_size || 11,
+                        tournament_system: editingTournament.tournament_system || 'match_round',
+                        home_deadline_time: editingTournament.home_deadline_time || '17:00',
+                        away_deadline_time: editingTournament.away_deadline_time || '17:00',
+                        result_day_offset: editingTournament.result_day_offset || 2,
+                        result_deadline_time: editingTournament.result_deadline_time || '00:30',
+                        has_knockout_stage: editingTournament.has_knockout_stage || false,
+                        playoff_teams: editingTournament.playoff_teams,
+                        direct_semifinal_teams: editingTournament.direct_semifinal_teams,
+                        qualification_threshold: editingTournament.qualification_threshold,
+                        lineup_category_requirements: editingTournament.lineup_category_requirements || {},
+                      })
+                    });
+                    
+                    const tournamentData = await tournamentRes.json();
+                    const settingsData = await settingsRes.json();
+                    
+                    if (tournamentData.success && settingsData.success) {
+                      showAlert({
+                        type: 'success',
+                        title: 'Tournament Updated',
+                        message: 'Tournament and settings updated successfully!'
+                      });
+                      setEditingTournament(null);
+                      await loadTournaments(activeSeasonId!);
+                    } else {
+                      showAlert({
+                        type: 'error',
+                        title: 'Update Failed',
+                        message: tournamentData.error || settingsData.error || 'Failed to update tournament'
+                      });
+                    }
+                  } catch (error: any) {
+                    showAlert({
+                      type: 'error',
+                      title: 'Error',
+                      message: 'Failed to update tournament: ' + error.message
+                    });
+                  }
+                }} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Tournament Name</label>
+                      <input
+                        type="text"
+                        value={editingTournament.tournament_name}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, tournament_name: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                      <select
+                        value={editingTournament.status}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, status: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                      >
+                        <option value="upcoming">Upcoming</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">👥 Squad Size</label>
+                      <input
+                        type="number"
+                        value={editingTournament.squad_size || 11}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val) && val >= 1 && val <= 18) {
+                            setEditingTournament({ ...editingTournament, squad_size: val });
+                          } else if (e.target.value === '') {
+                            setEditingTournament({ ...editingTournament, squad_size: '' as any });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                            setEditingTournament({ ...editingTournament, squad_size: 11 });
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Players per match lineup (1-18)</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                      <input
+                        type="text"
+                        value={editingTournament.description || ''}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, description: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        placeholder="Optional"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Lineup Category Requirements */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">⚔️ Lineup Category Requirements</h3>
+                    <p className="text-sm text-gray-600 mb-4">Set the minimum number of players required from each category in the starting 11</p>
+                    
+                    {categories.length === 0 ? (
+                      <div className="text-center py-8 bg-gray-50 rounded-xl">
+                        <p className="text-gray-500">No categories available</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {categories.map((category) => (
+                          <div key={category.id} className="p-4 bg-white/50 rounded-xl border border-gray-200">
+                            <label className="flex flex-col">
+                              <span className="font-medium text-gray-900 mb-2">
+                                {category.icon || '⭐'} {category.name}
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="5"
+                                value={editingTournament.lineup_category_requirements?.[category.id] || 0}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  setEditingTournament({
+                                    ...editingTournament,
+                                    lineup_category_requirements: {
+                                      ...editingTournament.lineup_category_requirements,
+                                      [category.id]: val
+                                    }
+                                  });
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                                placeholder="0"
+                              />
+                              <span className="text-xs text-gray-500 mt-1">Min players in starting XI</span>
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      type="submit"
+                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transition-all font-medium"
+                    >
+                      💾 Save Changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTournament(null)}
+                      className="px-6 py-3 bg-gray-300 text-gray-700 rounded-xl hover:bg-gray-400 transition-all font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
 
             {/* Existing Tournaments */}
             <div className="glass rounded-3xl p-4 sm:p-6 shadow-xl border border-white/20">
@@ -1814,6 +2108,41 @@ export default function TournamentDashboardPage() {
                             title={tournament.include_in_awards ? 'Awards Enabled - Click to disable' : 'Awards Disabled - Click to enable'}
                           >
                             {tournament.include_in_awards ? '🏆 Awards' : '🏆 Off'}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                // Fetch tournament settings
+                                const settingsRes = await fetch(`/api/tournament-settings?tournament_id=${tournament.id}`);
+                                const settingsData = await settingsRes.json();
+                                
+                                // Merge tournament data with settings
+                                setEditingTournament({
+                                  ...tournament,
+                                  squad_size: settingsData.settings?.squad_size || tournament.squad_size || 11,
+                                  tournament_system: settingsData.settings?.tournament_system || tournament.tournament_system || 'match_round',
+                                  home_deadline_time: settingsData.settings?.home_deadline_time || tournament.home_deadline_time || '17:00',
+                                  away_deadline_time: settingsData.settings?.away_deadline_time || tournament.away_deadline_time || '17:00',
+                                  result_day_offset: settingsData.settings?.result_day_offset ?? tournament.result_day_offset ?? 2,
+                                  result_deadline_time: settingsData.settings?.result_deadline_time || tournament.result_deadline_time || '00:30',
+                                  has_knockout_stage: settingsData.settings?.has_knockout_stage ?? tournament.has_knockout_stage ?? false,
+                                  playoff_teams: settingsData.settings?.playoff_teams ?? tournament.playoff_teams ?? null,
+                                  direct_semifinal_teams: settingsData.settings?.direct_semifinal_teams ?? tournament.direct_semifinal_teams ?? null,
+                                  qualification_threshold: settingsData.settings?.qualification_threshold ?? tournament.qualification_threshold ?? null,
+                                  lineup_category_requirements: settingsData.settings?.lineup_category_requirements || {}
+                                });
+                              } catch (error) {
+                                console.error('Error fetching tournament settings:', error);
+                                setEditingTournament({
+                                  ...tournament,
+                                  squad_size: tournament.squad_size || 11,
+                                  lineup_category_requirements: {}
+                                });
+                              }
+                            }}
+                            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
+                          >
+                            ✏️ Edit
                           </button>
                           <button
                             onClick={() => handleDeleteTournament(tournament.id, tournament.tournament_name)}

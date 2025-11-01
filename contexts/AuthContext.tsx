@@ -72,23 +72,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (firebaseUser) {
         setFirebaseUser(firebaseUser);
         try {
-          // Get Firebase ID token and store it in a cookie (non-blocking, with timeout)
-          firebaseUser.getIdToken().then(idToken => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-            
-            fetch('/api/auth/set-token', {
+          // Get Firebase ID token and store it in a cookie
+          // Force refresh to ensure token is not expired
+          // IMPORTANT: Wait for token to be set before proceeding
+          const idToken = await firebaseUser.getIdToken(true);
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+          
+          try {
+            await fetch('/api/auth/set-token', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ token: idToken }),
               signal: controller.signal
-            })
-            .then(() => clearTimeout(timeoutId))
-            .catch(() => {
-              clearTimeout(timeoutId);
-              // Silently fail - token cookie is not critical
             });
-          });
+            clearTimeout(timeoutId);
+            console.log('✅ Auth token cookie set successfully');
+          } catch (err) {
+            clearTimeout(timeoutId);
+            console.warn('Failed to set token cookie:', err);
+          }
 
           // Wait a moment for Firebase Auth state to fully propagate
           // This helps prevent race conditions with Firestore security rules
@@ -121,6 +125,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cleanup = setupTokenRefreshInterval();
       return cleanup;
     }
+  }, [firebaseUser]);
+
+  // Refresh token when user returns to tab (visibility change)
+  useEffect(() => {
+    if (!firebaseUser) return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        console.log('Tab became visible, refreshing token...');
+        try {
+          const idToken = await firebaseUser.getIdToken(true);
+          await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: idToken }),
+          });
+          console.log('✅ Token refreshed on tab focus');
+        } catch (error) {
+          console.error('Error refreshing token on visibility change:', error);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [firebaseUser]);
 
   const value: AuthContextType = {

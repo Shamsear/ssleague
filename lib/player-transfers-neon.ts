@@ -16,11 +16,11 @@ import { getAuctionDb } from '@/lib/neon/auction-config';
 import { db } from '@/lib/firebase/config';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { 
-  logReleaseRefund, 
-  logTransferPayment, 
+  logReleaseRefund,
+  logTransferPayment,
   logTransferCompensation,
   logSwapFeePaid,
-  logSwapFeeReceived 
+  logSwapFeeReceived
 } from '@/lib/transaction-logger';
 
 export type PlayerType = 'real' | 'football';

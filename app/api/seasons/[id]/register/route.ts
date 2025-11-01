@@ -479,29 +479,42 @@ export async function POST(
           // Determine league ID (format: SSPSLFLS + season number)
           const seasonNumber = seasonId.replace('SSPSLS', '');
           const leagueId = `SSPSLFLS${seasonNumber}`;
-          const fantasyTeamId = `${leagueId}_${teamDocId}`;
           
           console.log(`🎮 Creating fantasy team for ${teamName} in league ${leagueId}`);
           
-          // Create fantasy team entry
+          // Get league budget
+          const leagueResult = await fantasySql`
+            SELECT budget_per_team FROM fantasy_leagues 
+            WHERE league_id = ${leagueId}
+            LIMIT 1
+          `;
+          const budgetPerTeam = leagueResult[0]?.budget_per_team || 100.00;
+          
+          // Create fantasy team entry with proper fields
           await fantasySql`
             INSERT INTO fantasy_teams (
               team_id,
               league_id,
+              real_team_id,
+              real_team_name,
               team_name,
               owner_uid,
               owner_name,
+              budget_remaining,
               total_points,
               rank,
               is_enabled,
               created_at,
               updated_at
             ) VALUES (
-              ${fantasyTeamId},
+              ${teamDocId},
               ${leagueId},
+              ${teamDocId},
+              ${teamName},
               ${teamName},
               ${userId},
               ${userData.username || teamName},
+              ${budgetPerTeam},
               0,
               999,
               true,
@@ -510,10 +523,11 @@ export async function POST(
             )
             ON CONFLICT (team_id) DO UPDATE SET
               is_enabled = true,
+              budget_remaining = ${budgetPerTeam},
               updated_at = NOW()
           `;
           
-          console.log(`✅ Fantasy team created: ${fantasyTeamId}`);
+          console.log(`✅ Fantasy team created: ${teamDocId}`);
         } catch (fantasyError) {
           console.error('Failed to create fantasy team:', fantasyError);
           // Don't fail the registration if fantasy team creation fails

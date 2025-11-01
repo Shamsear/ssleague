@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { neon } from '@neondatabase/serverless';
 import { batchGetFirebaseFields } from '@/lib/firebase/batch';
 import { getCached, setCached } from '@/lib/firebase/cache';
@@ -14,9 +14,8 @@ export async function GET(request: NextRequest) {
     'CDN-Cache-Control': 'public, s-maxage=60',
   });
   try {
-    // Get Firebase ID token from cookie
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    // Get token from Authorization header or cookie
+    const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json({

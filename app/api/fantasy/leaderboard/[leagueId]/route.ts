@@ -76,6 +76,7 @@ export async function GET(
         status: league.is_active ? 'active' : 'inactive',
       },
       leaderboard: leaderboard.map(entry => ({
+        id: entry.fantasy_team_id,
         rank: entry.rank || 999,
         fantasy_team_id: entry.fantasy_team_id,
         team_name: entry.team_name,

@@ -179,7 +179,7 @@ export async function GET(
     // Get fantasy teams with player counts
     const teams = await sql`
       SELECT 
-        ft.id,
+        ft.team_id,
         ft.team_name,
         ft.owner_name,
         ft.total_points,
@@ -188,7 +188,7 @@ export async function GET(
       FROM fantasy_teams ft
       LEFT JOIN fantasy_squad fs ON ft.team_id = fs.team_id
       WHERE ft.league_id = ${league.league_id}
-      GROUP BY ft.id, ft.team_name, ft.owner_name, ft.total_points, ft.rank
+      GROUP BY ft.team_id, ft.team_name, ft.owner_name, ft.total_points, ft.rank
       ORDER BY ft.rank ASC NULLS LAST, ft.total_points DESC
     `;
 
@@ -228,11 +228,11 @@ export async function GET(
         updated_at: league.updated_at,
       },
       teams: teams.map(team => ({
-        id: team.id,
+        id: team.team_id,
         team_name: team.team_name,
         owner_name: team.owner_name,
         total_points: Number(team.total_points) || 0,
-        rank: team.rank || 999,
+        rank: team.rank || null,
         player_count: Number(team.player_count) || 0,
       })),
       scoring_rules: scoringRules.map(rule => ({

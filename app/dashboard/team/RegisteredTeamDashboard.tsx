@@ -244,7 +244,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
       }
     };
 
-    fetchDashboard(true);
+    // Small delay to allow AuthContext to refresh token on page load
+    const initialTimeout = setTimeout(() => {
+      fetchDashboard(true);
+    }, 500);
 
     let interval: NodeJS.Timeout;
     const startPolling = () => {
@@ -262,6 +265,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     const restartTimer = setTimeout(startPolling, 100);
 
     return () => {
+      clearTimeout(initialTimeout);
       clearInterval(interval);
       clearTimeout(restartTimer);
     };

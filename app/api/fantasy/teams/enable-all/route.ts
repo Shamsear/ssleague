@@ -199,13 +199,20 @@ export async function GET(request: NextRequest) {
     // Check teams in batches
     for (let i = 0; i < teamIds.length; i += 10) {
       const batchIds = teamIds.slice(i, i + 10);
-      const teamsSnap = await adminDb
-        .collection('teams')
-        .where('id', 'in', batchIds)
-        .get();
+      
+      // Fetch teams directly by document ID (batchIds are team IDs)
+      const teamsData = await Promise.all(
+        batchIds.map(async (teamId) => {
+          const teamDoc = await adminDb.collection('teams').doc(teamId).get();
+          if (teamDoc.exists) {
+            return { id: teamDoc.id, ...teamDoc.data() };
+          }
+          return null;
+        })
+      );
 
-      for (const doc of teamsSnap.docs) {
-        const teamData = doc.data();
+      for (const teamData of teamsData) {
+        if (!teamData) continue;
         const teamId = teamData.id;
         
         // Check PostgreSQL for fantasy status

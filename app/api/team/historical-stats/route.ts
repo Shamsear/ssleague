@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(request: NextRequest) {
-  try {
-    // Get token cookie and verify authentication
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    try {
+      // Get token from Authorization header or cookie
+      const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json(
