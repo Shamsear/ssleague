@@ -164,6 +164,7 @@ export async function GET(request: NextRequest) {
         supported_team_id: teamData.supported_team_id || null,
         supported_team_name: teamData.supported_team_name || null,
         passive_points: Number(teamData.passive_points) || 0,
+        draft_submitted: teamData.draft_submitted || false,
       },
       players: draftedPlayers,
       recent_rounds: formattedRounds,
