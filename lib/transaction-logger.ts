@@ -51,8 +51,15 @@ export async function logTransaction(data: TransactionData): Promise<void> {
   try {
     const db = getFirestore();
     
+    // Filter out undefined values from metadata
+    const cleanMetadata = data.metadata ? 
+      Object.fromEntries(
+        Object.entries(data.metadata).filter(([_, v]) => v !== undefined)
+      ) : {};
+    
     await db.collection('transactions').add({
       ...data,
+      metadata: Object.keys(cleanMetadata).length > 0 ? cleanMetadata : undefined,
       created_at: new Date(),
       updated_at: new Date()
     });
@@ -109,8 +116,20 @@ export async function logSalaryPayment(
   currencyType: CurrencyType,
   fixtureId?: string,
   matchNumber?: number,
-  playerCount?: number
+  playerCount?: number,
+  playerName?: string,
+  playerId?: string
 ): Promise<void> {
+  // Create appropriate description based on whether it's individual or bulk payment
+  let description: string;
+  if (playerName) {
+    description = `Salary: ${playerName}`;
+  } else if (playerCount && playerCount > 1) {
+    description = `Match salary payment (${playerCount} players)`;
+  } else {
+    description = `Match salary payment`;
+  }
+
   await logTransaction({
     team_id: teamId,
     season_id: seasonId,
@@ -119,12 +138,14 @@ export async function logSalaryPayment(
     amount: -amount,
     balance_before: balanceBefore,
     balance_after: balanceBefore - amount,
-    description: `Match ${matchNumber || ''} salary payment${playerCount ? ` (${playerCount} players)` : ''}`,
+    description,
     metadata: {
       fixture_id: fixtureId,
       match_number: matchNumber,
       player_count: playerCount,
-      salary_amount: amount
+      salary_amount: amount,
+      player_id: playerId,
+      player_name: playerName
     }
   });
 }

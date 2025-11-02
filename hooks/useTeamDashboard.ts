@@ -109,7 +109,7 @@ export function useRoundData(roundId: string | undefined, enabled: boolean = tru
     queryFn: async () => {
       if (!roundId) throw new Error('Round ID required');
       
-      const response = await fetch(`/api/team/round/${roundId}`);
+      const response = await fetchWithTokenRefresh(`/api/team/round/${roundId}`);
       const data = await response.json();
 
       if (!data.success) {

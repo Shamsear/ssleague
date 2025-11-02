@@ -60,6 +60,13 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
 
     dashboardData.activeRounds.forEach(round => {
       if (round.end_time && !timerRefs.current[round.id]) {
+        // Calculate and set initial time immediately
+        const now = new Date().getTime();
+        const end = new Date(round.end_time!).getTime();
+        const remaining = Math.max(0, Math.floor((end - now) / 1000));
+        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
+        
+        // Then start the interval
         timerRefs.current[round.id] = setInterval(() => {
           const now = new Date().getTime();
           const end = new Date(round.end_time!).getTime();
@@ -120,9 +127,10 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
   }, [dashboardData?.activeBulkRounds]);
 
   const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleDeleteBid = async (bidId: number) => {

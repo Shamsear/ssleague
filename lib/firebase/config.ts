@@ -1,5 +1,5 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
@@ -36,6 +36,14 @@ if (!getApps().length) {
   auth = getAuth(app);
   db = getFirestore(app);
   storage = getStorage(app);
+  
+  // Set persistence to LOCAL (stores in localStorage/indexedDB)
+  // This ensures users stay logged in across browser sessions
+  if (typeof window !== 'undefined') {
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.error('Failed to set auth persistence:', error);
+    });
+  }
 } else {
   app = getApps()[0];
   auth = getAuth(app);

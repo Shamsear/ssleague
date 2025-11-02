@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
+import { triggerNews } from '@/lib/news/trigger';
 
 // WebSocket broadcast function
 declare global {
@@ -67,6 +68,31 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Draft status updated to ${draft_status} for league ${league_id}`);
+
+    // Trigger news generation for draft status changes
+    try {
+      const leagueData = result[0];
+      
+      if (draft_status === 'active') {
+        await triggerNews('fantasy_opened', {
+          season_id: leagueData.season_id,
+          season_name: leagueData.season_name,
+          league_name: leagueData.league_name,
+          budget_per_team: leagueData.budget_per_team,
+          max_squad_size: leagueData.max_squad_size,
+        });
+        console.log('📰 Fantasy draft opening news triggered');
+      } else if (draft_status === 'closed') {
+        await triggerNews('fantasy_draft_complete', {
+          season_id: leagueData.season_id,
+          season_name: leagueData.season_name,
+          league_name: leagueData.league_name,
+        });
+        console.log('📰 Fantasy draft completion news triggered');
+      }
+    } catch (newsError) {
+      console.error('Error triggering fantasy news (non-critical):', newsError);
+    }
 
     // Broadcast to WebSocket clients
     if (global.wsBroadcast) {

@@ -253,6 +253,52 @@ export default function DatabaseManagementPage() {
     }
   }
 
+  const handleUpdateStats = async () => {
+    const parsedData = sessionStorage.getItem('parsedPlayers')
+    if (!parsedData) {
+      setImportStatus('No parsed data found. Please upload a SQL file first.')
+      return
+    }
+
+    if (!confirm('This will update existing player stats and add new players. Team assignments will be preserved. Continue?')) {
+      return
+    }
+
+    setLoading(true)
+    setImportStatus('Updating player stats...')
+
+    try {
+      const players = JSON.parse(parsedData)
+      
+      // Use bulk update API endpoint that preserves ownership
+      const updateResponse = await fetch('/api/players/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'updateStats',
+          players: players.map((player: any) => ({
+            ...player,
+            is_auction_eligible: player.is_auction_eligible || false
+          }))
+        })
+      })
+
+      const result = await updateResponse.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update players')
+      }
+      
+      setImportStatus(`Successfully updated ${result.updated} players and added ${result.inserted} new players!`)
+      sessionStorage.removeItem('parsedPlayers')
+      fetchPlayerCount()
+    } catch (err: any) {
+      setImportStatus(`Error: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handlePreviewImport = () => {
     const parsedData = sessionStorage.getItem('parsedPlayers')
     if (!parsedData) {
@@ -549,7 +595,27 @@ export default function DatabaseManagementPage() {
             )}
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            {/* Update Stats */}
+            <div className="p-4 rounded-lg bg-orange-50/50 border border-orange-100">
+              <h4 className="text-orange-700 font-medium mb-2 flex items-center">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Update Stats
+              </h4>
+              <p className="text-sm text-gray-600 mb-3">
+                Update player stats, add new players. Preserves team ownership.
+              </p>
+              <button
+                onClick={handleUpdateStats}
+                disabled={loading}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors w-full disabled:bg-gray-400 text-sm"
+              >
+                Update Stats
+              </button>
+            </div>
+
             {/* Quick Import */}
             <div className="p-4 rounded-lg bg-blue-50/50 border border-blue-100">
               <h4 className="text-blue-700 font-medium mb-2 flex items-center">
@@ -559,14 +625,14 @@ export default function DatabaseManagementPage() {
                 Quick Import
               </h4>
               <p className="text-sm text-gray-600 mb-3">
-                Import all players directly without preview.
+                Import new players only. Skips duplicates by name.
               </p>
               <button
                 onClick={handleQuickImport}
                 disabled={loading}
-                className={`px-4 py-2 ${playerCount.total === 0 ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg transition-colors w-full disabled:bg-gray-400`}
+                className={`px-4 py-2 ${playerCount.total === 0 ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg transition-colors w-full disabled:bg-gray-400 text-sm`}
               >
-                Quick Import All
+                Quick Import
               </button>
             </div>
 
@@ -584,7 +650,7 @@ export default function DatabaseManagementPage() {
               <button
                 onClick={handlePreviewImport}
                 disabled={loading}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors w-full disabled:bg-gray-400"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors w-full disabled:bg-gray-400 text-sm"
               >
                 Preview & Import
               </button>

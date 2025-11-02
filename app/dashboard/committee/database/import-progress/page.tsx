@@ -122,28 +122,75 @@ export default function ImportProgressPage() {
         setOverallProgress(90)
         setCurrentStep(3)
       } else {
-        // Import using Neon bulk API
-        updateStep(2, 'running', `Importing ${newPlayers.length} players to Neon...`, 30)
+        // Import in batches to avoid timeout and provide progress
+        const batchSize = 100 // Process 100 players at a time
+        const totalBatches = Math.ceil(newPlayers.length / batchSize)
+        let totalImported = 0
         
-        const importResponse = await fetch('/api/players/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'import',
-            players: newPlayers.map((player: any) => ({
-              ...player,
-              is_auction_eligible: player.is_auction_eligible || false
-            }))
+        console.log('='.repeat(80))
+        console.log('🚀 STARTING BATCH IMPORT PROCESS')
+        console.log('='.repeat(80))
+        console.log(`📊 Total players to import: ${newPlayers.length}`)
+        console.log(`📦 Batch size: ${batchSize}`)
+        console.log(`🔢 Total batches: ${totalBatches}`)
+        console.log('='.repeat(80))
+        
+        updateStep(2, 'running', `Importing ${newPlayers.length} players in ${totalBatches} batch(es)...`, 30)
+        
+        for (let i = 0; i < totalBatches; i++) {
+          const start = i * batchSize
+          const end = Math.min(start + batchSize, newPlayers.length)
+          const batch = newPlayers.slice(start, end)
+          
+          const batchNum = i + 1
+          const progressPercent = 30 + Math.floor((i / totalBatches) * 60) // 30% to 90%
+          
+          console.log(`\n📦 BATCH ${batchNum}/${totalBatches}`)
+          console.log(`   Players: ${start + 1} to ${end} (${batch.length} players)`)
+          console.log(`   Progress: ${progressPercent}%`)
+          console.log(`   Sample players:`, batch.slice(0, 3).map(p => p.name).join(', '))
+          
+          updateStep(2, 'running', `Processing batch ${batchNum}/${totalBatches} (${start + 1}-${end} of ${newPlayers.length})...`, progressPercent)
+          
+          const startTime = Date.now()
+          
+          const importResponse = await fetch('/api/players/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'import',
+              players: batch.map((player: any) => ({
+                ...player,
+                is_auction_eligible: player.is_auction_eligible || false
+              }))
+            })
           })
-        })
-        
-        const importResult = await importResponse.json()
-        
-        if (!importResult.success) {
-          throw new Error(importResult.error || 'Failed to import players')
+          
+          const importResult = await importResponse.json()
+          const duration = Date.now() - startTime
+          
+          if (!importResult.success) {
+            console.error(`❌ BATCH ${batchNum} FAILED:`, importResult.error)
+            throw new Error(importResult.error || `Failed to import batch ${batchNum}`)
+          }
+          
+          totalImported += importResult.count
+          
+          console.log(`   ✅ Success! Imported ${importResult.count} players in ${duration}ms`)
+          console.log(`   📈 Total imported so far: ${totalImported}/${newPlayers.length} (${Math.round((totalImported/newPlayers.length)*100)}%)`)
+          
+          updateStep(2, 'running', `Imported ${totalImported}/${newPlayers.length} players (batch ${batchNum}/${totalBatches} complete)`, progressPercent + Math.floor(60 / totalBatches))
+          
+          // Small delay between batches to avoid overwhelming the API
+          await sleep(200)
         }
         
-        updateStep(2, 'running', `Successfully imported ${importResult.count} players`, 90)
+        console.log('\n' + '='.repeat(80))
+        console.log('✨ IMPORT COMPLETE!')
+        console.log(`   Total imported: ${totalImported}/${newPlayers.length} players`)
+        console.log('='.repeat(80) + '\n')
+        
+        updateStep(2, 'running', `Successfully imported all ${totalImported} players`, 90)
         await sleep(500)
       }
 

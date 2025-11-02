@@ -26,7 +26,7 @@ function EditRoundDeadlinesContent() {
   
   const [homeTime, setHomeTime] = useState('17:00');
   const [awayTime, setAwayTime] = useState('17:00');
-  const [resultDayOffset, setResultDayOffset] = useState(2);
+  const [resultDayOffset, setResultDayOffset] = useState(1);
   const [resultTime, setResultTime] = useState('00:30');
   const [scheduledDate, setScheduledDate] = useState('');
 
@@ -346,13 +346,14 @@ function EditRoundDeadlinesContent() {
                     className="block w-full rounded-xl border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white/80"
                     required
                   >
+                    <option value="0">Same day (Day 0)</option>
                     <option value="1">Next day (Day 1)</option>
                     <option value="2">Day after tomorrow (Day 2)</option>
                     <option value="3">3 days later (Day 3)</option>
                     <option value="4">4 days later (Day 4)</option>
                     <option value="7">1 week later (Day 7)</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">How many days after fixture day results are due</p>
+                  <p className="text-xs text-gray-500 mt-1">How many days after match day results are due</p>
                 </div>
 
                 <div>

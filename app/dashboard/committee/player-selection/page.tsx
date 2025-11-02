@@ -62,9 +62,10 @@ export default function PlayerSelectionPage() {
     const fetchPlayers = async () => {
       setLoading(true)
       try {
-        console.log('🔄 Fetching players from Neon database via API')
+        console.log('🔄 Fetching ALL players from Neon database via API')
         
-        const response = await fetch('/api/players')
+        // Fetch without limit to get all players
+        const response = await fetch('/api/players?limit=999999')
         const { data, success } = await response.json()
         
         if (!success) {
@@ -239,6 +240,71 @@ export default function PlayerSelectionPage() {
         type: 'error',
         title: 'Error',
         message: 'Failed to update players'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeselectAll = async () => {
+    const eligibleCount = players.filter(p => p.is_auction_eligible).length
+    
+    if (eligibleCount === 0) {
+      showAlert({
+        type: 'info',
+        title: 'No Players Selected',
+        message: 'All players are already deselected'
+      })
+      return
+    }
+
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Deselect All Players',
+      message: `Are you sure you want to deselect ALL ${eligibleCount} eligible players across all pages?`,
+      confirmText: 'Deselect All',
+      cancelText: 'Cancel'
+    })
+    
+    if (!confirmed) {
+      return
+    }
+
+    setLoading(true)
+    try {
+      const eligiblePlayerIds = players
+        .filter(p => p.is_auction_eligible)
+        .map(p => p.id)
+      
+      const response = await fetch('/api/players/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateEligibility',
+          playerIds: eligiblePlayerIds,
+          isEligible: false
+        })
+      })
+      
+      const { success } = await response.json()
+      if (!success) {
+        throw new Error('Failed to update players')
+      }
+      
+      // Update local state - set all to not eligible
+      setPlayers(prev => prev.map(p => ({ ...p, is_auction_eligible: false })))
+      
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: `Successfully deselected all ${eligibleCount} players`
+      })
+    } catch (err) {
+      console.error('Error deselecting all players:', err)
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to deselect all players'
       })
     } finally {
       setLoading(false)
@@ -787,6 +853,15 @@ export default function PlayerSelectionPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
                 Deselect Visible
+              </button>
+              <button
+                onClick={handleDeselectAll}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center text-sm"
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Deselect All
               </button>
             </div>
           </div>

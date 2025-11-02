@@ -7,19 +7,8 @@ export async function GET(request: NextRequest) {
     console.log('🔄 Starting player stats API...');
     const auctionSql = getAuctionDb();
     console.log('✅ Got auction database connection');
-    
-    const searchParams = request.nextUrl.searchParams;
-    const seasonId = searchParams.get('season_id');
 
-    if (!seasonId) {
-      console.log('❌ No season_id provided');
-      return NextResponse.json(
-        { success: false, error: 'season_id is required' },
-        { status: 400 }
-      );
-    }
-
-    console.log('📊 Fetching football players from auction DB for season:', seasonId);
+    console.log('📊 Fetching football players from auction DB');
 
     // Fetch all football players from footballplayers (auction DB)
     const players = await auctionSql`
@@ -29,7 +18,6 @@ export async function GET(request: NextRequest) {
         position,
         is_auction_eligible
       FROM footballplayers
-      WHERE season_id = ${seasonId}
       ORDER BY name
     `;
 
@@ -41,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`📊 Stats: Total=${total}, Eligible=${eligible}`);
 
-    // Group by position
+    // Group by position - only count eligible players
     const positionGroups: { [key: string]: number } = {
       'GK': 0,
       'DEF': 0,
@@ -50,6 +38,9 @@ export async function GET(request: NextRequest) {
     };
 
     players.forEach((player: any) => {
+      // Only count eligible players for position groups
+      if (!player.is_auction_eligible) return;
+      
       const pos = player.position?.toUpperCase();
       
       for (const [group, positions] of Object.entries(POSITION_GROUPS)) {

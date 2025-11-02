@@ -176,6 +176,56 @@ export async function PATCH(
       );
     }
 
+    // Check result entry deadline
+    const fixtures = await sql`
+      SELECT f.season_id, f.round_number, f.leg
+      FROM fixtures f
+      WHERE f.id = ${fixtureId}
+      LIMIT 1
+    `;
+    
+    if (fixtures.length === 0) {
+      return NextResponse.json(
+        { error: 'Fixture not found' },
+        { status: 404 }
+      );
+    }
+    
+    const { season_id, round_number, leg } = fixtures[0];
+    
+    // Get round deadlines
+    const deadlines = await sql`
+      SELECT scheduled_date, result_entry_deadline_time, result_entry_deadline_day_offset
+      FROM round_deadlines
+      WHERE season_id = ${season_id}
+      AND round_number = ${round_number}
+      AND leg = ${leg}
+      LIMIT 1
+    `;
+    
+    if (deadlines.length > 0 && deadlines[0].scheduled_date) {
+      const deadline = deadlines[0];
+      
+      // Calculate result entry deadline
+      const resultDate = new Date(deadline.scheduled_date);
+      resultDate.setDate(resultDate.getDate() + (deadline.result_entry_deadline_day_offset || 2));
+      const resultDateStr = resultDate.toISOString().split('T')[0];
+      const resultDeadline = new Date(`${resultDateStr}T${deadline.result_entry_deadline_time}:00+05:30`);
+      
+      const now = new Date();
+      
+      // Check if deadline has passed
+      if (now >= resultDeadline) {
+        return NextResponse.json(
+          { 
+            error: 'Result entry deadline has passed',
+            deadline: resultDeadline.toISOString()
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Update match results (MOTM is now at fixture level, not matchup level)
     for (const result of results) {
       await sql`

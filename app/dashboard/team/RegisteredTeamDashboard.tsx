@@ -277,6 +277,13 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
 
     dashboardData.activeRounds.forEach(round => {
       if (round.end_time && !timerRefs.current[round.id]) {
+        // Calculate and set initial time immediately
+        const now = new Date().getTime();
+        const end = new Date(round.end_time!).getTime();
+        const remaining = Math.max(0, Math.floor((end - now) / 1000));
+        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
+        
+        // Then start the interval
         timerRefs.current[round.id] = setInterval(() => {
           const now = new Date().getTime();
           const end = new Date(round.end_time!).getTime();
@@ -337,9 +344,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   }, [dashboardData?.activeBulkRounds]);
 
   const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleDeleteBid = async (bidId: number) => {
@@ -850,7 +858,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                         )}
                       </div>
                       <Link 
-                        href={`/dashboard/team/auction/${round.id}`}
+                        href={`/dashboard/team/round/${round.id}`}
                         className="block w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-center font-medium"
                       >
                         Enter Round →

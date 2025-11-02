@@ -131,6 +131,48 @@ export default function FixturePage() {
     },
   });
 
+  // Auto-recalculate phase every 10 seconds to handle deadline transitions
+  useEffect(() => {
+    if (!fixture || !roundDeadlines || !roundDeadlines.scheduled_date) return;
+
+    const recalculatePhase = () => {
+      const now = new Date();
+      
+      // Parse all deadlines
+      const homeDeadline = new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`);
+      const awayDeadline = new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`);
+      
+      const resultDate = new Date(roundDeadlines.scheduled_date);
+      resultDate.setDate(resultDate.getDate() + (roundDeadlines.result_entry_deadline_day_offset || 2));
+      const resultDateStr = resultDate.toISOString().split('T')[0];
+      const resultDeadline = new Date(`${resultDateStr}T${roundDeadlines.result_entry_deadline_time}:00+05:30`);
+
+      // Calculate phase with proper splits
+      let currentPhase: typeof phase = 'closed';
+      if (now < homeDeadline) {
+        currentPhase = 'home_fixture';     // Home team creates matchups
+      } else if (now < awayDeadline) {
+        currentPhase = 'fixture_entry';    // Away team reviews, both can finalize
+      } else if (now < resultDeadline) {
+        currentPhase = 'result_entry';     // Enter results
+      } else {
+        currentPhase = 'closed';           // Read-only
+      }
+
+      if (currentPhase !== phase) {
+        console.log(`⏰ Phase auto-transition: ${phase} → ${currentPhase}`);
+        setPhase(currentPhase);
+      }
+    };
+
+    // Check immediately
+    recalculatePhase();
+    
+    // Then check every 10 seconds
+    const interval = setInterval(recalculatePhase, 10000);
+    return () => clearInterval(interval);
+  }, [fixture, roundDeadlines, phase]);
+
   // Modal system
   const {
     alertState,
@@ -274,15 +316,16 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
     }
   }, [user, loading, router]);
 
-  // Poll lineup status
+  // Poll lineup status AND matchups
   useEffect(() => {
     if (!fixtureId || !fixture) return;
 
-    const pollLineupStatus = async () => {
+    const pollStatus = async () => {
       try {
-        const [homeLineupResponse, awayLineupResponse] = await Promise.all([
+        const [homeLineupResponse, awayLineupResponse, matchupsResponse] = await Promise.all([
           fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${fixture.home_team_id}`),
-          fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${fixture.away_team_id}`)
+          fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${fixture.away_team_id}`),
+          fetch(`/api/fixtures/${fixtureId}/matchups`)
         ]);
 
         if (homeLineupResponse.ok) {
@@ -296,15 +339,40 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
           const hasAwayLineup = awayLineupData.success && awayLineupData.lineups && awayLineupData.lineups.starting_xi && awayLineupData.lineups.starting_xi.length > 0;
           setAwayLineupSubmitted(hasAwayLineup);
         }
+
+        // Poll matchups - auto-update when created
+        if (matchupsResponse.ok) {
+          const matchupsData = await matchupsResponse.json();
+          if (matchupsData.matchups && matchupsData.matchups.length > 0) {
+            // Only update if matchups changed (avoid unnecessary re-renders)
+            if (JSON.stringify(matchupsData.matchups) !== JSON.stringify(matchups)) {
+              console.log('✨ Matchups updated in real-time');
+              setMatchups(matchupsData.matchups);
+              
+              // Initialize results if needed
+              const resultsInit: {[key: number]: {home_goals: number, away_goals: number}} = {};
+              matchupsData.matchups.forEach((m: Matchup) => {
+                resultsInit[m.position] = {
+                  home_goals: m.home_goals ?? 0,
+                  away_goals: m.away_goals ?? 0
+                };
+              });
+              setMatchResults(resultsInit);
+            }
+          }
+        }
       } catch (error) {
-        console.error('Error polling lineup status:', error);
+        console.error('Error polling status:', error);
       }
     };
 
-    // Poll every 5 seconds
-    const interval = setInterval(pollLineupStatus, 5000);
+    // Poll every 3 seconds for real-time updates
+    const interval = setInterval(pollStatus, 3000);
+    // Also poll immediately
+    pollStatus();
+    
     return () => clearInterval(interval);
-  }, [fixtureId, fixture]);
+  }, [fixtureId, fixture, matchups]);
 
   useEffect(() => {
     const loadFixture = async () => {
@@ -504,14 +572,16 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
               'now < resultDeadline': now < resultDeadline
             });
 
+            // Calculate phase with proper splits
             let currentPhase: typeof phase = 'closed';
-            if (now < awayDeadline) {
-              // Home fixture phase lasts until away deadline
-              currentPhase = 'home_fixture';
+            if (now < homeDeadline) {
+              currentPhase = 'home_fixture';     // Home team creates matchups
+            } else if (now < awayDeadline) {
+              currentPhase = 'fixture_entry';    // Away team reviews, both can finalize
             } else if (now < resultDeadline) {
-              currentPhase = 'result_entry';
+              currentPhase = 'result_entry';     // Enter results
             } else {
-              currentPhase = 'closed';
+              currentPhase = 'closed';           // Read-only
             }
 
             setPhase(currentPhase);
@@ -550,10 +620,8 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
               reason: matchupsList.length > 0 ? 'Matchups created - lineups locked' : 'OK'
             });
 
-            // Determine matchup permissions
-            // NEW: Matchups can only be created after BOTH teams submit lineups
+            // Determine matchup permissions with separate phases
             const matchupsExist = matchupsList.length > 0;
-            const isAfterHomeDeadline = now >= homeDeadline;
             const bothLineupsSubmitted = actualHomeLineupSubmitted && actualAwayLineupSubmitted;
             
             console.log('🎮 Matchup Permissions Check:', {
@@ -561,32 +629,31 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
               bothLineupsSubmitted,
               matchupsExist,
               isHome,
-              isAfterHomeDeadline
             });
 
             let canCreate = false;
             let canEditMatch = false;
 
             if (currentPhase === 'home_fixture' && bothLineupsSubmitted) {
-              // Home fixture phase lasts until away deadline
-              if (!isAfterHomeDeadline) {
-                // Before home deadline: only home can create/edit
-                if (!matchupsExist) {
-                  canCreate = isHome;
-                } else {
-                  canEditMatch = isHome;
-                }
+              // Home fixture phase (before home deadline)
+              // Only home team can create/edit matchups
+              if (!matchupsExist) {
+                canCreate = isHome;
               } else {
-                // After home deadline but before away deadline ("Away phase")
-                if (!matchupsExist) {
-                  // If no matchups exist, both teams can create
-                  canCreate = true;
-                } else {
-                  // If matchups exist:
-                  // - Home team can still edit until away deadline
-                  // - Away team CANNOT edit if home created matchups
-                  canEditMatch = isHome;
-                }
+                canEditMatch = isHome;
+              }
+            } else if (currentPhase === 'fixture_entry' && bothLineupsSubmitted) {
+              // Fixture entry phase (after home deadline, before away deadline)
+              // Both teams can create if not exist
+              // Whichever team creates first gets edit rights
+              if (!matchupsExist) {
+                canCreate = true;  // Both teams can create
+              } else {
+                // Check who created the matchups
+                const firstMatchup = matchupsList[0];
+                const createdByHome = firstMatchup?.home_player_id && homePlayersList.some(p => p.player_id === firstMatchup.home_player_id);
+                const createdByThisTeam = (isHome && createdByHome) || (!isHome && !createdByHome);
+                canEditMatch = createdByThisTeam;  // Team that created matchups can edit
               }
             }
 
@@ -1679,9 +1746,9 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         )}
 
                         {/* Main Matchup Display */}
-                        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 sm:gap-4 items-center">
                           {/* Home Player */}
-                          <div className={`p-3 rounded-lg border-2 transition-all ${
+                          <div className={`p-2.5 sm:p-3 rounded-lg border-2 transition-all ${
                             homePOTD ? 'bg-gradient-to-br from-yellow-200 to-yellow-300 border-yellow-500 shadow-md' :
                             homeWon ? 'bg-gradient-to-br from-green-100 to-green-200 border-green-400' :
                             isDraw ? 'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300' :
@@ -1691,24 +1758,24 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                             <div className="text-center">
                               <div className="flex items-center justify-center gap-1 mb-1">
                                 {homePOTD && (
-                                  <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                  <svg className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
                                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                                   </svg>
                                 )}
-                                <p className="text-xs font-medium text-gray-600">🏠 {fixture.home_team_name}</p>
+                                <p className="text-xs font-medium text-gray-600">🏠 <span className="hidden sm:inline">{fixture.home_team_name}</span><span className="sm:hidden">Home</span></p>
                               </div>
-                              <p className={`font-bold mb-2 ${
-                                homePOTD ? 'text-yellow-900 text-base' : 'text-gray-900 text-sm'
+                              <p className={`font-bold mb-1 sm:mb-2 text-xs sm:text-sm ${
+                                homePOTD ? 'text-yellow-900 sm:text-base' : 'text-gray-900'
                               }`}>{matchup.home_player_name}</p>
                               {hasResult && (
                                 <div className="space-y-1">
-                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-sm ${
+                                  <div className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-full font-bold text-xs sm:text-sm ${
                                     homeWon ? 'bg-green-500 text-white' :
                                     isDraw ? 'bg-gray-400 text-white' :
                                     'bg-red-100 text-red-700'
                                   }`}>
                                     {homeWon ? '✓' : isDraw ? '◆' : '✗'}
-                                    <span className="ml-0.5">{matchup.home_goals} goal{matchup.home_goals !== 1 ? 's' : ''}</span>
+                                    <span className="ml-0.5">{matchup.home_goals}<span className="hidden sm:inline"> goal{matchup.home_goals !== 1 ? 's' : ''}</span></span>
                                   </div>
                                   <p className="text-xs text-gray-600">
                                     {homeWon ? '🎉 Won' : isDraw ? '🤝 Draw' : '❌ Lost'}
@@ -1719,17 +1786,17 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           </div>
 
                           {/* Score Badge */}
-                          <div className="flex flex-col items-center gap-2">
+                          <div className="flex flex-col items-center gap-1 sm:gap-2 order-first sm:order-none">
                             {hasResult ? (
                               <>
-                                <div className={`px-4 py-2 rounded-lg font-bold text-lg shadow-md ${
+                                <div className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-base sm:text-lg shadow-md ${
                                   isDraw ? 'bg-yellow-400 text-yellow-900' :
                                   'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
                                 }`}>
                                   {matchup.home_goals} - {matchup.away_goals}
                                 </div>
                                 {!isDraw && (
-                                  <div className="flex items-center gap-1 text-xs font-semibold text-gray-600">
+                                  <div className="hidden sm:flex items-center gap-1 text-xs font-semibold text-gray-600">
                                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clipRule="evenodd" />
                                     </svg>
@@ -1738,12 +1805,12 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                                 )}
                               </>
                             ) : (
-                              <div className="bg-gray-200 text-gray-600 rounded-full px-4 py-2 text-sm font-medium">VS</div>
+                              <div className="bg-gray-200 text-gray-600 rounded-full px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium">VS</div>
                             )}
                           </div>
 
                           {/* Away Player */}
-                          <div className={`p-3 rounded-lg border-2 transition-all ${
+                          <div className={`p-2.5 sm:p-3 rounded-lg border-2 transition-all ${
                             awayPOTD ? 'bg-gradient-to-br from-yellow-200 to-yellow-300 border-yellow-500 shadow-md' :
                             awayWon ? 'bg-gradient-to-br from-green-100 to-green-200 border-green-400' :
                             isDraw ? 'bg-gradient-to-br from-gray-100 to-gray-200 border-gray-300' :
@@ -1753,24 +1820,24 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                             <div className="text-center">
                               <div className="flex items-center justify-center gap-1 mb-1">
                                 {awayPOTD && (
-                                  <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                  <svg className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
                                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                                   </svg>
                                 )}
-                                <p className="text-xs font-medium text-gray-600">✈️ {fixture.away_team_name}</p>
+                                <p className="text-xs font-medium text-gray-600">✈️ <span className="hidden sm:inline">{fixture.away_team_name}</span><span className="sm:hidden">Away</span></p>
                               </div>
-                              <p className={`font-bold mb-2 ${
-                                awayPOTD ? 'text-yellow-900 text-base' : 'text-gray-900 text-sm'
+                              <p className={`font-bold mb-1 sm:mb-2 text-xs sm:text-sm ${
+                                awayPOTD ? 'text-yellow-900 sm:text-base' : 'text-gray-900'
                               }`}>{matchup.away_player_name}</p>
                               {hasResult && (
                                 <div className="space-y-1">
-                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-sm ${
+                                  <div className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-full font-bold text-xs sm:text-sm ${
                                     awayWon ? 'bg-green-500 text-white' :
                                     isDraw ? 'bg-gray-400 text-white' :
                                     'bg-red-100 text-red-700'
                                   }`}>
                                     {awayWon ? '✓' : isDraw ? '◆' : '✗'}
-                                    <span className="ml-0.5">{matchup.away_goals} goal{matchup.away_goals !== 1 ? 's' : ''}</span>
+                                    <span className="ml-0.5">{matchup.away_goals}<span className="hidden sm:inline"> goal{matchup.away_goals !== 1 ? 's' : ''}</span></span>
                                   </div>
                                   <p className="text-xs text-gray-600">
                                     {awayWon ? '🎉 Won' : isDraw ? '🤝 Draw' : '❌ Lost'}
@@ -1781,9 +1848,9 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           </div>
                         </div>
 
-                        {/* Match Stats Summary */}
+                        {/* Match Stats Summary - Hidden on mobile */}
                         {hasResult && (
-                          <div className="mt-3 pt-3 border-t border-gray-200">
+                          <div className="hidden sm:block mt-3 pt-3 border-t border-gray-200">
                             <div className="flex items-center justify-center gap-4 text-xs text-gray-600">
                               <div className="flex items-center gap-1">
                                 <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1805,31 +1872,41 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                   })}
                 </div>
 
-                {/* Enter/Edit Results Button */}
-                <button
-                  onClick={() => {
-                    // Initialize results from existing data
-                    const initialResults: any = {};
-                    matchups.forEach((m, idx) => {
-                      initialResults[idx] = {
-                        home_goals: m.home_goals ?? 0,
-                        away_goals: m.away_goals ?? 0
-                      };
-                    });
-                    setMatchResults(initialResults);
-                    setMotmPlayerId(fixture.motm_player_id || null);
-                    setIsResultMode(true);
-                  }}
-                  className="group relative w-full px-5 py-4 bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-bold rounded-2xl hover:from-emerald-600 hover:via-green-600 hover:to-teal-600 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.02] flex items-center justify-center gap-3 overflow-hidden"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 group-hover:animate-shimmer"></div>
-                  <div className="relative flex items-center gap-3">
-                    <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    <span className="text-base sm:text-lg">{matchups.some(m => m.home_goals !== null) ? '✏️ Edit Results' : '✅ Enter Results'}</span>
+                {/* Enter/Edit Results Button - Only visible during result_entry phase */}
+                {phase === 'result_entry' && (
+                  <button
+                    onClick={() => {
+                      // Initialize results from existing data
+                      const initialResults: any = {};
+                      matchups.forEach((m, idx) => {
+                        initialResults[idx] = {
+                          home_goals: m.home_goals ?? 0,
+                          away_goals: m.away_goals ?? 0
+                        };
+                      });
+                      setMatchResults(initialResults);
+                      setMotmPlayerId(fixture.motm_player_id || null);
+                      setIsResultMode(true);
+                    }}
+                    className="group relative w-full px-5 py-4 bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-bold rounded-2xl hover:from-emerald-600 hover:via-green-600 hover:to-teal-600 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.02] flex items-center justify-center gap-3 overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 group-hover:animate-shimmer"></div>
+                    <div className="relative flex items-center gap-3">
+                      <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      <span className="text-base sm:text-lg">{matchups.some(m => m.home_goals !== null) ? '✏️ Edit Results' : '✅ Enter Results'}</span>
+                    </div>
+                  </button>
+                )}
+
+                {/* Deadline Passed Message */}
+                {phase === 'closed' && matchups.some(m => m.home_goals !== null) && (
+                  <div className="p-4 bg-gray-100 border-2 border-gray-300 rounded-xl text-center">
+                    <p className="text-sm font-semibold text-gray-700">🔒 Result entry period has ended</p>
+                    <p className="text-xs text-gray-600 mt-1">Results cannot be modified after the deadline</p>
                   </div>
-                </button>
+                )}
 
                 {/* WhatsApp Share Button (with results) */}
                 {matchups.some(m => m.home_goals !== null) && (
@@ -2308,7 +2385,21 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           }),
                         });
 
-                        if (!response.ok) throw new Error('Failed to save results');
+                        if (!response.ok) {
+                          const errorData = await response.json();
+                          if (response.status === 403) {
+                            // Deadline passed
+                            showAlert({
+                              type: 'error',
+                              title: 'Deadline Passed',
+                              message: `❌ ${errorData.error}. Results can no longer be submitted.`
+                            });
+                            setIsSaving(false);
+                            setIsResultMode(false);
+                            return;
+                          }
+                          throw new Error(errorData.error || 'Failed to save results');
+                        }
 
                         const resultData = await response.json();
                         console.log('Result submission response:', resultData);
@@ -2334,6 +2425,18 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
 
                         if (!motmResponse.ok) {
                           const errorData = await motmResponse.json();
+                          if (motmResponse.status === 403) {
+                            // Deadline passed for MOTM as well
+                            console.error('MOTM deadline passed:', errorData);
+                            showAlert({
+                              type: 'error',
+                              title: 'Deadline Passed',
+                              message: `❌ ${errorData.error}. MOTM can no longer be saved.`
+                            });
+                            setIsSaving(false);
+                            setIsResultMode(false);
+                            return;
+                          }
                           console.error('Failed to save MOTM:', errorData);
                           showAlert({
                             type: 'warning',
@@ -2454,6 +2557,57 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         } catch (fantasyError) {
                           console.error('Fantasy points calculation error (non-critical):', fantasyError);
                           // Don't show error to user - fantasy is optional
+                        }
+
+                        // Generate match result news (auto-trigger)
+                        try {
+                          console.log('📰 Generating match result news...');
+                          const newsResponse = await fetch('/api/news/trigger', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              event_type: 'match_result',
+                              event_data: {
+                                season_id: fixture.season_id,
+                                fixture_id: fixtureId,
+                                home_team_name: fixture.home_team_name,
+                                away_team_name: fixture.away_team_name,
+                                home_score: resultData.fixture.home_score,
+                                away_score: resultData.fixture.away_score,
+                                result: resultData.fixture.result,
+                                motm_player_name: motmPlayerName,
+                              }
+                            }),
+                          });
+
+                          if (newsResponse.ok) {
+                            const newsData = await newsResponse.json();
+                            console.log('✅ Match result news generated:', newsData);
+                          } else {
+                            console.log('ℹ️ News generation skipped or failed');
+                          }
+                        } catch (newsError) {
+                          console.error('News generation error (non-critical):', newsError);
+                          // Don't show error to user - news is optional
+                        }
+
+                        // Record player participation from lineups (auto-trigger)
+                        try {
+                          console.log('📋 Recording player participation...');
+                          const participationResponse = await fetch(`/api/fixtures/${fixtureId}/record-participation`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                          });
+
+                          if (participationResponse.ok) {
+                            const participationData = await participationResponse.json();
+                            console.log('✅ Player participation recorded:', participationData.message);
+                          } else {
+                            console.log('ℹ️ Player participation recording skipped');
+                          }
+                        } catch (participationError) {
+                          console.error('Participation recording error (non-critical):', participationError);
+                          // Don't show error to user - participation is optional
                         }
 
                         showAlert({
@@ -2632,29 +2786,28 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                     return player.player_id !== currentPlayerId;
                   })
                   .map((player) => {
-                  // Display category properly - check category_id first
+                  // Display category properly
                   let catDisplay = 'N/A';
                   
-                  // Debug: show actual value
-                  const debugInfo = `[${player.category_id || 'no id'}]`;
-                  
-                  if (player.category_id === 'legend') {
+                  // Check various category field formats
+                  if (player.category_id === 'legend' || player.category === 'legend') {
                     catDisplay = 'Legend';
-                  } else if (player.category_id === 'classic') {
+                  } else if (player.category_id === 'classic' || player.category === 'classic') {
+                    catDisplay = 'Classic';
+                  } else if (player.category_name?.toLowerCase().includes('legend')) {
+                    catDisplay = 'Legend';
+                  } else if (player.category_name?.toLowerCase().includes('classic')) {
                     catDisplay = 'Classic';
                   } else if (player.category_name) {
                     catDisplay = player.category_name;
                   } else if (typeof player.category === 'number') {
-                    catDisplay = player.category.toString();
-                  } else if (player.category === 'legend') {
-                    catDisplay = 'Legend';
-                  } else if (player.category === 'classic') {
-                    catDisplay = 'Classic';
+                    // Map numeric categories: 1 = Legend, 2 = Classic
+                    catDisplay = player.category === 1 ? 'Legend' : player.category === 2 ? 'Classic' : `Cat ${player.category}`;
                   }
                   
                   return (
                     <option key={player.player_id} value={player.player_id}>
-                      {player.name || player.player_name} ({catDisplay}) {debugInfo}
+                      {player.name || player.player_name} ({catDisplay})
                     </option>
                   );
                 })}

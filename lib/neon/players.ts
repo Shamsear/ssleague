@@ -233,7 +233,7 @@ export async function updatePlayerEligibility(id: string, isEligible: boolean): 
 /**
  * Bulk update player eligibility
  */
-export async function bulkUpdateEligibility(playerIds: number[], isEligible: boolean): Promise<number> {
+export async function bulkUpdateEligibility(playerIds: string[], isEligible: boolean): Promise<number> {
   if (playerIds.length === 0) return 0;
   
   const { Pool } = await import('@neondatabase/serverless');
@@ -243,7 +243,7 @@ export async function bulkUpdateEligibility(playerIds: number[], isEligible: boo
     const query = `
       UPDATE footballplayers 
       SET is_auction_eligible = $1
-      WHERE id = ANY($2::int[])
+      WHERE id = ANY($2::text[])
     `;
     
     const result = await pool.query(query, [isEligible, playerIds]);
@@ -308,38 +308,85 @@ export async function searchPlayers(searchTerm: string, limit: number = 50): Pro
 }
 
 /**
- * Bulk import players
+ * Bulk update player stats (preserves ownership/team data)
+ * Use this for season updates where player ratings change but ownership should remain
  */
-export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_at' | 'updated_at'>[]): Promise<number> {
-  if (players.length === 0) return 0;
+export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'created_at' | 'updated_at'>[]): Promise<{ updated: number; inserted: number; errors: number }> {
+  if (players.length === 0) return { updated: 0, inserted: 0, errors: 0 };
 
+  console.log(`🔄 bulkUpdatePlayerStats called with ${players.length} players`);
+  
   const { Pool } = await import('@neondatabase/serverless');
   const { randomUUID } = await import('crypto');
   const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
   
   try {
+    let updatedCount = 0;
     let insertedCount = 0;
+    let errorCount = 0;
     
-    // Insert players in batches to avoid query size limits
-    const batchSize = 100;
-    for (let i = 0; i < players.length; i += batchSize) {
-      const batch = players.slice(i, i + batchSize);
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      const playerNum = i + 1;
       
-      // Build parameterized query for this batch
-      const placeholders: string[] = [];
-      const values: any[] = [];
-      let paramIndex = 1;
-      
-      batch.forEach(p => {
-        // Count all the fields we're inserting (43 fields total)
-        const fieldCount = 43;
-        const paramsList = Array.from({ length: fieldCount }, (_, i) => `$${paramIndex++}`).join(', ');
-        placeholders.push(`(${paramsList})`);
-        
+      try {
         // Generate ID if not provided
         const playerId = p.id || randomUUID();
         
-        values.push(
+        // This query will:
+        // - INSERT new players with all provided data
+        // - UPDATE existing players' stats/attributes ONLY (preserves team_id, team_name, is_sold, acquisition_value, season_id, round_id)
+        const query = `
+          INSERT INTO footballplayers (
+            id, player_id, name, position, position_group, overall_rating,
+            nationality, age, club, team_id, team_name, season_id, round_id,
+            is_auction_eligible, is_sold, acquisition_value, playing_style,
+            offensive_awareness, ball_control, dribbling, tight_possession,
+            low_pass, lofted_pass, finishing, heading, set_piece_taking, curl,
+            speed, acceleration, kicking_power, jumping, physical_contact, balance, stamina,
+            defensive_awareness, tackling, aggression, defensive_engagement,
+            gk_awareness, gk_catching, gk_parrying, gk_reflexes, gk_reach
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
+          ON CONFLICT (player_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            position = EXCLUDED.position,
+            position_group = EXCLUDED.position_group,
+            overall_rating = EXCLUDED.overall_rating,
+            nationality = EXCLUDED.nationality,
+            age = EXCLUDED.age,
+            club = EXCLUDED.club,
+            playing_style = EXCLUDED.playing_style,
+            offensive_awareness = EXCLUDED.offensive_awareness,
+            ball_control = EXCLUDED.ball_control,
+            dribbling = EXCLUDED.dribbling,
+            tight_possession = EXCLUDED.tight_possession,
+            low_pass = EXCLUDED.low_pass,
+            lofted_pass = EXCLUDED.lofted_pass,
+            finishing = EXCLUDED.finishing,
+            heading = EXCLUDED.heading,
+            set_piece_taking = EXCLUDED.set_piece_taking,
+            curl = EXCLUDED.curl,
+            speed = EXCLUDED.speed,
+            acceleration = EXCLUDED.acceleration,
+            kicking_power = EXCLUDED.kicking_power,
+            jumping = EXCLUDED.jumping,
+            physical_contact = EXCLUDED.physical_contact,
+            balance = EXCLUDED.balance,
+            stamina = EXCLUDED.stamina,
+            defensive_awareness = EXCLUDED.defensive_awareness,
+            tackling = EXCLUDED.tackling,
+            aggression = EXCLUDED.aggression,
+            defensive_engagement = EXCLUDED.defensive_engagement,
+            gk_awareness = EXCLUDED.gk_awareness,
+            gk_catching = EXCLUDED.gk_catching,
+            gk_parrying = EXCLUDED.gk_parrying,
+            gk_reflexes = EXCLUDED.gk_reflexes,
+            gk_reach = EXCLUDED.gk_reach
+            -- NOTE: team_id, team_name, is_sold, acquisition_value, season_id, round_id are NOT updated
+            -- This preserves ownership data for existing players
+        `;
+        
+        const values = [
           playerId,
           p.player_id,
           p.name,
@@ -387,62 +434,177 @@ export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_a
           p.gk_parrying || null,
           p.gk_reflexes || null,
           p.gk_reach || null
+        ];
+        
+        // Check if player exists first to track updated vs inserted
+        const checkResult = await pool.query(
+          'SELECT COUNT(*) as count FROM footballplayers WHERE player_id = $1',
+          [p.player_id]
         );
-      });
-      
-      const query = `
-        INSERT INTO footballplayers (
-          id, player_id, name, position, position_group, overall_rating,
-          nationality, age, club, team_id, team_name, season_id, round_id,
-          is_auction_eligible, is_sold, acquisition_value, playing_style,
-          offensive_awareness, ball_control, dribbling, tight_possession,
-          low_pass, lofted_pass, finishing, heading, set_piece_taking, curl,
-          speed, acceleration, kicking_power, jumping, physical_contact, balance, stamina,
-          defensive_awareness, tackling, aggression, defensive_engagement,
-          gk_awareness, gk_catching, gk_parrying, gk_reflexes, gk_reach
-        ) VALUES ${placeholders.join(', ')}
-        ON CONFLICT (player_id) DO UPDATE SET
-          name = EXCLUDED.name,
-          position = EXCLUDED.position,
-          position_group = EXCLUDED.position_group,
-          overall_rating = EXCLUDED.overall_rating,
-          nationality = EXCLUDED.nationality,
-          age = EXCLUDED.age,
-          club = EXCLUDED.club,
-          playing_style = EXCLUDED.playing_style,
-          offensive_awareness = EXCLUDED.offensive_awareness,
-          ball_control = EXCLUDED.ball_control,
-          dribbling = EXCLUDED.dribbling,
-          tight_possession = EXCLUDED.tight_possession,
-          low_pass = EXCLUDED.low_pass,
-          lofted_pass = EXCLUDED.lofted_pass,
-          finishing = EXCLUDED.finishing,
-          heading = EXCLUDED.heading,
-          set_piece_taking = EXCLUDED.set_piece_taking,
-          curl = EXCLUDED.curl,
-          speed = EXCLUDED.speed,
-          acceleration = EXCLUDED.acceleration,
-          kicking_power = EXCLUDED.kicking_power,
-          jumping = EXCLUDED.jumping,
-          physical_contact = EXCLUDED.physical_contact,
-          balance = EXCLUDED.balance,
-          stamina = EXCLUDED.stamina,
-          defensive_awareness = EXCLUDED.defensive_awareness,
-          tackling = EXCLUDED.tackling,
-          aggression = EXCLUDED.aggression,
-          defensive_engagement = EXCLUDED.defensive_engagement,
-          gk_awareness = EXCLUDED.gk_awareness,
-          gk_catching = EXCLUDED.gk_catching,
-          gk_parrying = EXCLUDED.gk_parrying,
-          gk_reflexes = EXCLUDED.gk_reflexes,
-          gk_reach = EXCLUDED.gk_reach
-      `;
-      
-      const result = await pool.query(query, values);
-      insertedCount += result.rowCount || 0;
+        const exists = parseInt(checkResult.rows[0].count) > 0;
+        
+        await pool.query(query, values);
+        
+        if (exists) {
+          updatedCount++;
+        } else {
+          insertedCount++;
+        }
+        
+        // Log every 10 players
+        if (playerNum % 10 === 0 || playerNum === players.length) {
+          console.log(`   ✅ Processed ${playerNum}/${players.length}: ${p.name} (${exists ? 'updated' : 'inserted'})`);
+        }
+      } catch (error: any) {
+        errorCount++;
+        console.error(`   ❌ Failed to process player ${playerNum}/${players.length} (${p.name}):`, error.message);
+      }
     }
     
-    console.log(`✅ Bulk imported ${insertedCount} players to Neon`);
+    console.log(`🎉 Bulk update complete: ${updatedCount} updated, ${insertedCount} inserted, ${errorCount} errors`);
+    return { updated: updatedCount, inserted: insertedCount, errors: errorCount };
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * Bulk import players (overwrites everything including team assignments)
+ */
+export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_at' | 'updated_at'>[]): Promise<number> {
+  if (players.length === 0) return 0;
+
+  console.log(`🔥 bulkImportPlayers called with ${players.length} players - inserting one by one`);
+  
+  const { Pool } = await import('@neondatabase/serverless');
+  const { randomUUID } = await import('crypto');
+  const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+  
+  try {
+    let insertedCount = 0;
+    let errorCount = 0;
+    
+    // Insert players one by one
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      const playerNum = i + 1;
+      
+      try {
+        // Generate ID if not provided
+        const playerId = p.id || randomUUID();
+        
+        const query = `
+          INSERT INTO footballplayers (
+            id, player_id, name, position, position_group, overall_rating,
+            nationality, age, club, team_id, team_name, season_id, round_id,
+            is_auction_eligible, is_sold, acquisition_value, playing_style,
+            offensive_awareness, ball_control, dribbling, tight_possession,
+            low_pass, lofted_pass, finishing, heading, set_piece_taking, curl,
+            speed, acceleration, kicking_power, jumping, physical_contact, balance, stamina,
+            defensive_awareness, tackling, aggression, defensive_engagement,
+            gk_awareness, gk_catching, gk_parrying, gk_reflexes, gk_reach
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
+          ON CONFLICT (player_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            position = EXCLUDED.position,
+            position_group = EXCLUDED.position_group,
+            overall_rating = EXCLUDED.overall_rating,
+            nationality = EXCLUDED.nationality,
+            age = EXCLUDED.age,
+            club = EXCLUDED.club,
+            playing_style = EXCLUDED.playing_style,
+            offensive_awareness = EXCLUDED.offensive_awareness,
+            ball_control = EXCLUDED.ball_control,
+            dribbling = EXCLUDED.dribbling,
+            tight_possession = EXCLUDED.tight_possession,
+            low_pass = EXCLUDED.low_pass,
+            lofted_pass = EXCLUDED.lofted_pass,
+            finishing = EXCLUDED.finishing,
+            heading = EXCLUDED.heading,
+            set_piece_taking = EXCLUDED.set_piece_taking,
+            curl = EXCLUDED.curl,
+            speed = EXCLUDED.speed,
+            acceleration = EXCLUDED.acceleration,
+            kicking_power = EXCLUDED.kicking_power,
+            jumping = EXCLUDED.jumping,
+            physical_contact = EXCLUDED.physical_contact,
+            balance = EXCLUDED.balance,
+            stamina = EXCLUDED.stamina,
+            defensive_awareness = EXCLUDED.defensive_awareness,
+            tackling = EXCLUDED.tackling,
+            aggression = EXCLUDED.aggression,
+            defensive_engagement = EXCLUDED.defensive_engagement,
+            gk_awareness = EXCLUDED.gk_awareness,
+            gk_catching = EXCLUDED.gk_catching,
+            gk_parrying = EXCLUDED.gk_parrying,
+            gk_reflexes = EXCLUDED.gk_reflexes,
+            gk_reach = EXCLUDED.gk_reach
+        `;
+        
+        const values = [
+          playerId,
+          p.player_id,
+          p.name,
+          p.position || null,
+          p.position_group || null,
+          p.overall_rating || null,
+          p.nationality || null,
+          p.age || null,
+          p.club || null,
+          p.team_id || null,
+          p.team_name || null,
+          p.season_id || null,
+          p.round_id || null,
+          p.is_auction_eligible !== undefined ? p.is_auction_eligible : false,
+          p.is_sold !== undefined ? p.is_sold : false,
+          p.acquisition_value || null,
+          p.playing_style || null,
+          // Offensive attributes
+          p.offensive_awareness || null,
+          p.ball_control || null,
+          p.dribbling || null,
+          p.tight_possession || null,
+          p.low_pass || null,
+          p.lofted_pass || null,
+          p.finishing || null,
+          p.heading || null,
+          p.set_piece_taking || null,
+          p.curl || null,
+          // Physical attributes
+          p.speed || null,
+          p.acceleration || null,
+          p.kicking_power || null,
+          p.jumping || null,
+          p.physical_contact || null,
+          p.balance || null,
+          p.stamina || null,
+          // Defensive attributes
+          p.defensive_awareness || null,
+          p.tackling || null,
+          p.aggression || null,
+          p.defensive_engagement || null,
+          // Goalkeeper attributes
+          p.gk_awareness || null,
+          p.gk_catching || null,
+          p.gk_parrying || null,
+          p.gk_reflexes || null,
+          p.gk_reach || null
+        ];
+        
+        const result = await pool.query(query, values);
+        insertedCount++;
+        
+        // Log every 10 players
+        if (playerNum % 10 === 0 || playerNum === players.length) {
+          console.log(`   ✅ Inserted ${playerNum}/${players.length}: ${p.name}`);
+        }
+      } catch (error: any) {
+        errorCount++;
+        console.error(`   ❌ Failed to insert player ${playerNum}/${players.length} (${p.name}):`, error.message);
+      }
+    }
+    
+    console.log(`🎉 Bulk import complete: ${insertedCount} inserted, ${errorCount} errors`);
     return insertedCount;
   } finally {
     await pool.end();

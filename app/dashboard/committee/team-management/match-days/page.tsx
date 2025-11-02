@@ -30,6 +30,7 @@ export default function MatchDayManagementPage() {
   const [seasonName, setSeasonName] = useState('');
   const [rounds, setRounds] = useState<TournamentRound[]>([]);
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   // Modal system
   const {
@@ -54,6 +55,15 @@ export default function MatchDayManagementPage() {
   useEffect(() => {
     loadRounds();
   }, [user]);
+
+  // Live timer update - updates every second for active rounds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000); // Update every second
+    
+    return () => clearInterval(timer);
+  }, []);
 
   const loadRounds = async () => {
     if (!user || user.role !== 'committee_admin') return;
@@ -498,7 +508,7 @@ export default function MatchDayManagementPage() {
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Current Time (IST): {new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}
+            Current Time (IST): {currentTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })}
           </div>
         </div>
         
@@ -638,12 +648,17 @@ export default function MatchDayManagementPage() {
                       );
                       
                       // Result deadline calculation - add days to the scheduled date
-                      const scheduledDate = new Date(scheduledDateStr + 'T00:00:00+05:30');
+                      // Parse the date parts directly to avoid timezone issues
+                      const [year, month, day] = scheduledDateStr.split('-').map(Number);
                       const offsetDays = round.result_entry_deadline_day_offset || 2;
+                      
+                      // Create a date object in UTC, then add offset days
+                      const scheduledDate = new Date(Date.UTC(year, month - 1, day));
                       const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-                      const resultYear = resultDateObj.getFullYear();
-                      const resultMonth = String(resultDateObj.getMonth() + 1).padStart(2, '0');
-                      const resultDay = String(resultDateObj.getDate()).padStart(2, '0');
+                      
+                      const resultYear = resultDateObj.getUTCFullYear();
+                      const resultMonth = String(resultDateObj.getUTCMonth() + 1).padStart(2, '0');
+                      const resultDay = String(resultDateObj.getUTCDate()).padStart(2, '0');
                       const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
                       const resultDeadline = createISTDateTime(
                         resultDateStr,
@@ -655,12 +670,15 @@ export default function MatchDayManagementPage() {
                         const nowTime = now.getTime();
                         const deadlineTime = homeDeadline.getTime();
                         const remainingMs = deadlineTime - nowTime;
-                        const totalMinutes = Math.floor(remainingMs / (1000 * 60));
-                        const hours = Math.floor(totalMinutes / 60);
-                        const minutes = totalMinutes % 60;
+                        const totalSeconds = Math.floor(remainingMs / 1000);
+                        const hours = Math.floor(totalSeconds / 3600);
+                        const minutes = Math.floor((totalSeconds % 3600) / 60);
+                        const seconds = totalSeconds % 60;
                         const remainingDisplay = hours > 0
-                          ? (minutes > 0 ? `${hours}h ${minutes}m left` : `${hours}h left`)
-                          : `${totalMinutes}m left`;
+                          ? `${hours}h ${minutes}m ${seconds}s left`
+                          : minutes > 0
+                          ? `${minutes}m ${seconds}s left`
+                          : `${seconds}s left`;
                         return { 
                           phase: 'home_fixture', 
                           phaseLabel: 'Home Fixture Setup',
@@ -672,12 +690,15 @@ export default function MatchDayManagementPage() {
                         const nowTime = now.getTime();
                         const deadlineTime = awayDeadline.getTime();
                         const remainingMs = deadlineTime - nowTime;
-                        const totalMinutes = Math.floor(remainingMs / (1000 * 60));
-                        const hours = Math.floor(totalMinutes / 60);
-                        const minutes = totalMinutes % 60;
+                        const totalSeconds = Math.floor(remainingMs / 1000);
+                        const hours = Math.floor(totalSeconds / 3600);
+                        const minutes = Math.floor((totalSeconds % 3600) / 60);
+                        const seconds = totalSeconds % 60;
                         const remainingDisplay = hours > 0
-                          ? (minutes > 0 ? `${hours}h ${minutes}m left` : `${hours}h left`)
-                          : `${totalMinutes}m left`;
+                          ? `${hours}h ${minutes}m ${seconds}s left`
+                          : minutes > 0
+                          ? `${minutes}m ${seconds}s left`
+                          : `${seconds}s left`;
                         return { 
                           phase: 'fixture_entry', 
                           phaseLabel: 'Fixture Entry',
@@ -687,12 +708,15 @@ export default function MatchDayManagementPage() {
                         };
                       } else if (now < resultDeadline) {
                         const remainingMs = resultDeadline.getTime() - now.getTime();
-                        const totalMinutes = Math.floor(remainingMs / (1000 * 60));
-                        const hours = Math.floor(totalMinutes / 60);
-                        const minutes = totalMinutes % 60;
+                        const totalSeconds = Math.floor(remainingMs / 1000);
+                        const hours = Math.floor(totalSeconds / 3600);
+                        const minutes = Math.floor((totalSeconds % 3600) / 60);
+                        const seconds = totalSeconds % 60;
                         const remainingDisplay = hours > 0
-                          ? (minutes > 0 ? `${hours}h ${minutes}m left` : `${hours}h left`)
-                          : `${totalMinutes}m left`;
+                          ? `${hours}h ${minutes}m ${seconds}s left`
+                          : minutes > 0
+                          ? `${minutes}m ${seconds}s left`
+                          : `${seconds}s left`;
                         return { 
                           phase: 'result_entry', 
                           phaseLabel: 'Result Entry',
@@ -701,12 +725,24 @@ export default function MatchDayManagementPage() {
                           remaining: remainingDisplay
                         };
                       } else {
+                        // Calculate how long ago the deadline passed
+                        const timeSinceDeadline = now.getTime() - resultDeadline.getTime();
+                        const hoursPassed = Math.floor(timeSinceDeadline / (1000 * 60 * 60));
+                        const daysPassed = Math.floor(hoursPassed / 24);
+                        let expiredMsg = 'Expired';
+                        if (daysPassed > 0) {
+                          expiredMsg = `Expired ${daysPassed}d ago`;
+                        } else if (hoursPassed > 0) {
+                          expiredMsg = `Expired ${hoursPassed}h ago`;
+                        } else {
+                          expiredMsg = 'Just expired';
+                        }
                         return { 
                           phase: 'closed', 
-                          phaseLabel: 'Closed',
+                          phaseLabel: 'Result Entry Closed',
                           color: 'bg-red-100 text-red-700',
                           deadline: null,
-                          remaining: 'Expired'
+                          remaining: expiredMsg
                         };
                       }
                     };
@@ -780,7 +816,14 @@ export default function MatchDayManagementPage() {
                               <span className="font-medium text-gray-700">Away:</span> {round.away_fixture_deadline_time || '23:45'}
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Result:</span> Day {round.result_entry_deadline_day_offset || 2}
+                              <span className="font-medium text-gray-700">Result:</span> {(() => {
+                                if (!round.scheduled_date) return 'Not scheduled';
+                                const offsetDays = round.result_entry_deadline_day_offset || 2;
+                                const scheduledDate = new Date(round.scheduled_date);
+                                const resultDate = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+                                const dateStr = resultDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+                                return `${dateStr} ${round.result_entry_deadline_time || '00:30'}`;
+                              })()}
                             </div>
                           </div>
                         </td>
@@ -931,12 +974,17 @@ export default function MatchDayManagementPage() {
                     round.away_fixture_deadline_time || '23:45'
                   );
                   
-                  const scheduledDate = new Date(scheduledDateStr + 'T00:00:00+05:30');
+                  // Parse the date parts directly to avoid timezone issues
+                  const [year, month, day] = scheduledDateStr.split('-').map(Number);
                   const offsetDays = round.result_entry_deadline_day_offset || 2;
+                  
+                  // Create a date object in UTC, then add offset days
+                  const scheduledDate = new Date(Date.UTC(year, month - 1, day));
                   const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-                  const resultYear = resultDateObj.getFullYear();
-                  const resultMonth = String(resultDateObj.getMonth() + 1).padStart(2, '0');
-                  const resultDay = String(resultDateObj.getDate()).padStart(2, '0');
+                  
+                  const resultYear = resultDateObj.getUTCFullYear();
+                  const resultMonth = String(resultDateObj.getUTCMonth() + 1).padStart(2, '0');
+                  const resultDay = String(resultDateObj.getUTCDate()).padStart(2, '0');
                   const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
                   const resultDeadline = createISTDateTime(
                     resultDateStr,
@@ -945,12 +993,15 @@ export default function MatchDayManagementPage() {
 
                   if (now < homeDeadline) {
                     const remainingMs = homeDeadline.getTime() - now.getTime();
-                    const totalMinutes = Math.floor(remainingMs / (1000 * 60));
-                    const hours = Math.floor(totalMinutes / 60);
-                    const minutes = totalMinutes % 60;
+                    const totalSeconds = Math.floor(remainingMs / 1000);
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    const seconds = totalSeconds % 60;
                     const remainingDisplay = hours > 0
-                      ? (minutes > 0 ? `${hours}h ${minutes}m left` : `${hours}h left`)
-                      : `${totalMinutes}m left`;
+                      ? `${hours}h ${minutes}m ${seconds}s left`
+                      : minutes > 0
+                      ? `${minutes}m ${seconds}s left`
+                      : `${seconds}s left`;
                     return { 
                       phase: 'home_fixture', 
                       phaseLabel: 'Home Fixture Setup',
@@ -960,12 +1011,15 @@ export default function MatchDayManagementPage() {
                     };
                   } else if (now < awayDeadline) {
                     const remainingMs = awayDeadline.getTime() - now.getTime();
-                    const totalMinutes = Math.floor(remainingMs / (1000 * 60));
-                    const hours = Math.floor(totalMinutes / 60);
-                    const minutes = totalMinutes % 60;
+                    const totalSeconds = Math.floor(remainingMs / 1000);
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    const seconds = totalSeconds % 60;
                     const remainingDisplay = hours > 0
-                      ? (minutes > 0 ? `${hours}h ${minutes}m left` : `${hours}h left`)
-                      : `${totalMinutes}m left`;
+                      ? `${hours}h ${minutes}m ${seconds}s left`
+                      : minutes > 0
+                      ? `${minutes}m ${seconds}s left`
+                      : `${seconds}s left`;
                     return { 
                       phase: 'fixture_entry', 
                       phaseLabel: 'Fixture Entry',
@@ -975,12 +1029,15 @@ export default function MatchDayManagementPage() {
                     };
                   } else if (now < resultDeadline) {
                     const remainingMs = resultDeadline.getTime() - now.getTime();
-                    const totalMinutes = Math.floor(remainingMs / (1000 * 60));
-                    const hours = Math.floor(totalMinutes / 60);
-                    const minutes = totalMinutes % 60;
+                    const totalSeconds = Math.floor(remainingMs / 1000);
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    const seconds = totalSeconds % 60;
                     const remainingDisplay = hours > 0
-                      ? (minutes > 0 ? `${hours}h ${minutes}m left` : `${hours}h left`)
-                      : `${totalMinutes}m left`;
+                      ? `${hours}h ${minutes}m ${seconds}s left`
+                      : minutes > 0
+                      ? `${minutes}m ${seconds}s left`
+                      : `${seconds}s left`;
                     return { 
                       phase: 'result_entry', 
                       phaseLabel: 'Result Entry',
@@ -989,12 +1046,24 @@ export default function MatchDayManagementPage() {
                       remaining: remainingDisplay
                     };
                   } else {
+                    // Calculate how long ago the deadline passed
+                    const timeSinceDeadline = now.getTime() - resultDeadline.getTime();
+                    const hoursPassed = Math.floor(timeSinceDeadline / (1000 * 60 * 60));
+                    const daysPassed = Math.floor(hoursPassed / 24);
+                    let expiredMsg = 'Expired';
+                    if (daysPassed > 0) {
+                      expiredMsg = `Expired ${daysPassed}d ago`;
+                    } else if (hoursPassed > 0) {
+                      expiredMsg = `Expired ${hoursPassed}h ago`;
+                    } else {
+                      expiredMsg = 'Just expired';
+                    }
                     return { 
                       phase: 'closed', 
-                      phaseLabel: 'Closed',
+                      phaseLabel: 'Result Entry Closed',
                       color: 'bg-red-100 text-red-700',
                       deadline: null,
-                      remaining: 'Expired'
+                      remaining: expiredMsg
                     };
                   }
                 };
@@ -1063,7 +1132,14 @@ export default function MatchDayManagementPage() {
                         )}
                         <div><span className="font-medium">Home:</span> {round.home_fixture_deadline_time || '23:30'}</div>
                         <div><span className="font-medium">Away:</span> {round.away_fixture_deadline_time || '23:45'}</div>
-                        <div><span className="font-medium">Result:</span> Day {round.result_entry_deadline_day_offset || 2}</div>
+                        <div><span className="font-medium">Result:</span> {(() => {
+                          if (!round.scheduled_date) return 'Not scheduled';
+                          const offsetDays = round.result_entry_deadline_day_offset || 2;
+                          const scheduledDate = new Date(round.scheduled_date);
+                          const resultDate = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+                          const dateStr = resultDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+                          return `${dateStr} ${round.result_entry_deadline_time || '00:30'}`;
+                        })()}</div>
                       </div>
                     </div>
 

@@ -161,6 +161,8 @@ async function updatePlayerStats(data: {
   const updatedProcessedFixtures = [...processedFixtures, fixture_id];
   
   // Update existing stats in player_seasons
+  // NOTE: Points are NOT updated here - they are managed separately via /api/realplayers/update-points
+  // which uses star rating base points + goal difference (+5 to -5 per match)
   await sql`
     UPDATE player_seasons
     SET
@@ -173,12 +175,6 @@ async function updatePlayerStats(data: {
       losses = ${(current.losses || 0) + (lost ? 1 : 0)},
       clean_sheets = ${(current.clean_sheets || 0) + (clean_sheet ? 1 : 0)},
       motm_awards = ${(current.motm_awards || 0) + (motm ? 1 : 0)},
-      points = ${calculatePoints(
-        (current.wins || 0) + (won ? 1 : 0),
-        (current.draws || 0) + (draw ? 1 : 0),
-        (current.motm_awards || 0) + (motm ? 1 : 0),
-        (current.goals_scored || 0) + goals_scored
-      )},
       processed_fixtures = ${JSON.stringify(updatedProcessedFixtures)}::jsonb,
       updated_at = NOW()
     WHERE id = ${statsId}
@@ -187,9 +183,3 @@ async function updatePlayerStats(data: {
   console.log(`✓ Updated stats for ${player_name}: +${goals_scored} goals, match ${won ? 'W' : draw ? 'D' : 'L'}`);
 }
 
-/**
- * Calculate total points: (Wins × 3) + (Draws × 1) + (MOTM × 3) + (Goals × 1)
- */
-function calculatePoints(wins: number, draws: number, motm: number, goals: number): number {
-  return (wins * 3) + (draws * 1) + (motm * 3) + (goals * 1);
-}

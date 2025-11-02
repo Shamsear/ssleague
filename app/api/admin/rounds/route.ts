@@ -23,6 +23,43 @@ export async function GET(request: NextRequest) {
     const seasonId = searchParams.get('season_id');
     const status = searchParams.get('status');
 
+    // Find expired active rounds and auto-finalize them
+    const expiredRounds = await sql`
+      SELECT id, position
+      FROM rounds
+      WHERE status = 'active'
+      AND end_time < NOW()
+    `;
+
+    // Auto-finalize each expired round in the background
+    if (expiredRounds.length > 0) {
+      // Trigger finalization for each expired round (non-blocking)
+      expiredRounds.forEach(async (round) => {
+        try {
+          // Call the finalization endpoint
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+          await fetch(`${baseUrl}/api/admin/rounds/${round.id}/finalize`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': request.headers.get('Authorization') || ''
+            }
+          });
+          console.log(`✅ Auto-finalized expired round: ${round.id} (${round.position})`);
+          
+          // Broadcast WebSocket event for round finalization
+          if (typeof global.wsBroadcast === 'function') {
+            global.wsBroadcast(`season:${seasonId}`, {
+              type: 'round_finalized',
+              data: { roundId: round.id, position: round.position }
+            });
+          }
+        } catch (error) {
+          console.error(`❌ Failed to auto-finalize round ${round.id}:`, error);
+        }
+      });
+    }
+
     let rounds;
 
     if (seasonId && status) {
@@ -137,11 +174,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate end time
+    // Calculate end time (always use UTC)
     const now = new Date();
     const endTime = new Date(now.getTime() + (parseFloat(duration_hours) * 3600 * 1000));
-
-    // Create the round
+    
+    // Create the round - timestamptz columns handle UTC automatically
     const newRound = await sql`
       INSERT INTO rounds (
         season_id,
@@ -157,8 +194,8 @@ export async function POST(request: NextRequest) {
         ${max_bids_per_team},
         ${endTime.toISOString()},
         'active',
-        NOW(),
-        NOW()
+        ${now.toISOString()},
+        ${now.toISOString()}
       )
       RETURNING *
     `;

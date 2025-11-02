@@ -11,6 +11,7 @@ import FinalizationProgress from '@/components/FinalizationProgress';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface Round {
   id: string;
@@ -74,6 +75,7 @@ export default function RoundsManagementPage() {
   const [formData, setFormData] = useState({
     position: '',
     duration_hours: '2',
+    duration_minutes: '0',
     max_bids_per_team: '5',
   });
 
@@ -120,113 +122,77 @@ export default function RoundsManagementPage() {
     fetchData();
   }, [fetchData]);
 
-  // Fetch rounds with optimized live updates
-  useEffect(() => {
-    const fetchRounds = async (showLoader = true) => {
-      if (!currentSeasonId) return;
+  // Fetch rounds function
+  const fetchRounds = useCallback(async (showLoader = true) => {
+    if (!currentSeasonId) return;
 
-      if (showLoader) setIsLoading(true);
+    if (showLoader) setIsLoading(true);
+    
+    try {
+      const params = new URLSearchParams({ season_id: currentSeasonId });
+      const response = await fetch(`/api/admin/rounds?${params}`, {
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      const { success, data } = await response.json();
+
+      if (success) {
+        const dataString = JSON.stringify(data);
+        if (dataString !== previousRoundsRef.current) {
+          previousRoundsRef.current = dataString;
+          setRounds(data);
+          
+          // Initialize add time inputs for active rounds
+          data.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+            if (!addTimeInputs[r.id]) {
+              setAddTimeInputs(prev => ({ ...prev, [r.id]: '10' }));
+            }
+          });
+        }
+      }
       
+      // Fetch tiebreakers
       try {
-        const params = new URLSearchParams({ season_id: currentSeasonId });
-        const response = await fetch(`/api/admin/rounds?${params}`, {
-          // Optimize with cache control
-          headers: {
-            'Cache-Control': 'no-cache',
-          },
-        });
-        const { success, data } = await response.json();
-
-        if (success) {
-          // Only update state if data actually changed (prevent unnecessary re-renders)
-          const dataString = JSON.stringify(data);
-          if (dataString !== previousRoundsRef.current) {
-            previousRoundsRef.current = dataString;
-            setRounds(data);
-            
-            // Initialize add time inputs for active rounds
-            data.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
-              if (!addTimeInputs[r.id]) {
-                setAddTimeInputs(prev => ({ ...prev, [r.id]: '10' }));
-              }
-            });
-          }
-        }
+        const tbResponse = await fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${currentSeasonId}&status=active,tied_again`);
+        const tbData = await tbResponse.json();
         
-        // Fetch tiebreakers for active rounds (including 'active' and 'tied_again' statuses)
-        try {
-          const tbResponse = await fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${currentSeasonId}&status=active,tied_again`);
-          const tbData = await tbResponse.json();
-          
-          console.log('🎯 Tiebreakers API response:', tbData);
-          
-          if (tbData.success && tbData.data?.tiebreakers) {
-            console.log('📊 Tiebreakers count:', tbData.data.tiebreakers.length);
-            
-            // Group tiebreakers by round_id
-            const tiebreakersByRound: {[key: string]: Tiebreaker[]} = {};
-            tbData.data.tiebreakers.forEach((tb: Tiebreaker) => {
-              console.log(`   TB ${tb.id}: round=${tb.round_id}, player=${tb.player_name}`);
-              if (!tiebreakersByRound[tb.round_id]) {
-                tiebreakersByRound[tb.round_id] = [];
-              }
-              tiebreakersByRound[tb.round_id].push(tb);
-            });
-            
-            console.log('📦 Grouped tiebreakers:', tiebreakersByRound);
-            setRoundTiebreakers(tiebreakersByRound);
-          } else {
-            console.log('⚠️ No tiebreakers in response');
-          }
-        } catch (tbErr) {
-          console.error('Error fetching tiebreakers:', tbErr);
+        if (tbData.success && tbData.data?.tiebreakers) {
+          const tiebreakersByRound: {[key: string]: Tiebreaker[]} = {};
+          tbData.data.tiebreakers.forEach((tb: Tiebreaker) => {
+            if (!tiebreakersByRound[tb.round_id]) {
+              tiebreakersByRound[tb.round_id] = [];
+            }
+            tiebreakersByRound[tb.round_id].push(tb);
+          });
+          setRoundTiebreakers(tiebreakersByRound);
         }
-      } catch (err) {
-        console.error('Error fetching rounds:', err);
-      } finally {
-        if (showLoader) setIsLoading(false);
+      } catch (tbErr) {
+        console.error('Error fetching tiebreakers:', tbErr);
       }
-    };
+    } catch (err) {
+      console.error('Error fetching rounds:', err);
+    } finally {
+      if (showLoader) setIsLoading(false);
+    }
+  }, [currentSeasonId, addTimeInputs]);
 
-    // Initial fetch
+  // Initial fetch
+  useEffect(() => {
     fetchRounds(true);
-    
-    // Adaptive polling with visibility detection
-    let interval: NodeJS.Timeout;
-    let isVisible = !document.hidden;
-    
-    const startPolling = () => {
-      clearInterval(interval);
+  }, [fetchRounds]);
+
+  // WebSocket for real-time updates - replaces polling
+  useWebSocket({
+    channel: `season:${currentSeasonId}`,
+    enabled: !!currentSeasonId,
+    onMessage: useCallback((message: any) => {
+      console.log('🔴 Rounds WebSocket message:', message);
       
-      if (!isVisible) return; // Don't poll when tab is hidden
-      
-      const activeCount = rounds.filter(r => r.status === 'active').length;
-      const pollInterval = activeCount > 0 ? 5000 : 15000; // 5s active, 15s idle
-      
-      interval = setInterval(() => {
-        if (isVisible) fetchRounds(false);
-      }, pollInterval);
-    };
-    
-    // Handle visibility changes
-    const handleVisibilityChange = () => {
-      isVisible = !document.hidden;
-      if (isVisible) {
-        fetchRounds(false); // Fetch immediately when tab becomes visible
-        startPolling();
-      } else {
-        clearInterval(interval); // Stop polling when tab is hidden
+      if (message.type === 'round_finalized' || message.type === 'round_update') {
+        // Refetch rounds when there's an update
+        fetchRounds(false);
       }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    startPolling();
-    
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [currentSeasonId, rounds.length]);
+    }, [fetchRounds]),
+  });
 
   // Timer management for active rounds
   useEffect(() => {
@@ -234,6 +200,13 @@ export default function RoundsManagementPage() {
     
     activeRounds.forEach(round => {
       if (round.end_time && !timerRefs.current[round.id]) {
+        // Calculate and set initial time immediately
+        const now = new Date().getTime();
+        const end = new Date(round.end_time!).getTime();
+        const remaining = Math.max(0, Math.floor((end - now) / 1000));
+        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
+        
+        // Then start the interval
         timerRefs.current[round.id] = setInterval(() => {
           const now = new Date().getTime();
           const end = new Date(round.end_time!).getTime();
@@ -288,8 +261,9 @@ export default function RoundsManagementPage() {
       ? Math.max(...rounds.map(r => r.round_number ?? 0)) + 1 
       : 1;
 
-    // Convert hours to seconds
-    const durationSeconds = Math.round(parseFloat(formData.duration_hours) * 3600);
+    // Convert hours and minutes to seconds
+    const totalHours = parseFloat(formData.duration_hours) + (parseFloat(formData.duration_minutes) / 60);
+    const durationSeconds = Math.round(totalHours * 3600);
 
     try {
       const response = await fetch('/api/admin/rounds', {
@@ -299,7 +273,7 @@ export default function RoundsManagementPage() {
           season_id: currentSeasonId,
           position: formData.position,
           max_bids_per_team: parseInt(formData.max_bids_per_team),
-          duration_hours: formData.duration_hours,
+          duration_hours: (parseFloat(formData.duration_hours) + (parseFloat(formData.duration_minutes) / 60)).toString(),
         }),
       });
 
@@ -314,6 +288,7 @@ export default function RoundsManagementPage() {
         setFormData({
           position: '',
           duration_hours: '2',
+          duration_minutes: '0',
           max_bids_per_team: '5',
         });
         
@@ -615,23 +590,46 @@ export default function RoundsManagementPage() {
                 </div>
                 
                 <div>
-                  <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-1.5">Duration (hours)</label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </span>
-                    <input
-                      type="number"
-                      id="duration"
-                      value={formData.duration_hours}
-                      onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })}
-                      min="0.5"
-                      step="0.5"
-                      required
-                      className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all duration-200 text-base shadow-sm"
-                    />
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Duration</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </span>
+                        <input
+                          type="number"
+                          id="duration_hours"
+                          value={formData.duration_hours}
+                          onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })}
+                          min="0"
+                          max="24"
+                          required
+                          className="pl-10 pr-12 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all duration-200 text-base shadow-sm"
+                        />
+                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-sm text-gray-500 font-medium">
+                          hrs
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          id="duration_minutes"
+                          value={formData.duration_minutes}
+                          onChange={(e) => setFormData({ ...formData, duration_minutes: e.target.value })}
+                          min="0"
+                          max="59"
+                          className="pr-12 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all duration-200 text-base shadow-sm"
+                        />
+                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-sm text-gray-500 font-medium">
+                          min
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <p className="mt-1 text-xs text-gray-500">Recommended: 2-3 hours</p>
                 </div>
