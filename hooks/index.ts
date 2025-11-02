@@ -42,3 +42,9 @@ export {
   useTeamSeasonStats,
 } from './useTeamData';
 export type { TeamTrophy, TeamStats } from './useTeamData';
+
+// Real-time monitoring hooks
+export {
+  useRoundPhaseMonitor,
+  calculatePhase,
+} from './useRoundPhaseMonitor';
