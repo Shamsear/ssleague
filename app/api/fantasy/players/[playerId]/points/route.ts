@@ -11,6 +11,8 @@ export async function GET(
 ) {
   try {
     const playerId = params.playerId;
+    const searchParams = request.nextUrl.searchParams;
+    const team_id = searchParams.get('team_id');
 
     if (!playerId) {
       return NextResponse.json(
@@ -19,7 +21,14 @@ export async function GET(
       );
     }
 
-    // Get player basic info from fantasy_squad
+    if (!team_id) {
+      return NextResponse.json(
+        { error: 'Missing team_id parameter' },
+        { status: 400 }
+      );
+    }
+
+    // Get player basic info from fantasy_squad for specific team
     const playerInfo = await fantasySql`
       SELECT 
         fs.real_player_id,
@@ -36,6 +45,7 @@ export async function GET(
       FROM fantasy_squad fs
       JOIN fantasy_teams ft ON fs.team_id = ft.team_id
       WHERE fs.real_player_id = ${playerId}
+        AND fs.team_id = ${team_id}
       LIMIT 1
     `;
 
@@ -48,24 +58,26 @@ export async function GET(
 
     const player = playerInfo[0];
 
-    // Get detailed points breakdown by match
+    // Get detailed points breakdown by match for this specific team
     const pointsBreakdown = await fantasySql`
       SELECT 
         fixture_id,
         round_number,
         goals_scored,
         goals_conceded,
-        clean_sheet,
-        motm,
+        is_clean_sheet as clean_sheet,
+        is_motm as motm,
         base_points,
-        bonus_points,
+        0 as bonus_points,
         total_points,
         is_captain,
         points_multiplier,
-        recorded_at
+        points_breakdown,
+        calculated_at as recorded_at
       FROM fantasy_player_points
       WHERE real_player_id = ${playerId}
-      ORDER BY round_number DESC, recorded_at DESC
+        AND team_id = ${team_id}
+      ORDER BY round_number DESC, calculated_at DESC
     `;
 
     // Calculate statistics
@@ -99,20 +111,33 @@ export async function GET(
         owner_name: player.owner_name,
       },
       stats,
-      matches: pointsBreakdown.map((match: any) => ({
-        fixture_id: match.fixture_id,
-        round_number: match.round_number,
-        goals_scored: match.goals_scored,
-        goals_conceded: match.goals_conceded,
-        clean_sheet: match.clean_sheet,
-        motm: match.motm,
-        base_points: match.base_points,
-        bonus_points: match.bonus_points,
-        total_points: match.total_points,
-        is_captain: match.is_captain,
-        points_multiplier: match.points_multiplier,
-        recorded_at: match.recorded_at,
-      })),
+      matches: pointsBreakdown.map((match: any) => {
+        // Parse points_breakdown if it's a string
+        let breakdown = match.points_breakdown;
+        if (typeof breakdown === 'string') {
+          try {
+            breakdown = JSON.parse(breakdown);
+          } catch (e) {
+            breakdown = {};
+          }
+        }
+        
+        return {
+          fixture_id: match.fixture_id,
+          round_number: match.round_number,
+          goals_scored: match.goals_scored,
+          goals_conceded: match.goals_conceded,
+          clean_sheet: match.clean_sheet,
+          motm: match.motm,
+          base_points: match.base_points,
+          bonus_points: match.bonus_points,
+          total_points: match.total_points,
+          is_captain: match.is_captain,
+          points_multiplier: match.points_multiplier,
+          points_breakdown: breakdown || {},
+          recorded_at: match.recorded_at,
+        };
+      }),
     });
   } catch (error) {
     console.error('Error fetching player points:', error);

@@ -2,9 +2,11 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star, Trash2, Lock, Edit } from 'lucide-react';
+import { useAutoCloseDraft } from '@/hooks/useAutoCloseDraft';
+import { useDraftWebSocket } from '@/hooks/useDraftWebSocket';
 
 interface Player {
   real_player_id: string;
@@ -67,23 +69,15 @@ export default function TeamDraftPage() {
   const [isSavingCaptains, setIsSavingCaptains] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-      return;
-    }
-    if (!loading && user && user.role !== 'team') {
-      router.push('/dashboard');
-    }
-  }, [user, loading, router]);
+  // Auto-open/close draft based on time windows
+  useAutoCloseDraft(
+    myTeam?.fantasy_league_id,
+    draftSettings?.draft_opens_at || undefined,
+    draftSettings?.draft_closes_at || undefined
+  );
 
-  useEffect(() => {
-    if (user) {
-      loadDraftData();
-    }
-  }, [user]);
-
-  const loadDraftData = async () => {
+  // Define loadDraftData with useCallback to make it stable
+  const loadDraftData = useCallback(async () => {
     try {
       // Get my fantasy team
       const teamRes = await fetch(`/api/fantasy/teams/my-team?user_id=${user!.uid}`);
@@ -143,7 +137,57 @@ export default function TeamDraftPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  // WebSocket for real-time draft status updates
+  const handleDraftStatusChange = useCallback((update: any) => {
+    console.log('📡 Received draft status update:', update);
+    console.log('✨ Updating UI without full data reload...');
+    
+    // Update the UI state directly without full reload
+    if (update.draft_status) {
+      const newStatus = update.draft_status;
+      const isDraftActive = newStatus === 'active';
+      
+      setDraftSettings(prev => prev ? {
+        ...prev,
+        draft_status: newStatus,
+        is_draft_active: isDraftActive,
+        status: isDraftActive ? 'active' : (newStatus === 'pending' ? 'pending' : 'completed'),
+      } : null);
+      
+      // Show a notification
+      console.log(`🎉 Draft status changed to: ${newStatus.toUpperCase()}`);
+      
+      // Optionally show a toast/alert (but without full page reload)
+      if (update.auto_opened) {
+        console.log('🔓 Draft is now OPEN! You can start drafting players.');
+      } else if (update.auto_closed) {
+        console.log('🔒 Draft is now CLOSED! Draft period has ended.');
+      }
+    }
+  }, []);
+
+  useDraftWebSocket(
+    myTeam?.fantasy_league_id,
+    handleDraftStatusChange
+  );
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+      return;
+    }
+    if (!loading && user && user.role !== 'team') {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    if (user) {
+      loadDraftData();
+    }
+  }, [user, loadDraftData]);
 
   const selectSupportedTeam = async (teamId: string, teamName: string) => {
     if (!myTeam) return;
@@ -559,12 +603,20 @@ export default function TeamDraftPage() {
                 </p>
                 {draftSettings.draft_opens_at && draftSettings.draft_status === 'pending' && (
                   <p className="text-xs mt-2 opacity-75">
-                    Opens: {new Date(draftSettings.draft_opens_at).toLocaleString()}
+                    Opens: {new Date(draftSettings.draft_opens_at).toLocaleString('en-IN', { 
+                      timeZone: 'Asia/Kolkata',
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })} IST
                   </p>
                 )}
                 {draftSettings.draft_closes_at && draftSettings.draft_status === 'closed' && (
                   <p className="text-xs mt-2 opacity-75">
-                    Closed: {new Date(draftSettings.draft_closes_at).toLocaleString()}
+                    Closed: {new Date(draftSettings.draft_closes_at).toLocaleString('en-IN', { 
+                      timeZone: 'Asia/Kolkata',
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })} IST
                   </p>
                 )}
               </div>
@@ -582,7 +634,11 @@ export default function TeamDraftPage() {
                   Build your squad before the draft closes.
                 </p>
                 <p className="text-xs mt-2 opacity-75">
-                  Closes: {new Date(draftSettings.draft_closes_at).toLocaleString()}
+                  Closes: {new Date(draftSettings.draft_closes_at).toLocaleString('en-IN', { 
+                    timeZone: 'Asia/Kolkata',
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                  })} IST
                 </p>
               </div>
             </div>
@@ -734,56 +790,65 @@ export default function TeamDraftPage() {
 
               {/* Players List */}
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredPlayers.map(player => (
-                  <div
-                    key={player.real_player_id}
-                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-white/60 hover:bg-white/80 rounded-lg border border-gray-200 transition"
-                  >
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <Shield className="w-5 h-5 text-indigo-600 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{player.player_name}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 mt-1">
-                          <span className="truncate">{player.position}</span>
-                          <span className="hidden sm:inline">•</span>
-                          <span className="truncate">{player.team}</span>
-                          {player.category && (
-                            <>
-                              <span className="hidden sm:inline">•</span>
-                              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full whitespace-nowrap">
-                                {player.category}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 mt-2">
-                          <div className="flex items-center gap-1">
-                            {[...Array(player.star_rating)].map((_, i) => (
-                              <Sparkles key={i} className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                            ))}
+                {filteredPlayers.map(player => {
+                  const isAlreadyDrafted = mySquad.some(p => p.real_player_id === player.real_player_id);
+                  
+                  return (
+                    <div
+                      key={player.real_player_id}
+                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-white/60 hover:bg-white/80 rounded-lg border border-gray-200 transition"
+                    >
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <Shield className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{player.player_name}</p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 mt-1">
+                            <span className="truncate">{player.position}</span>
+                            <span className="hidden sm:inline">•</span>
+                            <span className="truncate">{player.team}</span>
+                            {player.category && (
+                              <>
+                                <span className="hidden sm:inline">•</span>
+                                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full whitespace-nowrap">
+                                  {player.category}
+                                </span>
+                              </>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1 text-green-600 font-bold">
-                            <DollarSign className="w-4 h-4" />
-                            {player.draft_price}M
+                          <div className="flex items-center gap-3 mt-2">
+                            <div className="flex items-center gap-1">
+                              {[...Array(player.star_rating)].map((_, i) => (
+                                <Sparkles key={i} className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-1 text-green-600 font-bold">
+                              <DollarSign className="w-4 h-4" />
+                              {player.draft_price}M
+                            </div>
                           </div>
                         </div>
                       </div>
+                      <button
+                        onClick={() => draftPlayer(player.real_player_id)}
+                        disabled={
+                          isDrafting === player.real_player_id || 
+                          player.draft_price > remainingBudget ||
+                          !draftSettings?.is_draft_active ||
+                          myTeam?.draft_submitted ||
+                          isAlreadyDrafted
+                        }
+                        className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition flex-shrink-0"
+                        title={
+                          isAlreadyDrafted ? 'Already in your squad' :
+                          !draftSettings?.is_draft_active ? 'Draft is not active' : 
+                          player.draft_price > remainingBudget ? 'Not enough budget' : ''
+                        }
+                      >
+                        {isAlreadyDrafted ? 'Drafted' : isDrafting === player.real_player_id ? 'Drafting...' : 'Draft'}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => draftPlayer(player.real_player_id)}
-                      disabled={
-                        isDrafting === player.real_player_id || 
-                        player.draft_price > remainingBudget ||
-                        !draftSettings?.is_draft_active ||
-                        myTeam?.draft_submitted
-                      }
-                      className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition flex-shrink-0"
-                      title={!draftSettings?.is_draft_active ? 'Draft is not active' : ''}
-                    >
-                      {isDrafting === player.real_player_id ? 'Drafting...' : 'Draft'}
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {filteredPlayers.length === 0 && (
                   <div className="text-center py-12 text-gray-500">No players available</div>

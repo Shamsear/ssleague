@@ -17,12 +17,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Ensure PostgreSQL session uses UTC timezone
+    await fantasySql`SET timezone = 'UTC'`;
+
     // Get league settings from PostgreSQL
     const leagues = await fantasySql`
       SELECT * FROM fantasy_leagues
       WHERE league_id = ${league_id}
       LIMIT 1
     `;
+
+    console.log('🟡 Fetched from database:', {
+      draft_opens_at: leagues[0]?.draft_opens_at,
+      draft_closes_at: leagues[0]?.draft_closes_at
+    });
 
     if (leagues.length === 0) {
       return NextResponse.json({

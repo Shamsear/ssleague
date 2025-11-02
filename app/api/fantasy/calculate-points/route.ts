@@ -30,10 +30,10 @@ export async function POST(request: NextRequest) {
 
     // Get fantasy league for this season
     const leagues = await sql`
-      SELECT id, status
+      SELECT id, league_id, is_active
       FROM fantasy_leagues
       WHERE season_id = ${season_id}
-        AND status IN ('draft', 'active')
+        AND is_active = true
       LIMIT 1
     `;
 
@@ -47,16 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     const fantasyLeague = leagues[0];
-    const fantasy_league_id = fantasyLeague.id;
-
-    // Activate league if still in draft
-    if (fantasyLeague.status === 'draft') {
-      await sql`
-        UPDATE fantasy_leagues
-        SET status = 'active', updated_at = NOW()
-        WHERE id = ${fantasy_league_id}
-      `;
-    }
+    const fantasy_league_id = fantasyLeague.league_id; // Use league_id, not id
 
     // Get scoring rules for this league
     let rules = [];
@@ -195,11 +186,12 @@ export async function POST(request: NextRequest) {
       await sql`
         UPDATE fantasy_teams
         SET 
-          player_points = player_points + ${additionalPoints},
-          total_points = total_points + ${additionalPoints},
+          player_points = COALESCE(player_points, 0) + ${additionalPoints},
+          total_points = COALESCE(total_points, 0) + ${additionalPoints},
           updated_at = NOW()
-        WHERE id = ${teamId}
+        WHERE team_id = ${teamId}
       `;
+      console.log(`✓ Updated team ${teamId}: +${additionalPoints} points`);
     }
 
     // Calculate team affiliation bonuses
@@ -320,6 +312,31 @@ async function processPlayer(params: {
   for (const squad of squads) {
     const fantasy_team_id = squad.team_id;
 
+    // Check if player is captain or vice-captain for this team
+    const captainCheck = await sql`
+      SELECT is_captain, is_vice_captain
+      FROM fantasy_squad
+      WHERE team_id = ${fantasy_team_id}
+        AND real_player_id = ${player_id}
+      LIMIT 1
+    `;
+
+    const isCaptain = captainCheck.length > 0 && captainCheck[0].is_captain;
+    const isViceCaptain = captainCheck.length > 0 && captainCheck[0].is_vice_captain;
+
+    // Apply multiplier: Captain = 2x, Vice-Captain = 1.5x
+    let multiplier = 1;
+    let multiplierPercentage = 100; // Store as integer percentage for DB
+    if (isCaptain) {
+      multiplier = 2;
+      multiplierPercentage = 200;
+    } else if (isViceCaptain) {
+      multiplier = 1.5;
+      multiplierPercentage = 150;
+    }
+
+    const final_points = Math.round(total_points * multiplier);
+
     // Create fantasy_player_points record for this team
     await sql`
       INSERT INTO fantasy_player_points (
@@ -336,6 +353,9 @@ async function processPlayer(params: {
         fine_goals,
         substitution_penalty,
         is_clean_sheet,
+        is_captain,
+        points_multiplier,
+        base_points,
         points_breakdown,
         total_points,
         calculated_at
@@ -353,24 +373,52 @@ async function processPlayer(params: {
         ${fine_goals},
         ${substitution_penalty},
         ${is_clean_sheet},
-        ${JSON.stringify(points_breakdown)},
+        ${isCaptain || isViceCaptain},
+        ${multiplierPercentage},
         ${total_points},
+        ${JSON.stringify(points_breakdown)},
+        ${final_points},
         NOW()
       )
     `;
 
-    // Track team points
+    // Track team points (with captain/vice-captain multiplier)
     const currentTeamPoints = teamPointsMap.get(fantasy_team_id) || 0;
-    teamPointsMap.set(fantasy_team_id, currentTeamPoints + total_points);
+    teamPointsMap.set(fantasy_team_id, currentTeamPoints + final_points);
 
     pointsCalculated.push({
       player_id,
       player_name,
       fantasy_team_id,
-      total_points,
+      base_points: total_points,
+      multiplier: multiplier,
+      final_points: final_points,
+      is_captain: isCaptain,
+      is_vice_captain: isViceCaptain,
       breakdown: points_breakdown,
     });
+
+    console.log(`  ${player_name}: ${total_points} pts × ${multiplier} ${isCaptain ? '(C)' : isViceCaptain ? '(VC)' : ''} = ${final_points} pts`);
+
+    // Update fantasy_squad with points for this team (with multiplier)
+    await sql`
+      UPDATE fantasy_squad
+      SET 
+        total_points = COALESCE(total_points, 0) + ${final_points}
+      WHERE team_id = ${fantasy_team_id}
+        AND real_player_id = ${player_id}
+    `;
   }
+
+  // Update fantasy_players with cumulative total_points (base points, no multiplier)
+  await sql`
+    UPDATE fantasy_players
+    SET 
+      total_points = COALESCE(total_points, 0) + ${total_points},
+      updated_at = NOW()
+    WHERE league_id = ${fantasy_league_id} 
+      AND real_player_id = ${player_id}
+  `;
 }
 
 // Helper function to recalculate leaderboard ranks

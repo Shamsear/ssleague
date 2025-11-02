@@ -146,11 +146,28 @@ export default function MyFantasyTeamPage() {
     setLoadingPlayerStats({ ...loadingPlayerStats, [playerId]: true });
 
     try {
-      const response = await fetch(`/api/fantasy/players/${playerId}/stats`);
-      if (!response.ok) throw new Error('Failed to load player stats');
+      const response = await fetch(`/api/fantasy/players/${playerId}/stats?league_id=${leagueId}`);
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`Failed to load player stats: ${response.status}`);
+      }
 
       const data = await response.json();
-      setPlayerMatchStats({ ...playerMatchStats, [playerId]: data.match_stats || [] });
+      
+      // Map API response to frontend format
+      const mappedStats = (data.match_history || []).map((match: any) => ({
+        match_id: match.fixture_id,
+        round_number: match.round_number,
+        opponent: match.opponent || 'Unknown',
+        goals_scored: match.goals_scored || 0,
+        goals_conceded: match.goals_conceded || 0,
+        clean_sheet: match.is_clean_sheet || false,
+        motm: match.is_motm || false,
+        total_points: match.total_points || 0,
+      }));
+      
+      setPlayerMatchStats({ ...playerMatchStats, [playerId]: mappedStats });
       setExpandedPlayer(playerId);
     } catch (error) {
       console.error('Error loading player stats:', error);
@@ -310,6 +327,13 @@ export default function MyFantasyTeamPage() {
                 className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all shadow-lg"
               >
                 🏆 Leaderboard
+              </Link>
+              
+              <Link
+                href={`/dashboard/team/fantasy/players`}
+                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all shadow-lg"
+              >
+                🎯 Player Performance
               </Link>
             </div>
           </div>

@@ -42,6 +42,7 @@ export default function AllTeamsPage() {
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
   const [playerData, setPlayerData] = useState<any>(null);
   const [isLoadingPlayer, setIsLoadingPlayer] = useState(false);
+  const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -129,11 +130,16 @@ export default function AllTeamsPage() {
       return;
     }
 
+    if (!selectedTeam) {
+      console.error('No team selected');
+      return;
+    }
+
     setExpandedPlayer(playerId);
     setIsLoadingPlayer(true);
 
     try {
-      const response = await fetch(`/api/fantasy/players/${playerId}/points`);
+      const response = await fetch(`/api/fantasy/players/${playerId}/points?team_id=${selectedTeam.fantasy_team_id}`);
       if (!response.ok) {
         throw new Error('Failed to load player data');
       }
@@ -395,38 +401,160 @@ export default function AllTeamsPage() {
                                   {playerData.matches.length === 0 ? (
                                     <p className="text-center text-gray-500 py-4">No match data yet</p>
                                   ) : (
-                                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                                      {playerData.matches.map((match: any, idx: number) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                          <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                                              <span className="font-bold text-indigo-600 text-sm">R{match.round_number}</span>
-                                            </div>
-                                            <div className="flex gap-2 text-xs">
-                                              {match.goals_scored > 0 && (
-                                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
-                                                  <Target className="w-3 h-3 inline" /> {match.goals_scored}
-                                                </span>
-                                              )}
-                                              {match.clean_sheet && (
-                                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">CS</span>
-                                              )}
-                                              {match.motm && (
-                                                <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded">MOTM</span>
-                                              )}
-                                              {match.is_captain && (
-                                                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded">
-                                                  <Crown className="w-3 h-3 inline" /> {match.points_multiplier}x
-                                                </span>
-                                              )}
-                                            </div>
+                                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                                      {playerData.matches.map((match: any, idx: number) => {
+                                        const matchKey = `${match.fixture_id}_${idx}`;
+                                        const isExpanded = expandedMatch === matchKey;
+                                        
+                                        // Parse points breakdown
+                                        let breakdown: any = {};
+                                        if (match.points_breakdown) {
+                                          breakdown = typeof match.points_breakdown === 'string' 
+                                            ? JSON.parse(match.points_breakdown) 
+                                            : match.points_breakdown;
+                                        }
+                                        
+                                        return (
+                                          <div key={matchKey} className="border border-gray-200 rounded-lg overflow-hidden">
+                                            <button
+                                              onClick={() => setExpandedMatch(isExpanded ? null : matchKey)}
+                                              className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                                            >
+                                              <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                                                  <span className="font-bold text-indigo-600 text-sm">R{match.round_number}</span>
+                                                </div>
+                                                <div className="flex gap-2 text-xs">
+                                                  {match.goals_scored > 0 && (
+                                                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
+                                                      ⚽ {match.goals_scored}
+                                                    </span>
+                                                  )}
+                                                  {match.clean_sheet && (
+                                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">🛡️ CS</span>
+                                                  )}
+                                                  {match.motm && (
+                                                    <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded">⭐ MOTM</span>
+                                                  )}
+                                                  {match.is_captain && (
+                                                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded">
+                                                      👑 {match.points_multiplier}x
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <div className="text-right">
+                                                  <p className="text-xl font-bold text-purple-600">{match.total_points}</p>
+                                                  <p className="text-xs text-gray-500">pts</p>
+                                                </div>
+                                                <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${
+                                                  isExpanded ? 'rotate-180' : ''
+                                                }`} />
+                                              </div>
+                                            </button>
+                                            
+                                            {/* Expanded Match Breakdown */}
+                                            {isExpanded && (
+                                              <div className="border-t border-gray-200 p-4 bg-white">
+                                                <div className="mb-3">
+                                                  <p className="text-sm font-semibold text-gray-700 mb-1">Match Stats:</p>
+                                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div className="flex justify-between bg-gray-50 p-2 rounded">
+                                                      <span className="text-gray-600">Goals Scored:</span>
+                                                      <span className="font-semibold">{match.goals_scored || 0}</span>
+                                                    </div>
+                                                    <div className="flex justify-between bg-gray-50 p-2 rounded">
+                                                      <span className="text-gray-600">Goals Conceded:</span>
+                                                      <span className="font-semibold">{match.goals_conceded || 0}</span>
+                                                    </div>
+                                                    <div className="flex justify-between bg-gray-50 p-2 rounded">
+                                                      <span className="text-gray-600">Clean Sheet:</span>
+                                                      <span className="font-semibold">{match.clean_sheet ? 'Yes' : 'No'}</span>
+                                                    </div>
+                                                    <div className="flex justify-between bg-gray-50 p-2 rounded">
+                                                      <span className="text-gray-600">MOTM:</span>
+                                                      <span className="font-semibold">{match.motm ? 'Yes' : 'No'}</span>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                                
+                                                <div className="border-t border-gray-200 pt-3">
+                                                  <p className="text-sm font-semibold text-gray-700 mb-2">Points Breakdown:</p>
+                                                  {Object.keys(breakdown).length === 0 ? (
+                                                    <p className="text-xs text-gray-500 italic">No detailed breakdown available</p>
+                                                  ) : (
+                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                      {breakdown.goals !== undefined && breakdown.goals !== 0 && (
+                                                      <div className="flex justify-between bg-green-50 p-2 rounded">
+                                                        <span className="text-gray-600">Goals:</span>
+                                                        <span className="font-semibold text-green-700">+{breakdown.goals}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.result !== undefined && (
+                                                      <div className="flex justify-between bg-blue-50 p-2 rounded">
+                                                        <span className="text-gray-600">Result:</span>
+                                                        <span className="font-semibold text-blue-700">+{breakdown.result}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.clean_sheet !== undefined && breakdown.clean_sheet !== 0 && (
+                                                      <div className="flex justify-between bg-blue-50 p-2 rounded">
+                                                        <span className="text-gray-600">Clean Sheet:</span>
+                                                        <span className="font-semibold text-blue-700">+{breakdown.clean_sheet}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.motm !== undefined && breakdown.motm !== 0 && (
+                                                      <div className="flex justify-between bg-amber-50 p-2 rounded">
+                                                        <span className="text-gray-600">MOTM:</span>
+                                                        <span className="font-semibold text-amber-700">+{breakdown.motm}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.brace !== undefined && breakdown.brace !== 0 && (
+                                                      <div className="flex justify-between bg-green-50 p-2 rounded">
+                                                        <span className="text-gray-600">Brace:</span>
+                                                        <span className="font-semibold text-green-700">+{breakdown.brace}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.hat_trick !== undefined && breakdown.hat_trick !== 0 && (
+                                                      <div className="flex justify-between bg-green-50 p-2 rounded">
+                                                        <span className="text-gray-600">Hat Trick:</span>
+                                                        <span className="font-semibold text-green-700">+{breakdown.hat_trick}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.conceded !== undefined && breakdown.conceded !== 0 && (
+                                                      <div className="flex justify-between bg-red-50 p-2 rounded">
+                                                        <span className="text-gray-600">Conceded:</span>
+                                                        <span className="font-semibold text-red-700">{breakdown.conceded}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.fines !== undefined && breakdown.fines !== 0 && (
+                                                      <div className="flex justify-between bg-red-50 p-2 rounded">
+                                                        <span className="text-gray-600">Fines:</span>
+                                                        <span className="font-semibold text-red-700">{breakdown.fines}</span>
+                                                      </div>
+                                                    )}
+                                                    {breakdown.substitution !== undefined && breakdown.substitution !== 0 && (
+                                                      <div className="flex justify-between bg-red-50 p-2 rounded">
+                                                        <span className="text-gray-600">Substitution:</span>
+                                                        <span className="font-semibold text-red-700">{breakdown.substitution}</span>
+                                                      </div>
+                                                    )}
+                                                    </div>
+                                                  )}
+                                                  
+                                                  {match.is_captain && (
+                                                    <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                                      <p className="text-xs text-yellow-800">
+                                                        <span className="font-semibold">Multiplier Applied:</span> Base {match.base_points} pts × {match.points_multiplier}x = {match.total_points} pts
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
                                           </div>
-                                          <div className="text-right">
-                                            <p className="text-xl font-bold text-purple-600">{match.total_points}</p>
-                                            <p className="text-xs text-gray-500">pts</p>
-                                          </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </>

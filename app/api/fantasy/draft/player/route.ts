@@ -156,6 +156,36 @@ export async function POST(request: NextRequest) {
       )
     `;
 
+    // Update fantasy_players: increment times_drafted, mark as unavailable
+    const existingPlayer = await fantasySql`
+      SELECT * FROM fantasy_players
+      WHERE league_id = ${leagueId} AND real_player_id = ${real_player_id}
+      LIMIT 1
+    `;
+
+    if (existingPlayer.length > 0) {
+      // Player exists - update times_drafted and mark unavailable
+      await fantasySql`
+        UPDATE fantasy_players
+        SET 
+          times_drafted = COALESCE(times_drafted, 0) + 1,
+          is_available = false,
+          updated_at = NOW()
+        WHERE league_id = ${leagueId} AND real_player_id = ${real_player_id}
+      `;
+    } else {
+      // Player doesn't exist - create record
+      await fantasySql`
+        INSERT INTO fantasy_players (
+          league_id, real_player_id, draft_price,
+          times_drafted, total_points, is_available
+        ) VALUES (
+          ${leagueId}, ${real_player_id}, ${draft_price},
+          1, 0, false
+        )
+      `;
+    }
+
     // Record in fantasy_drafts for history
     await fantasySql`
       INSERT INTO fantasy_drafts (

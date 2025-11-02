@@ -137,58 +137,54 @@ async function updatePlayerStats(data: {
 
   const statsId = `${player_id}_${season_id}`;
 
-  // Get current stats if exists
+  // Get current stats from player_seasons table
   const existing = await sql`
-    SELECT * FROM realplayerstats WHERE id = ${statsId} LIMIT 1
+    SELECT * FROM player_seasons WHERE id = ${statsId} LIMIT 1
   `;
-
-  if (existing.length > 0) {
-    const current = existing[0];
-    
-    // Update existing stats
-    await sql`
-      UPDATE realplayerstats
-      SET
-        matches_played = ${(current.matches_played || 0) + 1},
-        goals_scored = ${(current.goals_scored || 0) + goals_scored},
-        goals_conceded = ${(current.goals_conceded || 0) + goals_conceded},
-        assists = ${current.assists || 0},
-        wins = ${(current.wins || 0) + (won ? 1 : 0)},
-        draws = ${(current.draws || 0) + (draw ? 1 : 0)},
-        losses = ${(current.losses || 0) + (lost ? 1 : 0)},
-        clean_sheets = ${(current.clean_sheets || 0) + (clean_sheet ? 1 : 0)},
-        motm_awards = ${(current.motm_awards || 0) + (motm ? 1 : 0)},
-        points = ${calculatePoints(
-          (current.wins || 0) + (won ? 1 : 0),
-          (current.draws || 0) + (draw ? 1 : 0),
-          (current.motm_awards || 0) + (motm ? 1 : 0),
-          (current.goals_scored || 0) + goals_scored
-        )},
-        updated_at = NOW()
-      WHERE id = ${statsId}
-    `;
-  } else {
-    // Insert new stats
-    const points = calculatePoints(
-      won ? 1 : 0,
-      draw ? 1 : 0,
-      motm ? 1 : 0,
-      goals_scored
-    );
-
-    await sql`
-      INSERT INTO realplayerstats (
-        id, player_id, season_id, player_name,
-        matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
-        clean_sheets, motm_awards, points, created_at, updated_at
-      )
-      VALUES (
-        ${statsId}, ${player_id}, ${season_id}, ${player_name},
-        1, ${goals_scored}, ${goals_conceded}, 0, ${won ? 1 : 0}, ${draw ? 1 : 0}, ${lost ? 1 : 0},
-        ${clean_sheet ? 1 : 0}, ${motm ? 1 : 0}, ${points}, NOW(), NOW()
-      )
-    `;
+  
+  if (existing.length === 0) {
+    console.warn(`Player ${player_name} (${player_id}) not found in player_seasons for season ${season_id}`);
+    console.warn('Skipping stats update - player may not be registered for this season');
+    return;
   }
+  
+  const current = existing[0];
+  
+  // Check if this fixture has already been processed for this player
+  const processedFixtures = current.processed_fixtures || [];
+  if (processedFixtures.includes(fixture_id)) {
+    console.log(`✓ Fixture ${fixture_id} already processed for player ${player_name}, skipping`);
+    return;
+  }
+
+  // Add fixture to processed list
+  const updatedProcessedFixtures = [...processedFixtures, fixture_id];
+  
+  // Update existing stats in player_seasons
+  await sql`
+    UPDATE player_seasons
+    SET
+      matches_played = ${(current.matches_played || 0) + 1},
+      goals_scored = ${(current.goals_scored || 0) + goals_scored},
+      goals_conceded = ${(current.goals_conceded || 0) + goals_conceded},
+      assists = ${current.assists || 0},
+      wins = ${(current.wins || 0) + (won ? 1 : 0)},
+      draws = ${(current.draws || 0) + (draw ? 1 : 0)},
+      losses = ${(current.losses || 0) + (lost ? 1 : 0)},
+      clean_sheets = ${(current.clean_sheets || 0) + (clean_sheet ? 1 : 0)},
+      motm_awards = ${(current.motm_awards || 0) + (motm ? 1 : 0)},
+      points = ${calculatePoints(
+        (current.wins || 0) + (won ? 1 : 0),
+        (current.draws || 0) + (draw ? 1 : 0),
+        (current.motm_awards || 0) + (motm ? 1 : 0),
+        (current.goals_scored || 0) + goals_scored
+      )},
+      processed_fixtures = ${JSON.stringify(updatedProcessedFixtures)}::jsonb,
+      updated_at = NOW()
+    WHERE id = ${statsId}
+  `;
+  
+  console.log(`✓ Updated stats for ${player_name}: +${goals_scored} goals, match ${won ? 'W' : draw ? 'D' : 'L'}`);
 }
 
 /**

@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     const teamId = teamData.team_id;
     const leagueId = teamData.league_id;
 
-    // Get drafted players from PostgreSQL
+    // Get drafted players from PostgreSQL with draft order
     const squadPlayers = await fantasySql`
       SELECT 
         s.squad_id as draft_id,
@@ -94,10 +94,15 @@ export async function GET(request: NextRequest) {
         s.purchase_price as draft_price,
         s.total_points,
         s.is_captain,
-        s.is_vice_captain
+        s.is_vice_captain,
+        d.draft_order
       FROM fantasy_squad s
+      LEFT JOIN fantasy_drafts d 
+        ON d.league_id = ${leagueId} 
+        AND d.team_id = ${teamId}
+        AND d.real_player_id = s.real_player_id
       WHERE s.team_id = ${teamId}
-      ORDER BY s.acquired_at ASC
+      ORDER BY COALESCE(d.draft_order, 999), s.acquired_at ASC
     `;
 
     // Get points breakdown for each player
@@ -124,6 +129,7 @@ export async function GET(request: NextRequest) {
           position: player.position || 'Unknown',
           team: player.team || 'Unknown',
           draft_price: Number(player.draft_price),
+          draft_order: player.draft_order || 0,
           total_points: totalPoints,
           matches_played: matchesPlayed,
           average_points: Math.round(averagePoints * 10) / 10,

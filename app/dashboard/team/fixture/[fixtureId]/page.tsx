@@ -8,6 +8,7 @@ import { db } from '@/lib/firebase/config';
 import { doc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { useModal } from '@/hooks/useModal';
 import { useAutoLockLineups } from '@/hooks/useAutoLockLineups';
+import { useRoundPhaseMonitor } from '@/hooks/useRoundPhaseMonitor';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 
@@ -115,6 +116,20 @@ export default function FixturePage() {
   const [awayLineupSubmitted, setAwayLineupSubmitted] = useState(false);
   const [lineupDeadline, setLineupDeadline] = useState<Date | null>(null);
   const [canSubmitLineup, setCanSubmitLineup] = useState(false);
+  const [phaseUpdateTrigger, setPhaseUpdateTrigger] = useState(0);
+
+  // Monitor phase changes via WebSocket
+  const { isConnected: wsConnected, lastCheck } = useRoundPhaseMonitor({
+    seasonId: fixture?.season_id || '',
+    enabled: !!fixture?.season_id && !isLoading,
+    onPhaseChange: (roundNumber, newPhase) => {
+      // Only refresh if this is our round
+      if (fixture && roundNumber === fixture.round_number) {
+        console.log(`🔄 Phase changed for current fixture: ${newPhase}`);
+        setPhaseUpdateTrigger(prev => prev + 1);
+      }
+    },
+  });
 
   // Modal system
   const {
@@ -594,7 +609,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
     };
 
     loadFixture();
-  }, [user, fixtureId, router]);
+  }, [user, fixtureId, router, lastCheck, phaseUpdateTrigger]); // Re-fetch when phase changes
 
   const handleCreateMatchups = async () => {
     // Validate lineups are submitted
@@ -2330,13 +2345,21 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         }
 
                         // Update player points and star ratings
+                        const pointsPayload = matchups.map((m, idx) => ({
+                          position: m.position,
+                          home_player_id: m.home_player_id,
+                          away_player_id: m.away_player_id,
+                          home_goals: matchResults[idx]?.home_goals ?? 0,
+                          away_goals: matchResults[idx]?.away_goals ?? 0,
+                        }));
+                        
                         const pointsResponse = await fetch('/api/realplayers/update-points', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             fixture_id: fixtureId,
                             season_id: fixture.season_id,
-                            matchups: results,
+                            matchups: pointsPayload,
                           }),
                         });
 

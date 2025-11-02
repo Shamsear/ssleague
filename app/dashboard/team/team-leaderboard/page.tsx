@@ -37,6 +37,7 @@ export default function TeamLeaderboardPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [seasonName, setSeasonName] = useState('');
   const [currentSeasonId, setCurrentSeasonId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
 
   // Get tournament info for display
   const { data: tournament } = useTournament(selectedTournamentId);

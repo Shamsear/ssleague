@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTournament } from '@/hooks/useTournaments';
+import { usePlayerStats } from '@/hooks';
+import { usePermissions } from '@/hooks/usePermissions';
 import TournamentSelector from '@/components/TournamentSelector';
 
 interface PlayerStats {
@@ -42,17 +44,26 @@ type SortOrder = 'asc' | 'desc';
 export default function PlayerLeaderboardPage() {
   const { user, loading } = useAuth();
   const { selectedTournamentId } = useTournamentContext();
+  const { userSeasonId } = usePermissions();
   const router = useRouter();
   
   // Get tournament info for display (available for future use)
   const { data: tournament } = useTournament(selectedTournamentId);
+  
+  const [showOverall, setShowOverall] = useState(false);
+  
+  // Use React Query hook for player stats from Neon
+  const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
+    tournamentId: showOverall ? undefined : selectedTournamentId,
+    seasonId: userSeasonId || ''
+  });
   
   const [players, setPlayers] = useState<PlayerStats[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<PlayerStats[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -76,15 +87,13 @@ export default function PlayerLeaderboardPage() {
       try {
         setIsLoading(true);
         
-        // Fetch players, teams, and categories
-        const [playersRes, teamsRes, categoriesRes] = await Promise.all([
-          fetch('/api/real-players'),
+        // Fetch teams and categories for filters
+        const [teamsRes, categoriesRes] = await Promise.all([
           fetch('/api/team/all'),
           fetch('/api/categories'),
         ]);
 
-        const [playersData, teamsData, categoriesData] = await Promise.all([
-          playersRes.json(),
+        const [teamsData, categoriesData] = await Promise.all([
           teamsRes.json(),
           categoriesRes.json(),
         ]);
@@ -96,29 +105,6 @@ export default function PlayerLeaderboardPage() {
         if (teamsData.success) {
           setTeams(teamsData.data);
         }
-
-        if (playersData.success) {
-          // Transform real players into stats format
-          // In a real implementation, you'd fetch match history and calculate stats
-          const playerStats: PlayerStats[] = playersData.data.map((player: any) => ({
-            id: player.id,
-            player_id: player.player_id,
-            name: player.name,
-            team_id: player.team_id,
-            team_name: player.team_name,
-            category_id: player.category_id,
-            category_name: player.category_name,
-            category_color: categories.find(c => c.id === player.category_id)?.color,
-            points: 0, // TODO: Calculate from match results
-            matches_played: 0,
-            wins: 0,
-            losses: 0,
-            draws: 0,
-            win_rate: 0,
-          }));
-
-          setPlayers(playerStats);
-        }
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -127,7 +113,36 @@ export default function PlayerLeaderboardPage() {
     };
 
     fetchData();
-  }, [user, categories]);
+  }, [user]);
+
+  // Process player stats data from Neon when it arrives
+  useEffect(() => {
+    if (!playerStatsData || playerStatsData.length === 0) return;
+    
+    const playersData: PlayerStats[] = playerStatsData.map((data: any) => {
+      const winRate = data.matches_played > 0 ? (data.wins / data.matches_played) * 100 : 0;
+      const categoryColor = categories.find(c => c.id === data.category_id)?.color;
+      
+      return {
+        id: data.id,
+        player_id: data.player_id,
+        name: data.player_name,
+        team_id: data.team_id,
+        team_name: data.team || 'Unassigned',
+        category_id: data.category_id,
+        category_name: data.category || 'Unknown',
+        category_color: categoryColor,
+        matches_played: data.matches_played || 0,
+        wins: data.wins || 0,
+        draws: data.draws || 0,
+        losses: data.losses || 0,
+        points: data.points || 0,
+        win_rate: winRate,
+      };
+    });
+
+    setPlayers(playersData);
+  }, [playerStatsData, categories]);
 
   useEffect(() => {
     let filtered = [...players];

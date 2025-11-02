@@ -41,7 +41,7 @@ export async function GET(
   }
 }
 
-// PATCH - Update fixture MOTM
+// PATCH - Update fixture MOTM and penalty goals
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ fixtureId: string }> }
@@ -50,26 +50,28 @@ export async function PATCH(
     const sql = getTournamentDb();
     const { fixtureId } = await params;
     const body = await request.json();
-    const { motm_player_id, motm_player_name } = body;
+    const { motm_player_id, motm_player_name, home_penalty_goals, away_penalty_goals } = body;
 
-    // Update MOTM for fixture
+    // Update MOTM and penalty goals for fixture
     await sql`
       UPDATE fixtures
       SET 
         motm_player_id = ${motm_player_id || null},
         motm_player_name = ${motm_player_name || null},
+        home_penalty_goals = ${home_penalty_goals || 0},
+        away_penalty_goals = ${away_penalty_goals || 0},
         updated_at = NOW()
       WHERE id = ${fixtureId}
     `;
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Man of the Match updated successfully' 
+      message: 'Match details updated successfully' 
     });
   } catch (error) {
     console.error('Error updating MOTM:', error);
     return NextResponse.json(
-      { error: 'Failed to update Man of the Match' },
+      { error: 'Failed to update match details' },
       { status: 500 }
     );
   }

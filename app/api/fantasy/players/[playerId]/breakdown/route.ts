@@ -3,8 +3,8 @@ import { fantasySql } from '@/lib/neon/fantasy-config';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 /**
- * GET /api/fantasy/players/[playerId]/stats?league_id=xxx
- * Get detailed fantasy stats for a specific player
+ * GET /api/fantasy/players/[playerId]/breakdown?league_id=xxx
+ * Get detailed match-by-match breakdown for a player (base points, no multipliers)
  */
 export async function GET(
   request: NextRequest,
@@ -63,39 +63,8 @@ export async function GET(
 
     const playerData = players[0];
 
-    // Check if player is drafted
-    const drafts = await fantasySql`
-      SELECT * FROM fantasy_drafts
-      WHERE league_id = ${league_id}
-        AND real_player_id = ${playerId}
-      LIMIT 1
-    `;
-
-    let draftInfo = null;
-    let fantasyTeamName = null;
-
-    if (drafts.length > 0) {
-      const draft = drafts[0];
-      draftInfo = {
-        fantasy_team_id: draft.team_id,
-        draft_order: draft.draft_order,
-        draft_price: draft.draft_price,
-      };
-
-      // Get fantasy team name
-      const teams = await fantasySql`
-        SELECT team_name FROM fantasy_teams
-        WHERE team_id = ${draft.team_id}
-        LIMIT 1
-      `;
-      
-      if (teams.length > 0) {
-        fantasyTeamName = teams[0].team_name;
-      }
-    }
-
     // Get all fantasy points for this player (deduplicated by fixture)
-    // Since a player can be owned by multiple teams, group by fixture to avoid duplicates
+    // Use base_points instead of total_points to exclude multipliers
     const playerPoints = await fantasySql`
       SELECT 
         fixture_id,
@@ -104,8 +73,10 @@ export async function GET(
         goals_conceded,
         result,
         is_motm,
+        fine_goals,
+        substitution_penalty,
         is_clean_sheet,
-        base_points as total_points,
+        base_points,
         points_breakdown,
         MIN(calculated_at) as calculated_at
       FROM fantasy_player_points
@@ -113,7 +84,8 @@ export async function GET(
         AND real_player_id = ${playerId}
       GROUP BY 
         fixture_id, round_number, goals_scored, goals_conceded, 
-        result, is_motm, is_clean_sheet, base_points, points_breakdown
+        result, is_motm, fine_goals, substitution_penalty,
+        is_clean_sheet, base_points, points_breakdown
       ORDER BY round_number ASC
     `;
 
@@ -121,95 +93,77 @@ export async function GET(
     const playerTeamId = playerData.team_id;
 
     // Fetch fixture details to get opponent information
-    const fixtureIds = playerPoints.map(p => p.fixture_id).filter(Boolean);
+    const fixtureIds = playerPoints.map((p: any) => p.fixture_id).filter(Boolean);
     const fixturesMap = new Map();
     
     if (fixtureIds.length > 0) {
       try {
-        // Fetch all fixtures in batches (PostgreSQL doesn't have the 10-item IN limit)
         const fixtures = await tournamentSql`
           SELECT * FROM fixtures
           WHERE fixture_id = ANY(${fixtureIds})
         `;
         
-        fixtures.forEach(fixture => {
+        fixtures.forEach((fixture: any) => {
           fixturesMap.set(fixture.fixture_id, fixture);
         });
       } catch (fixtureError) {
         console.error('Error fetching fixtures:', fixtureError);
-        // Continue without fixture data
       }
     }
 
-    const matchHistory = playerPoints.map(data => {
+    const matchHistory = playerPoints.map((data: any) => {
       const fixture = fixturesMap.get(data.fixture_id);
       
       let opponent = 'Unknown';
       if (fixture) {
-        // Determine if player's team is home or away
         if (fixture.home_team_id === playerTeamId) {
           opponent = fixture.away_team_name || 'Away Team';
         } else if (fixture.away_team_id === playerTeamId) {
           opponent = fixture.home_team_name || 'Home Team';
         }
       }
+
+      // Parse points breakdown if it's a string
+      let pointsBreakdown = data.points_breakdown;
+      if (typeof pointsBreakdown === 'string') {
+        try {
+          pointsBreakdown = JSON.parse(pointsBreakdown);
+        } catch (e) {
+          pointsBreakdown = {};
+        }
+      }
       
       return {
-        round_number: data.round_number,
         fixture_id: data.fixture_id,
+        round_number: data.round_number,
         opponent: opponent,
         goals_scored: data.goals_scored || 0,
         goals_conceded: data.goals_conceded || 0,
         result: data.result,
         is_motm: data.is_motm || false,
         is_clean_sheet: data.is_clean_sheet || false,
-        points_breakdown: data.points_breakdown,
-        total_points: data.total_points || 0,
+        fine_goals: data.fine_goals || 0,
+        substitution_penalty: data.substitution_penalty || 0,
+        points_breakdown: pointsBreakdown || {},
+        base_points: data.base_points || 0,
       };
     });
-
-    // Calculate aggregated stats
-    const totalPoints = matchHistory.reduce((sum, m) => sum + m.total_points, 0);
-    const matchesPlayed = matchHistory.length;
-    const averagePoints = matchesPlayed > 0 ? totalPoints / matchesPlayed : 0;
-    const totalGoals = matchHistory.reduce((sum, m) => sum + m.goals_scored, 0);
-    const totalConceded = matchHistory.reduce((sum, m) => sum + m.goals_conceded, 0);
-    const motmCount = matchHistory.filter(m => m.is_motm).length;
-    const cleanSheets = matchHistory.filter(m => m.is_clean_sheet).length;
-    const wins = matchHistory.filter(m => m.result === 'win').length;
-    const draws = matchHistory.filter(m => m.result === 'draw').length;
-    const losses = matchHistory.filter(m => m.result === 'loss').length;
 
     return NextResponse.json({
       success: true,
       player: {
         real_player_id: playerData.player_id,
         player_name: playerData.player_name,
-        star_rating: playerData.star_rating || 5,
-        points: playerData.points || 0,
+        real_team_name: playerData.team,
         category: playerData.category || 'Classic',
+        star_rating: playerData.star_rating || 5,
       },
-      draft_info: draftInfo,
-      fantasy_team_name: fantasyTeamName,
-      is_available: !draftInfo,
-      fantasy_stats: {
-        total_points: totalPoints,
-        matches_played: matchesPlayed,
-        average_points: Math.round(averagePoints * 10) / 10,
-        total_goals: totalGoals,
-        total_conceded: totalConceded,
-        motm_count: motmCount,
-        clean_sheets: cleanSheets,
-        wins: wins,
-        draws: draws,
-        losses: losses,
-      },
-      match_history: matchHistory,
+      matches: matchHistory,
     });
   } catch (error) {
-    console.error('Error fetching player stats:', error);
+    console.error('Error fetching player breakdown:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch player stats' },
+      { error: 'Failed to fetch player breakdown', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

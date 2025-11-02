@@ -103,7 +103,11 @@ export async function POST(request: NextRequest) {
     for (const matchup of matchups) {
       const { home_player_id, away_player_id, home_goals, away_goals } = matchup;
 
-      if (home_goals === null || away_goals === null) continue;
+      // Skip if required fields are missing
+      if (!home_player_id || !away_player_id || home_goals === null || home_goals === undefined || away_goals === null || away_goals === undefined) {
+        console.warn('Skipping matchup with missing data:', { home_player_id, away_player_id, home_goals, away_goals });
+        continue;
+      }
 
       // Calculate goal difference
       const homeGD = home_goals - away_goals;
@@ -143,13 +147,13 @@ export async function POST(request: NextRequest) {
         // Note: Category will be recalculated league-wide after all updates
         await updateDoc(homePlayerDoc.ref, updateData);
 
-        // Update realplayerstats in Neon (SEASON-SPECIFIC stats)
+        // Update player_seasons in Neon (SEASON-SPECIFIC stats)
         const sql = getTournamentDb();
         const statsId = `${home_player_id}_${season_id}`;
         
-        // Update star rating in Neon stats
+        // Update star rating in player_seasons
         await sql`
-          UPDATE realplayerstats
+          UPDATE player_seasons
           SET
             star_rating = ${newStarRating},
             updated_at = NOW()
@@ -198,13 +202,13 @@ export async function POST(request: NextRequest) {
         // Note: Category will be recalculated league-wide after all updates
         await updateDoc(awayPlayerDoc.ref, updateData);
 
-        // Update realplayerstats in Neon (SEASON-SPECIFIC stats)
+        // Update player_seasons in Neon (SEASON-SPECIFIC stats)
         const sql = getTournamentDb();
         const statsId = `${away_player_id}_${season_id}`;
         
-        // Update star rating in Neon stats
+        // Update star rating in player_seasons
         await sql`
-          UPDATE realplayerstats
+          UPDATE player_seasons
           SET
             star_rating = ${newStarRating},
             updated_at = NOW()

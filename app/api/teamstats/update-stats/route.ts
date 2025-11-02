@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase/config';
-import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 interface MatchupResult {
   position: number;
@@ -70,6 +69,16 @@ export async function POST(request: NextRequest) {
       lost: homeWon
     });
 
+    // Get tournament_id from fixture to recalculate positions for this tournament only
+    const sql = getTournamentDb();
+    const [fixture] = await sql`
+      SELECT tournament_id FROM fixtures WHERE id = ${fixture_id} LIMIT 1
+    `;
+    
+    if (fixture && fixture.tournament_id) {
+      await recalculatePositions(season_id, fixture.tournament_id);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Team stats updated successfully',
@@ -98,7 +107,39 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Update or create team stats document
+ * Recalculate and update positions for all teams in a specific tournament within a season
+ * Teams are ranked by: points DESC, goal_difference DESC, goals_for DESC
+ */
+async function recalculatePositions(season_id: string, tournament_id: string) {
+  const sql = getTournamentDb();
+  
+  // Get all teams in this tournament and season, ordered by ranking criteria
+  const teams = await sql`
+    SELECT id, points, goal_difference, goals_for
+    FROM teamstats
+    WHERE season_id = ${season_id}
+      AND tournament_id = ${tournament_id}
+    ORDER BY 
+      points DESC,
+      goal_difference DESC,
+      goals_for DESC
+  `;
+  
+  // Update each team's position
+  for (let i = 0; i < teams.length; i++) {
+    const position = i + 1;
+    await sql`
+      UPDATE teamstats
+      SET position = ${position}
+      WHERE id = ${teams[i].id}
+    `;
+  }
+  
+  console.log(`✓ Recalculated positions for ${teams.length} teams in tournament ${tournament_id}, season ${season_id}`);
+}
+
+/**
+ * Update team stats in Neon database (only if stats already exist)
  * Tracks processed fixtures to prevent duplicate counting when results are edited
  */
 async function updateTeamStats(data: {
@@ -111,96 +152,74 @@ async function updateTeamStats(data: {
   draw: boolean;
   lost: boolean;
 }) {
+  const sql = getTournamentDb();
   const { team_id, season_id, fixture_id, goals_for, goals_against, won, draw, lost } = data;
 
   // Construct composite ID: team_id_seasonId
   const statsId = `${team_id}_${season_id}`;
-  const statsRef = doc(db, 'teamstats', statsId);
 
-  // Check if stats document exists
-  const statsDoc = await getDoc(statsRef);
+  // Check if stats exist in Neon
+  const existing = await sql`
+    SELECT * FROM teamstats WHERE id = ${statsId} LIMIT 1
+  `;
 
-  if (statsDoc.exists()) {
-    const existingData = statsDoc.data();
-    const processedFixtures = existingData.processed_fixtures || [];
+  if (existing.length > 0) {
+    const current = existing[0];
+    const processedFixtures = current.processed_fixtures || [];
     
     // Check if this fixture was already processed
-    const fixtureIndex = processedFixtures.findIndex((f: any) => f.fixture_id === fixture_id);
+    const existingFixture = processedFixtures.find((f: any) => f.fixture_id === fixture_id);
     
-    if (fixtureIndex >= 0) {
-      // Fixture already processed - this is an edit
-      const oldStats = processedFixtures[fixtureIndex];
-      
-      // Calculate the difference to adjust stats
-      const goalsForDiff = goals_for - oldStats.goals_for;
-      const goalsAgainstDiff = goals_against - oldStats.goals_against;
-      const winsDiff = (won ? 1 : 0) - (oldStats.won ? 1 : 0);
-      const drawsDiff = (draw ? 1 : 0) - (oldStats.draw ? 1 : 0);
-      const lossesDiff = (lost ? 1 : 0) - (oldStats.lost ? 1 : 0);
-      
-      // Update with differences (not duplicating)
-      const updateData: any = {
-        goals_for: increment(goalsForDiff),
-        goals_against: increment(goalsAgainstDiff),
-        updated_at: serverTimestamp()
-      };
-      
-      if (winsDiff !== 0) updateData.wins = increment(winsDiff);
-      if (drawsDiff !== 0) updateData.draws = increment(drawsDiff);
-      if (lossesDiff !== 0) updateData.losses = increment(lossesDiff);
-      
-      // Recalculate goal_difference
-      const currentGoalsFor = existingData.goals_for || 0;
-      const currentGoalsAgainst = existingData.goals_against || 0;
-      const newGoalDifference = (currentGoalsFor + goalsForDiff) - (currentGoalsAgainst + goalsAgainstDiff);
-      updateData.goal_difference = newGoalDifference;
-      
-      // Update the fixture record in processed_fixtures array
-      processedFixtures[fixtureIndex] = { fixture_id, goals_for, goals_against, won, draw, lost };
-      updateData.processed_fixtures = processedFixtures;
-      
-      await updateDoc(statsRef, updateData);
-    } else {
-      // New fixture - add stats
-      const updateData: any = {
-        matches_played: increment(1),
-        goals_for: increment(goals_for),
-        goals_against: increment(goals_against),
-        processed_fixtures: [...processedFixtures, { fixture_id, goals_for, goals_against, won, draw, lost }],
-        updated_at: serverTimestamp()
-      };
-      
-      if (won) updateData.wins = increment(1);
-      if (draw) updateData.draws = increment(1);
-      if (lost) updateData.losses = increment(1);
-      
-      // Recalculate goal_difference
-      const currentGoalsFor = existingData.goals_for || 0;
-      const currentGoalsAgainst = existingData.goals_against || 0;
-      updateData.goal_difference = (currentGoalsFor + goals_for) - (currentGoalsAgainst + goals_against);
-      
-      await updateDoc(statsRef, updateData);
+    if (existingFixture) {
+      console.log(`✓ Fixture ${fixture_id} already processed for team ${team_id}, skipping`);
+      return; // Already processed, skip to prevent duplicates
     }
+    
+    // New fixture - add stats
+    const updatedProcessedFixtures = [...processedFixtures, { fixture_id, goals_for, goals_against, won, draw, lost }];
+    
+    const newMatches = (current.matches_played || 0) + 1;
+    const newGoalsFor = (current.goals_for || 0) + goals_for;
+    const newGoalsAgainst = (current.goals_against || 0) + goals_against;
+    const newWins = (current.wins || 0) + (won ? 1 : 0);
+    const newDraws = (current.draws || 0) + (draw ? 1 : 0);
+    const newLosses = (current.losses || 0) + (lost ? 1 : 0);
+    const newGoalDifference = newGoalsFor - newGoalsAgainst;
+    const newPoints = (newWins * 3) + newDraws;
+    
+    // Calculate current form (last 5 results, most recent last)
+    const currentFormStr = current.current_form || '';
+    const resultChar = won ? 'W' : draw ? 'D' : 'L';
+    const newForm = (currentFormStr + resultChar).slice(-5); // Keep last 5
+    
+    // Calculate win streak (consecutive wins)
+    const newWinStreak = won ? (current.win_streak || 0) + 1 : 0;
+    
+    // Calculate unbeaten streak (consecutive wins/draws)
+    const newUnbeatenStreak = (won || draw) ? (current.unbeaten_streak || 0) + 1 : 0;
+    
+    await sql`
+      UPDATE teamstats
+      SET
+        matches_played = ${newMatches},
+        wins = ${newWins},
+        draws = ${newDraws},
+        losses = ${newLosses},
+        goals_for = ${newGoalsFor},
+        goals_against = ${newGoalsAgainst},
+        goal_difference = ${newGoalDifference},
+        points = ${newPoints},
+        current_form = ${newForm},
+        win_streak = ${newWinStreak},
+        unbeaten_streak = ${newUnbeatenStreak},
+        processed_fixtures = ${JSON.stringify(updatedProcessedFixtures)}::jsonb,
+        updated_at = NOW()
+      WHERE id = ${statsId}
+    `;
+    
+    console.log(`✓ Updated team stats for ${team_id}: +${goals_for} GF, +${goals_against} GA, ${won ? 'W' : draw ? 'D' : 'L'}, Form: ${newForm}`);
   } else {
-    // Document doesn't exist - create it with initial values
-    console.warn(`Team stats document not found for ${statsId}. Creating new document...`);
-    
-    const initialData = {
-      team_id,
-      season_id,
-      matches_played: 1,
-      wins: won ? 1 : 0,
-      draws: draw ? 1 : 0,
-      losses: lost ? 1 : 0,
-      goals_for,
-      goals_against,
-      goal_difference: goals_for - goals_against,
-      processed_fixtures: [{ fixture_id, goals_for, goals_against, won, draw, lost }],
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    };
-    
-    await setDoc(statsRef, initialData);
-    console.log(`✓ Created team stats document for ${statsId}`);
+    // Stats don't exist - skip creation (stats should already exist before fixtures)
+    console.warn(`⚠ Team stats not found for ${statsId}, skipping update. Stats must be created before processing fixtures.`);
   }
 }

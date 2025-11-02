@@ -58,11 +58,14 @@ export default function PlayerLeaderboardPage() {
   const [filteredPlayers, setFilteredPlayers] = useState<PlayerStats[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showOverall, setShowOverall] = useState(false);
   
-  // Use React Query hook for player stats from Neon - now uses tournamentId
+  // Use React Query hook for player stats from Neon
+  // If showOverall is true, use seasonId (all tournaments), otherwise use tournamentId (specific tournament)
   const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
-    tournamentId: selectedTournamentId,
-    seasonId: userSeasonId || '' // Fallback for backward compatibility
+    tournamentId: showOverall ? undefined : selectedTournamentId,
+    seasonId: userSeasonId || ''
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
@@ -366,6 +369,20 @@ export default function PlayerLeaderboardPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Overall Stats Toggle */}
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={() => setShowOverall(!showOverall)}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            showOverall
+              ? 'bg-purple-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-300'
+          }`}
+        >
+          {showOverall ? '🌍 Overall Stats (All Tournaments)' : '🏆 Tournament Stats'}
+        </button>
       </div>
 
       {/* Filters */}

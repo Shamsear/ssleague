@@ -111,9 +111,9 @@ async function revertPlayerStats(data: {
 
   const statsId = `${player_id}_${season_id}`;
 
-  // Get current stats
+  // Get current stats from player_seasons
   const existing = await sql`
-    SELECT * FROM realplayerstats WHERE id = ${statsId} LIMIT 1
+    SELECT * FROM player_seasons WHERE id = ${statsId} LIMIT 1
   `;
 
   if (existing.length === 0) {
@@ -122,6 +122,10 @@ async function revertPlayerStats(data: {
   }
 
   const current = existing[0];
+  
+  // Remove fixture from processed_fixtures array
+  const processedFixtures = current.processed_fixtures || [];
+  const updatedProcessedFixtures = processedFixtures.filter((id: string) => id !== data.fixture_id);
 
   // Subtract the stats
   const newMatchesPlayed = Math.max(0, (current.matches_played || 0) - 1);
@@ -133,9 +137,9 @@ async function revertPlayerStats(data: {
   // Recalculate points
   const newPoints = calculatePoints(newWins, newDraws, current.motm_awards || 0, newGoalsScored);
 
-  // Update stats
+  // Update stats in player_seasons
   await sql`
-    UPDATE realplayerstats
+    UPDATE player_seasons
     SET
       matches_played = ${newMatchesPlayed},
       goals_scored = ${newGoalsScored},
@@ -143,6 +147,7 @@ async function revertPlayerStats(data: {
       draws = ${newDraws},
       losses = ${newLosses},
       points = ${newPoints},
+      processed_fixtures = ${JSON.stringify(updatedProcessedFixtures)}::jsonb,
       updated_at = NOW()
     WHERE id = ${statsId}
   `;

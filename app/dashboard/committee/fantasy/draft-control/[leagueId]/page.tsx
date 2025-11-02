@@ -2,8 +2,10 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useDraftWebSocket } from '@/hooks/useDraftWebSocket';
+import { useAutoCloseDraft } from '@/hooks/useAutoCloseDraft';
 
 interface DraftSettings {
   draft_status: 'pending' | 'active' | 'closed';
@@ -28,6 +30,7 @@ export default function DraftControlPage() {
   const [draftStatus, setDraftStatus] = useState<'pending' | 'active' | 'closed'>('pending');
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'warning'} | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -39,13 +42,27 @@ export default function DraftControlPage() {
     }
   }, [user, loading, router]);
 
-  useEffect(() => {
-    if (user && leagueId) {
-      loadSettings();
-    }
-  }, [user, leagueId]);
+  // Helper function to convert UTC timestamp to IST datetime-local format
+  const formatForDatetimeLocal = useCallback((utcTimestamp: string | null): string => {
+    if (!utcTimestamp) return '';
+    
+    const date = new Date(utcTimestamp);
+    const istString = date.toLocaleString('en-CA', { 
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const [datePart, timePart] = istString.split(', ');
+    return `${datePart}T${timePart}`;
+  }, []);
 
-  const loadSettings = async () => {
+  // Define loadSettings with useCallback to make it stable
+  const loadSettings = useCallback(async () => {
     try {
       const response = await fetch(`/api/fantasy/draft/settings?league_id=${leagueId}`);
       if (!response.ok) throw new Error('Failed to load settings');
@@ -53,13 +70,86 @@ export default function DraftControlPage() {
       const data = await response.json();
       setSettings(data.settings);
       setDraftStatus(data.settings.draft_status || 'pending');
-      setOpensAt(data.settings.draft_opens_at ? new Date(data.settings.draft_opens_at).toISOString().slice(0, 16) : '');
-      setClosesAt(data.settings.draft_closes_at ? new Date(data.settings.draft_closes_at).toISOString().slice(0, 16) : '');
+      setOpensAt(formatForDatetimeLocal(data.settings.draft_opens_at));
+      setClosesAt(formatForDatetimeLocal(data.settings.draft_closes_at));
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
       setIsLoading(false);
     }
+  }, [leagueId, formatForDatetimeLocal]);
+
+  useEffect(() => {
+    if (user && leagueId) {
+      loadSettings();
+    }
+  }, [user, leagueId, loadSettings]);
+
+  // Auto-open/close draft based on time windows
+  useAutoCloseDraft(
+    leagueId,
+    settings?.draft_opens_at || undefined,
+    settings?.draft_closes_at || undefined
+  );
+
+  // WebSocket for real-time draft status updates
+  const handleDraftStatusChange = useCallback((update: any) => {
+    console.log('📡 Received draft status update:', update);
+    console.log('✨ Updating UI without page refresh...');
+    
+    // Update the UI state directly without refetching
+    if (update.draft_status) {
+      setDraftStatus(update.draft_status);
+      
+      // Also update the settings state if it exists
+      setSettings(prev => prev ? {
+        ...prev,
+        draft_status: update.draft_status
+      } : null);
+      
+      // Show toast notification
+      const statusMessages = {
+        active: update.auto_opened ? '🔓 Draft automatically opened!' : '✅ Draft is now ACTIVE',
+        closed: update.auto_closed ? '🔒 Draft automatically closed!' : '🚫 Draft is now CLOSED',
+        pending: '⏳ Draft is now PENDING'
+      };
+      
+      setToast({
+        message: statusMessages[update.draft_status as keyof typeof statusMessages] || 'Draft status updated',
+        type: update.draft_status === 'active' ? 'success' : 'info'
+      });
+      
+      // Auto-hide toast after 5 seconds
+      setTimeout(() => setToast(null), 5000);
+      
+      console.log(`🎉 Draft status changed to: ${update.draft_status.toUpperCase()}`);
+    }
+  }, []);
+
+  useDraftWebSocket(
+    leagueId,
+    handleDraftStatusChange
+  );
+
+  // Helper function to convert IST datetime-local format to UTC ISO string
+  const convertISTToUTC = (istDatetimeLocal: string | null): string | null => {
+    if (!istDatetimeLocal) return null;
+    
+    console.log('🔵 Input datetime-local value:', istDatetimeLocal);
+    
+    // Parse the datetime-local value and treat it as IST
+    // Format: "YYYY-MM-DDTHH:mm"
+    const istTimeString = istDatetimeLocal + ':00+05:30'; // Append IST timezone
+    const istDate = new Date(istTimeString);
+    
+    console.log('🟢 Parsed as IST:', istDate.toISOString());
+    console.log('🟢 Display check:', new Date(istDate).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }));
+    
+    return istDate.toISOString();
   };
 
   const updateDraftStatus = async () => {
@@ -71,8 +161,8 @@ export default function DraftControlPage() {
         body: JSON.stringify({
           league_id: leagueId,
           draft_status: draftStatus,
-          draft_opens_at: opensAt || null,
-          draft_closes_at: closesAt || null,
+          draft_opens_at: convertISTToUTC(opensAt),
+          draft_closes_at: convertISTToUTC(closesAt),
         }),
       });
 
@@ -103,6 +193,30 @@ export default function DraftControlPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 py-8 px-4">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-5">
+          <div className={`px-6 py-4 rounded-lg shadow-lg ${
+            toast.type === 'success' ? 'bg-green-500 text-white' :
+            toast.type === 'warning' ? 'bg-yellow-500 text-white' :
+            'bg-blue-500 text-white'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">
+                {toast.type === 'success' ? '✅' : '🔔'}
+              </span>
+              <span className="font-semibold">{toast.message}</span>
+              <button 
+                onClick={() => setToast(null)}
+                className="ml-4 text-white/80 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="max-w-4xl mx-auto">
         <Link
           href={`/dashboard/committee/fantasy/${leagueId}`}
@@ -132,12 +246,20 @@ export default function DraftControlPage() {
                 </span>
                 {settings.draft_opens_at && (
                   <span className="text-sm text-gray-600">
-                    Opens: {new Date(settings.draft_opens_at).toLocaleString()}
+                    Opens: {new Date(settings.draft_opens_at).toLocaleString('en-IN', {
+                      timeZone: 'Asia/Kolkata',
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })} IST
                   </span>
                 )}
                 {settings.draft_closes_at && (
                   <span className="text-sm text-gray-600">
-                    Closes: {new Date(settings.draft_closes_at).toLocaleString()}
+                    Closes: {new Date(settings.draft_closes_at).toLocaleString('en-IN', {
+                      timeZone: 'Asia/Kolkata',
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })} IST
                   </span>
                 )}
               </div>
@@ -183,28 +305,42 @@ export default function DraftControlPage() {
             </div>
 
             {/* Draft Period Dates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Opens At (optional)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={opensAt}
-                  onChange={(e) => setOpensAt(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-700">Draft Period Timing</h3>
+                <div className="flex items-center gap-2 text-xs text-gray-600 bg-blue-50 px-3 py-1 rounded-full">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="font-medium">Times are in IST (Indian Standard Time)</span>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Closes At (optional)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={closesAt}
-                  onChange={(e) => setClosesAt(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Opens At (optional)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={opensAt}
+                    onChange={(e) => setOpensAt(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">When teams can start drafting</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Closes At (optional)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={closesAt}
+                    onChange={(e) => setClosesAt(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Draft auto-closes at this time</p>
+                </div>
               </div>
             </div>
 
@@ -217,14 +353,37 @@ export default function DraftControlPage() {
               {isSaving ? 'Saving...' : 'Update Draft Settings'}
             </button>
 
-            {/* Info Box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-semibold text-blue-900 mb-2">Status Guide:</h4>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li><strong>Pending:</strong> Draft hasn't started yet. Teams can view but not draft.</li>
-                <li><strong>Active:</strong> Draft is open. Teams can draft players.</li>
-                <li><strong>Closed:</strong> Draft period ended. Teams must use transfer windows.</li>
-              </ul>
+            {/* Info Boxes */}
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-900 mb-2">Status Guide:</h4>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li><strong>Pending:</strong> Draft hasn't started yet. Teams can view but not draft.</li>
+                  <li><strong>Active:</strong> Draft is open. Teams can draft players.</li>
+                  <li><strong>Closed:</strong> Draft period ended. Teams must use transfer windows.</li>
+                </ul>
+              </div>
+              
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <h4 className="font-semibold text-amber-900 mb-2">⏰ Auto-Close Feature:</h4>
+                <p className="text-sm text-amber-800">
+                  When "Closes At" time is set, the draft will automatically close when the deadline passes (similar to lineup deadlines). 
+                  Teams will see the countdown timer and won't be able to draft after the deadline.
+                </p>
+              </div>
+              
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <h4 className="font-semibold text-purple-900 mb-2">🌏 Timezone Information:</h4>
+                <p className="text-sm text-purple-800">
+                  All times are in <strong>IST (Indian Standard Time, UTC+5:30)</strong>. When setting deadlines:
+                </p>
+                <ul className="text-sm text-purple-800 mt-2 space-y-1 ml-4 list-disc">
+                  <li>Your browser automatically uses your local timezone</li>
+                  <li>The system converts and stores times correctly</li>
+                  <li>Teams see deadlines in their local timezone</li>
+                  <li>Auto-close happens based on server time (IST)</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>

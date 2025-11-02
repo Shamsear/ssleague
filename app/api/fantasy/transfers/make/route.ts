@@ -147,6 +147,22 @@ export async function POST(request: NextRequest) {
       )
     `;
 
+    // Update fantasy_players: player_out becomes available, player_in becomes unavailable
+    await fantasySql`
+      UPDATE fantasy_players
+      SET is_available = true, updated_at = NOW()
+      WHERE league_id = ${leagueId} AND real_player_id = ${player_out_id}
+    `;
+
+    await fantasySql`
+      UPDATE fantasy_players
+      SET 
+        times_drafted = COALESCE(times_drafted, 0) + 1,
+        is_available = false,
+        updated_at = NOW()
+      WHERE league_id = ${leagueId} AND real_player_id = ${player_in_id}
+    `;
+
     // Update team budget
     await fantasySql`
       UPDATE fantasy_teams
