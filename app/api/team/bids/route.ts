@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { getAuthToken } from '@/lib/auth/token-helper';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { encryptBidData } from '@/lib/encryption';
+import { generateBidId, generateTeamId } from '@/lib/id-generator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -33,6 +34,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { player_id, round_id, amount } = body;
+    
+    // Get team ID for this user from database
+    let teamIdResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1
+    `;
+    
+    let teamId: string | null = null;
+    if (teamIdResult.length > 0) {
+      teamId = teamIdResult[0].id;
+    }
+    // Note: Team will be created later if it doesn't exist, using team_id from Firebase
 
     // Validate input
     if (!player_id || !round_id || !amount) {
@@ -48,8 +60,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const teamId = userId;
 
     // Get round details
     const roundResult = await sql`
@@ -74,18 +84,43 @@ export async function POST(request: NextRequest) {
     const round = roundResult[0];
 
     // Get team's season data to check budget
-    const teamSeasonId = `${teamId}_${round.season_id}`;
-    const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+    let teamSeasonId = `${teamId}_${round.season_id}`;
+    let teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
     
+    // Fallback: Query by user_id field if direct lookup fails
     if (!teamSeasonDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'Team not registered for this season' },
-        { status: 404 }
-      );
+      const teamSeasonQuery = await adminDb.collection('team_seasons')
+        .where('user_id', '==', userId)
+        .where('season_id', '==', round.season_id)
+        .where('status', '==', 'registered')
+        .limit(1)
+        .get();
+      
+      if (teamSeasonQuery.empty) {
+        return NextResponse.json(
+          { success: false, error: 'Team not registered for this season' },
+          { status: 404 }
+        );
+      }
+      
+      teamSeasonDoc = teamSeasonQuery.docs[0];
+      teamSeasonId = teamSeasonDoc.id;
     }
     
     const teamSeasonData = teamSeasonDoc.data();
-    const teamBalance = teamSeasonData?.budget || 0;
+    
+    // Determine currency system and get appropriate balance
+    const currencySystem = teamSeasonData?.currency_system || 'single';
+    const isDualCurrency = currencySystem === 'dual';
+    
+    let teamBalance = 0;
+    if (isDualCurrency) {
+      // For dual currency, use football_budget (since this is for football players)
+      teamBalance = teamSeasonData?.football_budget || 0;
+    } else {
+      // For single currency, use budget
+      teamBalance = teamSeasonData?.budget || 0;
+    }
 
     // Check if team has sufficient balance
     if (amount > teamBalance) {
@@ -204,26 +239,88 @@ export async function POST(request: NextRequest) {
       amount: amount
     });
 
-    // Create the bid with encrypted data
+    // Check for duplicate bid amounts in existing bids
+    // Note: Frontend also validates this, but backend double-checks
+    const existingBidsCheck = await sql`
+      SELECT encrypted_bid_data FROM bids
+      WHERE team_id = ${teamId}
+      AND round_id = ${round_id}
+      AND status = 'active'
+    `;
+
+    // Decrypt and check for duplicate amounts
+    const { decryptBidData } = await import('@/lib/encryption');
+    for (const existingBid of existingBidsCheck) {
+      try {
+        const decrypted = decryptBidData(existingBid.encrypted_bid_data);
+        if (decrypted.amount === amount) {
+          return NextResponse.json(
+            { success: false, error: 'You already have a bid with this amount in this round. Each bid must have a unique amount.' },
+            { status: 400 }
+          );
+        }
+      } catch (err) {
+        // Skip if decryption fails
+        console.error('Failed to decrypt existing bid:', err);
+      }
+    }
+
+    // Get team name and team_id from teamSeasonData
+    const teamName = teamSeasonData?.team_name || teamSeasonData?.name || 'Team';
+    
+    // If team doesn't exist in Neon yet, get team_id from Firebase and create it
+    if (!teamId) {
+      teamId = teamSeasonData?.team_id;
+      
+      if (!teamId) {
+        return NextResponse.json(
+          { success: false, error: 'Team configuration error - no team_id in Firebase' },
+          { status: 500 }
+        );
+      }
+      
+      // Get budget from Firebase to populate Neon
+      const footballBudget = teamSeasonData?.football_budget || 0;
+      const footballSpent = teamSeasonData?.football_spent || 0;
+      
+      await sql`
+        INSERT INTO teams (id, name, firebase_uid, season_id, football_budget, football_spent, created_at, updated_at)
+        VALUES (${teamId}, ${teamName}, ${userId}, ${round.season_id}, ${footballBudget}, ${footballSpent}, NOW(), NOW())
+        ON CONFLICT (firebase_uid) DO NOTHING
+      `;
+      console.log(`✅ Created team: ${teamId} (${teamName}) with budget £${footballBudget}`);
+    }
+    
+    // Generate unique bid ID: team_id + round_id + player_id
+    const bidId = `${teamId}_${round_id}_${player_id}`;
+    
+    // Create the bid - amount stored ONLY in encrypted form for blind bidding
+    // The amount column stays NULL until round finalization
     const bidResult = await sql`
       INSERT INTO bids (
+        id,
         team_id,
+        team_name,
         player_id,
         round_id,
+        season_id,
         amount,
         encrypted_bid_data,
         status,
         created_at
       ) VALUES (
+        ${bidId},
         ${teamId},
+        ${teamName},
         ${player_id},
         ${round_id},
-        ${amount},
+        ${round.season_id},
+        NULL,
         ${encryptedBidData},
         'active',
         NOW()
       )
-      RETURNING id, team_id, round_id, status, created_at
+      RETURNING id, team_id, team_name, round_id, season_id, status, created_at
     `;
 
     const newBid = bidResult[0];

@@ -77,6 +77,15 @@ html {
   background: rgba(0, 0, 0, 0.25);
 }
 
+/* Hide scrollbar for mobile position tabs */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Vision OS Glass morphism - GPU accelerated */
 .glass {
   background: rgba(255, 255, 255, 0.4);

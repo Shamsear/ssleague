@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
@@ -14,8 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json(
@@ -49,6 +48,57 @@ export async function GET(
     }
 
     const userData = userDoc.data();
+
+    // Get user's team ID from team_seasons collection or teams table
+    let userTeamId: string | null = null;
+    if (userData?.role !== 'admin' && userData?.role !== 'committee_admin') {
+      // Get the season_id first to look up team
+      const tiebreakerCheck = await sql`
+        SELECT t.round_id FROM tiebreakers t WHERE t.id = ${tiebreakerId}
+      `;
+      
+      if (tiebreakerCheck.length > 0) {
+        const roundCheck = await sql`
+          SELECT season_id FROM rounds WHERE id = ${tiebreakerCheck[0].round_id}
+        `;
+        const seasonId = roundCheck[0]?.season_id;
+        
+        if (seasonId) {
+          // Try team_seasons collection first
+          let teamSeasonId = `${userId}_${seasonId}`;
+          let teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+          
+          // Fallback 1: Query by user_id field
+          if (!teamSeasonDoc.exists) {
+            const teamSeasonQuery = await adminDb.collection('team_seasons')
+              .where('user_id', '==', userId)
+              .where('season_id', '==', seasonId)
+              .where('status', '==', 'registered')
+              .limit(1)
+              .get();
+            
+            if (!teamSeasonQuery.empty) {
+              teamSeasonDoc = teamSeasonQuery.docs[0];
+            }
+          }
+          
+          if (teamSeasonDoc.exists) {
+            const teamSeasonData = teamSeasonDoc.data();
+            userTeamId = teamSeasonData?.team_id || null;
+          }
+          
+          // Fallback 2: Check Neon teams table
+          if (!userTeamId) {
+            const teamResult = await sql`
+              SELECT id FROM teams WHERE user_id = ${userId} AND season_id = ${seasonId} LIMIT 1
+            `;
+            if (teamResult.length > 0) {
+              userTeamId = teamResult[0].id;
+            }
+          }
+        }
+      }
+    }
 
     // Fetch tiebreaker details
     const tiebreakerResult = await sql`
@@ -91,42 +141,99 @@ export async function GET(
     const teamTiebreakersResult = await sql`
       SELECT 
         tt.*,
-        b.team_id
+        b.team_id,
+        b.team_name
       FROM team_tiebreakers tt
-      INNER JOIN bids b ON tt.original_bid_id = b.id
+      INNER JOIN bids b ON b.id::text = tt.original_bid_id
       WHERE tt.tiebreaker_id = ${tiebreakerId}
       ORDER BY tt.submitted DESC, tt.new_bid_amount DESC NULLS LAST
     `;
 
-    // Fetch team names and balances from team_seasons
+    // Fetch team balances from team_seasons (team_name already comes from bids)
     const teamData: any[] = [];
     for (const tt of teamTiebreakersResult) {
       try {
-        const teamSeasonId = `${tt.team_id}_${seasonId}`;
-        const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+        // First, get firebase_uid from teams table using team_id
+        const teamUserResult = await sql`
+          SELECT firebase_uid FROM teams WHERE id = ${tt.team_id} AND season_id = ${seasonId} LIMIT 1
+        `;
         
-        if (teamSeasonDoc.exists) {
+        let teamSeasonDoc: any = null;
+        let teamSeasonId = '';
+        
+        if (teamUserResult.length > 0) {
+          const userIdFromTeam = teamUserResult[0].firebase_uid;
+          
+          // Try direct lookup with userId_seasonId format
+          teamSeasonId = `${userIdFromTeam}_${seasonId}`;
+          teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+          
+          // Fallback: Query by user_id field
+          if (!teamSeasonDoc.exists) {
+            const teamSeasonQuery = await adminDb.collection('team_seasons')
+              .where('user_id', '==', userIdFromTeam)
+              .where('season_id', '==', seasonId)
+              .where('status', '==', 'registered')
+              .limit(1)
+              .get();
+            
+            if (!teamSeasonQuery.empty) {
+              teamSeasonDoc = teamSeasonQuery.docs[0];
+              teamSeasonId = teamSeasonDoc.id;
+            }
+          }
+        } else {
+          // Fallback: Try to query team_seasons by team_id
+          const teamSeasonQuery = await adminDb.collection('team_seasons')
+            .where('team_id', '==', tt.team_id)
+            .where('season_id', '==', seasonId)
+            .where('status', '==', 'registered')
+            .limit(1)
+            .get();
+          
+          if (!teamSeasonQuery.empty) {
+            teamSeasonDoc = teamSeasonQuery.docs[0];
+            teamSeasonId = teamSeasonDoc.id;
+          }
+        }
+        
+        if (teamSeasonDoc && teamSeasonDoc.exists) {
           const data = teamSeasonDoc.data();
-          console.log(`Team ${tt.team_id} data:`, { team_name: data?.team_name, budget: data?.budget });
+          
+          // Determine currency system and get appropriate balance
+          const currencySystem = data?.currency_system || 'single';
+          const isDualCurrency = currencySystem === 'dual';
+          
+          let teamBalance = 0;
+          if (isDualCurrency) {
+            // For dual currency, use football_budget (since this is for football players)
+            teamBalance = data?.football_budget || 0;
+          } else {
+            // For single currency, use budget
+            teamBalance = data?.budget || 0;
+          }
+          
           teamData.push({
             ...tt,
-            team_name: data?.team_name || tt.team_id,
-            team_balance: data?.budget || 0,
+            team_name: tt.team_name || data?.team_name || tt.team_id,
+            team_balance: teamBalance,
+            is_current_user: tt.team_id === userTeamId, // Mark if this is the current user's team
           });
         } else {
-          console.warn(`Team season doc not found for ${teamSeasonId}`);
           teamData.push({
             ...tt,
-            team_name: tt.team_id,
+            team_name: tt.team_name || tt.team_id,
             team_balance: 0,
+            is_current_user: tt.team_id === userTeamId,
           });
         }
       } catch (error) {
         console.error(`Error fetching team ${tt.team_id}:`, error);
         teamData.push({
           ...tt,
-          team_name: tt.team_id,
+          team_name: tt.team_name || tt.team_id,
           team_balance: 0,
+          is_current_user: tt.team_id === userTeamId,
         });
       }
     }
@@ -135,8 +242,15 @@ export async function GET(
     // Committee admin can view all
     // Team users can only view tiebreakers they're involved in
     if (userData?.role !== 'admin' && userData?.role !== 'committee_admin') {
-      // Use userId directly as team_id (since team_id in bids is the user's UID)
-      const isInvolvedTeam = teamData.some((t) => t.team_id === userId);
+      if (!userTeamId) {
+        return NextResponse.json(
+          { success: false, error: 'Team not found for user' },
+          { status: 403 }
+        );
+      }
+      
+      // Check if user's team is part of this tiebreaker
+      const isInvolvedTeam = teamData.some((t) => t.team_id === userTeamId);
 
       if (!isInvolvedTeam) {
         return NextResponse.json(

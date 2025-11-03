@@ -37,6 +37,14 @@ export async function DELETE(
 
     const teamId = userId;
 
+    // Handle temporary/optimistic IDs from client-side
+    if (bidId.startsWith('temp-')) {
+      return NextResponse.json({
+        success: true,
+        message: 'Optimistic bid cancelled (not yet in database)',
+      });
+    }
+
     // Get bid details
     const bidResult = await sql`
       SELECT 

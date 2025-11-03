@@ -39,10 +39,10 @@ export async function POST(
       );
     }
 
-    const userId = decodedToken.uid;
+    const firebaseUid = decodedToken.uid;
 
     // Check if user is a team
-    const userDoc = await adminDb.collection('users').doc(userId).get();
+    const userDoc = await adminDb.collection('users').doc(firebaseUid).get();
     if (!userDoc.exists) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
@@ -60,7 +60,22 @@ export async function POST(
 
     const { id: tiebreakerId } = await params;
 
-    console.log(`🚪 Team ${userId} attempting to withdraw from tiebreaker ${tiebreakerId}`);
+    // Get team_id from teams table using firebase_uid
+    const teamResult = await sql`
+      SELECT id FROM teams
+      WHERE firebase_uid = ${firebaseUid}
+    `;
+
+    if (teamResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found. Please ensure your team is registered.' },
+        { status: 404 }
+      );
+    }
+
+    const teamId = teamResult[0].id;
+
+    console.log(`🚪 Team ${teamId} (firebase: ${firebaseUid}) attempting to withdraw from tiebreaker ${tiebreakerId}`);
 
     // Get tiebreaker details
     const tiebreakerCheck = await sql`
@@ -109,7 +124,7 @@ export async function POST(
       SELECT status, current_bid
       FROM bulk_tiebreaker_teams
       WHERE tiebreaker_id = ${tiebreakerId}
-      AND team_id = ${userId}
+      AND team_id = ${teamId}
     `;
 
     if (teamCheck.length === 0) {
@@ -130,7 +145,7 @@ export async function POST(
     }
 
     // VALIDATION 5: CRITICAL - Cannot withdraw if you are the highest bidder
-    if (tiebreaker.current_highest_team_id === userId) {
+    if (tiebreaker.current_highest_team_id === teamId) {
       return NextResponse.json(
         { 
           success: false, 
@@ -152,7 +167,7 @@ export async function POST(
         status = 'withdrawn',
         withdrawn_at = ${withdrawTime.toISOString()}
       WHERE tiebreaker_id = ${tiebreakerId}
-      AND team_id = ${userId}
+      AND team_id = ${teamId}
     `;
 
     // Update last activity time
@@ -164,7 +179,7 @@ export async function POST(
       WHERE id = ${tiebreakerId}
     `;
 
-    console.log(`✅ Team ${userId} withdrew from tiebreaker ${tiebreakerId}`);
+    console.log(`✅ Team ${teamId} withdrew from tiebreaker ${tiebreakerId}`);
 
     // Check if only one team is left (winner condition)
     const winnerCheck = await sql`

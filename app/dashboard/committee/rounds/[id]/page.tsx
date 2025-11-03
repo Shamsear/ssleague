@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useAuctionWebSocket } from '@/hooks/useWebSocket';
+import { useAutoFinalize } from '@/hooks/useAutoFinalize';
 
 interface Bid {
   id: string;
@@ -83,6 +84,61 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
   // ✅ Enable WebSocket for real-time bid updates
   const { isConnected } = useAuctionWebSocket(roundId, true);
 
+  // Fetch round details function (moved up for use in auto-finalize)
+  const fetchRound = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/rounds/${roundId}`);
+      const { success, data } = await response.json();
+
+      if (success) {
+        setRound(data);
+        // Calculate team bid counts
+        if (data.bids) {
+          const counts = new Map<string, { name: string; count: number }>();
+          data.bids.forEach((bid: Bid) => {
+            if (!counts.has(bid.team_id)) {
+              counts.set(bid.team_id, { name: bid.team_name, count: 0 });
+            }
+            counts.get(bid.team_id)!.count++;
+          });
+          const countArray = Array.from(counts.entries()).map(([teamId, info]) => ({
+            team_id: teamId,
+            team_name: info.name,
+            bid_count: info.count,
+            required_bids: data.max_bids_per_team,
+          }));
+          setTeamBidCounts(countArray);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching round:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ Enable auto-finalization when timer reaches zero
+  const { timeRemaining, isFinalizing } = useAutoFinalize({
+    roundId,
+    endTime: round?.end_time || null,
+    enabled: round?.status === 'active',
+    onFinalizationStart: () => {
+      console.log('🔄 Auto-finalization started');
+      setShowLoadingOverlay(true);
+    },
+    onFinalizationComplete: () => {
+      console.log('✅ Auto-finalization completed');
+      setShowLoadingOverlay(false);
+      fetchRound(); // Refresh round data
+    },
+    onFinalizationError: (error) => {
+      console.error('❌ Auto-finalization error:', error);
+      setShowLoadingOverlay(false);
+      alert(`Finalization failed: ${error}`);
+    },
+  });
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
@@ -92,41 +148,8 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
     }
   }, [user, loading, router]);
 
-  // Fetch round details
+  // Fetch round details on mount
   useEffect(() => {
-    const fetchRound = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/rounds/${roundId}`);
-        const { success, data } = await response.json();
-
-        if (success) {
-          setRound(data);
-          // Calculate team bid counts
-          if (data.bids) {
-            const counts = new Map<string, { name: string; count: number }>();
-            data.bids.forEach((bid: Bid) => {
-              if (!counts.has(bid.team_id)) {
-                counts.set(bid.team_id, { name: bid.team_name, count: 0 });
-              }
-              counts.get(bid.team_id)!.count++;
-            });
-            const countArray = Array.from(counts.entries()).map(([teamId, info]) => ({
-              team_id: teamId,
-              team_name: info.name,
-              bid_count: info.count,
-              required_bids: data.max_bids_per_team,
-            }));
-            setTeamBidCounts(countArray);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching round:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     if (roundId) {
       fetchRound();
     }

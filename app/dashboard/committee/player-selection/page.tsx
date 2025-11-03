@@ -18,6 +18,7 @@ interface FootballPlayer {
   nationality?: string
   age?: number
   club?: string
+  team_name?: string
 }
 
 const PLAYERS_PER_PAGE = 50
@@ -875,7 +876,7 @@ export default function PlayerSelectionPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Player</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Position</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rating</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase hidden md:table-cell">Club</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase hidden md:table-cell">Team</th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase">Eligible</th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase">Action</th>
               </tr>
@@ -901,7 +902,7 @@ export default function PlayerSelectionPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">
-                      {player.club || 'N/A'}
+                      {player.team_name || 'Not Assigned'}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {player.is_auction_eligible ? (

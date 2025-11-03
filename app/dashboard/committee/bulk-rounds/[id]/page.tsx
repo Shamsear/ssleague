@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
+import { useAuctionWebSocket } from '@/hooks/useWebSocket';
 
 interface BulkBid {
   player_id: string;
@@ -37,11 +38,11 @@ interface Round {
   end_time?: string;
   duration_seconds: number;
   created_at: string;
-  players?: RoundPlayer[];
+  roundPlayers?: RoundPlayer[];
 }
 
 export default function BulkRoundManagementPage({ params }: { params: Promise<{ id: string }> }) {
-  const { user, loading } = useAuth();
+  const { user, firebaseUser, loading } = useAuth();
   const router = useRouter();
   const resolvedParams = use(params);
   const [round, setRound] = useState<Round | null>(null);
@@ -51,6 +52,10 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
+
+  // Enable WebSocket for real-time updates
+  const { isConnected } = useAuctionWebSocket(resolvedParams.id, true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -62,26 +67,54 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   }, [user, loading, router]);
 
   // Fetch round details
-  useEffect(() => {
-    const fetchRound = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/rounds/${resolvedParams.id}`);
-        const { success, data } = await response.json();
+  const fetchRound = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/rounds/${resolvedParams.id}`);
+      const { success, data } = await response.json();
 
-        if (success) {
-          setRound(data);
-        }
-      } catch (err) {
-        console.error('Error fetching round:', err);
-      } finally {
-        setIsLoading(false);
+      if (success) {
+        setRound(data);
       }
-    };
+    } catch (err) {
+      console.error('Error fetching round:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     if (resolvedParams.id) {
       fetchRound();
     }
+  }, [resolvedParams.id]);
+
+  // Auto-refresh when bids are placed (triggered by WebSocket or every 5 seconds during active rounds)
+  useEffect(() => {
+    if (!round || round.status !== 'active') return;
+
+    const interval = setInterval(() => {
+      console.log('🔄 Auto-refreshing round data...');
+      fetchRound();
+    }, 5000); // Refresh every 5 seconds during active rounds
+
+    return () => clearInterval(interval);
+  }, [round?.status, resolvedParams.id]);
+
+  // Listen for WebSocket bid updates
+  useEffect(() => {
+    const handleBidUpdate = () => {
+      console.log('📢 Bid update received, refreshing...');
+      fetchRound();
+      setLastUpdate(Date.now());
+    };
+
+    // Listen for custom events from WebSocket
+    window.addEventListener('auction-update', handleBidUpdate);
+    
+    return () => {
+      window.removeEventListener('auction-update', handleBidUpdate);
+    };
   }, [resolvedParams.id]);
 
   // Timer for active rounds
@@ -114,7 +147,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
         const { success, data } = await response.json();
 
         if (success) {
-          const currentPlayerIds = round?.players?.map(p => p.player_id) || [];
+          const currentPlayerIds = round?.roundPlayers?.map(p => p.player_id) || [];
           const available = data.filter((p: any) => !currentPlayerIds.includes(p.id));
           setAvailablePlayers(available);
         }
@@ -137,6 +170,17 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       }
       
       try {
+        // Refresh Firebase token before making the request
+        if (firebaseUser) {
+          const idToken = await firebaseUser.getIdToken(true);
+          await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: idToken }),
+          });
+          console.log('✅ Token refreshed before starting round');
+        }
+        
         const response = await fetch(`/api/admin/bulk-rounds/${round.id}/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -263,12 +307,12 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   );
 
   const playersByStatus = () => {
-    if (!round || !round.players) return { pending: [], sold: [], contested: [] };
+    if (!round || !round.roundPlayers) return { pending: [], sold: [], contested: [] };
     
     return {
-      pending: round.players.filter(p => p.status === 'pending'),
-      sold: round.players.filter(p => p.status === 'sold'),
-      contested: round.players.filter(p => p.bid_count && p.bid_count > 1),
+      pending: round.roundPlayers.filter(p => p.status === 'pending'),
+      sold: round.roundPlayers.filter(p => p.status === 'sold'),
+      contested: round.roundPlayers.filter(p => p.bid_count && p.bid_count > 1),
     };
   };
 
@@ -351,7 +395,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Total Players</label>
-              <p className="text-lg font-semibold text-gray-800">{round.players?.length || 0}</p>
+              <p className="text-lg font-semibold text-gray-800">{round.roundPlayers?.length || 0}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Sold</label>
@@ -496,7 +540,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           )}
 
           {/* Players List */}
-          {!round.players || round.players.length === 0 ? (
+          {!round.roundPlayers || round.roundPlayers.length === 0 ? (
             <div className="text-center py-12">
               <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -518,7 +562,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                   </tr>
                 </thead>
                 <tbody>
-                  {round.players?.map((player) => (
+                  {round.roundPlayers?.map((player) => (
                     <tr key={player.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4 font-medium text-gray-800">{player.player_name}</td>
                       <td className="py-3 px-4 text-gray-600">{player.position}</td>

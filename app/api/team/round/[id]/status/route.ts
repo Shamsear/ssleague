@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth } from '@/lib/firebase/admin';
+import { checkAndFinalizeExpiredRound } from '@/lib/lazy-finalize-round';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -10,8 +11,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    // Check Authorization header first (takes priority for fresh tokens)
+    const authHeader = request.headers.get('Authorization');
+    let token = null;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+    
+    // Fallback to cookie if no Authorization header
+    if (!token) {
+      const cookieStore = await cookies();
+      token = cookieStore.get('token')?.value;
+    }
 
     if (!token) {
       return NextResponse.json(
@@ -24,12 +36,17 @@ export async function GET(
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
-        { status: 401 }
-      );
+      
+      // For status checks, return a soft error instead of 401
+      // This prevents constant error popups when tokens expire
+      return NextResponse.json({
+        success: false,
+        active: false,
+        error: 'Authentication expired',
+        needsRefresh: true
+      });
     }
 
     const userId = decodedToken.uid;
@@ -37,6 +54,9 @@ export async function GET(
     // Note: Skipping role check since Firebase auth already validates the user
 
     const { id: roundId } = await params;
+
+    // Check and auto-finalize if expired (lazy finalization)
+    await checkAndFinalizeExpiredRound(roundId);
 
     // Get round details
     const roundResult = await sql`
@@ -66,9 +86,8 @@ export async function GET(
         SELECT t.id
         FROM tiebreakers t
         INNER JOIN team_tiebreakers tt ON t.id = tt.tiebreaker_id
-        INNER JOIN bids b ON tt.original_bid_id = b.id
         WHERE t.round_id = ${roundId}
-        AND b.team_id = ${userId}
+        AND tt.team_id = ${userId}
         AND t.status = 'active'
         LIMIT 1
       `;

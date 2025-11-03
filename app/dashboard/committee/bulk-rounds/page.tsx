@@ -33,7 +33,9 @@ export default function BulkRoundsPage() {
   // Form state
   const [formData, setFormData] = useState({
     base_price: '10',
-    duration_seconds: '300',
+    duration_hours: '0',
+    duration_minutes: '5',
+    duration_seconds: '0',
   });
 
   useEffect(() => {
@@ -123,6 +125,8 @@ export default function BulkRoundsPage() {
           round_number: nextRoundNumber,
           round_type: 'bulk',
           base_price: parseInt(formData.base_price),
+          duration_hours: parseInt(formData.duration_hours),
+          duration_minutes: parseInt(formData.duration_minutes),
           duration_seconds: parseInt(formData.duration_seconds),
         }),
       });
@@ -134,7 +138,9 @@ export default function BulkRoundsPage() {
         setShowCreateForm(false);
         setFormData({
           base_price: '10',
-          duration_seconds: '300',
+          duration_hours: '0',
+          duration_minutes: '5',
+          duration_seconds: '0',
         });
         // Refresh rounds
         const params = new URLSearchParams({ 
@@ -318,24 +324,52 @@ export default function BulkRoundsPage() {
                 <p className="mt-1 text-xs text-gray-500">Fixed price for all players in this round</p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (seconds)</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <svg className="inline h-5 w-5 text-gray-400 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Round Duration
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Hours</label>
+                    <input
+                      type="number"
+                      value={formData.duration_hours}
+                      onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0066FF] focus:border-[#0066FF] text-center"
+                      min="0"
+                      max="72"
+                    />
                   </div>
-                  <input
-                    type="number"
-                    required
-                    value={formData.duration_seconds}
-                    onChange={(e) => setFormData({ ...formData, duration_seconds: e.target.value })}
-                    className="w-full pl-10 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0066FF] focus:border-[#0066FF]"
-                    min="60"
-                  />
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Minutes</label>
+                    <input
+                      type="number"
+                      value={formData.duration_minutes}
+                      onChange={(e) => setFormData({ ...formData, duration_minutes: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0066FF] focus:border-[#0066FF] text-center"
+                      min="0"
+                      max="59"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Seconds</label>
+                    <input
+                      type="number"
+                      value={formData.duration_seconds}
+                      onChange={(e) => setFormData({ ...formData, duration_seconds: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0066FF] focus:border-[#0066FF] text-center"
+                      min="0"
+                      max="59"
+                    />
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">How long teams have to place bids</p>
+                <p className="mt-2 text-xs text-gray-500">
+                  Total: {parseInt(formData.duration_hours) * 3600 + parseInt(formData.duration_minutes) * 60 + parseInt(formData.duration_seconds)} seconds
+                  ({parseInt(formData.duration_hours)}h {parseInt(formData.duration_minutes)}m {parseInt(formData.duration_seconds)}s)
+                </p>
               </div>
 
               <div className="md:col-span-2 flex justify-end gap-3">

@@ -1,0 +1,236 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { neon } from '@neondatabase/serverless';
+import { cookies } from 'next/headers';
+import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { getAuctionSettings } from '@/lib/auction-settings';
+
+const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+
+/**
+ * GET /api/team/bulk-rounds/:id
+ * Get bulk round details with players for team bidding
+ * Team users only
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('token')?.value;
+
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Verify Firebase ID token
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(token);
+    } catch (error) {
+      console.error('Token verification error:', error);
+      return NextResponse.json(
+        { success: false, error: 'Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const userId = decodedToken.uid;
+
+    // Check if user is a team
+    const userDoc = await adminDb.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
+    }
+
+    const userData = userDoc.data();
+    if (userData?.role !== 'team') {
+      return NextResponse.json(
+        { success: false, error: 'Access denied. Team users only.' },
+        { status: 403 }
+      );
+    }
+
+    const { id: roundId } = await params;
+
+    // Get round details
+    const roundData = await sql`
+      SELECT 
+        id,
+        round_number,
+        status,
+        base_price,
+        start_time,
+        end_time,
+        duration_seconds,
+        season_id,
+        (SELECT COUNT(*) FROM round_players WHERE round_id = rounds.id) as player_count
+      FROM rounds
+      WHERE id = ${roundId}
+      AND round_type = 'bulk'
+    `;
+
+    if (roundData.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Bulk round not found' },
+        { status: 404 }
+      );
+    }
+
+    const round = roundData[0];
+
+    // Get all players in this round
+    const players = await sql`
+      SELECT 
+        rp.player_id as id,
+        rp.player_name as name,
+        rp.position,
+        fp.overall_rating,
+        fp.club as team_name,
+        rp.status,
+        fp.playing_style
+      FROM round_players rp
+      LEFT JOIN footballplayers fp ON rp.player_id = fp.id
+      WHERE rp.round_id = ${roundId}
+      AND rp.status IN ('pending', 'available')
+      ORDER BY fp.overall_rating DESC, rp.player_name ASC
+    `;
+
+    // Get team data from Neon (budget and squad info)
+    let balance = 1000; // Default balance
+    let currentSquadSize = 0;
+    let maxSquadSize = 25; // Default
+    let availableSlots = maxSquadSize;
+
+    try {
+      // Get auction settings
+      const auctionSettings = await getAuctionSettings(round.season_id);
+      maxSquadSize = auctionSettings.max_squad_size;
+
+      // Get team's budget and squad count from Neon teams table
+      const teamData = await sql`
+        SELECT 
+          football_budget,
+          football_players_count
+        FROM teams
+        WHERE firebase_uid = ${userId}
+        AND season_id = ${round.season_id}
+        LIMIT 1
+      `;
+
+      console.log(`🔍 Team data query for user ${userId}, season ${round.season_id}:`, teamData);
+
+      if (teamData.length > 0) {
+        balance = parseInt(teamData[0].football_budget) || 1000;
+        currentSquadSize = parseInt(teamData[0].football_players_count) || 0;
+      } else {
+        // Team doesn't exist in Neon yet - create it
+        console.log(`⚠️ Team not found in Neon for user ${userId}, creating...`);
+        
+        // Get team data from Firebase
+        const teamSeasonId = `${userId}_${round.season_id}`;
+        const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+        
+        if (teamSeasonDoc.exists) {
+          const teamSeasonData = teamSeasonDoc.data();
+          const teamName = teamSeasonData?.team_name || userData.teamName || 'Team';
+          const teamId = teamSeasonData?.team_id || userId;
+          balance = teamSeasonData?.football_budget || 1000;
+          
+          try {
+            await sql`
+              INSERT INTO teams (
+                id, 
+                name, 
+                firebase_uid, 
+                season_id, 
+                football_budget, 
+                football_spent,
+                football_players_count,
+                created_at, 
+                updated_at
+              )
+              VALUES (
+                ${teamId}, 
+                ${teamName}, 
+                ${userId}, 
+                ${round.season_id}, 
+                ${balance}, 
+                0,
+                0,
+                NOW(), 
+                NOW()
+              )
+            `;
+            console.log(`✅ Created team in Neon: ${teamId} (${teamName})`);
+          } catch (insertError: any) {
+            if (insertError.code === '23505') {
+              // Duplicate - fetch it
+              const retryData = await sql`
+                SELECT football_budget, football_players_count
+                FROM teams
+                WHERE firebase_uid = ${userId}
+                AND season_id = ${round.season_id}
+                LIMIT 1
+              `;
+              if (retryData.length > 0) {
+                balance = parseInt(retryData[0].football_budget) || 1000;
+                currentSquadSize = parseInt(retryData[0].football_players_count) || 0;
+              }
+            } else {
+              console.error('Error creating team:', insertError);
+            }
+          }
+        }
+      }
+
+      availableSlots = maxSquadSize - currentSquadSize;
+    } catch (error) {
+      console.error('Error fetching team data:', error);
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        round: {
+          id: round.id,
+          round_number: round.round_number,
+          status: round.status,
+          base_price: round.base_price,
+          start_time: round.start_time,
+          end_time: round.end_time,
+          duration_seconds: round.duration_seconds,
+          player_count: parseInt(round.player_count),
+        },
+        players: players.map(p => ({
+          id: p.id,
+          name: p.name,
+          position: p.position,
+          overall_rating: p.overall_rating,
+          team_name: p.team_name,
+          playing_style: p.playing_style,
+          status: p.status,
+        })),
+        balance,
+        squad: {
+          current: currentSquadSize,
+          max: maxSquadSize,
+          available: availableSlots,
+        },
+      },
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error fetching bulk round:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}

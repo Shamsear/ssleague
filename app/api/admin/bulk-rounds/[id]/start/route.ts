@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { getISTNow, toNeonTimestamp, formatISTDateTime } from '@/lib/utils/timezone';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -20,20 +19,24 @@ export async function POST(
     const token = cookieStore.get('token')?.value;
 
     if (!token) {
+      console.error('❌ No token found in cookies');
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: 'Unauthorized - No authentication token found' },
         { status: 401 }
       );
     }
+    
+    console.log('✅ Token found in cookies');
 
     // Verify Firebase ID token
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(token);
+      console.log('✅ Token verified successfully for user:', decodedToken.uid);
     } catch (error) {
-      console.error('Token verification error:', error);
+      console.error('❌ Token verification error:', error);
       return NextResponse.json(
-        { success: false, error: 'Invalid token' },
+        { success: false, error: 'Invalid or expired token. Please refresh the page.' },
         { status: 401 }
       );
     }
@@ -50,7 +53,10 @@ export async function POST(
     }
 
     const userData = userDoc.data();
+    console.log('👤 User role:', userData?.role);
+    
     if (userData?.role !== 'admin' && userData?.role !== 'committee_admin') {
+      console.error('❌ Access denied for role:', userData?.role);
       return NextResponse.json(
         { success: false, error: 'Access denied. Committee admin only.' },
         { status: 403 }
@@ -85,23 +91,24 @@ export async function POST(
       );
     }
 
-    // Start the round using IST
-    const startTime = getISTNow();
-    const endTime = new Date(startTime.getTime() + round.duration_seconds * 1000);
+    // Start the round using UTC (same as normal rounds)
+    const startTime = new Date();
+    const endTime = new Date(startTime.getTime() + (round.duration_seconds * 1000));
 
     await sql`
       UPDATE rounds
       SET 
         status = 'active',
-        start_time = ${toNeonTimestamp(startTime)},
-        end_time = ${toNeonTimestamp(endTime)},
+        start_time = ${startTime.toISOString()},
+        end_time = ${endTime.toISOString()},
         updated_at = NOW()
       WHERE id = ${roundId}
     `;
 
     console.log(`✅ Bulk round ${round.round_number} started`);
-    console.log(`⏰ Start (IST): ${formatISTDateTime(startTime)}`);
-    console.log(`⏰ End (IST): ${formatISTDateTime(endTime)}`);
+    console.log(`⏰ Start (UTC): ${startTime.toISOString()}`);
+    console.log(`⏰ End (UTC): ${endTime.toISOString()}`);
+    console.log(`⏰ Duration: ${round.duration_seconds} seconds (${Math.floor(round.duration_seconds / 60)} minutes)`);
 
     // TODO: Send notifications to all teams (implement later)
     // - Email notification

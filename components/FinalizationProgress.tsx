@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FinalizationStep {
   step_number: number;
@@ -26,8 +27,16 @@ export default function FinalizationProgress({
   const [currentPhase, setCurrentPhase] = useState<string>('');
   const [steps, setSteps] = useState<FinalizationStep[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  const hasStartedRef = useRef(false);
 
   useEffect(() => {
+    // Prevent double finalization (React Strict Mode runs useEffect twice)
+    if (hasStartedRef.current) {
+      console.log('⚠️ Finalization already started, skipping duplicate call');
+      return;
+    }
+    
+    hasStartedRef.current = true;
     startFinalization();
   }, [roundId]);
 
@@ -37,7 +46,7 @@ export default function FinalizationProgress({
       setCurrentPhase('Phase 1: Processing Complete Teams');
 
       // Call finalization API
-      const response = await fetch(`/api/admin/rounds/${roundId}/finalize`, {
+      const response = await fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });

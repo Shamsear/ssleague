@@ -18,14 +18,15 @@ interface TiebreakerDetail {
   };
   original_amount: number;
   status: string;
-  duration_minutes: number;
+  duration_minutes: number | null;
   created_at: string;
   new_amount: number | null;
   submitted: boolean;
   submitted_at: string | null;
-  expiresAt: string;
+  expiresAt: string | null;
   timeRemaining: number;
   isExpired: boolean;
+  hasTimeLimit: boolean;
 }
 
 export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: string }> }) {
@@ -34,7 +35,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
   const [tiebreakerId, setTiebreakerId] = useState<string | null>(null);
   const [tiebreaker, setTiebreaker] = useState<TiebreakerDetail | null>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [bidAmount, setBidAmount] = useState<number | ''>('');
+  const [bidAmount, setBidAmount] = useState<number | ''>(0);
   const [hasUserModifiedBid, setHasUserModifiedBid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -58,11 +59,18 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
       const response = await fetch(`/api/tiebreakers/${tiebreakerId}`);
       const result = await response.json();
       
+      console.log('🔍 Tiebreaker API response:', result);
+      
       if (result.success) {
-        // Find the team's data (use user.uid as team_id)
+        // Find the current user's team data using is_current_user flag
         const teamTiebreaker = result.data.teamTiebreakers.find(
-          (t: any) => t.team_id === user?.uid
+          (t: any) => t.is_current_user === true
         );
+        
+        console.log('💰 Current user team tiebreaker:', teamTiebreaker);
+        
+        const durationMinutes = result.data.tiebreaker.duration_minutes;
+        const hasTimeLimit = durationMinutes !== null;
         
         setTiebreaker({
           id: result.data.tiebreaker.id,
@@ -77,17 +85,20 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
           },
           original_amount: result.data.tiebreaker.original_amount,
           status: result.data.tiebreaker.status,
-          duration_minutes: result.data.tiebreaker.duration_minutes,
+          duration_minutes: durationMinutes,
           created_at: result.data.tiebreaker.created_at,
           new_amount: teamTiebreaker?.new_bid_amount || null,
           submitted: teamTiebreaker?.submitted || false,
           submitted_at: teamTiebreaker?.submitted_at || null,
-          expiresAt: new Date(
-            new Date(result.data.tiebreaker.created_at).getTime() +
-              result.data.tiebreaker.duration_minutes * 60 * 1000
-          ).toISOString(),
+          expiresAt: hasTimeLimit
+            ? new Date(
+                new Date(result.data.tiebreaker.created_at).getTime() +
+                  durationMinutes * 60 * 1000
+              ).toISOString()
+            : null,
           timeRemaining: 0, // Will be calculated dynamically
           isExpired: false, // Will be calculated dynamically
+          hasTimeLimit,
         });
         
         setTeamBalance(teamTiebreaker?.team_balance || 0);
@@ -106,16 +117,24 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
     if (user && tiebreakerId) {
       fetchTiebreakerDetails();
       
-      // Auto-refresh every 3 seconds if not submitted
+      // Auto-refresh every 3 seconds
       const interval = setInterval(() => {
-        if (!tiebreaker?.submitted) {
-          fetchTiebreakerDetails();
-        }
+        fetchTiebreakerDetails();
       }, 3000);
       
       return () => clearInterval(interval);
     }
   }, [user, tiebreakerId]);
+
+  // Check if tiebreaker is resolved and redirect to dashboard
+  useEffect(() => {
+    if (tiebreaker && tiebreaker.submitted && tiebreaker.status === 'resolved') {
+      console.log('✅ Tiebreaker resolved, redirecting to dashboard...');
+      setTimeout(() => {
+        router.push('/dashboard/team');
+      }, 2000); // Wait 2 seconds to show resolution message
+    }
+  }, [tiebreaker, router]);
 
   // Update current time every second for dynamic timer
   useEffect(() => {
@@ -131,11 +150,11 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
     
     if (!tiebreaker) return;
     
-    const amount = typeof bidAmount === 'number' ? bidAmount : 0;
+    const amount = typeof bidAmount === 'number' ? Math.floor(bidAmount) : 0;
     
     // Validation
-    if (amount < tiebreaker.original_amount) {
-      setError(`Bid must be at least £${tiebreaker.original_amount.toLocaleString()} (the tied bid amount)`);
+    if (amount < Math.floor(tiebreaker.original_amount)) {
+      setError(`Bid must be at least £${Math.floor(tiebreaker.original_amount).toLocaleString()} (the tied bid amount)`);
       return;
     }
     
@@ -176,19 +195,28 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
 
   // Calculate time remaining dynamically
   const getTimeRemaining = () => {
-    if (!tiebreaker) return 0;
+    if (!tiebreaker) return Infinity;
+    // If duration_minutes is null, tiebreaker never expires
+    if (tiebreaker.duration_minutes === null || tiebreaker.duration_minutes === undefined) return Infinity;
+    if (!tiebreaker.hasTimeLimit || !tiebreaker.expiresAt) return Infinity;
     const expiryTime = new Date(tiebreaker.expiresAt).getTime();
     return Math.max(0, expiryTime - currentTime);
   };
 
   const isExpired = () => {
     if (!tiebreaker) return false;
-    return getTimeRemaining() <= 0;
+    // If duration_minutes is null, tiebreaker never expires
+    if (tiebreaker.duration_minutes === null || tiebreaker.duration_minutes === undefined) return false;
+    if (!tiebreaker.hasTimeLimit) return false; // No time limit = never expires
+    return getTimeRemaining() === 0;
   };
 
-  const formatTimeRemaining = (milliseconds: number) => {
-    if (milliseconds <= 0) return 'Expired';
+  const formatTimeRemaining = (timeRemaining: number) => {
+    if (!tiebreaker?.hasTimeLimit) return 'No time limit';
+    if (timeRemaining === 0) return 'Expired';
+    if (timeRemaining === Infinity) return 'No time limit';
     
+    const milliseconds = timeRemaining;
     const seconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -257,7 +285,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
               <div className="ml-3">
                 <h3 className="text-sm text-yellow-800 font-bold">URGENT: Action Required</h3>
                 <p className="text-sm text-yellow-700 mt-1">
-                  Your bid of <strong>£{tiebreaker.original_amount.toLocaleString()}</strong> for{' '}
+                  Your bid of <strong>£{Math.floor(tiebreaker.original_amount).toLocaleString()}</strong> for{' '}
                   <strong>{tiebreaker.player.name}</strong> is tied. Please submit a new higher bid to win this player.
                 </p>
                 <p className="text-sm text-yellow-700 mt-2">
@@ -301,12 +329,12 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                   <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-gray-600">Original Bid:</p>
-                      <p className="font-semibold text-[#0066FF]">£{tiebreaker.original_amount.toLocaleString()}</p>
+                      <p className="font-semibold text-[#0066FF]">£{Math.floor(tiebreaker.original_amount).toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-gray-600">Minimum New Bid:</p>
                       <p className="font-semibold text-[#0066FF]">
-                        £{tiebreaker.original_amount.toLocaleString()}
+                        £{Math.floor(tiebreaker.original_amount).toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -362,11 +390,12 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                       onChange={(e) => {
                         setHasUserModifiedBid(true);
                         const value = e.target.value;
-                        const parsedValue = value === '' ? '' : parseInt(value);
+                        const parsedValue = value === '' ? 0 : Math.floor(parseFloat(value));
                         console.log('🔤 Input changed:', { rawValue: value, parsedValue, currentBidAmount: bidAmount });
                         setBidAmount(parsedValue);
                       }}
-                      min={tiebreaker.original_amount}
+                      min={Math.floor(tiebreaker.original_amount)}
+                      step="1"
                       disabled={tiebreaker.submitted}
                       className="block w-full pl-8 pr-20 py-3 border-gray-300 rounded-xl focus:ring-[#0066FF] focus:border-[#0066FF] text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     />
@@ -375,8 +404,8 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                         type="button"
                         onClick={() => {
                           setHasUserModifiedBid(true);
-                          const current = typeof bidAmount === 'number' ? bidAmount : tiebreaker.original_amount + 10;
-                          setBidAmount(Math.max(tiebreaker.original_amount, current - 10));
+                          const current = typeof bidAmount === 'number' && bidAmount > 0 ? bidAmount : Math.floor(tiebreaker.original_amount);
+                          setBidAmount(Math.max(Math.floor(tiebreaker.original_amount), current - 1));
                         }}
                         disabled={tiebreaker.submitted}
                         className="p-1 text-gray-500 hover:text-[#0066FF] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -389,8 +418,8 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                         type="button"
                         onClick={() => {
                           setHasUserModifiedBid(true);
-                          const current = typeof bidAmount === 'number' ? bidAmount : tiebreaker.original_amount + 10;
-                          setBidAmount(current + 10);
+                          const current = typeof bidAmount === 'number' && bidAmount > 0 ? bidAmount : Math.floor(tiebreaker.original_amount);
+                          setBidAmount(current + 1);
                         }}
                         disabled={tiebreaker.submitted}
                         className="p-1 text-gray-500 hover:text-[#0066FF] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -402,9 +431,9 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                     </div>
                   </div>
                   <div className="flex justify-between mt-2 text-sm">
-                    <p className="text-gray-500">Minimum: £{tiebreaker.original_amount.toLocaleString()}</p>
+                    <p className="text-gray-500">Minimum: £{Math.floor(tiebreaker.original_amount).toLocaleString()}</p>
                     <p className="text-gray-500">
-                      Your balance: <span className="font-medium text-[#0066FF]">£{teamBalance.toLocaleString()}</span>
+                      Your balance: <span className="font-medium text-[#0066FF]">£{Math.floor(teamBalance).toLocaleString()}</span>
                     </p>
                   </div>
                 </div>
@@ -420,11 +449,11 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                     type="button"
                     onClick={() => {
                       setHasUserModifiedBid(true);
-                      setBidAmount(tiebreaker.original_amount + 10);
+                      setBidAmount(Math.floor(tiebreaker.original_amount) + 10);
                     }}
                     className="px-4 py-2 bg-blue-100 text-blue-700 font-medium rounded-xl hover:bg-blue-200 transition-colors"
                   >
-                    Quick Bid: £{(tiebreaker.original_amount + 10).toLocaleString()}
+                    Quick Bid: £{(Math.floor(tiebreaker.original_amount) + 10).toLocaleString()}
                   </button>
                   <button
                     type="submit"

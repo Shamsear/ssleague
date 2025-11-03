@@ -6,6 +6,9 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 async function fetchData() {
   try {
+    // Check and finalize expired rounds (background task)
+    fetch(`${baseUrl}/api/public/check-rounds`, { cache: 'no-store' }).catch(() => {});
+    
     // Fetch all data in parallel
     const [
       leagueStatsRes,

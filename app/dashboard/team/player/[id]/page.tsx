@@ -313,7 +313,7 @@ export default function PlayerDetailPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 text-lg">{error || 'Player not found'}</p>
-          <Link href="/dashboard/team/statistics" className="mt-4 inline-block text-[#0066FF] hover:underline">
+          <Link href="/dashboard/team/players-database" className="mt-4 inline-block text-[#0066FF] hover:underline">
             Back to Player Database
           </Link>
         </div>
@@ -332,7 +332,7 @@ export default function PlayerDetailPage() {
       <div className="glass rounded-3xl p-6 sm:p-8 max-w-5xl mx-auto hover:shadow-lg transition-all duration-300">
         {/* Header with Back Button */}
         <div className="flex items-center justify-between mb-8 hidden sm:flex">
-          <Link href="/dashboard/team/statistics" className="flex items-center text-gray-600 hover:text-[#0066FF] transition-colors">
+          <Link href="/dashboard/team/players-database" className="flex items-center text-gray-600 hover:text-[#0066FF] transition-colors">
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>

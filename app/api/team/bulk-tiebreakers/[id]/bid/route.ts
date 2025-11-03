@@ -43,10 +43,10 @@ export async function POST(
       );
     }
 
-    const userId = decodedToken.uid;
+    const firebaseUid = decodedToken.uid;
 
     // Check if user is a team
-    const userDoc = await adminDb.collection('users').doc(userId).get();
+    const userDoc = await adminDb.collection('users').doc(firebaseUid).get();
     if (!userDoc.exists) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
@@ -73,7 +73,22 @@ export async function POST(
       );
     }
 
-    console.log(`💰 Team ${userId} bidding £${bid_amount} on tiebreaker ${tiebreakerId}`);
+    // Get team_id from teams table using firebase_uid
+    const teamResult = await sql`
+      SELECT id FROM teams
+      WHERE firebase_uid = ${firebaseUid}
+    `;
+
+    if (teamResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found. Please ensure your team is registered.' },
+        { status: 404 }
+      );
+    }
+
+    const teamId = teamResult[0].id;
+
+    console.log(`💰 Team ${teamId} (firebase: ${firebaseUid}) bidding £${bid_amount} on tiebreaker ${tiebreakerId}`);
 
     // Get tiebreaker details
     const tiebreakerCheck = await sql`
@@ -123,7 +138,7 @@ export async function POST(
       SELECT status, current_bid
       FROM bulk_tiebreaker_teams
       WHERE tiebreaker_id = ${tiebreakerId}
-      AND team_id = ${userId}
+      AND team_id = ${teamId}
     `;
 
     if (teamCheck.length === 0) {
@@ -154,18 +169,22 @@ export async function POST(
       );
     }
 
-    // VALIDATION 6: Check team balance
+    // VALIDATION 6: Check team balance from Neon teams table
     const roundCheck = await sql`
       SELECT season_id FROM rounds WHERE id = ${tiebreaker.round_id}
     `;
     const seasonId = roundCheck[0]?.season_id;
 
-    const teamSeasonId = `${userId}_${seasonId}`;
-    const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+    const balanceData = await sql`
+      SELECT football_budget
+      FROM teams
+      WHERE id = ${teamId}
+      AND season_id = ${seasonId}
+    `;
     
     let balance = 1000;
-    if (teamSeasonDoc.exists) {
-      balance = teamSeasonDoc.data()?.balance || 1000;
+    if (balanceData.length > 0) {
+      balance = parseInt(balanceData[0].football_budget) || 1000;
     }
 
     if (bid_amount > balance) {
@@ -194,7 +213,7 @@ export async function POST(
         bid_time
       ) VALUES (
         ${tiebreakerId},
-        ${userId},
+        ${teamId},
         ${teamName},
         ${bid_amount},
         ${bidTime.toISOString()}
@@ -206,7 +225,7 @@ export async function POST(
       UPDATE bulk_tiebreaker_teams
       SET current_bid = ${bid_amount}
       WHERE tiebreaker_id = ${tiebreakerId}
-      AND team_id = ${userId}
+      AND team_id = ${teamId}
     `;
 
     // Update tiebreaker with new highest bid
@@ -214,13 +233,13 @@ export async function POST(
       UPDATE bulk_tiebreakers
       SET 
         current_highest_bid = ${bid_amount},
-        current_highest_team_id = ${userId},
+        current_highest_team_id = ${teamId},
         last_activity_time = ${bidTime.toISOString()},
         updated_at = NOW()
       WHERE id = ${tiebreakerId}
     `;
 
-    console.log(`✅ Bid placed: £${bid_amount} by team ${userId}`);
+    console.log(`✅ Bid placed: £${bid_amount} by team ${teamId}`);
 
     // Check if this is the last team (auto-finalize condition)
     const winnerCheck = await sql`
@@ -237,7 +256,7 @@ export async function POST(
         data: {
           tiebreaker_id: tiebreakerId,
           player_name: tiebreaker.player_name,
-          team_id: userId,
+          team_id: teamId,
           team_name: userData.teamName || 'Unknown Team',
           bid_amount,
           teams_remaining: teamsLeft,
@@ -248,7 +267,7 @@ export async function POST(
     }
 
     if (isWinner) {
-      console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${userId} wins!`);
+      console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${teamId} wins!`);
       
       // Auto-finalize immediately
       const finalizeResult = await finalizeBulkTiebreaker(tiebreakerId);

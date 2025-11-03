@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.NEON_DATABASE_URL!);
+// Use fantasy database for fixtures (tournament data)
+const sql = neon(process.env.FANTASY_DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 /**
  * GET /api/cached/firebase/fixtures
@@ -69,6 +70,25 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     console.error('Error fetching fixtures:', error);
+    
+    // If fixtures table doesn't exist, return empty array instead of error
+    if (error instanceof Error && error.message.includes('relation "fixtures" does not exist')) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: [],
+          cached: true,
+          timestamp: new Date().toISOString(),
+          note: 'Fixtures table not yet created',
+        },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+          },
+        }
+      );
+    }
+    
     return NextResponse.json(
       {
         success: false,

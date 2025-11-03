@@ -26,15 +26,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Set token in HTTP-only cookie
+    // Set token in HTTP-only cookie (name must match what endpoints expect)
     const cookieStore = await cookies();
-    cookieStore.set('auth-token', token, {
+    cookieStore.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
     });
+    
+    console.log('[set-token API] ✅ Token cookie set successfully');
 
     return NextResponse.json({ success: true });
   } catch (error) {

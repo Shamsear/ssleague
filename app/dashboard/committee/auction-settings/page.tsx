@@ -10,6 +10,8 @@ interface AuctionSettings {
   season_id: string;
   max_rounds: number;
   min_balance_per_round: number;
+  max_squad_size: number;
+  contract_duration: number;
   created_at: string;
   updated_at: string;
 }
@@ -35,6 +37,8 @@ export default function AuctionSettingsPage() {
   const [formData, setFormData] = useState({
     max_rounds: 25,
     min_balance_per_round: 30,
+    max_squad_size: 25,
+    contract_duration: 2,
   });
 
   useEffect(() => {
@@ -73,6 +77,8 @@ export default function AuctionSettingsPage() {
         setFormData({
           max_rounds: data.settings.max_rounds,
           min_balance_per_round: data.settings.min_balance_per_round,
+          max_squad_size: data.settings.max_squad_size || 25,
+          contract_duration: data.settings.contract_duration || 2,
         });
       }
     } catch (err) {
@@ -225,6 +231,54 @@ export default function AuctionSettingsPage() {
                   />
                 </div>
                 <p className="mt-1 text-xs text-gray-500">Minimum balance required per remaining round (default: 30)</p>
+              </div>
+
+              <div>
+                <label htmlFor="max_squad_size" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Maximum Squad Size
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </span>
+                  <input
+                    type="number"
+                    id="max_squad_size"
+                    value={formData.max_squad_size}
+                    onChange={(e) => setFormData({ ...formData, max_squad_size: parseInt(e.target.value) })}
+                    min="1"
+                    max="50"
+                    required
+                    className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Maximum number of players each team can have (default: 25)</p>
+              </div>
+
+              <div>
+                <label htmlFor="contract_duration" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Contract Duration (years)
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </span>
+                  <input
+                    type="number"
+                    id="contract_duration"
+                    value={formData.contract_duration}
+                    onChange={(e) => setFormData({ ...formData, contract_duration: parseInt(e.target.value) })}
+                    min="1"
+                    max="5"
+                    required
+                    className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Default contract duration for players (default: 2 years)</p>
               </div>
             </div>
 

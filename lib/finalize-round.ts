@@ -2,8 +2,12 @@ import { neon } from '@neondatabase/serverless';
 import { adminDb } from './firebase/admin';
 import { decryptBidData } from './encryption';
 import { createTiebreaker } from './tiebreaker';
+import { getTournamentDb } from './neon/tournament-config';
+import { logAuctionWin } from './transaction-logger';
+import { triggerNews } from './news/trigger';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+const tournamentSql = getTournamentDb();
 
 interface Bid {
   id: string;
@@ -35,185 +39,124 @@ interface FinalizationResult {
 }
 
 /**
- * Finalizes a round by allocating players to teams based on bids
- * 
- * SIMPLIFIED LOGIC:
- * 1. Get all bids that meet required count → sort by amount
- * 2. Allocate highest bid → remove player & team → re-sort → repeat
- * 3. For incomplete teams: give highest bid player at average winning amount
- * 4. If tie at top: create tiebreaker (teams submit, amounts replace original, re-finalize)
+ * Finalizes a round - ONE PLAYER PER TEAM ALLOCATION
  */
 export async function finalizeRound(roundId: string): Promise<FinalizationResult> {
   try {
-    // Get round details
+    console.log(`🎯 Starting finalization for round ${roundId}`);
+    
     const roundResult = await sql`
-      SELECT 
-        id,
-        position,
-        max_bids_per_team,
-        status,
-        season_id
-      FROM rounds
-      WHERE id = ${roundId}
+      SELECT id, position, max_bids_per_team, status, season_id
+      FROM rounds WHERE id = ${roundId}
     `;
 
     if (roundResult.length === 0) {
-      return {
-        success: false,
-        allocations: [],
-        tieDetected: false,
-        error: 'Round not found',
-      };
+      return { success: false, allocations: [], tieDetected: false, error: 'Round not found' };
     }
 
     const round = roundResult[0];
     const requiredBids = round.max_bids_per_team;
 
-    // Check for resolved tiebreakers and replace amounts in bids
-    const resolvedTiebreakers = await sql`
-      SELECT 
-        t.id,
-        t.player_id,
-        t.winning_team_id,
-        t.winning_amount
-      FROM tiebreakers t
-      WHERE t.round_id = ${roundId}
-      AND t.status = 'resolved'
+    // Check for active tiebreakers
+    const activeTiebreakers = await sql`
+      SELECT id FROM tiebreakers
+      WHERE round_id = ${roundId} AND status = 'active'
     `;
     
-    console.log(`🏆 Found ${resolvedTiebreakers.length} resolved tiebreakers`);
-    
-    // Map: (player_id + team_id) -> new amount from tiebreaker
-    const tiebreakerReplacements = new Map<string, number>();
-    for (const tb of resolvedTiebreakers) {
-      const key = `${tb.player_id}_${tb.winning_team_id}`;
-      tiebreakerReplacements.set(key, tb.winning_amount);
-      console.log(`  ➔ Player ${tb.player_id} + Team ${tb.winning_team_id}: £${tb.winning_amount}`);
+    if (activeTiebreakers.length > 0) {
+      console.log(`⛔ Cannot finalize - ${activeTiebreakers.length} active tiebreaker(s)`);
+      return {
+        success: false,
+        allocations: [],
+        tieDetected: true,
+        error: `${activeTiebreakers.length} tiebreaker(s) must be resolved first`,
+      };
     }
 
-    // Get all active bids (encrypted)
+    // Get resolved tiebreakers
+    const resolvedTiebreakers = await sql`
+      SELECT player_id, winning_team_id, winning_bid
+      FROM tiebreakers
+      WHERE round_id = ${roundId} AND status = 'resolved'
+    `;
+    
+    const tiebreakerReplacements = new Map<string, number>();
+    for (const tb of resolvedTiebreakers) {
+      // Parse winning_bid as number (comes as string from PostgreSQL NUMERIC type)
+      const winningAmount = typeof tb.winning_bid === 'string' ? parseFloat(tb.winning_bid) : tb.winning_bid;
+      tiebreakerReplacements.set(`${tb.player_id}_${tb.winning_team_id}`, winningAmount);
+    }
+
+    // Get and decrypt bids
     const bidsResult = await sql`
-      SELECT 
-        b.id,
-        b.team_id,
-        b.encrypted_bid_data,
-        b.round_id
-      FROM bids b
-      WHERE b.round_id = ${roundId}
-      AND b.status = 'active'
+      SELECT id, team_id, encrypted_bid_data, round_id
+      FROM bids WHERE round_id = ${roundId} AND status = 'active'
     `;
 
-    // Decrypt bids and REPLACE amounts if tiebreaker resolved
     const decryptedBids = [];
     for (const bid of bidsResult) {
       try {
         const { player_id, amount } = decryptBidData(bid.encrypted_bid_data);
+        const finalAmount = tiebreakerReplacements.get(`${player_id}_${bid.team_id}`) || amount;
         
-        // Check if this bid has a tiebreaker replacement
-        const replacementKey = `${player_id}_${bid.team_id}`;
-        const finalAmount = tiebreakerReplacements.get(replacementKey) || amount;
-        
-        if (tiebreakerReplacements.has(replacementKey)) {
-          console.log(`🔄 Replacing bid amount: £${amount} → £${finalAmount}`);
-        }
-        
-        // Get player name
-        const playerResult = await sql`
-          SELECT name FROM footballplayers WHERE id = ${player_id}
-        `;
+        const playerResult = await sql`SELECT name FROM footballplayers WHERE id = ${player_id}`;
         
         decryptedBids.push({
           id: bid.id,
           team_id: bid.team_id,
-          player_id: player_id,
+          player_id,
           player_name: playerResult[0]?.name || 'Unknown',
-          amount: finalAmount, // Use tiebreaker amount if resolved
+          amount: finalAmount,
           round_id: bid.round_id
         });
       } catch (error) {
-        console.error(`Failed to decrypt bid ${bid.id}:`, error);
-        // Skip corrupted bids
+        console.error(`Failed to decrypt bid ${bid.id}`);
       }
     }
 
-    // Sort by amount (highest first)
-    decryptedBids.sort((a, b) => b.amount - a.amount);
-
     if (decryptedBids.length === 0) {
-      return {
-        success: false,
-        allocations: [],
-        tieDetected: false,
-        error: 'No active bids found for this round',
-      };
+      return { success: true, allocations: [], tieDetected: false };
     }
 
-    // Fetch team names from Firebase (team_seasons) - BATCH ALL AT ONCE
+    // Fetch team names
     const uniqueTeamIds = [...new Set(decryptedBids.map(b => b.team_id))];
     const teamNamesMap = new Map<string, string>();
     
-    // Parallel fetch all team names
-    const teamNamePromises = uniqueTeamIds.map(async (teamId) => {
+    await Promise.all(uniqueTeamIds.map(async (teamId) => {
       try {
-        const teamSeasonId = `${teamId}_${round.season_id}`;
-        const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
-        
-        if (teamSeasonDoc.exists) {
-          return { teamId, name: teamSeasonDoc.data()?.team_name || teamId };
-        }
-        
-        const userDoc = await adminDb.collection('users').doc(teamId).get();
-        return { 
-          teamId, 
-          name: userDoc.exists ? userDoc.data()?.teamName || teamId : teamId 
-        };
-      } catch (error) {
-        console.error(`Error fetching team ${teamId}:`, error);
-        return { teamId, name: teamId };
+        const doc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
+        teamNamesMap.set(teamId, doc.exists ? doc.data()?.team_name || teamId : teamId);
+      } catch {
+        teamNamesMap.set(teamId, teamId);
       }
-    });
-    
-    const teamNamesResults = await Promise.all(teamNamePromises);
-    teamNamesResults.forEach(({ teamId, name }) => {
-      teamNamesMap.set(teamId, name);
-    });
+    }));
 
-    // Add team names to bids
-    const bidsWithTeamNames = decryptedBids.map(bid => ({
+    const bidsWithNames = decryptedBids.map(bid => ({
       ...bid,
       team_name: teamNamesMap.get(bid.team_id) || bid.team_id
     }));
 
-    // Count bids per team
+    // Separate complete vs incomplete teams
     const teamBidCounts = new Map<string, number>();
-    for (const bid of bidsWithTeamNames) {
+    bidsWithNames.forEach(bid => {
       teamBidCounts.set(bid.team_id, (teamBidCounts.get(bid.team_id) || 0) + 1);
-    }
+    });
 
-    // Separate teams by bid count
     const completeTeams = new Set<string>();
     const incompleteTeams = new Set<string>();
+    teamBidCounts.forEach((count, teamId) => {
+      if (count === requiredBids) completeTeams.add(teamId);
+      else if (count < requiredBids) incompleteTeams.add(teamId);
+    });
 
-    for (const [teamId, count] of teamBidCounts.entries()) {
-      if (count === requiredBids) {
-        completeTeams.add(teamId);
-      } else if (count < requiredBids) {
-        incompleteTeams.add(teamId);
-      }
-    }
-
-    console.log(`📊 Teams: ${completeTeams.size} complete, ${incompleteTeams.size} incomplete`);
+    console.log(`📊 ${completeTeams.size} complete, ${incompleteTeams.size} incomplete`);
 
     const allocations: AllocationResult[] = [];
     const allocatedPlayers = new Set<string>();
     const allocatedTeams = new Set<string>();
 
-    // ============================================
-    // STEP 1: Allocate to teams with complete bids
-    // ============================================
-    
-    // Get all bids from complete teams
-    let activeBids: Bid[] = bidsWithTeamNames
+    // Allocate to complete teams
+    let activeBids: Bid[] = bidsWithNames
       .filter(bid => completeTeams.has(bid.team_id))
       .map(bid => ({
         id: bid.id,
@@ -221,56 +164,36 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         team_name: bid.team_name,
         player_id: bid.player_id,
         player_name: bid.player_name,
-        amount: bid.amount, // Already replaced with tiebreaker amounts if resolved
+        amount: bid.amount,
         round_id: bid.round_id,
       }));
 
-    // Allocate one by one until all complete teams have a player
     while (activeBids.length > 0 && allocatedTeams.size < completeTeams.size) {
-      // Sort by amount DESC
       activeBids.sort((a, b) => b.amount - a.amount);
-
       const topBid = activeBids[0];
-      const topAmount = topBid.amount;
-
-      // Find all bids with same amount (ties)
-      const tiedBids = activeBids.filter(bid => 
-        bid.amount === topAmount && 
-        bid.player_id === topBid.player_id
-      );
+      const tiedBids = activeBids.filter(b => b.amount === topBid.amount && b.player_id === topBid.player_id);
 
       if (tiedBids.length > 1) {
-        // TIE DETECTED - stop and create tiebreaker
-        console.log(`⚠️ TIE: ${tiedBids.length} teams bid £${topAmount} for ${topBid.player_name}`);
+        console.log(`⚠️ TIE: ${tiedBids.length} teams bid £${topBid.amount} for ${topBid.player_name}`);
         
-        const tiebreakerResult = await createTiebreaker(
-          roundId,
-          topBid.player_id,
-          tiedBids
-        );
-
-        if (!tiebreakerResult.success) {
-          return {
-            success: false,
-            allocations: [],
-            tieDetected: true,
-            tiedBids: tiedBids,
-            error: tiebreakerResult.error || 'Failed to create tiebreaker',
-          };
+        const tbResult = await createTiebreaker(roundId, topBid.player_id, tiedBids);
+        if (!tbResult.success) {
+          return { success: false, allocations: [], tieDetected: true, tiedBids, error: tbResult.error };
         }
-
+        
+        await sql`UPDATE rounds SET status = 'tiebreaker_pending', updated_at = NOW() WHERE id = ${roundId}`;
+        
         return {
           success: false,
           allocations: [],
           tieDetected: true,
-          tiedBids: tiedBids,
-          tiebreakerId: tiebreakerResult.tiebreakerId,
-          error: 'Tie detected - resolve tiebreaker and finalize again',
+          tiedBids,
+          tiebreakerId: tbResult.tiebreakerId,
+          error: 'Tie detected - teams must resolve tiebreaker',
         };
       }
 
-      // No tie - allocate this player to this team
-      console.log(`✅ Allocate: ${topBid.player_name} → ${topBid.team_name} for £${topBid.amount}`);
+      console.log(`✅ ${topBid.player_name} → ${topBid.team_name} (£${topBid.amount})`);
       
       allocations.push({
         team_id: topBid.team_id,
@@ -284,269 +207,195 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
 
       allocatedPlayers.add(topBid.player_id);
       allocatedTeams.add(topBid.team_id);
-
-      // Remove this player and this team from remaining bids
-      activeBids = activeBids.filter(
-        bid => bid.player_id !== topBid.player_id && bid.team_id !== topBid.team_id
-      );
+      activeBids = activeBids.filter(b => b.player_id !== topBid.player_id && b.team_id !== topBid.team_id);
     }
 
-    // ============================================
-    // STEP 2: Handle incomplete teams
-    // ============================================
-
+    // Handle incomplete teams
     if (incompleteTeams.size > 0) {
-      console.log(`🛠️ Handling ${incompleteTeams.size} incomplete teams...`);
-      
-      // Calculate average winning bid
-      const averageAmount = allocations.length > 0
+      const avgAmount = allocations.length > 0
         ? Math.round(allocations.reduce((sum, a) => sum + a.amount, 0) / allocations.length)
         : 1000;
-      
-      console.log(`💰 Average winning bid: £${averageAmount}`);
 
-      // Process each incomplete team
       for (const teamId of incompleteTeams) {
         if (allocatedTeams.has(teamId)) continue;
-
-        // Get this team's bids, excluding sold players
-        const teamBids = bidsWithTeamNames
-          .filter(bid => 
-            bid.team_id === teamId && 
-            !allocatedPlayers.has(bid.player_id)
-          )
+        const teamBids = bidsWithNames
+          .filter(b => b.team_id === teamId && !allocatedPlayers.has(b.player_id))
           .sort((a, b) => b.amount - a.amount);
 
         if (teamBids.length > 0) {
-          const topBid = teamBids[0];
-          
-          console.log(`  → ${topBid.team_name}: highest available = ${topBid.player_name} at average £${averageAmount}`);
-
+          const top = teamBids[0];
           allocations.push({
-            team_id: topBid.team_id,
-            team_name: topBid.team_name,
-            player_id: topBid.player_id,
-            player_name: topBid.player_name,
-            amount: averageAmount, // Charge average, not their bid
-            bid_id: topBid.id,
+            team_id: top.team_id,
+            team_name: top.team_name,
+            player_id: top.player_id,
+            player_name: top.player_name,
+            amount: avgAmount,
+            bid_id: top.id,
             phase: 'incomplete',
           });
-
-          allocatedPlayers.add(topBid.player_id);
-          allocatedTeams.add(topBid.team_id);
+          allocatedPlayers.add(top.player_id);
+          allocatedTeams.add(top.team_id);
         }
       }
     }
 
-    return {
-      success: true,
-      allocations,
-      tieDetected: false,
-    };
+    return { success: true, allocations, tieDetected: false };
   } catch (error) {
-    console.error('Error in finalizeRound:', error);
-    return {
-      success: false,
-      allocations: [],
-      tieDetected: false,
-      error: 'Internal error during finalization',
-    };
+    console.error('Finalization error:', error);
+    return { success: false, allocations: [], tieDetected: false, error: 'Internal error' };
   }
 }
 
-/**
- * Applies the finalization results to the database
- */
 export async function applyFinalizationResults(
   roundId: string,
   allocations: AllocationResult[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Get round details for season_id
-    const roundDetails = await sql`
-      SELECT season_id FROM rounds WHERE id = ${roundId}
-    `;
-    const seasonId = roundDetails[0]?.season_id;
-
-    // Get all bid IDs for this round with encrypted data
-    const allBidsResult = await sql`
-      SELECT id, team_id, player_id, encrypted_bid_data
-      FROM bids
-      WHERE round_id = ${roundId}
-      AND status = 'active'
-    `;
+    console.log(`💾 Applying finalization results for round ${roundId}`);
+    console.log(`   Allocations:`, allocations.map(a => ({ player: a.player_name, team: a.team_name, amount: a.amount, type: typeof a.amount })));
     
-    // Decrypt to get actual amounts
-    const decryptedAllBids = [];
-    for (const bid of allBidsResult) {
+    const roundDetails = await sql`SELECT season_id, status FROM rounds WHERE id = ${roundId}`;
+    if (roundDetails.length === 0) return { success: false, error: 'Round not found' };
+    
+    const roundStatus = roundDetails[0]?.status;
+    if (roundStatus === 'completed') return { success: true };
+    if (roundStatus !== 'active' && roundStatus !== 'tiebreaker_pending') {
+      return { success: false, error: `Invalid status: ${roundStatus}` };
+    }
+    
+    const seasonId = roundDetails[0]?.season_id;
+    const allBids = await sql`SELECT id, team_id, encrypted_bid_data FROM bids WHERE round_id = ${roundId} AND status = 'active'`;
+    
+    const decryptedAll = [];
+    for (const bid of allBids) {
       try {
         const { player_id, amount } = decryptBidData(bid.encrypted_bid_data);
-        decryptedAllBids.push({
-          id: bid.id,
-          team_id: bid.team_id,
-          player_id: player_id,
-          amount: amount,
-        });
-      } catch (error) {
-        console.error(`Failed to decrypt bid ${bid.id}:`, error);
-      }
+        decryptedAll.push({ id: bid.id, team_id: bid.team_id, player_id, amount });
+      } catch {}
     }
 
-    const allBids = decryptedAllBids;
+    const winningIds = new Set(allocations.map(a => a.bid_id));
 
-    // Create sets for quick lookup
-    const winningBidIds = new Set(allocations.map(a => a.bid_id));
-    const winningTeamIds = new Set(allocations.map(a => a.team_id));
-    const winningPlayerIds = new Set(allocations.map(a => a.player_id));
-
-    // Process each allocation
-    for (const allocation of allocations) {
-      // 1. Update winning bid status with phase information
-      if (allocation.phase === 'incomplete') {
-        // For incomplete bids, store the original bid amount
-        const originalBid = decryptedAllBids.find(b => b.id === allocation.bid_id);
-        await sql`
-          UPDATE bids
-          SET status = 'won',
-              phase = 'incomplete',
-              actual_bid_amount = ${originalBid?.amount || allocation.amount},
-              updated_at = NOW()
-          WHERE id = ${allocation.bid_id}
-        `;
+    for (const alloc of allocations) {
+      if (alloc.phase === 'incomplete') {
+        const orig = decryptedAll.find(b => b.id === alloc.bid_id);
+        await sql`UPDATE bids SET status = 'won', phase = 'incomplete', actual_bid_amount = ${orig?.amount || alloc.amount}, updated_at = NOW() WHERE id = ${alloc.bid_id}`;
       } else {
-        await sql`
-          UPDATE bids
-          SET status = 'won',
-              phase = 'regular',
-              updated_at = NOW()
-          WHERE id = ${allocation.bid_id}
-        `;
+        await sql`UPDATE bids SET status = 'won', phase = 'regular', updated_at = NOW() WHERE id = ${alloc.bid_id}`;
       }
 
-      // 2. Create team_players record
-      await sql`
-        INSERT INTO team_players (
-          team_id,
-          player_id,
-          purchase_price,
-          acquired_at
-        ) VALUES (
-          ${allocation.team_id},
-          ${allocation.player_id},
-          ${allocation.amount},
-          NOW()
-        )
-      `;
+      await sql`INSERT INTO team_players (team_id, player_id, season_id, round_id, purchase_price, acquired_at) VALUES (${alloc.team_id}, ${alloc.player_id}, ${seasonId}, ${roundId}, ${alloc.amount}, NOW())`;
 
-      // 3. Get player position for position_counts update
-      const playerResult = await sql`
-        SELECT position FROM footballplayers WHERE id = ${allocation.player_id}
-      `;
-      const playerPosition = playerResult[0]?.position;
+      const playerRes = await sql`SELECT position FROM footballplayers WHERE id = ${alloc.player_id}`;
+      const pos = playerRes[0]?.position;
 
-      // 4. Update team budget and position_counts in Firebase (team_seasons)
       try {
-        if (seasonId) {
-          const teamSeasonId = `${allocation.team_id}_${seasonId}`;
-          const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
-          const teamSeasonDoc = await teamSeasonRef.get();
+        const tsId = `${alloc.team_id}_${seasonId}`;
+        const tsRef = adminDb.collection('team_seasons').doc(tsId);
+        const tsDoc = await tsRef.get();
+        
+        if (tsDoc.exists) {
+          const tsd = tsDoc.data();
+          const curr = tsd?.currency_system || 'single';
+          const budget = curr === 'dual' ? (tsd?.football_budget || 0) : (tsd?.budget || 0);
+          const posCounts = tsd?.position_counts || {};
+          if (pos && pos in posCounts) posCounts[pos] = (posCounts[pos] || 0) + 1;
           
-          if (teamSeasonDoc.exists) {
-            const teamSeasonData = teamSeasonDoc.data();
-            const currentBudget = teamSeasonData?.budget || 0;
-            const totalSpent = (teamSeasonData?.total_spent || 0) + allocation.amount;
-            const playersCount = (teamSeasonData?.players_count || 0) + 1;
-            
-            // Prepare position_counts update
-            const positionCounts = teamSeasonData?.position_counts || {};
-            if (playerPosition && playerPosition in positionCounts) {
-              positionCounts[playerPosition] = (positionCounts[playerPosition] || 0) + 1;
-            }
-            
-            // Update budget, total spent, player count, and position_counts
-            await teamSeasonRef.update({
-              budget: currentBudget - allocation.amount,
-              total_spent: totalSpent,
-              players_count: playersCount,
-              position_counts: positionCounts,
-              updated_at: new Date()
-            });
-            
-            console.log(`✅ Updated team ${allocation.team_id}: budget £${currentBudget} -> £${currentBudget - allocation.amount}, ${playerPosition} count incremented`);
+          const upd: any = {
+            total_spent: (tsd?.total_spent || 0) + alloc.amount,
+            players_count: (tsd?.players_count || 0) + 1,
+            position_counts: posCounts,
+            updated_at: new Date()
+          };
+          
+          if (curr === 'dual') {
+            upd.football_budget = budget - alloc.amount;
+            upd.football_spent = (tsd?.football_spent || 0) + alloc.amount;
           } else {
-            console.warn(`Team season doc not found for ${teamSeasonId}`);
+            upd.budget = budget - alloc.amount;
           }
+          
+          await tsRef.update(upd);
+          await logAuctionWin(alloc.team_id, seasonId, alloc.player_name, alloc.player_id, 'football', alloc.amount, budget, roundId);
         }
-      } catch (error) {
-        console.error(`Error updating team stats for team ${allocation.team_id}:`, error);
-        // Continue with finalization even if update fails
-      }
+      } catch {}
 
-      // 5. Calculate contract end season
-      const seasonNum = parseInt(seasonId?.replace(/\D/g, '') || '0');
-      const seasonPrefix = seasonId?.replace(/\d+$/, '') || 'S';
-      
-      // Get contract duration from auction settings (default 2 seasons)
-      let contractDuration = 2;
       try {
-        const settingsResult = await sql`
-          SELECT contract_duration FROM auction_settings WHERE season_id = ${seasonId} LIMIT 1
-        `;
-        if (settingsResult.length > 0 && settingsResult[0].contract_duration) {
-          contractDuration = settingsResult[0].contract_duration;
-        }
-      } catch (error) {
-        console.warn('Could not fetch contract_duration, using default of 2');
+        await sql`UPDATE teams SET 
+          football_spent = football_spent + ${alloc.amount}, 
+          football_budget = football_budget - ${alloc.amount},
+          football_players_count = football_players_count + 1,
+          updated_at = NOW() 
+        WHERE firebase_uid = ${alloc.team_id}
+        AND season_id = ${seasonId}`;
+      } catch (teamUpdateError) {
+        console.error(`Failed to update team ${alloc.team_id}:`, teamUpdateError);
       }
+
+      const sNum = parseInt(seasonId?.replace(/\D/g, '') || '0');
+      const sPre = seasonId?.replace(/\d+$/, '') || 'S';
+      let dur = 2;
+      try {
+        const setRes = await sql`SELECT contract_duration FROM auction_settings WHERE season_id = ${seasonId} LIMIT 1`;
+        if (setRes.length > 0) dur = setRes[0].contract_duration || 2;
+      } catch {}
       
-      const contractEndSeason = `${seasonPrefix}${seasonNum + contractDuration - 1}`;
-      const contractId = `contract_${allocation.player_id}_${seasonId}_${Date.now()}`;
+      const cEnd = `${sPre}${sNum + dur - 1}`;
+      const cId = `contract_${alloc.player_id}_${seasonId}_${Date.now()}`;
       
-      // 6. Update player: mark as sold, assign to team, set contract and status
-      await sql`
-        UPDATE footballplayers
-        SET 
-          is_sold = true,
-          team_id = ${allocation.team_id},
-          acquisition_value = ${allocation.amount},
-          season_id = ${seasonId},
-          round_id = ${roundId},
-          status = 'active',
-          contract_id = ${contractId},
-          contract_start_season = ${seasonId},
-          contract_end_season = ${contractEndSeason},
-          contract_length = ${contractDuration},
-          updated_at = NOW()
-        WHERE id = ${allocation.player_id}
-      `;
+      await sql`UPDATE footballplayers SET is_sold = true, team_id = ${alloc.team_id}, acquisition_value = ${alloc.amount}, season_id = ${seasonId}, round_id = ${roundId}, status = 'active', contract_id = ${cId}, contract_start_season = ${seasonId}, contract_end_season = ${cEnd}, contract_length = ${dur}, updated_at = NOW() WHERE id = ${alloc.player_id}`;
     }
 
-    // Mark all other bids for this round as 'lost'
-    for (const bid of allBids) {
-      if (!winningBidIds.has(bid.id)) {
-        await sql`
-          UPDATE bids
-          SET status = 'lost',
-              updated_at = NOW()
-          WHERE id = ${bid.id}
-        `;
+    for (const bid of decryptedAll) {
+      if (!winningIds.has(bid.id)) {
+        await sql`UPDATE bids SET status = 'lost', updated_at = NOW() WHERE id = ${bid.id}`;
       }
     }
 
-    // Update round status to completed
-    await sql`
-      UPDATE rounds
-      SET status = 'completed',
-          updated_at = NOW()
-      WHERE id = ${roundId}
-    `;
+    await sql`UPDATE rounds SET status = 'completed', updated_at = NOW() WHERE id = ${roundId}`;
+
+    try {
+      const rRes = await sql`SELECT position FROM rounds WHERE id = ${roundId}`;
+      const roundPosition = rRes[0]?.position || 'Unknown';
+      const sorted = [...allocations].sort((a, b) => b.amount - a.amount);
+      
+      if (sorted.length > 0) {
+        // Calculate stats
+        const totalSpent = allocations.reduce((s, a) => s + a.amount, 0);
+        const avgBid = Math.round(totalSpent / allocations.length);
+        const highestBid = sorted[0];
+        const lowestBid = sorted[sorted.length - 1];
+        
+        await triggerNews('auction_highlights', {
+          season_id: seasonId,
+          round_id: roundId,
+          round_position: roundPosition,
+          highest_bid: {
+            player_name: highestBid.player_name,
+            team_name: highestBid.team_name,
+            amount: highestBid.amount,
+          },
+          lowest_bid: {
+            player_name: lowestBid.player_name,
+            team_name: lowestBid.team_name,
+            amount: lowestBid.amount,
+          },
+          total_spent: totalSpent,
+          average_bid: avgBid,
+          players_allocated: allocations.length,
+          all_allocations: sorted.map(a => ({
+            player_name: a.player_name,
+            team_name: a.team_name,
+            amount: a.amount,
+            phase: a.phase,
+          })),
+        });
+      }
+    } catch {}
 
     return { success: true };
   } catch (error) {
-    console.error('Error applying finalization results:', error);
-    return {
-      success: false,
-      error: 'Failed to apply finalization results to database',
-    };
+    console.error('Apply error:', error);
+    return { success: false, error: 'Failed to apply' };
   }
 }

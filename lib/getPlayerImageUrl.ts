@@ -7,13 +7,13 @@ import path from 'path';
  */
 export function getPlayerImageUrl(playerId: string | number): string | null {
   if (typeof window !== 'undefined') {
-    // Client-side fallback - just return the most common extension
-    return `/images/players/${playerId}.png`;
+    // Client-side fallback - just return webp extension
+    return `/images/players/${playerId}.webp`;
   }
 
   try {
     const publicDir = path.join(process.cwd(), 'public', 'images', 'players');
-    const extensions = ['png', 'jpg', 'jpeg', 'webp'];
+    const extensions = ['webp', 'png', 'jpg', 'jpeg'];
     
     for (const ext of extensions) {
       const imagePath = path.join(publicDir, `${playerId}.${ext}`);

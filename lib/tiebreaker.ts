@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { logAuctionWin } from './transaction-logger';
 import { getFirestore } from 'firebase-admin/firestore';
+import { generateTiebreakerId, generateTeamTiebreakerId } from './id-generator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -36,41 +37,72 @@ export async function createTiebreaker(
       };
     }
 
+    // Check if tiebreaker already exists for this round + player
+    const existingTiebreaker = await sql`
+      SELECT id FROM tiebreakers
+      WHERE round_id = ${roundId}
+      AND player_id = ${playerId}
+      AND status = 'active'
+      LIMIT 1
+    `;
+
+    if (existingTiebreaker.length > 0) {
+      console.log(`⚠️ Tiebreaker already exists for player ${playerId} in round ${roundId}`);
+      return {
+        success: true,
+        tiebreakerId: existingTiebreaker[0].id,
+      };
+    }
+
     const originalAmount = tiedBids[0].amount;
+    const tiedTeamsCount = tiedBids.length;
+    
+    // Generate readable tiebreaker ID
+    const tiebreakerId = await generateTiebreakerId();
 
     // Create tiebreaker record (no time limit)
-    const tiebreakerResult = await sql`
+    await sql`
       INSERT INTO tiebreakers (
+        id,
         round_id,
         player_id,
         original_amount,
+        tied_teams,
         status,
         duration_minutes
       ) VALUES (
+        ${tiebreakerId},
         ${roundId},
         ${playerId},
         ${originalAmount},
+        ${tiedTeamsCount},
         'active',
         NULL
       )
-      RETURNING id
     `;
-
-    const tiebreakerId = tiebreakerResult[0].id;
 
     // Create team_tiebreaker records for each tied team
     for (const bid of tiedBids) {
+      const teamTiebreakerId = generateTeamTiebreakerId(bid.team_id, tiebreakerId);
       await sql`
         INSERT INTO team_tiebreakers (
+          id,
           tiebreaker_id,
           team_id,
+          team_name,
           original_bid_id,
-          submitted
+          old_bid_amount,
+          submitted,
+          status
         ) VALUES (
+          ${teamTiebreakerId},
           ${tiebreakerId},
           ${bid.team_id},
+          ${bid.team_name},
           ${bid.id},
-          false
+          ${bid.amount},
+          false,
+          'pending'
         )
       `;
     }
@@ -138,10 +170,15 @@ export async function allTeamsSubmitted(tiebreakerId: string): Promise<boolean> 
       WHERE tiebreaker_id = ${tiebreakerId}
     `;
 
-    if (result.length === 0) return false;
+    if (result.length === 0) {
+      console.log(`⚠️ No team_tiebreakers found for ${tiebreakerId}`);
+      return false;
+    }
 
     const { total, submitted_count } = result[0];
-    return parseInt(total) === parseInt(submitted_count);
+    const allSubmitted = parseInt(total) === parseInt(submitted_count);
+    console.log(`📋 Tiebreaker ${tiebreakerId}: ${submitted_count}/${total} teams submitted. All submitted: ${allSubmitted}`);
+    return allSubmitted;
   } catch (error) {
     console.error('Error checking team submissions:', error);
     return false;
@@ -169,6 +206,43 @@ export async function getActiveTiebreakerForTeam(
   } catch (error) {
     console.error('Error getting active tiebreaker for team:', error);
     return null;
+  }
+}
+
+/**
+ * Activate the next pending tiebreaker for a given round and player
+ */
+export async function activateNextPendingTiebreaker(
+  roundId: string,
+  playerId: string
+): Promise<void> {
+  try {
+    // Find the next pending tiebreaker for this round and player
+    const pendingTiebreakers = await sql`
+      SELECT id FROM tiebreakers
+      WHERE round_id = ${roundId}
+      AND player_id = ${playerId}
+      AND status = 'pending'
+      ORDER BY created_at ASC
+      LIMIT 1
+    `;
+
+    if (pendingTiebreakers.length > 0) {
+      const nextTiebreakerId = pendingTiebreakers[0].id;
+      
+      // Activate the tiebreaker
+      await sql`
+        UPDATE tiebreakers
+        SET status = 'active'
+        WHERE id = ${nextTiebreakerId}
+      `;
+
+      console.log(`✅ Activated next pending tiebreaker: ${nextTiebreakerId}`);
+    } else {
+      console.log(`ℹ️ No pending tiebreakers found for round ${roundId}, player ${playerId}`);
+    }
+  } catch (error) {
+    console.error('Error activating next pending tiebreaker:', error);
   }
 }
 
@@ -234,7 +308,17 @@ export async function resolveTiebreaker(
         WHERE id = ${tiebreakerId}
       `;
 
-      console.log(`✅ Tiebreaker ${tiebreakerId} excluded from allocation`);
+      // Update team_tiebreakers to excluded
+      await sql`
+        UPDATE team_tiebreakers
+        SET status = 'excluded'
+        WHERE tiebreaker_id = ${tiebreakerId}
+      `;
+
+      console.log(`⚠️ Tiebreaker ${tiebreakerId} excluded from allocation`);
+
+      // Activate the next pending tiebreaker for the same round and player
+      await activateNextPendingTiebreaker(tiebreaker.round_id, tiebreaker.player_id);
 
       return {
         success: true,
@@ -250,7 +334,7 @@ export async function resolveTiebreaker(
         tt.*,
         b.team_id
       FROM team_tiebreakers tt
-      INNER JOIN bids b ON tt.original_bid_id = b.id
+      INNER JOIN bids b ON b.id::text = tt.original_bid_id
       WHERE tt.tiebreaker_id = ${tiebreakerId}
       AND tt.submitted = true
       AND tt.new_bid_amount IS NOT NULL
@@ -267,7 +351,17 @@ export async function resolveTiebreaker(
         WHERE id = ${tiebreakerId}
       `;
 
+      // Update team_tiebreakers to excluded
+      await sql`
+        UPDATE team_tiebreakers
+        SET status = 'excluded'
+        WHERE tiebreaker_id = ${tiebreakerId}
+      `;
+
       console.log(`⚠️ Tiebreaker ${tiebreakerId} excluded - no submissions`);
+
+      // Activate the next pending tiebreaker for the same round and player
+      await activateNextPendingTiebreaker(tiebreaker.round_id, tiebreaker.player_id);
 
       return {
         success: true,
@@ -295,6 +389,13 @@ export async function resolveTiebreaker(
           status = 'tied_again',
           resolved_at = NOW()
         WHERE id = ${tiebreakerId}
+      `;
+
+      // Update team_tiebreakers to tied_again
+      await sql`
+        UPDATE team_tiebreakers
+        SET status = 'tied_again'
+        WHERE tiebreaker_id = ${tiebreakerId}
       `;
       
       // Prepare tied bids for new tiebreaker
@@ -339,67 +440,27 @@ export async function resolveTiebreaker(
       SET 
         status = 'resolved',
         winning_team_id = ${winningBid.team_id},
-        winning_amount = ${winningBid.new_bid_amount},
+        winning_bid = ${winningBid.new_bid_amount},
         resolved_at = NOW()
       WHERE id = ${tiebreakerId}
+    `;
+
+    // Update all team_tiebreakers to 'resolved' status
+    await sql`
+      UPDATE team_tiebreakers
+      SET status = 'resolved'
+      WHERE tiebreaker_id = ${tiebreakerId}
     `;
 
     console.log(
       `✅ Tiebreaker ${tiebreakerId} resolved - Winner: Team ${winningBid.team_id}, Amount: £${winningBid.new_bid_amount}`
     );
     
-    // Get player and round details for transaction logging
-    const bidsData = await sql`
-      SELECT b.player_id, b.player_name, b.round_id
-      FROM bids b
-      WHERE b.id = ${winningBid.original_bid_id}
-      LIMIT 1
-    `;
-    
-    if (bidsData.length > 0) {
-      const bidInfo = bidsData[0];
-      
-      // Get round season_id
-      const roundData = await sql`
-        SELECT season_id FROM rounds WHERE id = ${bidInfo.round_id} LIMIT 1
-      `;
-      
-      if (roundData.length > 0) {
-        const seasonId = roundData[0].season_id;
-        
-        // Update team balance and log transaction
-        const adminDb = getFirestore();
-        const teamSeasonId = `${winningBid.team_id}_${seasonId}`;
-        const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
-        const teamSeasonSnap = await teamSeasonRef.get();
-        
-        if (teamSeasonSnap.exists) {
-          const teamSeasonData = teamSeasonSnap.data();
-          const currentBalance = teamSeasonData?.euro_balance || 0;
-          const newBalance = currentBalance - winningBid.new_bid_amount;
-          
-          // Update balance
-          await teamSeasonRef.update({
-            euro_balance: newBalance,
-            updated_at: new Date()
-          });
-          
-          // Log auction win transaction
-          await logAuctionWin(
-            winningBid.team_id,
-            seasonId,
-            bidInfo.player_name || 'Unknown Player',
-            bidInfo.player_id,
-            'football',
-            winningBid.new_bid_amount,
-            currentBalance,
-            bidInfo.round_id
-          );
-          
-          console.log(`💰 Deducted £${winningBid.new_bid_amount} from team ${winningBid.team_id}`);
-        }
-      }
-    }
+    // NOTE: Budget updates and transaction logging happen during finalization
+    // The tiebreaker only marks the winner and winning amount
+
+    // Activate the next pending tiebreaker for the same round and player
+    await activateNextPendingTiebreaker(tiebreaker.round_id, tiebreaker.player_id);
 
     return {
       success: true,

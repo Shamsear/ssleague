@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
+import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
+import { generateRoundId } from '@/lib/id-generator';
+import { validateAuctionSettings } from '@/lib/auction-settings';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -36,23 +39,36 @@ export async function GET(request: NextRequest) {
       // Trigger finalization for each expired round (non-blocking)
       expiredRounds.forEach(async (round) => {
         try {
-          // Call the finalization endpoint
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-          await fetch(`${baseUrl}/api/admin/rounds/${round.id}/finalize`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': request.headers.get('Authorization') || ''
-            }
-          });
-          console.log(`✅ Auto-finalized expired round: ${round.id} (${round.position})`);
+          console.log(`🔄 Auto-finalizing expired round: ${round.id} (${round.position})`);
           
-          // Broadcast WebSocket event for round finalization
-          if (typeof global.wsBroadcast === 'function') {
-            global.wsBroadcast(`season:${seasonId}`, {
-              type: 'round_finalized',
-              data: { roundId: round.id, position: round.position }
-            });
+          // Call finalization logic directly
+          const finalizationResult = await finalizeRound(round.id);
+          
+          if (finalizationResult.success) {
+            // Apply finalization results to database
+            const applyResult = await applyFinalizationResults(
+              round.id,
+              finalizationResult.allocations
+            );
+            
+            if (applyResult.success) {
+              console.log(`✅ Auto-finalized expired round: ${round.id} (${round.position})`);
+              
+              // Broadcast WebSocket event for round finalization
+              if (typeof global.wsBroadcast === 'function') {
+                global.wsBroadcast(`season:${seasonId}`, {
+                  type: 'round_finalized',
+                  data: { roundId: round.id, position: round.position }
+                });
+              }
+            } else {
+              console.error(`❌ Failed to apply finalization results for round ${round.id}:`, applyResult.error);
+            }
+          } else if (finalizationResult.tieDetected) {
+            console.log(`⚠️ Tie detected in round ${round.id}, tiebreaker created`);
+            // Mark round as finalizing (already done in createTiebreaker)
+          } else {
+            console.error(`❌ Failed to finalize round ${round.id}:`, finalizationResult.error);
           }
         } catch (error) {
           console.error(`❌ Failed to auto-finalize round ${round.id}:`, error);
@@ -67,7 +83,11 @@ export async function GET(request: NextRequest) {
         SELECT 
           r.*,
           COUNT(DISTINCT b.id) as total_bids,
-          COUNT(DISTINCT b.team_id) as teams_bid
+          COUNT(DISTINCT b.team_id) as teams_bid,
+          CASE 
+            WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
+            ELSE 0
+          END as player_count
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         WHERE r.season_id = ${seasonId} AND r.status = ${status}
@@ -79,7 +99,11 @@ export async function GET(request: NextRequest) {
         SELECT 
           r.*,
           COUNT(DISTINCT b.id) as total_bids,
-          COUNT(DISTINCT b.team_id) as teams_bid
+          COUNT(DISTINCT b.team_id) as teams_bid,
+          CASE 
+            WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
+            ELSE 0
+          END as player_count
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         WHERE r.season_id = ${seasonId}
@@ -91,7 +115,11 @@ export async function GET(request: NextRequest) {
         SELECT 
           r.*,
           COUNT(DISTINCT b.id) as total_bids,
-          COUNT(DISTINCT b.team_id) as teams_bid
+          COUNT(DISTINCT b.team_id) as teams_bid,
+          CASE 
+            WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
+            ELSE 0
+          END as player_count
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         GROUP BY r.id
@@ -159,6 +187,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate that auction settings exist for this season
+    const validation = await validateAuctionSettings(season_id);
+    if (!validation.valid) {
+      return NextResponse.json(
+        { success: false, error: validation.error },
+        { status: validation.status || 400 }
+      );
+    }
+
     // Check if there's already an active round for this season
     const activeRound = await sql`
       SELECT id FROM rounds
@@ -174,6 +211,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Generate readable round ID
+    const roundId = await generateRoundId();
+    
     // Calculate end time (always use UTC)
     const now = new Date();
     const endTime = new Date(now.getTime() + (parseFloat(duration_hours) * 3600 * 1000));
@@ -181,6 +221,7 @@ export async function POST(request: NextRequest) {
     // Create the round - timestamptz columns handle UTC automatically
     const newRound = await sql`
       INSERT INTO rounds (
+        id,
         season_id,
         position,
         max_bids_per_team,
@@ -189,6 +230,7 @@ export async function POST(request: NextRequest) {
         created_at,
         updated_at
       ) VALUES (
+        ${roundId},
         ${season_id},
         ${position},
         ${max_bids_per_team},

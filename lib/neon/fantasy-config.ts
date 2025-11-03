@@ -31,6 +31,11 @@ export function getFantasyDb() {
   return fantasySql;
 }
 
+// Tournament DB is just an alias for fantasy DB (same database)
+export function getTournamentDb() {
+  return fantasySql;
+}
+
 // Helper function to test fantasy database connection
 export async function testFantasyConnection() {
   try {

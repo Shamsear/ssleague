@@ -28,6 +28,21 @@ export async function GET(
 
     const round = rounds[0];
 
+    // Fetch players for bulk rounds from round_players table
+    let roundPlayers = [];
+    if (round.round_type === 'bulk') {
+      roundPlayers = await sql`
+        SELECT 
+          rp.*,
+          COUNT(rb.id) as bid_count
+        FROM round_players rp
+        LEFT JOIN round_bids rb ON rp.round_id::text = rb.round_id::text AND rp.player_id = rb.player_id
+        WHERE rp.round_id::text = ${roundId}
+        GROUP BY rp.id
+        ORDER BY rp.status, rp.player_name
+      `;
+    }
+
     // Fetch bids for this round with player information
     const bidsRaw = await sql`
       SELECT 
@@ -128,6 +143,7 @@ export async function GET(
         ...round,
         bids,
         bidStats,
+        roundPlayers,
       },
     });
   } catch (error: any) {
@@ -276,9 +292,9 @@ export async function DELETE(
     const { id } = await params;
     const roundId = id; // Round ID is a UUID string, not an integer
 
-    // Check if round exists and can be deleted
+    // Check if round exists
     const rounds = await sql`
-      SELECT status FROM rounds WHERE id = ${roundId} LIMIT 1;
+      SELECT status, season_id FROM rounds WHERE id = ${roundId} LIMIT 1;
     `;
 
     if (rounds.length === 0) {
@@ -288,15 +304,95 @@ export async function DELETE(
       );
     }
 
-    // Don't allow deleting active or completed rounds
-    if (rounds[0].status === 'active' || rounds[0].status === 'completed') {
+    const round = rounds[0];
+
+    // Don't allow deleting active rounds
+    if (round.status === 'active') {
       return NextResponse.json(
-        { success: false, error: 'Cannot delete active or completed rounds' },
+        { success: false, error: 'Cannot delete active rounds. Please wait for it to expire or finalize it first.' },
         { status: 400 }
       );
     }
 
-    // Delete the round (cascade will delete related players and bids)
+    // If round is completed, reverse the finalization
+    if (round.status === 'completed') {
+      console.log(`🔄 Reversing finalization for round ${roundId}...`);
+      
+      // Get all won bids for this round
+      const wonBids = await sql`
+        SELECT b.id, b.team_id, b.player_id, b.encrypted_bid_data
+        FROM bids b
+        WHERE b.round_id = ${roundId}
+        AND b.status = 'won'
+      `;
+
+      for (const bid of wonBids) {
+        // 1. Remove player from team (team_players)
+        await sql`
+          DELETE FROM team_players
+          WHERE player_id = ${bid.player_id}
+          AND team_id = ${bid.team_id}
+        `;
+
+        // 2. Reset player status
+        await sql`
+          UPDATE footballplayers
+          SET 
+            is_sold = false,
+            team_id = NULL,
+            acquisition_value = NULL,
+            season_id = NULL,
+            round_id = NULL,
+            status = 'available',
+            contract_id = NULL,
+            contract_start_season = NULL,
+            contract_end_season = NULL,
+            contract_length = NULL,
+            updated_at = NOW()
+          WHERE id = ${bid.player_id}
+        `;
+
+        // 3. Refund team budget (Firebase)
+        try {
+          const { amount } = decryptBidData(bid.encrypted_bid_data);
+          const teamSeasonId = `${bid.team_id}_${round.season_id}`;
+          const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
+          const teamSeasonDoc = await teamSeasonRef.get();
+          
+          if (teamSeasonDoc.exists) {
+            const teamSeasonData = teamSeasonDoc.data();
+            const currentBudget = teamSeasonData?.budget || 0;
+            const totalSpent = Math.max(0, (teamSeasonData?.total_spent || 0) - amount);
+            const playersCount = Math.max(0, (teamSeasonData?.players_count || 0) - 1);
+            
+            // Get player position for position_counts update
+            const playerResult = await sql`SELECT position FROM footballplayers WHERE id = ${bid.player_id}`;
+            const playerPosition = playerResult[0]?.position;
+            
+            const positionCounts = teamSeasonData?.position_counts || {};
+            if (playerPosition && playerPosition in positionCounts) {
+              positionCounts[playerPosition] = Math.max(0, (positionCounts[playerPosition] || 0) - 1);
+            }
+            
+            await teamSeasonRef.update({
+              budget: currentBudget + amount,
+              total_spent: totalSpent,
+              players_count: playersCount,
+              position_counts: positionCounts,
+              updated_at: new Date()
+            });
+            
+            console.log(`✅ Refunded team ${bid.team_id}: £${amount}`);
+          }
+        } catch (error) {
+          console.error(`Error refunding team ${bid.team_id}:`, error);
+        }
+      }
+
+      console.log(`✅ Finalization reversed for round ${roundId}`);
+    }
+
+    // Delete the round (cascade will delete related bids)
     await sql`DELETE FROM rounds WHERE id = ${roundId};`;
 
     return NextResponse.json({

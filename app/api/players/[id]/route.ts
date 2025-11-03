@@ -7,7 +7,15 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const player = await getPlayerById(id);
+    
+    // Try to find by database ID first
+    let player = await getPlayerById(id);
+    
+    // If not found, try to find by player_id (the actual football player ID)
+    if (!player) {
+      const { getPlayerByPlayerId } = await import('@/lib/neon/players');
+      player = await getPlayerByPlayerId(id);
+    }
     
     if (!player) {
       return NextResponse.json(

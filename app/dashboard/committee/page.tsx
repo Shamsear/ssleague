@@ -664,6 +664,21 @@ export default function CommitteeDashboard() {
                   <h4 className="font-bold text-gray-800 group-hover:text-green-600 transition-colors mb-1 text-sm">Create Rounds</h4>
                   <p className="text-xs text-gray-600">Manage auction rounds</p>
                 </Link>
+
+                <Link href="/dashboard/committee/bulk-rounds" className="group glass rounded-2xl p-4 border border-white/20 hover:border-orange-500/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-600/20">
+                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <h4 className="font-bold text-gray-800 group-hover:text-orange-600 transition-colors mb-1 text-sm">Bulk Rounds</h4>
+                  <p className="text-xs text-gray-600">Manage bulk bidding</p>
+                </Link>
               </div>
             )}
           </div>

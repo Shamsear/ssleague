@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { checkAndFinalizeExpiredRound } from '@/lib/lazy-finalize-round';
+import { decryptBidData } from '@/lib/encryption';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -10,8 +12,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    // Check Authorization header first (takes priority for fresh tokens)
+    const authHeader = request.headers.get('Authorization');
+    let token = null;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+    
+    // Fallback to cookie if no Authorization header
+    if (!token) {
+      const cookieStore = await cookies();
+      token = cookieStore.get('token')?.value;
+    }
 
     if (!token) {
       return NextResponse.json(
@@ -38,6 +51,9 @@ export async function GET(
     // All authenticated users with valid tokens are allowed to access team routes
 
     const { id: roundId } = await params;
+
+    // Check and auto-finalize if expired (lazy finalization)
+    await checkAndFinalizeExpiredRound(roundId);
 
     // Get round details (seasons table doesn't exist in Neon, only rounds)
     const roundResult = await sql`
@@ -91,22 +107,95 @@ export async function GET(
       });
     }
 
-    // Get team data from Firestore
-    const teamId = userId;
+    // Get team's season data first to check registration
+    let teamSeasonId = `${userId}_${round.season_id}`;
+    let teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
     
-    // Get team's season data to access budget
-    const teamSeasonId = `${teamId}_${round.season_id}`;
-    const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
-    
+    // Fallback: Query by user_id field if direct lookup fails
     if (!teamSeasonDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'Team not registered for this season' },
-        { status: 404 }
-      );
+      const teamSeasonQuery = await adminDb.collection('team_seasons')
+        .where('user_id', '==', userId)
+        .where('season_id', '==', round.season_id)
+        .where('status', '==', 'registered')
+        .limit(1)
+        .get();
+      
+      if (teamSeasonQuery.empty) {
+        return NextResponse.json(
+          { success: false, error: 'Team not registered for this season' },
+          { status: 404 }
+        );
+      }
+      
+      teamSeasonDoc = teamSeasonQuery.docs[0];
+      teamSeasonId = teamSeasonDoc.id;
     }
     
     const teamSeasonData = teamSeasonDoc.data();
-    const teamBalance = teamSeasonData?.budget || 0;
+    const teamName = teamSeasonData?.team_name || teamSeasonData?.name || 'Team';
+    
+    // Get or create team_id from teams table
+    console.log(`🔍 Looking up team for Firebase UID: ${userId}`);
+    let teamIdResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1
+    `;
+    
+    let teamId: string;
+    if (teamIdResult.length === 0) {
+      // Team doesn't exist in Neon - use team_id from Firebase and create record
+      console.log(`🔨 Creating new team record for user ${userId}`);
+      
+      // Get team_id from Firebase team_seasons (already exists there)
+      teamId = teamSeasonData?.team_id;
+      
+      if (!teamId) {
+        console.error(`❌ No team_id found in Firebase team_seasons for user ${userId}`);
+        return NextResponse.json(
+          { success: false, error: 'Team configuration error - no team_id in Firebase' },
+          { status: 500 }
+        );
+      }
+      
+      // Get budget from Firebase to populate Neon
+      const footballBudget = teamSeasonData?.football_budget || 0;
+      const footballSpent = teamSeasonData?.football_spent || 0;
+      
+      try {
+        await sql`
+          INSERT INTO teams (id, name, firebase_uid, season_id, football_budget, football_spent, created_at, updated_at)
+          VALUES (${teamId}, ${teamName}, ${userId}, ${round.season_id}, ${footballBudget}, ${footballSpent}, NOW(), NOW())
+        `;
+        console.log(`✅ Created team: ${teamId} (${teamName}) with budget £${footballBudget}`);
+      } catch (insertError: any) {
+        if (insertError.code === '23505') {
+          // Duplicate - someone else created it, fetch it
+          console.log(`⚠️ Duplicate team (race condition), fetching...`);
+          teamIdResult = await sql`SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1`;
+          teamId = teamIdResult[0]?.id || teamId;
+        } else {
+          throw insertError;
+        }
+      }
+    } else {
+      teamId = teamIdResult[0].id;
+      console.log(`✅ Found team: ${teamId}`);
+    }
+    
+    console.log(`   Team Name: ${teamName}`);
+    console.log(`   Season: ${round.season_id}`);
+    
+    // Determine currency system and get appropriate balance
+    const currencySystem = teamSeasonData?.currency_system || 'single';
+    const isDualCurrency = currencySystem === 'dual';
+    
+    let teamBalance = 0;
+    if (isDualCurrency) {
+      // For dual currency, use football_budget (since this is for football players)
+      teamBalance = teamSeasonData?.football_budget || 0;
+    } else {
+      // For single currency, use budget
+      teamBalance = teamSeasonData?.budget || 0;
+    }
 
     // Get available players for this position
     const playersResult = await sql`
@@ -157,12 +246,13 @@ export async function GET(
       ORDER BY is_starred_by_user DESC, p.overall_rating DESC
     `;
 
-    // Get user's bids for this round
+    // Get user's bids for this round (including encrypted_bid_data for decryption)
     const bidsResult = await sql`
       SELECT 
         b.id,
         b.player_id,
         b.amount,
+        b.encrypted_bid_data,
         b.round_id,
         b.created_at,
         p.id as "player.id",
@@ -181,23 +271,37 @@ export async function GET(
       ORDER BY b.created_at DESC
     `;
 
-    // Transform bids to nest player object
-    const myBids = bidsResult.map((bid) => ({
-      id: bid.id,
-      player_id: bid.player_id,
-      amount: bid.amount,
-      round_id: bid.round_id,
-      created_at: bid.created_at,
-      player: {
-        id: bid['player.id'],
-        name: bid['player.name'],
-        position: bid['player.position'],
-        team_name: bid['player.team_name'],
-        overall_rating: bid['player.overall_rating'],
-        playing_style: bid['player.playing_style'],
-        is_starred: bid['player.is_starred'],
-      },
-    }));
+    // Transform bids to nest player object and decrypt amounts
+    const myBids = bidsResult.map((bid) => {
+      // Decrypt the bid amount if it's null (blind bidding)
+      let decryptedAmount = bid.amount;
+      if (bid.amount === null && bid.encrypted_bid_data) {
+        try {
+          const decrypted = decryptBidData(bid.encrypted_bid_data);
+          decryptedAmount = decrypted.amount;
+        } catch (err) {
+          console.error('Failed to decrypt bid:', err);
+          decryptedAmount = 0; // Fallback
+        }
+      }
+
+      return {
+        id: bid.id,
+        player_id: bid.player_id,
+        amount: decryptedAmount,
+        round_id: bid.round_id,
+        created_at: bid.created_at,
+        player: {
+          id: bid['player.id'],
+          name: bid['player.name'],
+          position: bid['player.position'],
+          team_name: bid['player.team_name'],
+          overall_rating: bid['player.overall_rating'],
+          playing_style: bid['player.playing_style'],
+          is_starred: bid['player.is_starred'],
+        },
+      };
+    });
 
     // Get auction progress (completed rounds and total rounds)
     const roundsProgressResult = await sql`

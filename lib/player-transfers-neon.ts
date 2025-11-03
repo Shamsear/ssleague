@@ -184,15 +184,30 @@ export async function releasePlayerNeon(
         WHERE id = ${compositeId}
       `;
     } else {
-      // For footballplayers
+      // For footballplayers - make them auction-eligible again
       await sql`
         UPDATE footballplayers
         SET team_id = NULL,
             status = 'free_agent',
             contract_id = NULL,
+            is_sold = false,
+            is_auction_eligible = true,
             updated_at = NOW()
         WHERE player_id = ${playerData.player_id} AND season_id = ${currentSeasonId}
       `;
+      
+      // Decrement football_players_count in teams table
+      try {
+        await sql`
+          UPDATE teams
+          SET football_players_count = GREATEST(football_players_count - 1, 0),
+              updated_at = NOW()
+          WHERE id = ${playerData.team_id}
+        `;
+        console.log(`✅ Decremented football_players_count for team ${playerData.team_id}`);
+      } catch (error) {
+        console.error('Warning: Failed to update team counter:', error);
+      }
     }
     
     // Update team balance
@@ -352,6 +367,17 @@ export async function transferPlayerNeon(
             updated_at = NOW()
         WHERE player_id = ${playerData.player_id} AND season_id = ${currentSeasonId}
       `;
+      
+      // Update team counters: decrement old team, increment new team
+      try {
+        await Promise.all([
+          sql`UPDATE teams SET football_players_count = GREATEST(football_players_count - 1, 0) WHERE id = ${playerData.team_id}`,
+          sql`UPDATE teams SET football_players_count = football_players_count + 1 WHERE id = ${newTeamId}`
+        ]);
+        console.log(`✅ Updated team counters for transfer`);
+      } catch (error) {
+        console.error('Warning: Failed to update team counters:', error);
+      }
     }
     
     // Update team balances

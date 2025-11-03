@@ -3,10 +3,11 @@ import { cookies } from 'next/headers';
 
 export async function POST() {
   try {
-    // Clear token cookie
+    // Clear token cookie (name must match what we set)
     const cookieStore = await cookies();
-    cookieStore.delete('auth-token');
-
+    cookieStore.delete('token');
+    
+    console.log('[clear-token API] ✅ Token cookie cleared');
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error clearing token:', error);

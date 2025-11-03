@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuctionDb } from '@/lib/neon/auction-config';
 import { triggerNews } from '@/lib/news/trigger';
+import { generateRoundId, generateBulkRoundId } from '@/lib/id-generator';
 
 export async function GET(request: NextRequest) {
   try {
@@ -71,11 +72,16 @@ export async function POST(request: NextRequest) {
       round_type = 'normal',
       max_bids_per_team = 5,
       base_price = 10,
-      duration_seconds = 300,
+      duration_hours = 0,
+      duration_minutes = 5,
+      duration_seconds = 0,
       start_time,
       end_time,
       status = 'active'
     } = body;
+    
+    // Convert duration to total seconds
+    const totalDurationSeconds = (duration_hours * 3600) + (duration_minutes * 60) + duration_seconds;
     
     if (!season_id) {
       return NextResponse.json(
@@ -84,14 +90,20 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // Generate readable ID based on round type
+    const roundId = round_type === 'bulk' 
+      ? await generateBulkRoundId()
+      : await generateRoundId();
+    console.log(`📝 Generated ${round_type} round ID: ${roundId}`);
+    
     const result = await sql`
       INSERT INTO rounds (
-        season_id, position, position_group, round_number, round_type,
+        id, season_id, position, position_group, round_number, round_type,
         max_bids_per_team, base_price, duration_seconds, start_time, end_time, status
       )
       VALUES (
-        ${season_id}, ${position}, ${position_group}, ${round_number}, ${round_type},
-        ${max_bids_per_team}, ${base_price}, ${duration_seconds}, 
+        ${roundId}, ${season_id}, ${position}, ${position_group}, ${round_number}, ${round_type},
+        ${max_bids_per_team}, ${base_price}, ${totalDurationSeconds}, 
         ${start_time ? new Date(start_time) : null}, 
         ${end_time ? new Date(end_time) : null}, 
         ${status}
@@ -106,7 +118,7 @@ export async function POST(request: NextRequest) {
           season_id,
           position,
           round_number,
-          duration_seconds,
+          duration_seconds: totalDurationSeconds,
         });
       } catch (newsError) {
         console.error('Failed to generate auction news:', newsError);

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { neon } from '@neondatabase/serverless';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { getAuthToken } from '@/lib/auth/token-helper';
-import { neon } from '@neondatabase/serverless';
-import { batchGetFirebaseFields } from '@/lib/firebase/batch';
 import { getCached, setCached } from '@/lib/firebase/cache';
+import { checkAndFinalizeExpiredRound } from '@/lib/lazy-finalize-round';
+import { batchGetFirebaseFields } from '@/lib/firebase/batch';
+import { decryptBidData } from '@/lib/encryption';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -110,12 +112,57 @@ export async function GET(request: NextRequest) {
         console.log(`Found team_season with ID: ${teamSeasonId}`);
       }
     }
+    
+    // Get team ID from database using Firebase UID FIRST
+    let teamIdResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1
+    `;
+    
+    let dbTeamId = teamIdResult.length > 0 ? teamIdResult[0].id : null;
+    
+    if (dbTeamId) {
+      console.log(`✅ Found team ID: ${dbTeamId} for user ${userId}`);
+    } else {
+      console.log(`⚠️ No team record found for user ${userId} - creating...`);
+      
+      // Get team_id from Firebase team_seasons
+      dbTeamId = teamSeasonData?.team_id;
+      
+      if (dbTeamId) {
+        // Create team in Neon with ID from Firebase
+        const teamName = teamSeasonData?.team_name || userData?.teamName || 'Team';
+        const footballBudget = teamSeasonData?.football_budget || 0;
+        const footballSpent = teamSeasonData?.football_spent || 0;
+        
+        try {
+          await sql`
+            INSERT INTO teams (id, name, firebase_uid, season_id, football_budget, football_spent, created_at, updated_at)
+            VALUES (${dbTeamId}, ${teamName}, ${userId}, ${seasonId}, ${footballBudget}, ${footballSpent}, NOW(), NOW())
+          `;
+          console.log(`✅ Created team: ${dbTeamId} (${teamName})`);
+        } catch (insertError: any) {
+          if (insertError.code === '23505') {
+            // Duplicate - someone else created it, fetch it
+            console.log(`⚠️ Duplicate team (race condition), fetching...`);
+            teamIdResult = await sql`SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1`;
+            dbTeamId = teamIdResult[0]?.id || dbTeamId;
+          } else {
+            console.error('Error creating team:', insertError);
+          }
+        }
+      } else {
+        console.warn(`⚠️ No team_id found in Firebase for user ${userId}`);
+        dbTeamId = null;
+      }
+    }
+    
     // Determine currency system (dual or single)
     const currencySystem = teamSeasonData?.currency_system || 'single';
     const isDualCurrency = currencySystem === 'dual';
     
+    // Create teamData with CORRECT team ID from database
     const teamData: any = {
-      id: userId,
+      id: dbTeamId || userId, // Use database team ID if exists, fallback to userId
       name: teamSeasonData?.team_name || userData?.teamName || 'Team',
       logo_url: teamSeasonData?.team_logo || userData?.logoUrl || null,
       currency_system: currencySystem,
@@ -145,11 +192,17 @@ export async function GET(request: NextRequest) {
 
     // Fetch active rounds for this season from Neon
     console.log('🔍 Fetching active rounds for season:', seasonId);
+    
+    // First, get all active rounds to check for expiration
     const activeRoundsResult = await sql`
       SELECT 
         r.*,
         COUNT(DISTINCT b.id) FILTER (WHERE b.status = 'active') as total_bids,
-        COUNT(DISTINCT b.team_id) FILTER (WHERE b.status = 'active') as teams_bid
+        COUNT(DISTINCT b.team_id) FILTER (WHERE b.status = 'active') as teams_bid,
+        CASE 
+          WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
+          ELSE 0
+        END as player_count
       FROM rounds r
       LEFT JOIN bids b ON r.id = b.round_id
       WHERE r.season_id = ${seasonId}
@@ -160,6 +213,11 @@ export async function GET(request: NextRequest) {
     console.log('✅ Found active rounds:', activeRoundsResult.length);
     if (activeRoundsResult.length > 0) {
       console.log('   Round details:', activeRoundsResult.map(r => ({ id: r.id, position: r.position, status: r.status })));
+      
+      // Auto-finalize any expired rounds (lazy finalization)
+      for (const round of activeRoundsResult) {
+        await checkAndFinalizeExpiredRound(round.id);
+      }
     }
     
     // For each active round, fetch tiebreaker information
@@ -258,13 +316,20 @@ export async function GET(request: NextRequest) {
         };
       });
       
+      // Extract round number from ID (last digits)
+      const roundNumberMatch = round.id.match(/\d+$/);
+      const roundNumber = roundNumberMatch ? parseInt(roundNumberMatch[0], 10) : 0;
+      
       return {
         id: round.id,
+        round_number: roundNumber,
         season_id: round.season_id,
         position: round.position,
+        round_type: round.round_type,
         status: round.status,
         end_time: round.end_time,
         max_bids_per_team: round.max_bids_per_team,
+        player_count: round.player_count || 0,
         total_bids: parseInt(round.total_bids || '0'),
         teams_bid: parseInt(round.teams_bid || '0'),
         created_at: round.created_at,
@@ -272,11 +337,13 @@ export async function GET(request: NextRequest) {
       };
     }));
 
+    // dbTeamId already retrieved earlier and used in teamData.id
+    
     // Fetch team's current bids from SQL/Neon (where they're actually stored)
     const activeRoundIds = activeRounds.map(r => r.id);
     let activeBids: any[] = [];
     
-    if (activeRoundIds.length > 0) {
+    if (activeRoundIds.length > 0 && dbTeamId) {
       const bidsResult = await sql`
         SELECT 
           b.id,
@@ -284,6 +351,7 @@ export async function GET(request: NextRequest) {
           b.player_id,
           b.round_id,
           b.amount,
+          b.encrypted_bid_data,
           b.status,
           b.created_at,
           p.name as player_name,
@@ -292,44 +360,80 @@ export async function GET(request: NextRequest) {
           p.team_name as player_team
         FROM bids b
         INNER JOIN footballplayers p ON b.player_id = p.id
-        WHERE b.team_id = ${userId}
+        WHERE b.team_id = ${dbTeamId}
         AND b.round_id = ANY(${activeRoundIds})
         AND b.status = 'active'
         ORDER BY b.created_at DESC
       `;
       
-      activeBids = bidsResult.map(bid => ({
-        id: bid.id,
-        team_id: bid.team_id,
-        player_id: bid.player_id,
-        round_id: bid.round_id,
-        amount: bid.amount,
-        status: bid.status,
-        created_at: bid.created_at,
-        player: {
-          id: bid.player_id,
-          name: bid.player_name,
-          position: bid.player_position,
-          overall_rating: bid.overall_rating,
-          nfl_team: bid.player_team,
-        },
-      }));
+      activeBids = bidsResult.map(bid => {
+        // Decrypt the bid amount if it's null (blind bidding)
+        let decryptedAmount = bid.amount;
+        if (bid.amount === null && bid.encrypted_bid_data) {
+          try {
+            const decrypted = decryptBidData(bid.encrypted_bid_data);
+            decryptedAmount = decrypted.amount;
+          } catch (err) {
+            console.error('Failed to decrypt bid:', err);
+            decryptedAmount = 0; // Fallback
+          }
+        }
+
+        return {
+          id: bid.id,
+          team_id: bid.team_id,
+          player_id: bid.player_id,
+          round_id: bid.round_id,
+          amount: decryptedAmount,
+          status: bid.status,
+          created_at: bid.created_at,
+          player: {
+            id: bid.player_id,
+            name: bid.player_name,
+            position: bid.player_position,
+            overall_rating: bid.overall_rating,
+            nfl_team: bid.player_team,
+          },
+        };
+      });
     }
     
-    console.log(`✅ Fetched ${activeBids.length} active bids from SQL for team ${userId}`);
+    console.log(`✅ Fetched ${activeBids.length} active bids from SQL for team ${dbTeamId || userId}`);
 
-    // Fetch team's players
-    const playersSnapshot = await adminDb
-      .collection('players')
-      .where('team_id', '==', userId)
-      .get();
-    const players = playersSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as any[];
+    // Fetch team's players from Neon (team_players table)
+    const playersResult = dbTeamId ? await sql`
+      SELECT 
+        tp.id,
+        tp.player_id,
+        tp.team_id,
+        tp.purchase_price,
+        tp.acquired_at,
+        fp.name,
+        fp.position,
+        fp.position_group,
+        fp.team_name as nfl_team,
+        fp.overall_rating,
+        fp.player_id as football_player_id
+      FROM team_players tp
+      INNER JOIN footballplayers fp ON tp.player_id = fp.id
+      WHERE tp.team_id = ${dbTeamId}
+      ORDER BY tp.acquired_at DESC
+    ` : [];
+    
+    const players = playersResult.map(player => ({
+      id: player.id,
+      name: player.name,
+      position: player.position,
+      position_group: player.position_group,
+      nfl_team: player.nfl_team,
+      overall_rating: player.overall_rating,
+      acquisition_value: player.purchase_price,
+      player_id: player.football_player_id || player.player_id,
+    }));
 
     // Fetch tiebreakers from Neon (if any)
-    const tiebreakersResult = await sql`
+    // Include both regular tiebreakers (team_id matches) and bulk round tiebreakers (composite ID pattern)
+    const tiebreakersResult = dbTeamId ? await sql`
       SELECT 
         t.*,
         p.name as player_name,
@@ -344,12 +448,13 @@ export async function GET(request: NextRequest) {
         tt.submitted_at as team_submitted_at
       FROM tiebreakers t
       INNER JOIN footballplayers p ON t.player_id = p.id
-      INNER JOIN rounds r ON t.round_id = r.id
+      LEFT JOIN rounds r ON t.round_id = r.id
       INNER JOIN team_tiebreakers tt ON t.id = tt.tiebreaker_id
-      WHERE tt.team_id = ${userId}
+      WHERE (tt.team_id = ${dbTeamId} OR tt.id LIKE ${userId + '_%'})
       AND t.status = 'active'
+      AND t.season_id = ${seasonId}
       ORDER BY t.created_at DESC
-    `;
+    ` : [];
     
     const tiebreakers = tiebreakersResult.map(tiebreaker => ({
       id: tiebreaker.id,

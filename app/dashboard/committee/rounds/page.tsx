@@ -1,14 +1,17 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { adminDb } from '@/lib/firebase/admin-client';
+import { extractIdNumberAsInt } from '@/lib/id-utils';
 import Link from 'next/link';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import FinalizationProgress from '@/components/FinalizationProgress';
 import { useModal } from '@/hooks/useModal';
+import { MultiRoundAutoFinalize } from '@/components/MultiRoundAutoFinalize';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -88,73 +91,68 @@ export default function RoundsManagementPage() {
     }
   }, [user, loading, router]);
 
-  // Fetch current season and available positions
-  const fetchData = useCallback(async () => {
-      if (!user || user.role !== 'committee_admin') return;
+  // Fetch all data in parallel
+  const fetchAllData = useCallback(async () => {
+    if (!user || user.role !== 'committee_admin') return;
 
-      try {
-        // Fetch active season
-        const seasonsQuery = query(
-          collection(db, 'seasons'),
-          where('isActive', '==', true),
-          limit(1)
-        );
-        const seasonsSnapshot = await getDocs(seasonsQuery);
-
-        if (!seasonsSnapshot.empty) {
-          const seasonId = seasonsSnapshot.docs[0].id;
-          setCurrentSeasonId(seasonId);
-        }
-
-        // Fetch available positions from auction eligible players
-        const playersResponse = await fetch('/api/players?is_auction_eligible=true');
-        const { success, data } = await playersResponse.json();
-        if (success && data.length > 0) {
-          const positions = [...new Set(data.map((p: any) => p.position).filter(Boolean))] as string[];
-          setAvailablePositions(positions.sort());
-        }
-      } catch (err) {
-        console.error('Error fetching data:', err);
-      }
-    }, [user]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Fetch rounds function
-  const fetchRounds = useCallback(async (showLoader = true) => {
-    if (!currentSeasonId) return;
-
-    if (showLoader) setIsLoading(true);
+    setIsLoading(true);
     
     try {
-      const params = new URLSearchParams({ season_id: currentSeasonId });
-      const response = await fetch(`/api/admin/rounds?${params}`, {
-        headers: { 'Cache-Control': 'no-cache' },
-      });
-      const { success, data } = await response.json();
+      // Fetch active season first (needed for other requests)
+      const seasonsQuery = query(
+        collection(db, 'seasons'),
+        where('isActive', '==', true),
+        limit(1)
+      );
+      const seasonsSnapshot = await getDocs(seasonsQuery);
 
-      if (success) {
-        const dataString = JSON.stringify(data);
+      if (seasonsSnapshot.empty) {
+        setIsLoading(false);
+        return;
+      }
+
+      const seasonId = seasonsSnapshot.docs[0].id;
+      setCurrentSeasonId(seasonId);
+
+      // Fetch rounds, positions, and tiebreakers in parallel
+      const roundsParams = new URLSearchParams({ season_id: seasonId });
+      const [roundsResponse, playersResponse, tbResponse] = await Promise.all([
+        fetch(`/api/admin/rounds?${roundsParams}`, {
+          headers: { 'Cache-Control': 'no-cache' },
+        }),
+        fetch('/api/players?is_auction_eligible=true'),
+        fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${seasonId}&status=active,pending`).catch(err => {
+          console.error('Error fetching tiebreakers:', err);
+          return null;
+        })
+      ]);
+
+      // Process rounds
+      const { success: roundsSuccess, data: roundsData } = await roundsResponse.json();
+      if (roundsSuccess) {
+        const dataString = JSON.stringify(roundsData);
         if (dataString !== previousRoundsRef.current) {
           previousRoundsRef.current = dataString;
-          setRounds(data);
+          setRounds(roundsData);
           
           // Initialize add time inputs for active rounds
-          data.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
-            if (!addTimeInputs[r.id]) {
-              setAddTimeInputs(prev => ({ ...prev, [r.id]: '10' }));
-            }
+          roundsData.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+            setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
           });
         }
       }
-      
-      // Fetch tiebreakers
-      try {
-        const tbResponse = await fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${currentSeasonId}&status=active,tied_again`);
+
+      // Process positions
+      const { success: playersSuccess, data: playersData } = await playersResponse.json();
+      if (playersSuccess && playersData.length > 0) {
+        const positions = [...new Set(playersData.map((p: any) => p.position).filter(Boolean))] as string[];
+        setAvailablePositions(positions.sort());
+      }
+
+      // Process tiebreakers
+      if (tbResponse) {
         const tbData = await tbResponse.json();
-        
+        console.log('🔍 Tiebreaker response:', tbData);
         if (tbData.success && tbData.data?.tiebreakers) {
           const tiebreakersByRound: {[key: string]: Tiebreaker[]} = {};
           tbData.data.tiebreakers.forEach((tb: Tiebreaker) => {
@@ -163,36 +161,123 @@ export default function RoundsManagementPage() {
             }
             tiebreakersByRound[tb.round_id].push(tb);
           });
-          setRoundTiebreakers(tiebreakersByRound);
+          console.log('🔍 Tiebreakers by round:', tiebreakersByRound);
+          // Only update if tiebreakers actually changed
+          const tbString = JSON.stringify(tiebreakersByRound);
+          setRoundTiebreakers(prev => {
+            if (JSON.stringify(prev) !== tbString) {
+              return tiebreakersByRound;
+            }
+            return prev;
+          });
         }
-      } catch (tbErr) {
-        console.error('Error fetching tiebreakers:', tbErr);
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  // Fetch rounds only (for updates)
+  const fetchRounds = useCallback(async (showLoader = true) => {
+    if (!currentSeasonId) return;
+
+    if (showLoader) setIsLoading(true);
+    
+    try {
+      const params = new URLSearchParams({ season_id: currentSeasonId });
+      
+      // Fetch rounds and tiebreakers in parallel
+      const [roundsResponse, tbResponse] = await Promise.all([
+        fetch(`/api/admin/rounds?${params}`, {
+          headers: { 'Cache-Control': 'no-cache' },
+        }),
+        fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${currentSeasonId}&status=active,pending`).catch(err => {
+          console.error('Error fetching tiebreakers:', err);
+          return null;
+        })
+      ]);
+
+      const { success, data } = await roundsResponse.json();
+      if (success) {
+        const dataString = JSON.stringify(data);
+        if (dataString !== previousRoundsRef.current) {
+          previousRoundsRef.current = dataString;
+          setRounds(data);
+          
+          // Initialize add time inputs for active rounds
+          data.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+            setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
+          });
+        }
+      }
+      
+      // Process tiebreakers
+      if (tbResponse) {
+        const tbData = await tbResponse.json();
+        console.log('🔍 Tiebreaker response (fetchRounds):', tbData);
+        if (tbData.success && tbData.data?.tiebreakers) {
+          const tiebreakersByRound: {[key: string]: Tiebreaker[]} = {};
+          tbData.data.tiebreakers.forEach((tb: Tiebreaker) => {
+            if (!tiebreakersByRound[tb.round_id]) {
+              tiebreakersByRound[tb.round_id] = [];
+            }
+            tiebreakersByRound[tb.round_id].push(tb);
+          });
+          console.log('🔍 Tiebreakers by round (fetchRounds):', tiebreakersByRound);
+          // Only update if tiebreakers actually changed
+          const tbString = JSON.stringify(tiebreakersByRound);
+          setRoundTiebreakers(prev => {
+            if (JSON.stringify(prev) !== tbString) {
+              return tiebreakersByRound;
+            }
+            return prev;
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching rounds:', err);
     } finally {
       if (showLoader) setIsLoading(false);
     }
-  }, [currentSeasonId, addTimeInputs]);
+  }, [currentSeasonId]);
 
   // Initial fetch
   useEffect(() => {
-    fetchRounds(true);
-  }, [fetchRounds]);
+    fetchAllData();
+  }, [fetchAllData]);
 
-  // WebSocket for real-time updates - replaces polling
+  // WebSocket for real-time updates
   useWebSocket({
     channel: `season:${currentSeasonId}`,
     enabled: !!currentSeasonId,
     onMessage: useCallback((message: any) => {
       console.log('🔴 Rounds WebSocket message:', message);
       
-      if (message.type === 'round_finalized' || message.type === 'round_update') {
+      if (
+        message.type === 'bid_placed' ||
+        message.type === 'bid_cancelled' ||
+        message.type === 'round_finalized' ||
+        message.type === 'round_updated' ||
+        message.type === 'round_status_changed'
+      ) {
         // Refetch rounds when there's an update
         fetchRounds(false);
       }
     }, [fetchRounds]),
   });
+
+  // Polling interval as fallback (every 3 seconds)
+  useEffect(() => {
+    if (!currentSeasonId) return;
+
+    const interval = setInterval(() => {
+      fetchRounds(false);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentSeasonId, fetchRounds]);
 
   // Timer management for active rounds
   useEffect(() => {
@@ -411,6 +496,55 @@ export default function RoundsManagementPage() {
     // Modal will show error state, user can close it
   };
 
+  const handleResolveTiebreaker = async (tiebreakerId: string, roundId: string) => {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Resolve Tiebreaker',
+      message: 'This will resolve the tiebreaker and finalize the round if all tiebreakers are resolved. Continue?',
+      confirmText: 'Resolve',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      // Call the tiebreaker resolution API
+      const response = await fetch(`/api/tiebreakers/${tiebreakerId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolutionType: 'auto' }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showAlert({
+          type: 'success',
+          title: 'Tiebreaker Resolved',
+          message: result.message || 'Tiebreaker resolved successfully'
+        });
+        
+        // Refresh rounds to update tiebreaker status
+        fetchRounds(false);
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Resolution Failed',
+          message: result.error || 'Failed to resolve tiebreaker'
+        });
+      }
+    } catch (err) {
+      console.error('Error resolving tiebreaker:', err);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to resolve tiebreaker'
+      });
+    }
+  };
+
   const toggleRound = async (roundId: string) => {
     const newExpanded = new Set(expandedRounds);
     if (newExpanded.has(roundId)) {
@@ -512,9 +646,11 @@ export default function RoundsManagementPage() {
   };
 
   const activeRounds = rounds.filter(r => r.status === 'active');
+  const finalizingRounds = rounds.filter(r => r.status === 'tiebreaker_pending');
+  const expiredRounds = rounds.filter(r => r.status === 'expired');
   const completedRounds = rounds.filter(r => r.status === 'completed');
 
-  if (loading || !user || user.role !== 'committee_admin') {
+  if (loading || !user || user.role !== 'committee_admin' || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -527,6 +663,12 @@ export default function RoundsManagementPage() {
 
   return (
     <div className="min-h-screen py-4 sm:py-8 px-4">
+      {/* ✅ Auto-finalize all active rounds */}
+      <MultiRoundAutoFinalize 
+        rounds={rounds} 
+        onFinalizationComplete={() => fetchRounds(false)}
+      />
+      
       <div className="container mx-auto max-w-7xl">
         {/* Header */}
         <div className="glass rounded-3xl p-4 sm:p-6 mb-4 backdrop-blur-md border border-white/20 shadow-xl">
@@ -712,7 +854,7 @@ export default function RoundsManagementPage() {
                             </svg>
                           </div>
                           <h3 className="text-base sm:text-lg font-semibold">
-                            {round.position} Round #{round.id.substring(0, 8)}
+                            {round.position} Round #{extractIdNumberAsInt(round.id)}
                           </h3>
                         </div>
                         <div className="text-sm font-medium px-4 py-2 rounded-xl bg-white/80 backdrop-blur-sm shadow-sm flex items-center">
@@ -778,15 +920,32 @@ export default function RoundsManagementPage() {
                                       {tb.submitted_count}/{tb.teams_count} teams submitted
                                     </p>
                                   </div>
-                                  <Link 
-                                    href="/dashboard/committee/tiebreakers"
-                                    className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors flex items-center"
-                                  >
-                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                    Manage
-                                  </Link>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleResolveTiebreaker(tb.id, round.id)}
+                                      disabled={tb.submitted_count < tb.teams_count}
+                                      className={`px-3 py-1.5 text-white text-sm rounded-lg transition-colors flex items-center ${
+                                        tb.submitted_count < tb.teams_count
+                                          ? 'bg-gray-400 cursor-not-allowed'
+                                          : 'bg-green-600 hover:bg-green-700'
+                                      }`}
+                                      title={tb.submitted_count < tb.teams_count ? 'Waiting for all teams to submit' : 'Resolve tiebreaker'}
+                                    >
+                                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                      </svg>
+                                      Resolve
+                                    </button>
+                                    <Link 
+                                      href="/dashboard/committee/tiebreakers"
+                                      className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors flex items-center"
+                                    >
+                                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                      View
+                                    </Link>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -806,6 +965,163 @@ export default function RoundsManagementPage() {
               )}
             </div>
           </div>
+
+          {/* Finalizing Rounds Section (rounds with tiebreakers) */}
+          {finalizingRounds.length > 0 && (
+            <div className="glass rounded-2xl p-4 sm:p-6 mb-6 border border-yellow-200/30 backdrop-blur-sm">
+              <h2 className="text-lg sm:text-xl font-bold mb-4 gradient-text flex items-center">
+                <svg className="w-5 h-5 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Finalizing Rounds (Tiebreakers Pending)
+                <span className="ml-2 px-2.5 py-0.5 rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium">
+                  {finalizingRounds.length}
+                </span>
+              </h2>
+              
+              <div className="space-y-4">
+                {finalizingRounds.map(round => {
+                  console.log(`🔍 Rendering finalizing round ${round.id}, tiebreakers:`, roundTiebreakers[round.id]);
+                  return (
+                  <div
+                    key={round.id}
+                    className="glass rounded-xl p-4 sm:p-5 border border-yellow-200/30 hover:shadow-lg transition-all duration-300 backdrop-blur-sm"
+                  >
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div className="flex items-center">
+                          <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0 mr-3">
+                            <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          </div>
+                          <h3 className="text-base sm:text-lg font-semibold">
+                            {round.position} Round #{extractIdNumberAsInt(round.id)}
+                          </h3>
+                        </div>
+                        <span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium">
+                          Resolving Tiebreakers
+                        </span>
+                      </div>
+                      
+                      {/* Tiebreakers */}
+                      {roundTiebreakers[round.id] && roundTiebreakers[round.id].length > 0 && (
+                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                          <div className="flex items-center mb-3">
+                            <h4 className="font-semibold text-yellow-800">Tiebreakers ({roundTiebreakers[round.id].length})</h4>
+                          </div>
+                          <div className="space-y-2">
+                            {roundTiebreakers[round.id].map((tb: Tiebreaker) => (
+                              <div key={tb.id} className="bg-white p-3 rounded-lg border border-yellow-300">
+                                <div className="flex justify-between items-start gap-3">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-gray-900">{tb.player_name}</p>
+                                    <p className="text-sm text-gray-600">{tb.position} - £{tb.original_amount.toLocaleString()}</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      {tb.submitted_count}/{tb.teams_count} teams submitted
+                                    </p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleResolveTiebreaker(tb.id, round.id)}
+                                      disabled={tb.submitted_count < tb.teams_count}
+                                      className={`px-3 py-1.5 text-white text-sm rounded-lg transition-colors flex items-center ${
+                                        tb.submitted_count < tb.teams_count
+                                          ? 'bg-gray-400 cursor-not-allowed'
+                                          : 'bg-green-600 hover:bg-green-700'
+                                      }`}
+                                    >
+                                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                      </svg>
+                                      Resolve
+                                    </button>
+                                    <Link 
+                                      href="/dashboard/committee/tiebreakers"
+                                      className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors flex items-center"
+                                    >
+                                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                      View
+                                    </Link>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Expired Rounds Section (rounds that failed finalization) */}
+          {expiredRounds.length > 0 && (
+            <div className="glass rounded-2xl p-4 sm:p-6 mb-6 border border-orange-200/30 backdrop-blur-sm">
+              <h2 className="text-lg sm:text-xl font-bold mb-4 gradient-text flex items-center">
+                <svg className="w-5 h-5 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Expired Rounds (Needs Manual Finalization)
+                <span className="ml-2 px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-medium">
+                  {expiredRounds.length}
+                </span>
+              </h2>
+              
+              <div className="space-y-4">
+                {expiredRounds.map(round => (
+                  <div
+                    key={round.id}
+                    className="glass rounded-xl p-4 sm:p-5 border border-orange-200/30 hover:shadow-lg transition-all duration-300 backdrop-blur-sm"
+                  >
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div className="flex items-center">
+                          <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mr-3">
+                            <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <h3 className="text-base sm:text-lg font-semibold">
+                            {round.position} Round #{extractIdNumberAsInt(round.id)}
+                          </h3>
+                        </div>
+                        <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-medium">
+                          Expired
+                        </span>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleFinalizeRound(round.id)}
+                          className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all duration-200 text-sm flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          Finalize Round
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRound(round.id)}
+                          className="bg-red-500/10 text-red-500 px-4 py-2 rounded-xl hover:bg-red-500/20 transition-all duration-200 text-sm flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Completed Rounds Section */}
           <div className="glass rounded-2xl p-4 sm:p-6 border border-white/20 backdrop-blur-sm">
@@ -846,7 +1162,7 @@ export default function RoundsManagementPage() {
                           </div>
                           <div>
                             <h3 className="text-base sm:text-lg font-semibold">
-                              {round.position} Round #{round.id.substring(0, 8)}
+                              {round.position} Round #{extractIdNumberAsInt(round.id)}
                             </h3>
                             <p className="text-xs text-gray-500 mt-1">
                               {round.created_at && new Date(round.created_at).toLocaleString('en-US', { 
@@ -938,7 +1254,7 @@ export default function RoundsManagementPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                           </svg>
                           <span className="font-semibold text-gray-900">
-                            {round.position} Round #{round.id.substring(0, 8)}
+                            {round.position} Round #{extractIdNumberAsInt(round.id)}
                           </span>
                           {details && (
                             <span className="text-sm text-gray-500">

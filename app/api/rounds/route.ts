@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
+import { generateRoundId, generateBulkRoundId } from '@/lib/id-generator';
 
 const sql = neon(process.env.NEON_DATABASE_URL!);
 
@@ -98,10 +99,15 @@ export async function POST(request: NextRequest) {
       position_group,
       round_type = 'normal',
       base_price = 10,
-      duration_seconds = 300,
+      duration_hours = 0,
+      duration_minutes = 5,
+      duration_seconds = 0,
       start_time,
       player_ids = [],
     } = body;
+    
+    // Convert duration to total seconds
+    const totalDurationSeconds = (duration_hours * 3600) + (duration_minutes * 60) + duration_seconds;
 
     // Validate required fields
     if (!season_id || !round_number) {
@@ -125,27 +131,63 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the round
+    // Generate readable ID based on round type
+    const roundId = round_type === 'bulk' 
+      ? await generateBulkRoundId()
+      : await generateRoundId();
+    console.log(`📝 Generated ${round_type} round ID: ${roundId}`);
+
+    // Create the round with readable ID
     const newRound = await sql`
       INSERT INTO rounds (
-        season_id, round_number, position, position_group, 
+        id, season_id, round_number, position, position_group, 
         round_type, base_price, duration_seconds, start_time, status
       )
       VALUES (
-        ${season_id}, ${round_number}, ${position}, ${position_group},
-        ${round_type}, ${base_price}, ${duration_seconds}, ${start_time}, 'draft'
+        ${roundId}, ${season_id}, ${round_number}, ${position}, ${position_group},
+        ${round_type}, ${base_price}, ${totalDurationSeconds}, ${start_time}, 'draft'
       )
       RETURNING *;
     `;
 
     const round = newRound[0];
 
-    // Add players if provided
-    if (player_ids.length > 0) {
+    // For BULK rounds, automatically add ALL auction-eligible players
+    if (round_type === 'bulk') {
+      console.log('🔄 Bulk round created - adding all auction-eligible players...');
+      
+      // Fetch all auction-eligible players from footballplayers table
+      const eligiblePlayers = await sql`
+        SELECT id, name, position, position_group
+        FROM footballplayers
+        WHERE is_auction_eligible = true
+        AND is_sold = false
+        ORDER BY position, name
+      `;
+
+      console.log(`📊 Found ${eligiblePlayers.length} auction-eligible players`);
+
+      // Insert all eligible players into round_players
+      for (const player of eligiblePlayers) {
+        await sql`
+          INSERT INTO round_players (
+            round_id, player_id, player_name, position, position_group, base_price, status
+          )
+          VALUES (
+            ${round.id}, ${player.id}, ${player.name}, ${player.position}, 
+            ${player.position_group}, ${base_price}, 'pending'
+          );
+        `;
+      }
+
+      console.log(`✅ Added ${eligiblePlayers.length} players to bulk round ${round.round_number}`);
+    }
+    // For NORMAL rounds, add manually selected players if provided
+    else if (player_ids.length > 0) {
       // Fetch player details
       const players = await sql`
-        SELECT id, full_name, position, auction_eligible_position_group
-        FROM players
+        SELECT id, name, position, position_group
+        FROM footballplayers
         WHERE id = ANY(${player_ids});
       `;
 
@@ -153,11 +195,11 @@ export async function POST(request: NextRequest) {
       for (const player of players) {
         await sql`
           INSERT INTO round_players (
-            round_id, player_id, player_name, position, position_group, base_price
+            round_id, player_id, player_name, position, position_group, base_price, status
           )
           VALUES (
-            ${round.id}, ${player.id}, ${player.full_name}, ${player.position}, 
-            ${player.auction_eligible_position_group}, ${base_price}
+            ${round.id}, ${player.id}, ${player.name}, ${player.position}, 
+            ${player.position_group}, ${base_price}, 'pending'
           );
         `;
       }

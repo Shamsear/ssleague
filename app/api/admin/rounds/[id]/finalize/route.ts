@@ -15,8 +15,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check for token in cookie or Authorization header
     const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    let token = cookieStore.get('token')?.value;
+    
+    // If no cookie, check Authorization header
+    if (!token) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
 
     if (!token) {
       return NextResponse.json(
@@ -78,10 +87,10 @@ export async function POST(
 
     const round = roundResult[0];
 
-    // Check if round is active
-    if (round.status !== 'active') {
+    // Check if round is active or tiebreaker_pending (allow finalization of stuck rounds)
+    if (round.status !== 'active' && round.status !== 'tiebreaker_pending') {
       return NextResponse.json(
-        { success: false, error: 'Round is not active' },
+        { success: false, error: 'Round must be active or tiebreaker_pending to finalize' },
         { status: 400 }
       );
     }
@@ -91,10 +100,10 @@ export async function POST(
 
     if (!finalizationResult.success) {
       if (finalizationResult.tieDetected) {
-        // Tie detected - tiebreaker created, mark round as 'finalizing'
+        // Tie detected - tiebreaker created, mark round as 'tiebreaker_pending'
         await sql`
           UPDATE rounds
-          SET status = 'finalizing',
+          SET status = 'tiebreaker_pending',
               updated_at = NOW()
           WHERE id = ${roundId}
         `;

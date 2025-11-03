@@ -215,89 +215,343 @@ export default function MobileNav() {
                 </div>
               )}
               
-              {/* Current Season */}
-              <div className="border-b border-black/10">
-                <Link 
-                  href="/season/current" 
-                  className="block py-4"
-                  onClick={() => toggleMenu(false)}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-2xl font-normal text-gray-900">Season</span>
-                    <span className="text-sm text-gray-700 mt-1">Current season</span>
+              {/* Public Pages - Show for everyone */}
+              {!user && (
+                <>
+                  {/* Current Season */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/season/current" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">Season</span>
+                        <span className="text-sm text-gray-700 mt-1">Current season</span>
+                      </div>
+                    </Link>
                   </div>
-                </Link>
-              </div>
+                  
+                  {/* Players */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/players" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">Players</span>
+                        <span className="text-sm text-gray-700 mt-1">Player database</span>
+                      </div>
+                    </Link>
+                  </div>
+                  
+                  {/* Teams */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/teams" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">Teams</span>
+                        <span className="text-sm text-gray-700 mt-1">All teams</span>
+                      </div>
+                    </Link>
+                  </div>
+                  
+                  {/* Archive */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/seasons" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">Archive</span>
+                        <span className="text-sm text-gray-700 mt-1">Past seasons</span>
+                      </div>
+                    </Link>
+                  </div>
+                  
+                  {/* Awards */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/awards" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">🏆 Awards</span>
+                        <span className="text-sm text-gray-700 mt-1">Trophy cabinet</span>
+                      </div>
+                    </Link>
+                  </div>
+                  
+                  {/* News */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/news" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">📰 News</span>
+                        <span className="text-sm text-gray-700 mt-1">Latest updates</span>
+                      </div>
+                    </Link>
+                  </div>
+                </>
+              )}
               
-              {/* Players */}
-              <div className="border-b border-black/10">
-                <Link 
-                  href="/players" 
-                  className="block py-4"
-                  onClick={() => toggleMenu(false)}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-2xl font-normal text-gray-900">Players</span>
-                    <span className="text-sm text-gray-700 mt-1">Player database</span>
+              {/* Super Admin Navigation */}
+              {user && user.role === 'super_admin' && (
+                <>
+                  {/* Seasons */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('seasons')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Seasons</span>
+                          <span className="text-sm text-gray-700 mt-1">Season management</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'seasons' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'seasons' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/superadmin/seasons" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>All Seasons</Link>
+                        <Link href="/dashboard/superadmin/seasons/create" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Create Season</Link>
+                        <Link href="/dashboard/superadmin/historical-seasons" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Historical Seasons</Link>
+                        <Link href="/dashboard/superadmin/season-player-stats" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Season Stats</Link>
+                      </div>
+                    )}
                   </div>
-                </Link>
-              </div>
+                  
+                  {/* Management */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('management')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Management</span>
+                          <span className="text-sm text-gray-700 mt-1">Users & teams</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'management' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'management' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/superadmin/users" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Users</Link>
+                        <Link href="/dashboard/superadmin/teams" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Teams</Link>
+                        <Link href="/dashboard/superadmin/players" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Players</Link>
+                        <Link href="/dashboard/superadmin/invites" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Invites</Link>
+                        <Link href="/dashboard/superadmin/password-requests" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Password Requests</Link>
+                        <Link href="/dashboard/superadmin/monitoring" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Monitoring</Link>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
               
-              {/* Teams */}
-              <div className="border-b border-black/10">
-                <Link 
-                  href="/teams" 
-                  className="block py-4"
-                  onClick={() => toggleMenu(false)}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-2xl font-normal text-gray-900">Teams</span>
-                    <span className="text-sm text-gray-700 mt-1">All teams</span>
+              {/* Committee Admin Navigation */}
+              {user && user.role === 'committee_admin' && (
+                <>
+                  {/* Teams & Players */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('teams')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Teams & Players</span>
+                          <span className="text-sm text-gray-700 mt-1">Manage participants</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'teams' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'teams' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/committee/teams" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>All Teams</Link>
+                        <Link href="/dashboard/committee/players" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>All Players</Link>
+                        <Link href="/dashboard/committee/registration" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Registration</Link>
+                        <Link href="/dashboard/committee/database" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Database</Link>
+                      </div>
+                    )}
                   </div>
-                </Link>
-              </div>
+                  
+                  {/* Rounds & Matches */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('rounds')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Rounds & Matches</span>
+                          <span className="text-sm text-gray-700 mt-1">Auction management</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'rounds' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'rounds' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/committee/rounds" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>All Rounds</Link>
+                        <Link href="/dashboard/committee/bulk-rounds" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Bulk Rounds</Link>
+                        <Link href="/dashboard/committee/tiebreakers" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Tiebreakers</Link>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Tournament */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('tournament')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Tournament</span>
+                          <span className="text-sm text-gray-700 mt-1">Competition setup</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'tournament' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'tournament' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/committee/team-management" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Team Management</Link>
+                        <Link href="/dashboard/committee/team-management/categories" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Categories</Link>
+                        <Link href="/dashboard/committee/team-management/match-days" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Match Days</Link>
+                        <Link href="/dashboard/committee/team-management/team-standings" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Team Standings</Link>
+                        <Link href="/dashboard/committee/team-management/player-stats" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Player Statistics</Link>
+                        <Link href="/dashboard/committee/team-management/team-members" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Team Members</Link>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Settings */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('settings')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Settings</span>
+                          <span className="text-sm text-gray-700 mt-1">Configuration</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'settings' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'settings' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/committee/auction-settings" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Auction Settings</Link>
+                        <Link href="/dashboard/committee/position-groups" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Position Groups</Link>
+                        <Link href="/dashboard/committee/player-selection" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Player Selection</Link>
+                        <Link href="/dashboard/committee/awards" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>🏆 Awards Management</Link>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
               
-              {/* Archive */}
-              <div className="border-b border-black/10">
-                <Link 
-                  href="/seasons" 
-                  className="block py-4"
-                  onClick={() => toggleMenu(false)}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-2xl font-normal text-gray-900">Archive</span>
-                    <span className="text-sm text-gray-700 mt-1">Past seasons</span>
+              {/* Team Navigation */}
+              {user && user.role === 'team' && (
+                <>
+                  {/* My Team */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('myteam')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">My Team</span>
+                          <span className="text-sm text-gray-700 mt-1">Team management</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'myteam' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'myteam' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/team/profile" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Team Profile</Link>
+                        <Link href="/dashboard/team/players" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>My Players</Link>
+                        <Link href="/dashboard/team/budget-planner" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Budget Planner</Link>
+                        <Link href="/dashboard/team/players-database" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Player Database</Link>
+                      </div>
+                    )}
                   </div>
-                </Link>
-              </div>
-              
-              {/* Awards */}
-              <div className="border-b border-black/10">
-                <Link 
-                  href="/awards" 
-                  className="block py-4"
-                  onClick={() => toggleMenu(false)}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-2xl font-normal text-gray-900">🏆 Awards</span>
-                    <span className="text-sm text-gray-700 mt-1">Trophy cabinet</span>
+                  
+                  {/* Matches */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('matches')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Matches</span>
+                          <span className="text-sm text-gray-700 mt-1">Fixtures & results</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'matches' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'matches' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/team/matches" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>All Matches</Link>
+                        <Link href="/dashboard/team/fixtures" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Fixtures</Link>
+                      </div>
+                    )}
                   </div>
-                </Link>
-              </div>
-              
-              {/* News */}
-              <div className="border-b border-black/10">
-                <Link 
-                  href="/news" 
-                  className="block py-4"
-                  onClick={() => toggleMenu(false)}
-                >
-                  <div className="flex flex-col">
-                    <span className="text-2xl font-normal text-gray-900">📰 News</span>
-                    <span className="text-sm text-gray-700 mt-1">Latest updates</span>
+                  
+                  {/* Leaderboards */}
+                  <div className="border-b border-black/10">
+                    <button 
+                      className="w-full py-4 text-left"
+                      onClick={() => toggleSubmenu('leaderboards')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-2xl font-normal text-gray-900">Leaderboards</span>
+                          <span className="text-sm text-gray-700 mt-1">Stats & rankings</span>
+                        </div>
+                        <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'leaderboards' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMenu === 'leaderboards' && (
+                      <div className="pl-6 pb-4 space-y-2">
+                        <Link href="/dashboard/team/team-leaderboard" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Team Leaderboard</Link>
+                        <Link href="/dashboard/team/player-leaderboard" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Player Leaderboard</Link>
+                        <Link href="/dashboard/team/all-teams" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>All Teams</Link>
+                      </div>
+                    )}
                   </div>
-                </Link>
-              </div>
+                </>
+              )}
               
               {/* Auth Links */}
               {!user && (
@@ -329,68 +583,6 @@ export default function MobileNav() {
                 </>
               )}
               
-              {/* Expandable Menu - Team Management */}
-              {user && (
-                <div className="border-b border-black/10">
-                  <button 
-                    className="w-full py-4 text-left"
-                    onClick={() => toggleSubmenu('team')}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-2xl font-normal text-gray-900">Team Management</span>
-                        <span className="text-sm text-gray-700 mt-1">Your team tools</span>
-                      </div>
-                      <svg 
-                        className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'team' ? 'rotate-180' : ''}`}
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-                      </svg>
-                    </div>
-                  </button>
-                  {expandedMenu === 'team' && (
-                    <div className="pl-6 pb-4 space-y-2">
-                      <Link href="/team/players" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Team Players</Link>
-                      <Link href="/team/matches" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Matches</Link>
-                      <Link href="/team/standings" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Standings</Link>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Expandable Menu - Resources */}
-              {user && (
-                <div className="border-b border-black/10">
-                  <button 
-                    className="w-full py-4 text-left"
-                    onClick={() => toggleSubmenu('resources')}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-2xl font-normal text-gray-900">Resources</span>
-                        <span className="text-sm text-gray-700 mt-1">Stats & data</span>
-                      </div>
-                      <svg 
-                        className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'resources' ? 'rotate-180' : ''}`}
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-                      </svg>
-                    </div>
-                  </button>
-                  {expandedMenu === 'resources' && (
-                    <div className="pl-6 pb-4 space-y-2">
-                      <Link href="/players" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>Player Database</Link>
-                      <Link href="/teams" className="block text-base text-gray-800 hover:text-gray-900 py-1" onClick={() => toggleMenu(false)}>All Teams</Link>
-                    </div>
-                  )}
-                </div>
-              )}
               
               {/* Logout for authenticated users */}
               {user && (

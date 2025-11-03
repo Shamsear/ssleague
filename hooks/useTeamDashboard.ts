@@ -47,7 +47,7 @@ export function useDeleteBid() {
 
   return useMutation({
     mutationFn: async (bidId: number) => {
-      const response = await fetch(`/api/team/bids/${bidId}`, {
+      const response = await fetchWithTokenRefresh(`/api/team/bids/${bidId}`, {
         method: 'DELETE',
       });
       
@@ -109,7 +109,9 @@ export function useRoundData(roundId: string | undefined, enabled: boolean = tru
     queryFn: async () => {
       if (!roundId) throw new Error('Round ID required');
       
-      const response = await fetchWithTokenRefresh(`/api/team/round/${roundId}`);
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = Date.now();
+      const response = await fetchWithTokenRefresh(`/api/team/round/${roundId}?_t=${timestamp}`);
       const data = await response.json();
 
       if (!data.success) {
@@ -122,9 +124,10 @@ export function useRoundData(roundId: string | undefined, enabled: boolean = tru
       return data;
     },
     enabled: enabled && !!roundId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - use WebSocket for live updates
-    refetchInterval: false, // Disabled - use WebSocket for real-time
-    refetchIntervalInBackground: false,
+    staleTime: 0, // Always refetch on mount - ensures deleted/recreated rounds load fresh data
+    refetchOnMount: 'always', // Force refetch when component mounts
+    refetchInterval: 3000, // Poll every 3 seconds as fallback for status changes
+    refetchIntervalInBackground: true, // Keep polling even when tab is not focused
   });
 }
 
@@ -134,7 +137,7 @@ export function usePlaceBid(roundId: string) {
 
   return useMutation({
     mutationFn: async ({ playerId, amount }: { playerId: string; amount: number }) => {
-      const response = await fetch('/api/team/bids', {
+      const response = await fetchWithTokenRefresh('/api/team/bids', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -150,10 +153,59 @@ export function usePlaceBid(roundId: string) {
         throw new Error(data.error || 'Failed to place bid');
       }
 
-      return data;
+      return { ...data, playerId, amount };
     },
-    onSuccess: () => {
-      // Invalidate and refetch round data
+    onMutate: async ({ playerId, amount }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['round', roundId] });
+
+      // Snapshot the previous value
+      const previousRoundData = queryClient.getQueryData(['round', roundId]);
+
+      // Optimistically update round data
+      queryClient.setQueryData(['round', roundId], (old: any) => {
+        if (!old) return old;
+
+        // Find the player in the players list
+        const player = old.players?.find((p: any) => p.id === playerId);
+        
+        if (!player) return old;
+
+        // Create new bid object
+        const newBid = {
+          id: 'temp-' + Date.now(),
+          player_id: playerId,
+          amount: amount,
+          round_id: roundId,
+          created_at: new Date().toISOString(),
+          player: {
+            id: player.id,
+            name: player.name,
+            position: player.position,
+            team_name: player.team_name,
+            overall_rating: player.overall_rating,
+            playing_style: player.playing_style,
+            is_starred: player.is_starred_by_user || false,
+          },
+        };
+
+        return {
+          ...old,
+          myBids: [...(old.myBids || []), newBid],
+          teamBalance: old.teamBalance - amount,
+        };
+      });
+
+      return { previousRoundData };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousRoundData) {
+        queryClient.setQueryData(['round', roundId], context.previousRoundData);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure consistency
       queryClient.invalidateQueries({ queryKey: ['round', roundId] });
       queryClient.invalidateQueries({ queryKey: ['teamDashboard'] });
     },
@@ -166,7 +218,7 @@ export function useCancelBid(roundId: string) {
 
   return useMutation({
     mutationFn: async (bidId: string) => {
-      const response = await fetch(`/api/team/bids/${bidId}`, {
+      const response = await fetchWithTokenRefresh(`/api/team/bids/${bidId}`, {
         method: 'DELETE',
       });
 
@@ -259,7 +311,7 @@ export function useSubmitTiebreakerBid(tiebreakerId: string) {
 
   return useMutation({
     mutationFn: async (amount: number) => {
-      const response = await fetch(`/api/tiebreakers/${tiebreakerId}/submit`, {
+      const response = await fetchWithTokenRefresh(`/api/tiebreakers/${tiebreakerId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount }),
@@ -358,13 +410,14 @@ export function useRoundStatus(roundId: string | undefined, enabled: boolean = t
     queryFn: async () => {
       if (!roundId) throw new Error('Round ID required');
       
-      const response = await fetch(`/api/team/round/${roundId}/status`);
+      const response = await fetchWithTokenRefresh(`/api/team/round/${roundId}/status`);
       const data = await response.json();
 
       return data;
     },
     enabled: enabled && !!roundId,
-    staleTime: 30 * 1000, // 30 seconds - use WebSocket for real-time status
+    staleTime: 0, // Always refetch - ensures fresh status for deleted/recreated rounds
+    refetchOnMount: 'always', // Force refetch when component mounts
     refetchInterval: false, // Disabled - use WebSocket
     refetchIntervalInBackground: false,
   });

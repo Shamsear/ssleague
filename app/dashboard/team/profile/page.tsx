@@ -333,7 +333,7 @@ export default function TeamProfilePage() {
           <Link href="/dashboard/team/bids" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
             Bid History
           </Link>
-          <Link href="/dashboard/team/statistics" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
+          <Link href="/dashboard/team/players-database" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
             Player Database
           </Link>
           <Link href="/dashboard/team/leaderboard" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">

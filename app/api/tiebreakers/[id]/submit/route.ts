@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { cookies } from 'next/headers';
+import { getAuthToken } from '@/lib/auth/token-helper';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { isTiebreakerExpired, allTeamsSubmitted, resolveTiebreaker } from '@/lib/tiebreaker';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
@@ -16,8 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json(
@@ -43,12 +42,6 @@ export async function POST(
     const body = await request.json();
     const { newBidAmount } = body;
 
-    console.log('🔍 Tiebreaker submission received:');
-    console.log('   User ID:', userId);
-    console.log('   Tiebreaker ID:', tiebreakerId);
-    console.log('   Request body:', body);
-    console.log('   New bid amount:', newBidAmount, 'Type:', typeof newBidAmount);
-
     if (!newBidAmount || typeof newBidAmount !== 'number' || newBidAmount <= 0) {
       return NextResponse.json(
         { success: false, error: 'Valid bid amount is required' },
@@ -66,10 +59,11 @@ export async function POST(
     }
 
     const userData = userDoc.data();
-    // Use userId directly as team_id (since team_id in bids is the user's UID)
-    const teamId = userId;
-
-    // Fetch tiebreaker details
+    
+    // Get user's team ID from teams table
+    let teamId: string | null = null;
+    
+    // Fetch tiebreaker details first to get season_id
     const tiebreakerResult = await sql`
       SELECT 
         t.*
@@ -85,6 +79,57 @@ export async function POST(
     }
 
     const tiebreaker = tiebreakerResult[0];
+    
+    // Get season_id to look up team
+    const roundResult = await sql`
+      SELECT season_id FROM rounds WHERE id = ${tiebreaker.round_id}
+    `;
+    const seasonId = roundResult[0]?.season_id;
+    
+    if (!seasonId) {
+      return NextResponse.json(
+        { success: false, error: 'Season not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Get user's team ID from teams table or team_seasons
+    const teamResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} AND season_id = ${seasonId} LIMIT 1
+    `;
+    
+    if (teamResult.length > 0) {
+      teamId = teamResult[0].id;
+    } else {
+      // Fallback: Try team_seasons
+      let teamSeasonId = `${userId}_${seasonId}`;
+      let teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+      
+      if (!teamSeasonDoc.exists) {
+        const teamSeasonQuery = await adminDb.collection('team_seasons')
+          .where('user_id', '==', userId)
+          .where('season_id', '==', seasonId)
+          .where('status', '==', 'registered')
+          .limit(1)
+          .get();
+        
+        if (!teamSeasonQuery.empty) {
+          teamSeasonDoc = teamSeasonQuery.docs[0];
+        }
+      }
+      
+      if (teamSeasonDoc.exists) {
+        const teamSeasonData = teamSeasonDoc.data();
+        teamId = teamSeasonData?.team_id || null;
+      }
+    }
+    
+    if (!teamId) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found for user' },
+        { status: 403 }
+      );
+    }
 
     // Check if tiebreaker is still active
     if (tiebreaker.status !== 'active') {
@@ -109,7 +154,7 @@ export async function POST(
         tt.*,
         b.team_id
       FROM team_tiebreakers tt
-      INNER JOIN bids b ON tt.original_bid_id = b.id
+      INNER JOIN bids b ON b.id::text = tt.original_bid_id
       WHERE tt.tiebreaker_id = ${tiebreakerId}
       AND b.team_id = ${teamId}
     `;
@@ -146,20 +191,42 @@ export async function POST(
     }
 
     // Check team budget from team_seasons
-    const roundResult = await sql`
-      SELECT season_id FROM rounds WHERE id = ${tiebreaker.round_id}
-    `;
-    const seasonId = roundResult[0]?.season_id;
-    
     if (seasonId) {
-      const teamSeasonId = `${teamId}_${seasonId}`;
-      const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+      let teamSeasonId = `${teamId}_${seasonId}`;
+      let teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
+      
+      // Fallback: Query by user_id field if direct lookup fails
+      if (!teamSeasonDoc.exists) {
+        const teamSeasonQuery = await adminDb.collection('team_seasons')
+          .where('user_id', '==', teamId)
+          .where('season_id', '==', seasonId)
+          .where('status', '==', 'registered')
+          .limit(1)
+          .get();
+        
+        if (!teamSeasonQuery.empty) {
+          teamSeasonDoc = teamSeasonQuery.docs[0];
+          teamSeasonId = teamSeasonDoc.id;
+        }
+      }
       
       if (teamSeasonDoc.exists) {
         const teamData = teamSeasonDoc.data();
-        const budgetRemaining = teamData?.budget || 0;
         
-        console.log(`Team ${teamId} budget check: budget=${budgetRemaining}, newBid=${newBidAmount}`);
+        // Determine currency system and get appropriate balance
+        const currencySystem = teamData?.currency_system || 'single';
+        const isDualCurrency = currencySystem === 'dual';
+        
+        let budgetRemaining = 0;
+        if (isDualCurrency) {
+          // For dual currency, use football_budget (since this is for football players)
+          budgetRemaining = teamData?.football_budget || 0;
+        } else {
+          // For single currency, use budget
+          budgetRemaining = teamData?.budget || 0;
+        }
+        
+        console.log(`Team ${teamId} budget check: currency=${currencySystem}, budget=${budgetRemaining}, newBid=${newBidAmount}`);
         
         if (newBidAmount > budgetRemaining) {
           return NextResponse.json(
@@ -189,6 +256,7 @@ export async function POST(
       SET 
         new_bid_amount = ${newBidAmount},
         submitted = true,
+        status = 'submitted',
         submitted_at = NOW()
       WHERE id = ${teamTiebreaker.id}
       RETURNING *
@@ -260,7 +328,20 @@ export async function POST(
               },
             });
           } else {
-            console.error('⚠️ Failed to apply finalization results');
+            console.error('⚠️ Failed to apply finalization results:', applyResult.error);
+            return NextResponse.json({
+              success: true,
+              message: 'Tiebreaker resolved but finalization failed',
+              data: {
+                tiebreakerId,
+                newBidAmount,
+                submittedAt: new Date().toISOString(),
+                autoResolved: true,
+                resolution: resolutionResult.data,
+                roundFinalized: false,
+                finalizationError: applyResult.error,
+              },
+            });
           }
         } else if (finalizationResult.tieDetected) {
           // Another tie detected - new tiebreaker created

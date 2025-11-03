@@ -23,8 +23,8 @@ export default function PlayerImage({
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Since all images are .png, start with that directly
-  const imageSrc = `/images/players/${playerId}.png`;
+  // Since all images are .webp, start with that directly
+  const imageSrc = `/images/players/${playerId}.webp`;
 
   const getInitial = () => {
     if (fallbackInitial) return fallbackInitial;

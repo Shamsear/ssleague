@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
           tt.*,
           b.team_id
         FROM team_tiebreakers tt
-        INNER JOIN bids b ON tt.original_bid_id = b.id
+        INNER JOIN bids b ON b.id::text = tt.original_bid_id
         WHERE tt.tiebreaker_id = ANY(${tiebreakerIds})
       `;
     }

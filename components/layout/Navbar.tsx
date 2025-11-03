@@ -415,10 +415,10 @@ export default function Navbar() {
                             Budget Planner
                           </span>
                         </Link>
-                        <Link href="/dashboard/team/statistics" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
+                        <Link href="/dashboard/team/players-database" className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50/80 hover:text-blue-600 transition-all duration-200 rounded-xl mx-2 font-medium group">
                           <span className="flex items-center">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-3 opacity-0 group-hover:opacity-100 transition-opacity"></span>
-                            Statistics
+                            Player Database
                           </span>
                         </Link>
                       </div>

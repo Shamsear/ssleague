@@ -81,16 +81,21 @@ export async function POST(request: NextRequest) {
     } = body;
     
     // Validate required fields
-    if (!team_id || !player_id || !round_id || !amount) {
+    // Note: amount is optional here if encrypted_bid_data is provided (for blind bidding)
+    if (!team_id || !player_id || !round_id) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: team_id, player_id, round_id, amount' },
+        { success: false, error: 'Missing required fields: team_id, player_id, round_id' },
         { status: 400 }
       );
     }
     
+    // For blind bidding, store amount as NULL and only use encrypted_bid_data
+    // Amount will be populated after round finalization
+    const bidAmount = encrypted_bid_data ? null : amount;
+    
     const result = await sql`
       INSERT INTO bids (team_id, player_id, round_id, amount, status, phase, encrypted_bid_data)
-      VALUES (${team_id}, ${player_id}, ${round_id}, ${amount}, ${status}, ${phase}, ${encrypted_bid_data})
+      VALUES (${team_id}, ${player_id}, ${round_id}, ${bidAmount}, ${status}, ${phase}, ${encrypted_bid_data})
       RETURNING *
     `;
     

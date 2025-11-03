@@ -269,7 +269,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
       clearInterval(interval);
       clearTimeout(restartTimer);
     };
-  }, [seasonStatus?.seasonId, dashboardData?.activeRounds?.length, dashboardData?.activeBulkRounds?.length, dashboardData?.tiebreakers?.length, user]);
+  }, [seasonStatus?.seasonId]);
 
   // Timer effect for active rounds
   useEffect(() => {
@@ -662,8 +662,11 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/player-leaderboard" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 📋 Player Stats
               </Link>
-              <Link href="/dashboard/team/statistics" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
-                📈 Statistics
+              <Link href="/dashboard/team/footballplayers" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
+                🏈 Auction Players
+              </Link>
+              <Link href="/dashboard/team/players-database" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
+                📊 My Players
               </Link>
               <Link href="/dashboard/team/fantasy/my-team" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Fantasy
@@ -835,15 +838,27 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               ) : (
                 <>
                   {/* Active Rounds */}
-                  {activeRounds.map(round => (
+                  {activeRounds.map(round => {
+                    console.log('🔍 Round data:', { id: round.id, round_type: round.round_type, round_number: round.round_number });
+                    return (
                     <div key={round.id} className="glass-card rounded-xl sm:rounded-2xl p-4 sm:p-6 border-l-4 border-orange-500">
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                         <div>
-                          <h3 className="text-lg sm:text-xl font-bold text-gray-900">
-                            Round #{round.round_number} - {round.position}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+                              Round #{round.round_number}{round.round_type === 'bulk' ? ' - Bulk Bidding' : (round.position ? ` - ${round.position}` : '')}
+                            </h3>
+                            {round.round_type === 'bulk' && (
+                              <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold">
+                                ⚡ BULK
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                            {round.player_count} players • Max {round.max_bids_per_team} bids per team
+                            {round.round_type === 'bulk' 
+                              ? `${round.player_count || 0} players • Fixed price bidding` 
+                              : `${round.player_count || 0} players • Max ${round.max_bids_per_team || 0} bids per team`
+                            }
                           </p>
                         </div>
                         {round.end_time && (
@@ -858,13 +873,14 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                         )}
                       </div>
                       <Link 
-                        href={`/dashboard/team/round/${round.id}`}
+                        href={round.round_type === 'bulk' ? `/dashboard/team/bulk-round/${round.id}` : `/dashboard/team/round/${round.id}`}
                         className="block w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-center font-medium"
                       >
-                        Enter Round →
+                        {round.round_type === 'bulk' ? 'Enter Bulk Round →' : 'Enter Round →'}
                       </Link>
                     </div>
-                  ))}
+                  );
+                  })}
 
                   {/* Active Bids */}
                   {activeBids.length > 0 && (

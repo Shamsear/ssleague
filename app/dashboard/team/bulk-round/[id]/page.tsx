@@ -8,6 +8,7 @@ import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import { useAuctionWebSocket } from '@/hooks/useWebSocket';
+import { fetchWithTokenRetry } from '@/lib/fetch-with-retry';
 
 interface Player {
   id: string;
@@ -38,7 +39,7 @@ export default function TeamBulkRoundPage() {
 
   const [bulkRound, setBulkRound] = useState<BulkRound | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [selectedPlayers, setSelectedPlayers] = useState<Set<string>>(new Set());
+  const [biddedPlayers, setBiddedPlayers] = useState<Set<string>>(new Set());
 
   // Modal system
   const {
@@ -53,8 +54,10 @@ export default function TeamBulkRoundPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  const [teamBalance, setTeamBalance] = useState(1000); // Mock balance
+  const [teamBalance, setTeamBalance] = useState(1000);
   const [filterPosition, setFilterPosition] = useState<string>('all');
+  const [squadInfo, setSquadInfo] = useState({ current: 0, max: 25, available: 25 });
+  const [bidsCount, setBidsCount] = useState(0);
 
   // ✅ Enable WebSocket for real-time bid updates
   const { isConnected } = useAuctionWebSocket(roundId, true);
@@ -75,36 +78,37 @@ export default function TeamBulkRoundPage() {
 
       setIsLoading(true);
       try {
-        // TODO: Replace with actual API calls
-        // const response = await fetch(`/api/team/bulk-rounds/${roundId}`);
-        // const { success, data } = await response.json();
+        // Fetch round details and players
+        const response = await fetchWithTokenRetry(`/api/team/bulk-rounds/${roundId}`);
+        const { success, data } = await response.json();
 
-        // Mock round data
-        const mockRound: BulkRound = {
-          id: parseInt(roundId),
-          round_number: 1,
-          status: 'active',
-          base_price: 10,
-          start_time: new Date().toISOString(),
-          end_time: new Date(Date.now() + 3600000).toISOString(),
-          duration_seconds: 3600,
-          player_count: 20,
-        };
-        setBulkRound(mockRound);
+        if (!success) {
+          throw new Error('Failed to fetch round data');
+        }
 
-        // Mock players data
-        const mockPlayers: Player[] = Array.from({ length: 20 }, (_, i) => ({
-          id: `player-${i + 1}`,
-          name: `Player ${i + 1}`,
-          position: ['GK', 'DEF', 'MID', 'FWD'][Math.floor(Math.random() * 4)],
-          team_name: `Team ${String.fromCharCode(65 + Math.floor(Math.random() * 5))}`,
-          overall_rating: 70 + Math.floor(Math.random() * 20),
-          playing_style: ['Defensive', 'Balanced', 'Attacking'][Math.floor(Math.random() * 3)],
-          is_starred: Math.random() > 0.7,
-        }));
-        setPlayers(mockPlayers);
+        setBulkRound(data.round);
+        setPlayers(data.players || []);
+        setTeamBalance(data.balance || 1000);
+        if (data.squad) {
+          setSquadInfo(data.squad);
+        }
+
+        // Fetch team's existing bids
+        const bidsResponse = await fetchWithTokenRetry(`/api/team/bulk-rounds/${roundId}/bids`);
+        const bidsData = await bidsResponse.json();
+        
+        if (bidsData.success && bidsData.data.bids) {
+          const bidPlayerIds = new Set(bidsData.data.bids.map((b: any) => b.player_id));
+          setBiddedPlayers(bidPlayerIds);
+          setBidsCount(bidsData.data.count || 0);
+        }
       } catch (err) {
         console.error('Error fetching data:', err);
+        showAlert({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load round data'
+        });
       } finally {
         setIsLoading(false);
       }
@@ -127,79 +131,93 @@ export default function TeamBulkRoundPage() {
     }
   }, [bulkRound]);
 
-  const handleTogglePlayer = (playerId: string) => {
-    const newSelected = new Set(selectedPlayers);
-    if (newSelected.has(playerId)) {
-      newSelected.delete(playerId);
-    } else {
-      newSelected.add(playerId);
-    }
-    setSelectedPlayers(newSelected);
-  };
-
-  const handleSelectAll = () => {
-    if (selectedPlayers.size === filteredPlayers.length) {
-      setSelectedPlayers(new Set());
-    } else {
-      setSelectedPlayers(new Set(filteredPlayers.map(p => p.id)));
-    }
-  };
-
-  const handleSubmitBids = async () => {
-    if (selectedPlayers.size === 0) {
-      showAlert({
-        type: 'warning',
-        title: 'No Players Selected',
-        message: 'Please select at least one player'
-      });
-      return;
-    }
-
-    const totalCost = selectedPlayers.size * (bulkRound?.base_price || 10);
-    if (totalCost > teamBalance) {
-      showAlert({
-        type: 'error',
-        title: 'Insufficient Balance',
-        message: 'Insufficient balance!'
-      });
-      return;
-    }
-
-    const confirmed = await showConfirm({
-      type: 'warning',
-      title: 'Submit Bids',
-      message: `Submit bids for ${selectedPlayers.size} player(s) at £${bulkRound?.base_price} each (Total: £${totalCost})?`,
-      confirmText: 'Submit',
-      cancelText: 'Cancel'
-    });
+  const handleTogglePlayer = async (playerId: string) => {
+    const isBidded = biddedPlayers.has(playerId);
     
-    if (!confirmed) {
-      return;
-    }
-
     try {
-      // TODO: API call to submit bulk bids
-      // const response = await fetch(`/api/team/bulk-rounds/${roundId}/bids`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ player_ids: Array.from(selectedPlayers) }),
-      // });
-
-      showAlert({
-        type: 'success',
-        title: 'Success',
-        message: 'Bids submitted successfully! (Feature coming soon)'
-      });
-      setSelectedPlayers(new Set());
-    } catch (err) {
-      console.error('Error submitting bids:', err);
+      if (isBidded) {
+        // ✨ OPTIMISTIC UPDATE: Remove immediately for instant feedback
+        const newBidded = new Set(biddedPlayers);
+        newBidded.delete(playerId);
+        setBiddedPlayers(newBidded);
+        setBidsCount(prev => prev - 1);
+        
+        // Then send to server
+        const response = await fetchWithTokenRetry(`/api/team/bulk-rounds/${roundId}/bids`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ player_id: playerId }),
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          // Revert optimistic update on error
+          const revertBidded = new Set(biddedPlayers);
+          revertBidded.add(playerId);
+          setBiddedPlayers(revertBidded);
+          setBidsCount(prev => prev + 1);
+          throw new Error(result.error || 'Failed to remove bid');
+        }
+        // Success - no alert needed, optimistic update already applied
+      } else {
+        // Check if slots available
+        const availableSlots = squadInfo.max - squadInfo.current - bidsCount;
+        if (availableSlots <= 0) {
+          showAlert({
+            type: 'error',
+            title: 'No Slots Available',
+            message: `No squad slots available. Current: ${squadInfo.current}/${squadInfo.max}, Bids: ${bidsCount}`
+          });
+          return;
+        }
+        
+        // Check balance
+        const totalReserved = (bidsCount + 1) * (bulkRound?.base_price || 10);
+        if (teamBalance < totalReserved) {
+          showAlert({
+            type: 'error',
+            title: 'Insufficient Balance',
+            message: `Insufficient balance! Required: £${totalReserved}, Available: £${teamBalance}`
+          });
+          return;
+        }
+        
+        // ✨ OPTIMISTIC UPDATE: Add immediately for instant feedback
+        const newBidded = new Set(biddedPlayers);
+        newBidded.add(playerId);
+        setBiddedPlayers(newBidded);
+        setBidsCount(prev => prev + 1);
+        
+        // Then send to server
+        const response = await fetchWithTokenRetry(`/api/team/bulk-rounds/${roundId}/bids`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ player_id: playerId }),
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          // Revert optimistic update on error
+          const revertBidded = new Set(biddedPlayers);
+          revertBidded.delete(playerId);
+          setBiddedPlayers(revertBidded);
+          setBidsCount(prev => prev - 1);
+          throw new Error(result.error || 'Failed to place bid');
+        }
+        // Success - no alert needed, optimistic update already applied
+      }
+    } catch (err: any) {
+      console.error('Error toggling bid:', err);
       showAlert({
         type: 'error',
-        title: 'Submission Failed',
-        message: 'Failed to submit bids'
+        title: 'Error',
+        message: err.message || 'Failed to process bid'
       });
     }
   };
+
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -227,8 +245,9 @@ export default function TeamBulkRoundPage() {
     return b.overall_rating - a.overall_rating;
   });
 
-  const totalCost = selectedPlayers.size * (bulkRound?.base_price || 10);
+  const totalCost = bidsCount * (bulkRound?.base_price || 10);
   const remainingBalance = teamBalance - totalCost;
+  const availableSlotsNow = squadInfo.max - squadInfo.current - bidsCount;
 
   if (loading || !user || user.role !== 'team' || isLoading) {
     return (
@@ -252,152 +271,260 @@ export default function TeamBulkRoundPage() {
   }
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="min-h-screen py-4 sm:py-6 md:py-8 px-3 sm:px-4 bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <div className="container mx-auto max-w-7xl">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
+        <div className="mb-4 sm:mb-6 md:mb-8">
+          <div className="flex items-start sm:items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
             <Link
               href="/dashboard/team"
-              className="text-gray-500 hover:text-[#0066FF] transition-colors"
+              className="text-gray-500 hover:text-[#0066FF] transition-colors p-1 hover:bg-gray-100 rounded-lg mt-1 sm:mt-0"
+              aria-label="Back to dashboard"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </Link>
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl md:text-4xl font-bold gradient-text">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold gradient-text truncate">
                   Bulk Round {bulkRound.round_number}
                 </h1>
                 {/* WebSocket Status */}
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                <span className={`inline-flex items-center px-2 sm:px-2.5 py-1 rounded-full text-xs font-medium w-fit ${
                   isConnected 
                     ? 'bg-green-100 text-green-800' 
                     : 'bg-gray-100 text-gray-600'
                 }`}>
-                  <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full mr-1 sm:mr-1.5 ${
                     isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
                   }`}></span>
                   {isConnected ? 'Live' : 'Offline'}
                 </span>
               </div>
-              <p className="text-gray-600 mt-1">Select players to bid at £{bulkRound.base_price} each</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1 sm:mt-2">
+                Click players to bid £{bulkRound.base_price} each
+              </p>
             </div>
           </div>
         </div>
 
         {/* Timer and Info Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="glass rounded-xl p-4 border border-white/20">
-            <div className="text-sm text-gray-600 mb-1">Time Remaining</div>
-            <div className={`text-2xl font-bold font-mono ${getTimerColor()}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
+          <div className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20 shadow-sm hover:shadow-md transition-shadow">
+            <div className="text-xs sm:text-sm text-gray-600 mb-1">Time Left</div>
+            <div className={`text-lg sm:text-xl md:text-2xl font-bold font-mono ${getTimerColor()}`}>
               {formatTime(timeRemaining)}
             </div>
           </div>
 
-          <div className="glass rounded-xl p-4 border border-white/20">
-            <div className="text-sm text-gray-600 mb-1">Base Price</div>
-            <div className="text-2xl font-bold text-gray-800">£{bulkRound.base_price}</div>
+          <div className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20 shadow-sm hover:shadow-md transition-shadow">
+            <div className="text-xs sm:text-sm text-gray-600 mb-1">Price</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">£{bulkRound.base_price}</div>
           </div>
 
-          <div className="glass rounded-xl p-4 border border-white/20">
-            <div className="text-sm text-gray-600 mb-1">Your Balance</div>
-            <div className="text-2xl font-bold text-green-600">£{teamBalance}</div>
+          <div className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20 shadow-sm hover:shadow-md transition-shadow">
+            <div className="text-xs sm:text-sm text-gray-600 mb-1">Balance</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-green-600">£{teamBalance}</div>
           </div>
 
-          <div className="glass rounded-xl p-4 border border-white/20">
-            <div className="text-sm text-gray-600 mb-1">Selected</div>
-            <div className="text-2xl font-bold text-blue-600">{selectedPlayers.size}</div>
+          <div className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20 shadow-sm hover:shadow-md transition-shadow">
+            <div className="text-xs sm:text-sm text-gray-600 mb-1">Squad</div>
+            <div className={`text-lg sm:text-xl md:text-2xl font-bold ${
+              squadInfo.available > 0 ? 'text-blue-600' : 'text-red-600'
+            }`}>
+              {squadInfo.current}/{squadInfo.max}
+            </div>
+            <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5">current</div>
+          </div>
+
+          <div className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20 shadow-sm hover:shadow-md transition-shadow col-span-2 sm:col-span-1">
+            <div className="text-xs sm:text-sm text-gray-600 mb-1">Your Bids</div>
+            <div className={`text-lg sm:text-xl md:text-2xl font-bold ${
+              bidsCount > 0 ? 'text-blue-600' : 'text-gray-400'
+            }`}>
+              {bidsCount}
+            </div>
+            <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5">
+              {availableSlotsNow} slots left
+            </div>
           </div>
         </div>
 
-        {/* Cost Summary */}
-        {selectedPlayers.size > 0 && (
-          <div className="glass rounded-2xl p-6 mb-6 border-2 border-blue-300 bg-blue-50">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-blue-900 mb-1">Bid Summary</h3>
-                <p className="text-blue-700">
-                  {selectedPlayers.size} player(s) × £{bulkRound.base_price} = £{totalCost}
-                </p>
-                <p className="text-sm text-blue-600 mt-1">
-                  Remaining balance after bids: £{remainingBalance}
-                </p>
-              </div>
-              <button
-                onClick={handleSubmitBids}
-                disabled={remainingBalance < 0}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Submit Bids
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* Info Card */}
-        <div className="glass rounded-2xl p-6 mb-6 border border-white/20">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-blue-100">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Info Card - Collapsible on mobile */}
+        <details className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border border-white/20 shadow-sm group" open>
+          <summary className="flex items-center gap-2 sm:gap-3 cursor-pointer list-none">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-blue-100">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">How Bulk Bidding Works</h3>
-              <ul className="space-y-1 text-sm text-gray-700">
-                <li>• Select any number of players you want to bid on</li>
-                <li>• All bids are placed at the fixed base price of £{bulkRound.base_price}</li>
-                <li>• If you're the only bidder, you get the player automatically</li>
-                <li>• If multiple teams bid on the same player, a tiebreaker auction will be held</li>
-                <li>• You can change your selections until you submit</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+            <h3 className="text-base sm:text-lg font-bold text-gray-900 flex-1">How It Works</h3>
+            <svg className="w-5 h-5 text-gray-500 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-700 mt-3 sm:mt-4 ml-10 sm:ml-11">
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span>Click any player to bid £{bulkRound.base_price}</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span>Click again to remove your bid</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span>Only bidder? Player is yours!</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span>Multiple bids trigger tiebreaker</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span>Bids auto-save, money reserved</span>
+            </li>
+          </ul>
+        </details>
 
         {/* Filters and Controls */}
-        <div className="glass rounded-2xl p-4 mb-6 border border-white/20">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
+        <div className="glass rounded-xl sm:rounded-2xl p-3 sm:p-4 mb-4 sm:mb-6 border border-white/20 shadow-sm">
+          <div className="flex flex-col gap-3">
+            {/* Search with icon */}
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
               <input
                 type="text"
                 placeholder="Search players..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0066FF] focus:border-[#0066FF]"
+                className="w-full pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0066FF] focus:border-[#0066FF] text-sm transition-all"
               />
-            </div>
-            <div className="flex gap-2">
-              {['all', 'GK', 'DEF', 'MID', 'FWD'].map((pos) => (
+              {searchTerm && (
                 <button
-                  key={pos}
-                  onClick={() => setFilterPosition(pos)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filterPosition === pos
-                      ? 'bg-[#0066FF] text-white'
-                      : 'bg-white/50 text-gray-700 hover:bg-white/80'
-                  }`}
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label="Clear search"
                 >
-                  {pos === 'all' ? 'All' : pos}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
-              ))}
+              )}
             </div>
-            <button
-              onClick={handleSelectAll}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
-            >
-              {selectedPlayers.size === filteredPlayers.length ? 'Deselect All' : 'Select All'}
-            </button>
+            
+            {/* Position Tabs - Mobile Optimized with horizontal scroll */}
+            <div className="-mx-3 sm:-mx-4 px-3 sm:px-4">
+              <div className="overflow-x-auto scrollbar-hide">
+                <div className="flex gap-1.5 sm:gap-2 min-w-max pb-1">
+                  {['all', 'GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'SS', 'CF'].map((pos) => (
+                    <button
+                      key={pos}
+                      onClick={() => setFilterPosition(pos)}
+                      className={`px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap touch-manipulation ${
+                        filterPosition === pos
+                          ? 'bg-[#0066FF] text-white shadow-md scale-105'
+                          : 'bg-white/70 text-gray-700 hover:bg-white active:scale-95'
+                      }`}
+                    >
+                      {pos === 'all' ? 'All' : pos}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Players List */}
-        <div className="glass rounded-2xl p-6 border border-white/20">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">
-            Available Players ({filteredPlayers.length})
-          </h2>
+        {/* Your Bidded Players */}
+        {bidsCount > 0 && (
+          <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border-2 border-green-200 shadow-lg">
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 mb-3 sm:mb-4 flex items-center">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Your Bids ({bidsCount})
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
+              {players
+                .filter(player => biddedPlayers.has(player.id))
+                .map((player) => (
+                  <div
+                    key={player.id}
+                    className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 border-2 border-green-300 bg-green-50 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
+                          <h3 className="font-bold text-sm sm:text-base text-gray-800 truncate">{player.name}</h3>
+                          {player.is_starred && (
+                            <svg className="w-4 h-4 text-yellow-500 fill-current" viewBox="0 0 24 24">
+                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 flex-wrap">
+                          <span className="px-1.5 sm:px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] sm:text-xs font-medium">
+                            {player.position}
+                          </span>
+                          <span className="hidden sm:inline">•</span>
+                          <span className="truncate text-xs">{player.team_name}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleTogglePlayer(player.id)}
+                        className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0 rounded border-2 bg-red-600 border-red-600 flex items-center justify-center hover:bg-red-700 active:scale-95 transition-all touch-manipulation"
+                        title="Remove bid"
+                        aria-label="Remove bid"
+                      >
+                        <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-xs sm:text-sm mt-2">
+                      <span className="text-gray-600">Rating: {player.overall_rating}</span>
+                      <span className="text-green-600 font-bold">£{bulkRound?.base_price}</span>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+
+            <div className="bg-gradient-to-r from-blue-100 to-blue-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-blue-200">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="flex-1">
+                  <p className="text-blue-900 font-bold text-sm sm:text-base">
+                    {bidsCount} bid{bidsCount !== 1 ? 's' : ''} placed
+                  </p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs sm:text-sm text-blue-700 mt-1">
+                    <span className="whitespace-nowrap">Reserved: £{totalCost}</span>
+                    <span className="hidden sm:inline">•</span>
+                    <span className="whitespace-nowrap">Left: £{remainingBalance}</span>
+                    <span className="hidden sm:inline">•</span>
+                    <span className="whitespace-nowrap">{availableSlotsNow} slots</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Available Players */}
+        <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-white/20 shadow-sm">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 className="text-base sm:text-lg md:text-xl font-bold text-gray-800">
+              Available Players
+            </h2>
+            <span className="text-xs sm:text-sm text-gray-500 font-medium bg-gray-100 px-2 sm:px-3 py-1 rounded-full">
+              {filteredPlayers.length}
+            </span>
+          </div>
 
           {sortedPlayers.length === 0 ? (
             <div className="text-center py-12">
@@ -408,53 +535,62 @@ export default function TeamBulkRoundPage() {
               <p className="text-sm text-gray-500 mt-2">Try adjusting your filters</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sortedPlayers.map((player) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              {sortedPlayers.map((player) => {
+                const isBidded = biddedPlayers.has(player.id);
+                
+                return (
                 <button
                   key={player.id}
                   onClick={() => handleTogglePlayer(player.id)}
-                  className={`glass rounded-xl p-4 border-2 transition-all text-left hover:shadow-lg ${
-                    selectedPlayers.has(player.id)
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-white/20 hover:border-blue-300'
+                  className={`glass rounded-lg sm:rounded-xl p-3 sm:p-4 border-2 transition-all text-left active:scale-98 touch-manipulation ${
+                    isBidded
+                      ? 'border-green-500 bg-green-50 shadow-md'
+                      : 'border-white/20 hover:border-blue-300 hover:shadow-md'
                   }`}
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-gray-800">{player.name}</h3>
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
+                        <h3 className="font-bold text-sm sm:text-base text-gray-800 truncate">{player.name}</h3>
                         {player.is_starred && (
-                          <svg className="w-4 h-4 text-yellow-500 fill-current" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500 fill-current flex-shrink-0" viewBox="0 0 24 24">
                             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                           </svg>
                         )}
+                        {isBidded && (
+                          <span className="text-[10px] sm:text-xs font-semibold text-green-700 bg-green-100 px-1.5 sm:px-2 py-0.5 rounded whitespace-nowrap">
+                            ✓ Bid
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                      <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 flex-wrap">
+                        <span className="px-1.5 sm:px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] sm:text-xs font-medium">
                           {player.position}
                         </span>
-                        <span>•</span>
-                        <span>{player.team_name}</span>
+                        <span className="hidden sm:inline">•</span>
+                        <span className="truncate text-xs">{player.team_name}</span>
                       </div>
                     </div>
-                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
-                      selectedPlayers.has(player.id)
-                        ? 'bg-blue-600 border-blue-600'
-                        : 'border-gray-300'
+                    <div className={`w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0 rounded border-2 flex items-center justify-center transition-all ${
+                      isBidded
+                        ? 'bg-green-600 border-green-600 shadow-md'
+                        : 'border-gray-300 group-hover:border-blue-400'
                     }`}>
-                      {selectedPlayers.has(player.id) && (
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {isBidded && (
+                        <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
                         </svg>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center justify-between text-xs sm:text-sm mt-2">
                     <span className="text-gray-600">Rating: {player.overall_rating}</span>
-                    <span className="text-xs text-gray-500">{player.playing_style}</span>
+                    <span className="text-[10px] sm:text-xs text-gray-500 truncate max-w-[100px] sm:max-w-none">{player.playing_style}</span>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

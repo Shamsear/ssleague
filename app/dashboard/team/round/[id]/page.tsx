@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRoundData, usePlaceBid, useCancelBid, useRoundStatus } from '@/hooks/useTeamDashboard';
 import { useModal } from '@/hooks/useModal';
+import { useAuctionWebSocket } from '@/hooks/useWebSocket';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 
@@ -47,11 +48,15 @@ export default function TeamRoundPage() {
     data: roundData, 
     isLoading, 
     isError, 
-    error 
+    error,
+    refetch: refetchRoundData
   } = useRoundData(roundId, !loading && !!user && user.role === 'team');
 
   // Use React Query for round status checking
   const { data: statusData } = useRoundStatus(roundId, !!roundId);
+  
+  // WebSocket for live updates
+  const { isConnected } = useAuctionWebSocket(roundId, !!roundId);
 
   // Mutations with optimistic updates
   const placeBidMutation = usePlaceBid(roundId || '');
@@ -75,7 +80,9 @@ export default function TeamRoundPage() {
   // Extract data from React Query result
   const round = roundData?.round;
   const players = roundData?.players || [];
-  const myBids = roundData?.myBids || [];
+  const rawMyBids = roundData?.myBids || [];
+  // Sort bids by amount (highest first)
+  const myBids = [...rawMyBids].sort((a: Bid, b: Bid) => (b.amount || 0) - (a.amount || 0));
   const teamBalance = roundData?.teamBalance || 0;
   const completedRounds = roundData?.completedRounds || 0;
   const totalRounds = roundData?.totalRounds || 0;
@@ -90,37 +97,95 @@ export default function TeamRoundPage() {
     }
   }, [user, loading, router]);
 
-  // Handle redirects from round data
+  // Handle redirects from round data and errors
   useEffect(() => {
     if (roundData && 'redirect' in roundData) {
+      console.log('👉 Redirect from round data:', roundData.redirect);
       router.push(roundData.redirect as string);
     }
   }, [roundData, router]);
+  
+  // Handle round fetch errors (deleted round, not found, etc.)
+  useEffect(() => {
+    if (isError) {
+      console.error('❌ Round fetch error:', error);
+      console.log('👉 Redirecting to dashboard due to error');
+      router.push('/dashboard/team');
+    }
+  }, [isError, error, router]);
+
+  // Note: Auto-finalization disabled on team pages (requires admin access)
+  // Only committee admins can trigger finalization
 
   // Calculate time remaining from round data
   useEffect(() => {
     if (!round?.end_time) return;
+
+    // Check if round is no longer active (manually finalized or completed)
+    if (round.status !== 'active') {
+      console.log(`⏰ Round status is '${round.status}', redirecting to dashboard...`);
+      router.push('/dashboard/team');
+      return;
+    }
 
     const updateTimeRemaining = () => {
       const endTime = new Date(round.end_time).getTime();
       const now = Date.now();
       const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
       setTimeRemaining(remaining);
+      
+      // Auto-redirect when timer reaches 0
+      if (remaining === 0) {
+        console.log('⏰ Round time expired, redirecting to dashboard...');
+        setTimeout(() => {
+          router.push('/dashboard/team');
+        }, 2000); // Wait 2 seconds to show "Time's Up!" message
+      }
     };
+
+    // Check immediately - if round already ended, redirect right away
+    const endTime = new Date(round.end_time).getTime();
+    const now = Date.now();
+    if (now >= endTime) {
+      console.log('⏰ Round already ended, redirecting immediately...');
+      router.push('/dashboard/team');
+      return;
+    }
 
     updateTimeRemaining();
     const interval = setInterval(updateTimeRemaining, 1000);
 
     return () => clearInterval(interval);
-  }, [round]);
+  }, [round, router]);
+
+  // WebSocket connection status (refetching is handled by useAuctionWebSocket automatically)
+  useEffect(() => {
+    if (isConnected) {
+      console.log('🔌 WebSocket connected for round:', roundId);
+    }
+  }, [isConnected, roundId]);
 
   // Handle round status changes (auto-checked by React Query)
   useEffect(() => {
-    if (statusData && !statusData.active) {
-      if (statusData.redirect) {
-        router.push(statusData.redirect);
-      } else {
-        router.push('/dashboard/team');
+    if (statusData) {
+      console.log('🔍 Round status data:', statusData);
+      
+      // Only redirect if we have a valid response AND the round is explicitly not active
+      // Don't redirect on API errors (success: false)
+      if (statusData.success === false) {
+        console.log('⚠️ Status check failed (likely auth issue), ignoring...');
+        return;
+      }
+      
+      if (statusData.active === false) {
+        console.log('⚠️ Round is not active, redirecting...');
+        if (statusData.redirect) {
+          router.push(statusData.redirect);
+        } else {
+          router.push('/dashboard/team');
+        }
+      } else if (statusData.active === true) {
+        console.log('✅ Round is active');
       }
     }
   }, [statusData, router]);
@@ -460,6 +525,7 @@ export default function TeamRoundPage() {
                       bidCount={bidCount}
                       maxBids={round.max_bids_per_team}
                       teamBalance={teamBalance}
+                      existingBidAmounts={myBids.map((b: Bid) => b.amount)}
                       onPlaceBid={handlePlaceBid}
                       onCancelBid={handleCancelBid}
                     />
@@ -506,6 +572,7 @@ interface PlayerCardProps {
   bidCount: number;
   maxBids: number;
   teamBalance: number;
+  existingBidAmounts: number[]; // Add this to check for duplicates
   onPlaceBid: (playerId: string, amount: number) => void;
   onCancelBid: (bidId: string) => void;
 }
@@ -517,6 +584,7 @@ function PlayerCard({
   bidCount,
   maxBids,
   teamBalance,
+  existingBidAmounts,
   onPlaceBid,
   onCancelBid,
 }: PlayerCardProps) {
@@ -553,6 +621,16 @@ function PlayerCard({
         type: 'error',
         title: 'Insufficient Balance',
         message: 'Bid amount exceeds your team balance'
+      });
+      return;
+    }
+
+    // Check for duplicate bid amounts
+    if (existingBidAmounts.includes(amount)) {
+      showAlert({
+        type: 'error',
+        title: 'Duplicate Bid Amount',
+        message: 'You already have a bid with this amount in this round. Each bid must have a unique amount.'
       });
       return;
     }

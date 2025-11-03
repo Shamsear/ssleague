@@ -56,104 +56,75 @@ export async function GET(request: NextRequest) {
 
     // Get query parameters for filtering
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status'); // 'active', 'completed', 'pending'
+    const filterStatus = searchParams.get('status'); // 'active', 'completed', 'pending'
     const seasonId = searchParams.get('seasonId');
 
-    // Build query
-    let query = `
+    // Query tiebreakers table (used for both regular and bulk rounds)
+    // Join with team_tiebreakers to find which ones involve this team
+    // Extract firebase_uid from composite ID in team_tiebreakers
+    const tiebreakerRows = await sql`
       SELECT 
-        bt.id,
-        bt.round_id,
-        bt.player_name,
-        bt.player_team,
-        bt.player_position,
-        bt.status,
-        bt.tie_amount,
-        bt.tied_team_count,
-        bt.current_highest_bid,
-        bt.current_highest_team_id,
-        bt.start_time,
-        bt.last_activity_time,
-        bt.max_end_time,
-        bt.created_at,
-        ar.round_name,
-        ar.season_id,
-        btt.status as my_status,
-        btt.current_bid as my_current_bid,
-        btt.joined_at as my_joined_at,
-        btt.withdrawn_at as my_withdrawn_at
-      FROM bulk_tiebreakers bt
-      INNER JOIN bulk_tiebreaker_teams btt 
-        ON bt.id = btt.tiebreaker_id 
-        AND btt.team_id = $1
-      LEFT JOIN rounds ar ON bt.round_id = ar.id
-      WHERE 1=1
+        t.id,
+        t.season_id,
+        t.player_id,
+        t.player_name,
+        t.original_amount,
+        t.tied_teams,
+        t.status,
+        t.winning_team_id,
+        t.winning_amount,
+        t.created_at,
+        t.resolved_at,
+        tt.id as team_tiebreaker_id,
+        tt.team_name,
+        tt.submitted,
+        tt.new_bid_amount,
+        tt.submitted_at,
+        fp.position,
+        fp.team_name as player_team,
+        fp.overall_rating
+      FROM tiebreakers t
+      INNER JOIN team_tiebreakers tt ON t.id = tt.tiebreaker_id
+      LEFT JOIN footballplayers fp ON t.player_id = fp.id
+      WHERE tt.id LIKE ${userId + '_%'}
+      ${filterStatus ? sql`AND t.status = ${filterStatus}` : sql``}
+      ${seasonId ? sql`AND t.season_id = ${seasonId}` : sql``}
+      ORDER BY t.created_at DESC
     `;
 
-    // Apply filters
-    if (status) {
-      query += ` AND bt.status = '${status}'`;
-    }
-
-    if (seasonId) {
-      query += ` AND ar.season_id = '${seasonId}'`;
-    }
-
-    query += ` ORDER BY bt.created_at DESC`;
-
-    // Replace $1 placeholder with actual userId value
-    const finalQuery = query.replace('$1', `'${userId}'`);
-    const tiebreakers = await sql.unsafe(finalQuery) as any;
+    const tiebreakers = tiebreakerRows as any[];
 
     // Enrich data with additional info
     const enrichedTiebreakers = tiebreakers.map((tb: any) => {
-      const youAreHighest = tb.current_highest_team_id === userId;
-      const canBid = tb.status === 'active' && tb.my_status === 'active';
-      const canWithdraw = tb.status === 'active' 
-        && tb.my_status === 'active' 
-        && !youAreHighest;
-
-      // Time remaining calculation
-      let timeRemaining = null;
-      if (tb.max_end_time) {
-        const now = new Date();
-        const maxEnd = new Date(tb.max_end_time);
-        const diffMs = maxEnd.getTime() - now.getTime();
-        if (diffMs > 0) {
-          const hours = Math.floor(diffMs / (1000 * 60 * 60));
-          const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-          timeRemaining = `${hours}h ${minutes}m`;
-        } else {
-          timeRemaining = 'EXPIRED';
-        }
-      }
+      // Parse tied_teams JSONB to get team count
+      const tiedTeams = tb.tied_teams || [];
+      const youAreWinner = tb.winning_team_id && tb.winning_team_id.includes(userId);
+      const canSubmit = tb.status === 'active' && !tb.submitted;
 
       return {
         id: tb.id,
-        round_id: tb.round_id,
-        round_name: tb.round_name,
         season_id: tb.season_id,
-        player_name: tb.player_name,
-        player_team: tb.player_team,
-        player_position: tb.player_position,
+        player: {
+          id: tb.player_id,
+          name: tb.player_name,
+          position: tb.position,
+          team: tb.player_team,
+          overall_rating: tb.overall_rating,
+        },
+        original_amount: tb.original_amount,
         status: tb.status,
-        tie_amount: tb.tie_amount,
-        tied_team_count: tb.tied_team_count,
-        current_highest_bid: tb.current_highest_bid,
-        current_highest_team_id: tb.current_highest_team_id,
-        start_time: tb.start_time,
-        last_activity_time: tb.last_activity_time,
-        max_end_time: tb.max_end_time,
-        time_remaining: timeRemaining,
+        tied_teams_count: Array.isArray(tiedTeams) ? tiedTeams.length : 0,
+        winning_team_id: tb.winning_team_id,
+        winning_amount: tb.winning_amount,
         created_at: tb.created_at,
-        my_status: {
-          status: tb.my_status,
-          current_bid: tb.my_current_bid,
-          you_are_highest: youAreHighest,
-          can_bid: canBid,
-          can_withdraw: canWithdraw,
-          joined_at: tb.my_joined_at,
-          withdrawn_at: tb.my_withdrawn_at,
+        resolved_at: tb.resolved_at,
+        my_bid: {
+          team_name: tb.team_name,
+          submitted: tb.submitted,
+          new_bid_amount: tb.new_bid_amount,
+          submitted_at: tb.submitted_at,
+          you_are_winner: youAreWinner,
+          can_submit: canSubmit,
         },
       };
     });

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getAuthToken } from '@/lib/auth/token-helper';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { validateAuctionSettings } from '@/lib/auction-settings';
+import { generateBulkRoundId } from '@/lib/id-generator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get request body
-    const { season_id, base_price = 10, duration_seconds = 300 } = await request.json();
+    const { season_id, base_price = 10, duration_hours = 0, duration_minutes = 5, duration_seconds = 0 } = await request.json();
 
     if (!season_id) {
       return NextResponse.json(
@@ -62,7 +64,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🔄 Creating bulk round:', { season_id, base_price, duration_seconds });
+    // Convert duration to total seconds
+    const totalDurationSeconds = (duration_hours * 3600) + (duration_minutes * 60) + duration_seconds;
+
+    console.log('🔄 Creating bulk round:', { season_id, base_price, duration_hours, duration_minutes, duration_seconds, totalDurationSeconds });
+
+    // Validate that auction settings exist for this season
+    const validation = await validateAuctionSettings(season_id);
+    if (!validation.valid) {
+      return NextResponse.json(
+        { success: false, error: validation.error },
+        { status: validation.status || 400 }
+      );
+    }
+
+    console.log('✅ Auction settings validated for season:', season_id);
 
     // Get next round number for this season
     const existingRounds = await sql`
@@ -74,9 +90,14 @@ export async function POST(request: NextRequest) {
     
     const nextRoundNumber = (existingRounds[0]?.max_round || 0) + 1;
 
-    // Create the bulk round
+    // Generate readable ID for bulk round
+    const roundId = await generateBulkRoundId();
+    console.log(`📝 Generated bulk round ID: ${roundId}`);
+
+    // Create the bulk round with readable ID
     const roundResult = await sql`
     INSERT INTO rounds (
+        id,
         season_id,
         round_number,
         round_type,
@@ -85,21 +106,22 @@ export async function POST(request: NextRequest) {
         duration_seconds,
         created_at
       ) VALUES (
+        ${roundId},
         ${season_id},
         ${nextRoundNumber},
         'bulk',
         ${base_price},
         'draft',
-        ${duration_seconds},
+        ${totalDurationSeconds},
         NOW()
       )
       RETURNING id, round_number
     `;
 
-    const roundId = roundResult[0].id;
+    const createdRoundId = roundResult[0].id;
     const roundNumber = roundResult[0].round_number;
 
-    console.log(`✅ Created bulk round ${roundNumber} with ID: ${roundId}`);
+    console.log(`✅ Created bulk round ${roundNumber} with ID: ${createdRoundId}`);
 
     // Get ALL eligible players (not sold, auction eligible)
     console.time('⚡ Fetch eligible players');
@@ -135,7 +157,7 @@ export async function POST(request: NextRequest) {
     
     // Build bulk insert values
     const playerValues = eligiblePlayers.map((player: any) => 
-      `(${roundId}, '${player.player_id}', '${player.name.replace(/'/g, "''")}', '${player.position || ''}', '${player.position_group || ''}', ${base_price}, 'pending')`
+      `('${createdRoundId}', '${player.player_id}', '${player.name.replace(/'/g, "''")}', '${player.position || ''}', '${player.position_group || ''}', ${base_price}, 'pending')`
     ).join(',');
 
     await sql.unsafe(`
@@ -158,11 +180,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        round_id: roundId,
+        round_id: createdRoundId,
         round_number: roundNumber,
         season_id,
         base_price,
+        duration_hours,
+        duration_minutes,
         duration_seconds,
+        total_duration_seconds: totalDurationSeconds,
         player_count: eligiblePlayers.length,
         status: 'draft',
         message: `Bulk round ${roundNumber} created successfully with ${eligiblePlayers.length} players`,
