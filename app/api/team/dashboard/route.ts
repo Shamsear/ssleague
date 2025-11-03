@@ -316,9 +316,13 @@ export async function GET(request: NextRequest) {
         };
       });
       
-      // Extract round number from ID (last digits)
-      const roundNumberMatch = round.id.match(/\d+$/);
-      const roundNumber = roundNumberMatch ? parseInt(roundNumberMatch[0], 10) : 0;
+      // Use round_number from database if available, otherwise extract from ID
+      const roundNumber = round.round_number || (() => {
+        const roundNumberMatch = round.id.match(/\d+$/);
+        return roundNumberMatch ? parseInt(roundNumberMatch[0], 10) : 0;
+      })();
+      
+      console.log(`📍 Round ${round.id}: round_number from DB = ${round.round_number}, final = ${roundNumber}`);
       
       return {
         id: round.id,

@@ -235,7 +235,7 @@ export async function POST(
       SELECT id
       FROM round_bids
       WHERE round_id = ${roundId}
-      AND team_id = ${userId}
+      AND team_id = ${teamId}
       AND player_id = ${player_id}
     `;
 
