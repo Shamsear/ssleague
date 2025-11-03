@@ -2,9 +2,9 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useCallback } from 'react';
 import Link from 'next/link';
-import { useAuctionWebSocket } from '@/hooks/useWebSocket';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface BulkBid {
   player_id: string;
@@ -54,8 +54,73 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
 
-  // Enable WebSocket for real-time updates
-  const { isConnected } = useAuctionWebSocket(resolvedParams.id, true);
+  // Enable WebSocket for real-time updates with custom message handler
+  const { isConnected } = useWebSocket({
+    channel: `round:${resolvedParams.id}`,
+    enabled: true,
+    onMessage: useCallback((message: any) => {
+      console.log('[Committee Page] WebSocket message:', message);
+      
+      // Handle different message types
+      switch (message.type) {
+        case 'round_updated':
+          // Update round metadata (timer, status, etc.) without full refresh
+          if (message.data) {
+            setRound(prev => prev ? {
+              ...prev,
+              status: message.data.status || prev.status,
+              start_time: message.data.start_time || prev.start_time,
+              end_time: message.data.end_time || prev.end_time,
+              duration_seconds: message.data.duration_seconds || prev.duration_seconds,
+            } : null);
+          }
+          break;
+          
+        case 'bid_added':
+        case 'bid_removed':
+          // Update player bid counts in real-time
+          if (message.data?.player_id) {
+            setRound(prev => {
+              if (!prev?.roundPlayers) return prev;
+              return {
+                ...prev,
+                roundPlayers: prev.roundPlayers.map(player => 
+                  player.player_id === message.data.player_id
+                    ? { ...player, bid_count: message.data.bid_count || player.bid_count }
+                    : player
+                ),
+              };
+            });
+          }
+          break;
+          
+        case 'player_status_updated':
+          // Update player status (sold, contested, etc.)
+          if (message.data?.player_id) {
+            setRound(prev => {
+              if (!prev?.roundPlayers) return prev;
+              return {
+                ...prev,
+                roundPlayers: prev.roundPlayers.map(player => 
+                  player.player_id === message.data.player_id
+                    ? {
+                        ...player,
+                        status: message.data.status || player.status,
+                        winning_team_id: message.data.winning_team_id || player.winning_team_id,
+                        winning_bid: message.data.winning_bid || player.winning_bid,
+                        bid_count: message.data.bid_count ?? player.bid_count,
+                      }
+                    : player
+                ),
+              };
+            });
+          }
+          break;
+      }
+      
+      setLastUpdate(Date.now());
+    }, []),
+  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -89,33 +154,6 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     }
   }, [resolvedParams.id]);
 
-  // Auto-refresh when bids are placed (triggered by WebSocket or every 5 seconds during active rounds)
-  useEffect(() => {
-    if (!round || round.status !== 'active') return;
-
-    const interval = setInterval(() => {
-      console.log('🔄 Auto-refreshing round data...');
-      fetchRound();
-    }, 5000); // Refresh every 5 seconds during active rounds
-
-    return () => clearInterval(interval);
-  }, [round?.status, resolvedParams.id]);
-
-  // Listen for WebSocket bid updates
-  useEffect(() => {
-    const handleBidUpdate = () => {
-      console.log('📢 Bid update received, refreshing...');
-      fetchRound();
-      setLastUpdate(Date.now());
-    };
-
-    // Listen for custom events from WebSocket
-    window.addEventListener('auction-update', handleBidUpdate);
-    
-    return () => {
-      window.removeEventListener('auction-update', handleBidUpdate);
-    };
-  }, [resolvedParams.id]);
 
   // Timer for active rounds
   useEffect(() => {
@@ -253,6 +291,35 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     } catch (err) {
       console.error('Error updating status:', err);
       alert('Failed to update status');
+    }
+  };
+
+  const handleCreateTiebreaker = async (playerId: string, playerName: string) => {
+    if (!round) return;
+
+    if (!confirm(`Create tiebreaker for ${playerName}? This will allow the tied teams to submit new bids.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/bulk-rounds/${round.id}/create-tiebreaker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_id: playerId }),
+      });
+
+      const { success, data, error } = await response.json();
+
+      if (success) {
+        alert(data.message || 'Tiebreaker created successfully!');
+        // Refresh round data
+        await fetchRound();
+      } else {
+        alert(`Error: ${error}`);
+      }
+    } catch (err) {
+      console.error('Error creating tiebreaker:', err);
+      alert('Failed to create tiebreaker');
     }
   };
 
@@ -615,7 +682,10 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                     <p className="font-semibold text-gray-800">{player.player_name}</p>
                     <p className="text-sm text-gray-600">{player.position} • {player.bid_count} teams bidding</p>
                   </div>
-                  <button className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium">
+                  <button 
+                    onClick={() => handleCreateTiebreaker(player.player_id, player.player_name)}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+                  >
                     Create Tiebreaker
                   </button>
                 </div>

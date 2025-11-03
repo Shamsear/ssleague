@@ -90,7 +90,7 @@ export async function GET(
           // Fallback 2: Check Neon teams table
           if (!userTeamId) {
             const teamResult = await sql`
-              SELECT id FROM teams WHERE user_id = ${userId} AND season_id = ${seasonId} LIMIT 1
+              SELECT id FROM teams WHERE firebase_uid = ${userId} AND season_id = ${seasonId} LIMIT 1
             `;
             if (teamResult.length > 0) {
               userTeamId = teamResult[0].id;

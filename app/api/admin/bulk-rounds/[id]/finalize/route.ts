@@ -7,6 +7,11 @@ import { logAuctionWin } from '@/lib/transaction-logger';
 import { triggerNews } from '@/lib/news/trigger';
 import { generateTiebreakerId } from '@/lib/id-generator';
 
+// WebSocket broadcast function (set by WebSocket server)
+declare global {
+  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
+}
+
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 /**
@@ -230,7 +235,7 @@ export async function POST(
           WHERE id = ${playerId}
         `;
 
-        // Update Neon teams table
+        // Update Neon teams table - bid.team_id contains readable team ID (SSPSLT0001)
         try {
           await sql`
             UPDATE teams 
@@ -239,7 +244,7 @@ export async function POST(
               football_budget = football_budget - ${round.base_price},
               football_players_count = football_players_count + 1,
               updated_at = NOW()
-            WHERE firebase_uid = ${bid.team_id}
+            WHERE id = ${bid.team_id}
             AND season_id = ${round.season_id}
           `;
           console.log(`✅ Updated Neon teams table for ${bid.team_id}`);
@@ -247,8 +252,23 @@ export async function POST(
           console.error(`❌ Error updating Neon teams for ${bid.team_id}:`, error);
         }
 
-        // Update Firebase team_seasons
-        const teamSeasonId = `${bid.team_id}_${round.season_id}`;
+        // Get firebase_uid for this team for Firebase updates
+        const teamFirebaseResult = await sql`
+          SELECT firebase_uid FROM teams
+          WHERE id = ${bid.team_id}
+          AND season_id = ${round.season_id}
+          LIMIT 1
+        `;
+        
+        const firebaseUid = teamFirebaseResult[0]?.firebase_uid;
+        if (!firebaseUid) {
+          console.warn(`⚠️ No firebase_uid found for team ${bid.team_id}`);
+          immediatelyAssigned++;
+          continue;
+        }
+
+        // Update Firebase team_seasons using firebase_uid
+        const teamSeasonId = `${firebaseUid}_${round.season_id}`;
         const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
         const teamSeasonSnap = await teamSeasonRef.get();
         
@@ -288,9 +308,9 @@ export async function POST(
           // Update balance
           await teamSeasonRef.update(updateData);
           
-          // Log transaction
+          // Log transaction using firebase_uid
           await logAuctionWin(
-            bid.team_id,
+            firebaseUid,
             round.season_id,
             playerInfo?.player_name || 'Unknown Player',
             playerId,
@@ -300,7 +320,7 @@ export async function POST(
             roundId
           );
           
-          console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${bid.team_id}`);
+          console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${firebaseUid}`);
         } else {
           console.warn(`⚠️ Team season ${teamSeasonId} not found in Firebase`);
         }
@@ -311,158 +331,11 @@ export async function POST(
       console.log(`✅ Assigned ${immediatelyAssigned} players immediately`);
     }
 
-    // PART 2: Create tiebreakers for conflicts
+    // PART 2: Skip automatic tiebreaker creation - will be created manually
+    // Just log the conflicts for committee to handle manually
     if (conflicts.length > 0) {
-      console.log(`\n⚔️ Creating ${conflicts.length} tiebreakers...`);
-
-      // Check if tiebreakers already exist for this season (from previous failed attempt)
-      const existingTiebreakers = await sql`
-        SELECT id, player_id FROM tiebreakers
-        WHERE season_id = ${round.season_id}
-        AND status = 'active'
-        AND player_id = ANY(${conflicts})
-      `;
-
-      const existingTiebreakerMap = new Map();
-      for (const tb of existingTiebreakers) {
-        existingTiebreakerMap.set(tb.player_id, tb.id);
-      }
-
-      // Get player details for tiebreakers
-      const playerDetails = await sql`
-        SELECT 
-          rp.player_id,
-          rp.player_name
-        FROM round_players rp
-        WHERE rp.round_id = ${roundId}
-        AND rp.player_id = ANY(${conflicts})
-      `;
-
-      const playerDetailsMap = new Map();
-      for (const p of playerDetails) {
-        playerDetailsMap.set(p.player_id, p);
-      }
-
-      // Generate all tiebreaker IDs upfront to avoid race condition
-      const tiebreakerIds: string[] = [];
-      for (let i = 0; i < conflicts.length; i++) {
-        tiebreakerIds.push(await generateTiebreakerId());
-      }
-
-      for (let i = 0; i < conflicts.length; i++) {
-        const playerId = conflicts[i];
-        const bids = bidsByPlayer.get(playerId)!;
-        const playerInfo = playerDetailsMap.get(playerId);
-        
-        // Check if tiebreaker already exists for this player
-        let tiebreakerId = existingTiebreakerMap.get(playerId);
-        
-        if (!tiebreakerId) {
-          // Generate new ID and create tiebreaker
-          tiebreakerId = tiebreakerIds[i];
-
-          // Prepare tied_teams JSONB array
-          const tiedTeams = bids.map(bid => ({
-            team_id: bid.team_id,
-            team_name: bid.team_name
-          }));
-
-          // Only the first tiebreaker is active, rest are pending (sequential activation)
-          // This creates a "Last Person Standing" experience where tiebreakers open one after another
-          const tiebreakerStatus = i === 0 ? 'active' : 'pending';
-
-          // Create tiebreaker
-          await sql`
-            INSERT INTO tiebreakers (
-              id,
-              player_id,
-              player_name,
-              original_amount,
-              tied_teams,
-              status,
-              season_id,
-              created_at
-            ) VALUES (
-              ${tiebreakerId},
-              ${playerId},
-              ${playerInfo.player_name},
-              ${round.base_price},
-              ${JSON.stringify(tiedTeams)}::jsonb,
-              ${tiebreakerStatus},
-              ${round.season_id},
-              NOW()
-            )
-          `;
-        } else {
-          console.log(`⚠️ Tiebreaker ${tiebreakerId} already exists for player ${playerId}, skipping creation`);
-        }
-
-        // Add all teams to tiebreaker using team_tiebreakers table
-        for (const bid of bids) {
-          // Get original bid ID
-          const bidResult = await sql`
-            SELECT id FROM round_bids
-            WHERE round_id = ${roundId}
-            AND team_id = ${bid.team_id}
-            AND player_id = ${playerId}
-            LIMIT 1
-          `;
-          
-          const originalBidId = bidResult[0]?.id;
-          
-          // Get readable team_id from teams table using firebase_uid
-          const teamResult = await sql`
-            SELECT id FROM teams
-            WHERE firebase_uid = ${bid.team_id}
-            AND season_id = ${round.season_id}
-            LIMIT 1
-          `;
-          
-          const readableTeamId = teamResult[0]?.id;
-          
-          if (!readableTeamId) {
-            console.warn(`⚠️ No readable team ID found for firebase_uid ${bid.team_id}`);
-            continue;
-          }
-          
-          // Generate team_tiebreaker ID as composite
-          const teamTiebreakerId = `${readableTeamId}_${tiebreakerId}`;
-          
-          await sql`
-            INSERT INTO team_tiebreakers (
-              id,
-              tiebreaker_id,
-              team_id,
-              team_name,
-              original_bid_id,
-              submitted,
-              new_bid_amount,
-              created_at
-            ) VALUES (
-              ${teamTiebreakerId},
-              ${tiebreakerId},
-              ${readableTeamId},
-              ${bid.team_name},
-              ${originalBidId},
-              false,
-              NULL,
-              NOW()
-            )
-            ON CONFLICT (id) DO NOTHING
-          `;
-        }
-
-        // Update round_players status to indicate tiebreaker
-        await sql`
-          UPDATE round_players
-          SET status = 'tiebreaker'
-          WHERE round_id = ${roundId}
-          AND player_id = ${playerId}
-        `;
-
-        console.log(`✅ Created tiebreaker ${tiebreakerId} for player ${playerInfo.player_name} (${bids.length} teams)`);
-        tiebreakerCreated++;
-      }
+      console.log(`\n⚠️ Found ${conflicts.length} contested players (manual tiebreaker creation required)`);
+      tiebreakerCreated = conflicts.length; // Track count for status
     }
 
     // PART 3: Handle players with no bids (unsold)
@@ -478,7 +351,8 @@ export async function POST(
     }
 
     // Update round status
-    const newStatus = tiebreakerCreated > 0 ? 'pending_tiebreakers' : 'completed';
+    // Mark as completed (not pending_tiebreakers) so committee can manually create tiebreakers
+    const newStatus = 'completed';
     await sql`
       UPDATE rounds
       SET status = ${newStatus}, updated_at = NOW()
@@ -489,6 +363,20 @@ export async function POST(
     console.log(`   Immediately assigned: ${immediatelyAssigned}`);
     console.log(`   Tiebreakers created: ${tiebreakerCreated}`);
     console.log(`   New status: ${newStatus}`);
+
+    // Broadcast round completion via WebSocket
+    if (global.wsBroadcast) {
+      global.wsBroadcast(`round:${roundId}`, {
+        type: 'round_updated',
+        data: {
+          round_id: roundId,
+          status: newStatus,
+          immediately_assigned: immediatelyAssigned,
+          tiebreakers_created: tiebreakerCreated,
+        },
+      });
+      console.log(`📢 [WebSocket] Broadcast round completion to round:${roundId}`);
+    }
 
     // Generate news for bulk round completion
     if (immediatelyAssigned > 0) {

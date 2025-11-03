@@ -99,7 +99,31 @@ export async function GET(
 
     const round = roundData[0];
 
-    // Get all players in this round
+    // If round is completed/finalized, return round data but no players
+    // This allows the frontend to detect completion and redirect
+    if (round.status === 'completed' || round.status === 'cancelled' || round.status === 'pending_tiebreakers') {
+      console.log(`⚠️ Round is ${round.status} - returning minimal data for redirect`);
+      return NextResponse.json({
+        success: true,
+        data: {
+          round: {
+            id: round.id,
+            round_number: round.round_number,
+            status: round.status,
+            base_price: round.base_price,
+            start_time: round.start_time,
+            end_time: round.end_time,
+            duration_seconds: round.duration_seconds,
+            player_count: round.player_count,
+          },
+          players: [],
+          balance: 0,
+          squad: { current: 0, max: 25, available: 0 },
+        },
+      });
+    }
+
+    // Get all players in this round (only for active rounds)
     const players = await sql`
       SELECT 
         rp.player_id as id,

@@ -93,6 +93,24 @@ export default function TeamBulkRoundPage() {
         }
 
         console.log('✅ Round data fetched successfully');
+        
+        // Check if round is completed/finalized - redirect immediately
+        if (data.round.status === 'completed' || data.round.status === 'cancelled' || data.round.status === 'pending_tiebreakers') {
+          console.log(`⚠️ Round is ${data.round.status} - redirecting to dashboard`);
+          const statusMessage = data.round.status === 'pending_tiebreakers' 
+            ? 'has been finalized and tiebreakers have been created'
+            : `has been ${data.round.status}`;
+          showAlert({
+            type: 'info',
+            title: 'Round Ended',
+            message: `This bulk round ${statusMessage}. Redirecting to dashboard...`
+          });
+          setTimeout(() => {
+            router.push('/dashboard');
+          }, 2000);
+          return;
+        }
+        
         setBulkRound(data.round);
         setPlayers(data.players || []);
         setTeamBalance(data.balance || 1000);
@@ -135,6 +153,24 @@ export default function TeamBulkRoundPage() {
       // Handle round update (timer extension, etc.)
       if (message.type === 'round_updated' && message.data) {
         console.log('🔄 Round metadata updated via WebSocket');
+        
+        // If round is completed/finalized, redirect to dashboard
+        if (message.data.status === 'completed' || message.data.status === 'pending_tiebreakers') {
+          console.log(`✅ Round ${message.data.status} - redirecting to dashboard...`);
+          const statusMessage = message.data.status === 'pending_tiebreakers'
+            ? 'has been finalized. Tiebreakers have been created for contested players.'
+            : 'has been completed.';
+          showAlert({
+            type: 'success',
+            title: 'Round Finalized',
+            message: `This bulk round ${statusMessage} Redirecting to dashboard...`
+          });
+          setTimeout(() => {
+            router.push('/dashboard');
+          }, 2000);
+          return;
+        }
+        
         setBulkRound(prev => {
           if (!prev) return prev;
           return {
@@ -174,11 +210,21 @@ export default function TeamBulkRoundPage() {
         const end = new Date(bulkRound.end_time!).getTime();
         const remaining = Math.max(0, Math.floor((end - now) / 1000));
         setTimeRemaining(remaining);
+        
+        // Auto-redirect when timer reaches 0
+        if (remaining === 0) {
+          console.log('⏰ Timer reached 0 - round should be completed');
+          showAlert({
+            type: 'info',
+            title: 'Round Ended',
+            message: 'Time is up! Waiting for admin to finalize results...'
+          });
+        }
       }, 1000);
 
       return () => clearInterval(timer);
     }
-  }, [bulkRound]);
+  }, [bulkRound, router, showAlert]);
 
   const handleTogglePlayer = async (playerId: string) => {
     const isBidded = biddedPlayers.has(playerId);

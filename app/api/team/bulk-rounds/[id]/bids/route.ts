@@ -274,6 +274,15 @@ export async function POST(
 
     console.log(`✅ Successfully placed bid for player ${player_id}`);
 
+    // Get updated bid count for this player
+    const bidCountResult = await sql`
+      SELECT COUNT(*) as count
+      FROM round_bids
+      WHERE round_id = ${roundId}
+      AND player_id = ${player_id}
+    `;
+    const bidCount = parseInt(bidCountResult[0].count) || 0;
+
     // Broadcast to WebSocket clients for real-time updates
     if (global.wsBroadcast) {
       global.wsBroadcast(`round:${roundId}`, {
@@ -283,9 +292,10 @@ export async function POST(
           team_name: teamName,
           player_id,
           bid_amount: round.base_price,
+          bid_count: bidCount,
         },
       });
-      console.log(`📢 [WebSocket] Broadcast bid added to round:${roundId}`);
+      console.log(`📢 [WebSocket] Broadcast bid added to round:${roundId} (player ${player_id} now has ${bidCount} bids)`);
     }
 
     // NOTE: Balance is NOT deducted yet - only reserved
@@ -534,6 +544,15 @@ export async function DELETE(
 
     console.log(`✅ Removed bid for player ${player_id}`);
 
+    // Get updated bid count for this player
+    const bidCountResult = await sql`
+      SELECT COUNT(*) as count
+      FROM round_bids
+      WHERE round_id = ${roundId}
+      AND player_id = ${player_id}
+    `;
+    const bidCount = parseInt(bidCountResult[0].count) || 0;
+
     // Broadcast to WebSocket
     if (global.wsBroadcast) {
       global.wsBroadcast(`round:${roundId}`, {
@@ -541,8 +560,10 @@ export async function DELETE(
         data: {
           team_id: teamId,
           player_id,
+          bid_count: bidCount,
         },
       });
+      console.log(`📢 [WebSocket] Broadcast bid removed from round:${roundId} (player ${player_id} now has ${bidCount} bids)`);
     }
 
     return NextResponse.json({
