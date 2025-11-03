@@ -5,6 +5,11 @@ import { adminAuth, adminDb } from '@/lib/firebase/admin';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
+// WebSocket broadcast function (set by WebSocket server)
+declare global {
+  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
+}
+
 /**
  * POST /api/admin/bulk-rounds/:id/start
  * Start a bulk bidding round (set status to active, set start/end times)
@@ -110,10 +115,20 @@ export async function POST(
     console.log(`⏰ End (UTC): ${endTime.toISOString()}`);
     console.log(`⏰ Duration: ${round.duration_seconds} seconds (${Math.floor(round.duration_seconds / 60)} minutes)`);
 
-    // TODO: Send notifications to all teams (implement later)
-    // - Email notification
-    // - In-app notification
-    // - WebSocket broadcast
+    // Broadcast round update via WebSocket
+    if (global.wsBroadcast) {
+      global.wsBroadcast(`round:${roundId}`, {
+        type: 'round_updated',
+        data: {
+          round_id: roundId,
+          status: 'active',
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          duration_seconds: round.duration_seconds,
+        },
+      });
+      console.log(`📢 [WebSocket] Broadcast round start to round:${roundId}`);
+    }
 
     return NextResponse.json({
       success: true,

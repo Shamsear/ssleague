@@ -59,8 +59,8 @@ export default function TeamBulkRoundPage() {
   const [squadInfo, setSquadInfo] = useState({ current: 0, max: 25, available: 25 });
   const [bidsCount, setBidsCount] = useState(0);
 
-  // ✅ Enable WebSocket for real-time bid updates
-  const { isConnected } = useAuctionWebSocket(roundId, true);
+  // ✅ Enable WebSocket for real-time bid updates and round updates
+  const { isConnected, lastMessage } = useAuctionWebSocket(roundId, true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -74,18 +74,25 @@ export default function TeamBulkRoundPage() {
   // Fetch round and players
   useEffect(() => {
     const fetchData = async () => {
-      if (!roundId) return;
+      // Wait for auth to be ready and user to be loaded
+      if (!roundId || loading || !user) {
+        console.log('⏳ Waiting for auth...', { roundId: !!roundId, loading, user: !!user });
+        return;
+      }
 
       setIsLoading(true);
       try {
+        console.log(`🚀 Fetching bulk round ${roundId}...`);
+        
         // Fetch round details and players
         const response = await fetchWithTokenRetry(`/api/team/bulk-rounds/${roundId}`);
-        const { success, data } = await response.json();
+        const { success, data, error } = await response.json();
 
         if (!success) {
-          throw new Error('Failed to fetch round data');
+          throw new Error(error || 'Failed to fetch round data');
         }
 
+        console.log('✅ Round data fetched successfully');
         setBulkRound(data.round);
         setPlayers(data.players || []);
         setTeamBalance(data.balance || 1000);
@@ -102,12 +109,12 @@ export default function TeamBulkRoundPage() {
           setBiddedPlayers(bidPlayerIds);
           setBidsCount(bidsData.data.count || 0);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching data:', err);
         showAlert({
           type: 'error',
           title: 'Error',
-          message: 'Failed to load round data'
+          message: err.message || 'Failed to load round data'
         });
       } finally {
         setIsLoading(false);
@@ -115,7 +122,49 @@ export default function TeamBulkRoundPage() {
     };
 
     fetchData();
-  }, [roundId]);
+  }, [roundId, loading, user]);
+
+  // Listen for WebSocket updates (round metadata changes)
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    try {
+      const message = JSON.parse(lastMessage);
+      console.log('📨 WebSocket message received:', message);
+
+      // Handle round update (timer extension, etc.)
+      if (message.type === 'round_updated' && message.data) {
+        console.log('🔄 Round metadata updated via WebSocket');
+        setBulkRound(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            end_time: message.data.end_time || prev.end_time,
+            duration_seconds: message.data.duration_seconds || prev.duration_seconds,
+            status: message.data.status || prev.status,
+          };
+        });
+      }
+
+      // Handle bid updates
+      if (message.type === 'bid_added' || message.type === 'bid_removed') {
+        console.log('💰 Bid update via WebSocket:', message.type);
+        // Refetch bids to stay in sync
+        fetchWithTokenRetry(`/api/team/bulk-rounds/${roundId}/bids`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.success && data.data.bids) {
+              const bidPlayerIds = new Set(data.data.bids.map((b: any) => b.player_id));
+              setBiddedPlayers(bidPlayerIds);
+              setBidsCount(data.data.count || 0);
+            }
+          })
+          .catch(err => console.error('Error refetching bids:', err));
+      }
+    } catch (err) {
+      console.error('Error parsing WebSocket message:', err);
+    }
+  }, [lastMessage, roundId]);
 
   // Timer countdown
   useEffect(() => {

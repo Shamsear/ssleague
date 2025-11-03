@@ -58,6 +58,8 @@ export async function GET(
     }
 
     const { id: roundId } = await params;
+    
+    console.log(`🔍 Fetching bulk round with ID: ${roundId} (type: ${typeof roundId})`);
 
     // Get round details
     const roundData = await sql`
@@ -75,10 +77,22 @@ export async function GET(
       WHERE id = ${roundId}
       AND round_type = 'bulk'
     `;
+    
+    console.log(`📊 Query result: Found ${roundData.length} rounds`);
+    if (roundData.length > 0) {
+      console.log(`✅ Round found: ${roundData[0].id}, status: ${roundData[0].status}`);
+    }
 
     if (roundData.length === 0) {
+      console.error(`❌ Bulk round not found for ID: ${roundId}`);
+      // Try to find any bulk rounds to help debug
+      const allBulkRounds = await sql`
+        SELECT id, round_number, status FROM rounds WHERE round_type = 'bulk' LIMIT 5
+      `;
+      console.log(`📊 Available bulk rounds:`, allBulkRounds);
+      
       return NextResponse.json(
-        { success: false, error: 'Bulk round not found' },
+        { success: false, error: `Bulk round not found (ID: ${roundId})` },
         { status: 404 }
       );
     }
