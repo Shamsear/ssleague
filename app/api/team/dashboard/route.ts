@@ -446,6 +446,7 @@ export async function GET(request: NextRequest) {
         p.team_name as player_team,
         r.position as round_position,
         r.season_id,
+        r.round_type,
         tt.old_bid_amount as team_old_bid,
         tt.new_bid_amount as team_new_bid,
         tt.submitted as team_submitted,
@@ -463,6 +464,8 @@ export async function GET(request: NextRequest) {
     const tiebreakers = tiebreakersResult.map(tiebreaker => ({
       id: tiebreaker.id,
       round_id: tiebreaker.round_id,
+      round_type: tiebreaker.round_type,
+      is_bulk: tiebreaker.round_type === 'bulk',
       player_id: tiebreaker.player_id,
       player: {
         id: tiebreaker.player_id,
@@ -478,15 +481,36 @@ export async function GET(request: NextRequest) {
       submitted: tiebreaker.team_submitted,
     }));
 
-    // Fetch bulk tiebreakers (if any)
-    const bulkTiebreakersSnapshot = await adminDb
-      .collection('bulk_tiebreakers')
-      .where('teams_involved', 'array-contains', userId)
-      .where('status', '==', 'pending')
-      .get();
-    const bulkTiebreakers = bulkTiebreakersSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
+    // Fetch bulk tiebreakers from SQL (if any)
+    const bulkTiebreakersResult = dbTeamId ? await sql`
+      SELECT 
+        bt.*,
+        p.name as player_name,
+        p.position,
+        p.overall_rating,
+        p.team_name as player_team
+      FROM bulk_tiebreakers bt
+      INNER JOIN footballplayers p ON bt.player_id = p.id
+      WHERE bt.season_id = ${seasonId}
+      AND bt.status = 'active'
+      AND bt.tied_teams::jsonb @> ${JSON.stringify([{ team_id: dbTeamId }])}
+      ORDER BY bt.created_at DESC
+    ` : [];
+    
+    const bulkTiebreakers = bulkTiebreakersResult.map(bt => ({
+      id: bt.id,
+      bulk_round_id: bt.bulk_round_id,
+      player_id: bt.player_id,
+      player: {
+        id: bt.player_id,
+        name: bt.player_name,
+        position: bt.position,
+        overall_rating: bt.overall_rating,
+        nfl_team: bt.player_team,
+      },
+      original_amount: bt.original_amount,
+      status: bt.status,
+      is_bulk: true,
     }));
 
     // Fetch bulk rounds (if any active)

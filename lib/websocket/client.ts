@@ -38,6 +38,15 @@ export class WSClient {
         console.log('[WebSocket] Connected successfully');
         this.reconnectAttempts = 0;
         this.startHeartbeat();
+        
+        // Subscribe to all registered channels
+        this.handlers.forEach((_, channel) => {
+          this.send({
+            type: 'subscribe',
+            channel,
+          });
+          console.log(`[WebSocket] Subscribed to channel: ${channel}`);
+        });
       };
 
       this.ws.onmessage = (event) => {
@@ -89,13 +98,17 @@ export class WSClient {
     }
     this.handlers.get(channel)!.add(handler);
 
-    // Send subscription message to server
-    this.send({
-      type: 'subscribe',
-      channel,
-    });
-
-    console.log(`[WebSocket] Subscribed to channel: ${channel}`);
+    // Send subscription message to server only if connected
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.send({
+        type: 'subscribe',
+        channel,
+      });
+      console.log(`[WebSocket] Subscribed to channel: ${channel}`);
+    } else {
+      // Queue subscription for when connection is established
+      console.log(`[WebSocket] Queued subscription to channel: ${channel}`);
+    }
   }
 
   unsubscribe(channel: string, handler: MessageHandler) {

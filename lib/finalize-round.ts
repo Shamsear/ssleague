@@ -321,12 +321,13 @@ export async function applyFinalizationResults(
       } catch {}
 
       try {
+        // alloc.team_id contains readable team ID (SSPSLT0001)
         await sql`UPDATE teams SET 
           football_spent = football_spent + ${alloc.amount}, 
           football_budget = football_budget - ${alloc.amount},
           football_players_count = football_players_count + 1,
           updated_at = NOW() 
-        WHERE firebase_uid = ${alloc.team_id}
+        WHERE id = ${alloc.team_id}
         AND season_id = ${seasonId}`;
       } catch (teamUpdateError) {
         console.error(`Failed to update team ${alloc.team_id}:`, teamUpdateError);

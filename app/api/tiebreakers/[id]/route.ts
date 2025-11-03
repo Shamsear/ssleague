@@ -108,10 +108,11 @@ export async function GET(
         p.position,
         p.overall_rating,
         p.team_name as player_team,
-        r.position as round_position
+        r.position as round_position,
+        r.round_type
       FROM tiebreakers t
       INNER JOIN footballplayers p ON t.player_id = p.id
-      INNER JOIN rounds r ON t.round_id = r.id
+      LEFT JOIN rounds r ON t.round_id = r.id
       WHERE t.id = ${tiebreakerId}
     `;
 
@@ -138,13 +139,12 @@ export async function GET(
     }
 
     // Fetch team tiebreaker records
+    // Note: original_bid_id can reference either bids or round_bids table
+    // We get team_id and team_name directly from team_tiebreakers (already stored there)
     const teamTiebreakersResult = await sql`
       SELECT 
-        tt.*,
-        b.team_id,
-        b.team_name
+        tt.*
       FROM team_tiebreakers tt
-      INNER JOIN bids b ON b.id::text = tt.original_bid_id
       WHERE tt.tiebreaker_id = ${tiebreakerId}
       ORDER BY tt.submitted DESC, tt.new_bid_amount DESC NULLS LAST
     `;

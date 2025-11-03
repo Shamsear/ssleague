@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRetry } from '@/lib/fetch-with-retry';
 
 interface TiebreakerDetail {
   id: string;
@@ -30,7 +31,7 @@ interface TiebreakerDetail {
 }
 
 export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: string }> }) {
-  const { user, loading } = useAuth();
+  const { user, loading, firebaseUser } = useAuth();
   const router = useRouter();
   const [tiebreakerId, setTiebreakerId] = useState<string | null>(null);
   const [tiebreaker, setTiebreaker] = useState<TiebreakerDetail | null>(null);
@@ -56,7 +57,21 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
     if (!tiebreakerId) return;
     
     try {
-      const response = await fetch(`/api/tiebreakers/${tiebreakerId}`);
+      // Refresh token before API call
+      if (firebaseUser) {
+        try {
+          const idToken = await firebaseUser.getIdToken(true);
+          await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: idToken }),
+          });
+        } catch (tokenError) {
+          console.error('Token refresh failed:', tokenError);
+        }
+      }
+      
+      const response = await fetchWithTokenRetry(`/api/tiebreakers/${tiebreakerId}`);
       const result = await response.json();
       
       console.log('🔍 Tiebreaker API response:', result);
@@ -169,7 +184,21 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
     console.log('💰 Submitting tiebreaker bid:', { amount, bidAmount, tiebreakerId });
     
     try {
-      const response = await fetch(`/api/tiebreakers/${tiebreakerId}/submit`, {
+      // Refresh token before submitting
+      if (firebaseUser) {
+        try {
+          const idToken = await firebaseUser.getIdToken(true);
+          await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: idToken }),
+          });
+        } catch (tokenError) {
+          console.error('Token refresh failed:', tokenError);
+        }
+      }
+      
+      const response = await fetchWithTokenRetry(`/api/tiebreakers/${tiebreakerId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newBidAmount: amount }),

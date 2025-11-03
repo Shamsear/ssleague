@@ -100,6 +100,8 @@ interface Tiebreaker {
   player_id: number;
   player: Player;
   round_id: number;
+  round_type?: string;
+  is_bulk?: boolean;
   original_amount: number;
   teams_involved: string[];
   status: string;
@@ -722,7 +724,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-              {tiebreakers.map(tiebreaker => (
+              {tiebreakers.map(tiebreaker => {
+                console.log('🔍 Tiebreaker data:', { id: tiebreaker.id, round_type: tiebreaker.round_type, is_bulk: tiebreaker.is_bulk, round_id: tiebreaker.round_id });
+                return (
                 <div key={tiebreaker.id} className={`glass-card p-3 sm:p-4 rounded-xl border-l-4 ${!tiebreaker.new_amount ? 'border-red-400' : 'border-green-400'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -742,12 +746,13 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                         )}
                       </div>
                     </div>
-                    <Link href={`/dashboard/team/tiebreaker/${tiebreaker.id}`} className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium ${!tiebreaker.new_amount ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors whitespace-nowrap`}>
+                    <Link href={`/dashboard/team/${tiebreaker.is_bulk ? 'bulk-tiebreaker' : 'tiebreaker'}/${tiebreaker.id}`} className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium ${!tiebreaker.new_amount ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors whitespace-nowrap`}>
                       {tiebreaker.new_amount ? 'View' : 'Resolve'}
                     </Link>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           </div>
         )}
