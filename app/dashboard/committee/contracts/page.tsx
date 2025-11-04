@@ -7,6 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Contract {
   player_id: string;
@@ -151,7 +152,7 @@ export default function ContractsPage() {
       const firstDoc = contractDocs[0];
       
       // Call the release API to properly handle the contract cancellation
-      const response = await fetch('/api/players/release', {
+      const response = await fetchWithTokenRefresh(/api/players/release', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

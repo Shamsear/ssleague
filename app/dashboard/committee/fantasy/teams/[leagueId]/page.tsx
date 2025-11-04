@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import { Crown, Star, ChevronDown, Target, Award, TrendingUp, Shield as ShieldIcon } from 'lucide-react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FantasyTeam {
   id: string;
@@ -66,7 +67,7 @@ export default function FantasyTeamsPage() {
       if (!leagueId) return;
 
       try {
-        const response = await fetch(`/api/fantasy/leagues/${leagueId}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/leagues/${leagueId}`);
         if (!response.ok) throw new Error('Failed to load league');
 
         const data = await response.json();
@@ -105,7 +106,7 @@ export default function FantasyTeamsPage() {
     setIsLoadingPlayer(true);
 
     try {
-      const response = await fetch(`/api/fantasy/players/${playerId}/points`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/points`);
       if (!response.ok) {
         throw new Error('Failed to load player data');
       }
@@ -124,7 +125,7 @@ export default function FantasyTeamsPage() {
     setIsLoadingPlayers(true);
 
     try {
-      const response = await fetch(`/api/fantasy/teams/${team.id}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/teams/${team.id}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));

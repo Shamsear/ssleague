@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FantasyTeam {
   id: string;
@@ -87,7 +88,7 @@ export default function MyFantasyTeamPage() {
 
       try {
         // First, get the current season and fantasy league
-        const response = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
         
         if (response.status === 404) {
           const errorData = await response.json();
@@ -125,7 +126,7 @@ export default function MyFantasyTeamPage() {
 
   const loadOtherTeams = async (leagueId: string, myTeamId: string) => {
     try {
-      const response = await fetch(`/api/fantasy/leaderboard/${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/leaderboard/${leagueId}`);
       if (!response.ok) return;
 
       const data = await response.json();
@@ -146,7 +147,7 @@ export default function MyFantasyTeamPage() {
     setLoadingPlayerStats({ ...loadingPlayerStats, [playerId]: true });
 
     try {
-      const response = await fetch(`/api/fantasy/players/${playerId}/stats?league_id=${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/stats?league_id=${leagueId}`);
       if (!response.ok) {
         const errorData = await response.text();
         console.error('API Error:', response.status, errorData);
@@ -192,7 +193,7 @@ export default function MyFantasyTeamPage() {
 
     setIsRegistering(true);
     try {
-      const response = await fetch('/api/fantasy/teams/my-team', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/teams/my-team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

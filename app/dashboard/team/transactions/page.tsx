@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { DollarSign, TrendingDown, TrendingUp, Calendar, Filter, Download } from 'lucide-react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Transaction {
   id: string;
@@ -57,7 +58,7 @@ export default function TransactionsPage() {
       setErrorMessage(null);
       
       // Try to fetch transactions - the API will determine which season the team is registered for
-      const response = await fetch('/api/team/transactions');
+      const response = await fetchWithTokenRefresh('/api/team/transactions');
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));

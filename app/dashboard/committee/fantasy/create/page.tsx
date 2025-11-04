@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Season {
   id: string;
@@ -52,7 +53,7 @@ export default function CreateFantasyLeaguePage() {
         // Check if fantasy league already exists for this season in PostgreSQL
         if (userSeasonId) {
           try {
-            const response = await fetch(`/api/fantasy/leagues/${userSeasonId}`);
+            const response = await fetchWithTokenRefresh(`/api/fantasy/leagues/${userSeasonId}`);
             const data = await response.json();
             
             if (response.ok && data.success) {
@@ -80,7 +81,7 @@ export default function CreateFantasyLeaguePage() {
         }
         
         // Fetch seasons from PostgreSQL API
-        const seasonsResponse = await fetch('/api/seasons');
+        const seasonsResponse = await fetchWithTokenRefresh(/api/seasons');
         if (!seasonsResponse.ok) {
           throw new Error('Failed to fetch seasons');
         }
@@ -174,7 +175,7 @@ export default function CreateFantasyLeaguePage() {
       // Create the league first by calling the API
       console.log('Creating fantasy league for season:', seasonIdToUse);
       
-      const response = await fetch(`/api/fantasy/leagues/${seasonIdToUse}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/leagues/${seasonIdToUse}`);
       
       if (!response.ok) {
         const errorData = await response.json();

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Users, ChevronDown, Trophy, Target, Award, TrendingUp } from 'lucide-react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
   real_player_id: string;
@@ -74,7 +75,7 @@ export default function FantasyPlayersPage() {
 
       try {
         // Get league ID from my-team
-        const myTeamResponse = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
+        const myTeamResponse = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
         if (!myTeamResponse.ok) {
           throw new Error('Failed to load fantasy team');
         }
@@ -84,7 +85,7 @@ export default function FantasyPlayersPage() {
         setLeagueId(leagueIdValue);
 
         // Fetch all players performance
-        const playersResponse = await fetch(`/api/fantasy/players-performance?league_id=${leagueIdValue}`);
+        const playersResponse = await fetchWithTokenRefresh(`/api/fantasy/players-performance?league_id=${leagueIdValue}`);
         if (!playersResponse.ok) {
           throw new Error('Failed to load players');
         }
@@ -138,7 +139,7 @@ export default function FantasyPlayersPage() {
     setExpandedPlayer(playerId);
 
     try {
-      const response = await fetch(`/api/fantasy/players/${playerId}/breakdown?league_id=${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/breakdown?league_id=${leagueId}`);
       if (!response.ok) throw new Error('Failed to load breakdown');
 
       const data = await response.json();

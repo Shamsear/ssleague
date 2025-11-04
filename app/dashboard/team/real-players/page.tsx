@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import OptimizedImage from '@/components/OptimizedImage';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface RealPlayer {
   player_id: string;
@@ -55,7 +56,7 @@ export default function RealPlayersPage() {
         setIsLoading(true);
 
         // Get active season
-        const seasonResponse = await fetch('/api/cached/firebase/seasons?isActive=true');
+        const seasonResponse = await fetchWithTokenRefresh(/api/cached/firebase/seasons?isActive=true');
         
         if (!seasonResponse.ok) {
           console.error('Failed to fetch seasons:', seasonResponse.statusText);
@@ -76,7 +77,7 @@ export default function RealPlayersPage() {
 
           // Fetch real players for this season
           // The API automatically queries the correct table based on season number
-          const playersResponse = await fetch(`/api/stats/players?seasonId=${season.id}&limit=1000`);
+          const playersResponse = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${season.id}&limit=1000`);
           
           if (!playersResponse.ok) {
             console.error('Failed to fetch players:', playersResponse.statusText);

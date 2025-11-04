@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function NewCategoryPage() {
   const { user, loading } = useAuth();
@@ -90,7 +91,7 @@ export default function NewCategoryPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/categories', {
+      const response = await fetchWithTokenRefresh(/api/categories', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

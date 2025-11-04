@@ -9,6 +9,7 @@ import { Season } from '@/types/season';
 import { useCachedTeams } from '@/hooks/useCachedData';
 import { calculateRealPlayerSalary } from '@/lib/contracts';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface RealPlayer {
   id: string;
@@ -98,7 +99,7 @@ export default function RealPlayersPage() {
         
         if (isModernSeason) {
           // For Season 16+: Fetch from Neon via API (player_seasons table)
-          const response = await fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
+          const response = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
           const result = await response.json();
           
           if (result.success && result.data && result.data.length > 0) {
@@ -262,7 +263,7 @@ export default function RealPlayersPage() {
       }
 
       // Call API to save all players for both seasons
-      const response = await fetch('/api/contracts/assign-bulk', {
+      const response = await fetchWithTokenRefresh(/api/contracts/assign-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

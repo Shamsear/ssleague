@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Bid {
   id: string;
@@ -68,7 +69,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
     const fetchRound = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`/api/rounds/${roundId}`);
+        const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`);
         const { success, data } = await response.json();
 
         if (success) {
@@ -92,7 +93,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
       if (!showAddPlayers) return;
 
       try {
-        const response = await fetch('/api/players?is_auction_eligible=true');
+        const response = await fetchWithTokenRefresh(/api/players?is_auction_eligible=true');
         const { success, data } = await response.json();
 
         if (success) {
@@ -116,7 +117,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
     if (!confirm(confirmMessage)) return;
 
     try {
-      const response = await fetch(`/api/rounds/${round.id}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${round.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -146,7 +147,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
     if (!confirm(confirmMessage)) return;
 
     try {
-      const response = await fetch(`/api/rounds/${round.id}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${round.id}`, {
         method: 'DELETE',
       });
 

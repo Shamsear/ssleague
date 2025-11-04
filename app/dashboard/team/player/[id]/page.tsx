@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PlayerCard } from '@/components/PlayerImage';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
   id: number;
@@ -131,7 +132,7 @@ export default function PlayerDetailPage() {
 
       try {
         // Fetch player details
-        const playerResponse = await fetch(`/api/players/${playerId}`, {
+        const playerResponse = await fetchWithTokenRefresh(`/api/players/${playerId}`, {
           headers: { 'Cache-Control': 'no-cache' },
         });
         

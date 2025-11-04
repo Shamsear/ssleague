@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface ScoringRule {
   rule_id: number;
@@ -60,7 +61,7 @@ export default function CustomScoringRulesPage() {
 
   const loadRules = async () => {
     try {
-      const response = await fetch(`/api/fantasy/scoring-rules?league_id=${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/scoring-rules?league_id=${leagueId}`);
       if (!response.ok) throw new Error('Failed to load rules');
       
       const data = await response.json();
@@ -101,7 +102,7 @@ export default function CustomScoringRulesPage() {
         };
       }
       
-      const response = await fetch('/api/fantasy/scoring-rules', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/scoring-rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -135,7 +136,7 @@ export default function CustomScoringRulesPage() {
     if (!editingRule) return;
 
     try {
-      const response = await fetch(`/api/fantasy/scoring-rules/${ruleId}`, {
+      const response = await fetchWithTokenRefresh(`/api/fantasy/scoring-rules/${ruleId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -165,7 +166,7 @@ export default function CustomScoringRulesPage() {
     if (!confirm(`Delete rule "${ruleName}"?`)) return;
 
     try {
-      const response = await fetch(`/api/fantasy/scoring-rules/${ruleId}`, {
+      const response = await fetchWithTokenRefresh(`/api/fantasy/scoring-rules/${ruleId}`, {
         method: 'DELETE',
       });
 

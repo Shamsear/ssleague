@@ -9,6 +9,7 @@ import { Season } from '@/types/season';
 import { useCachedTeams } from '@/hooks/useCachedData';
 import { calculateRealPlayerSalary } from '@/lib/contracts';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
   id: string;
@@ -106,7 +107,7 @@ export default function RealPlayersPage() {
         
         // Fetch star rating configuration
         try {
-          const configResponse = await fetch(`/api/star-rating-config?seasonId=${userSeasonId}`);
+          const configResponse = await fetchWithTokenRefresh(`/api/star-rating-config?seasonId=${userSeasonId}`);
           const configResult = await configResponse.json();
           if (configResult.success && configResult.data) {
             const configMap = new Map<number, number>();
@@ -142,7 +143,7 @@ export default function RealPlayersPage() {
         
         if (isModernSeason) {
           // Fetch from Neon via API
-          const response = await fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
+          const response = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
           const result = await response.json();
           
           if (result.success && result.data && result.data.length > 0) {
@@ -421,7 +422,7 @@ export default function RealPlayersPage() {
       const { start: startSeason, end: endSeason } = getContractSeasons();
 
       // Save only this team's players with their individual contracts
-      const response = await fetch('/api/contracts/assign-bulk', {
+      const response = await fetchWithTokenRefresh(/api/contracts/assign-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function ReconcileContractsPage() {
   const { user, loading } = useAuth();
@@ -36,7 +37,7 @@ export default function ReconcileContractsPage() {
     setResult(null);
 
     try {
-      const response = await fetch('/api/admin/reconcile-contracts', {
+      const response = await fetchWithTokenRefresh('/api/admin/reconcile-contracts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

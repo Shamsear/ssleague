@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Trophy {
   id: number;
@@ -76,7 +77,7 @@ export default function TrophyManagementPage() {
     
     setLoading(true);
     try {
-      const res = await fetch(`/api/trophies?season_id=${userSeasonId}`);
+      const res = await fetchWithTokenRefresh(`/api/trophies?season_id=${userSeasonId}`);
       const data = await res.json();
       if (data.success) {
         setTrophies(data.trophies || []);
@@ -93,7 +94,7 @@ export default function TrophyManagementPage() {
     if (!userSeasonId) return;
     
     try {
-      const res = await fetch(`/api/trophies/preview?season_id=${userSeasonId}`);
+      const res = await fetchWithTokenRefresh(`/api/trophies/preview?season_id=${userSeasonId}`);
       const data = await res.json();
       if (data.success) {
         setPreview(data.preview || []);
@@ -108,7 +109,7 @@ export default function TrophyManagementPage() {
     
     try {
       // Fetch teams from teamstats for current season
-      const res = await fetch(`/api/stats/teams?season_id=${userSeasonId}`);
+      const res = await fetchWithTokenRefresh(`/api/stats/teams?season_id=${userSeasonId}`);
       const data = await res.json();
       if (data.success && data.teams) {
         const teamNames = data.teams.map((t: any) => t.team_name).sort();
@@ -123,7 +124,7 @@ export default function TrophyManagementPage() {
     if (!userSeasonId) return;
     
     try {
-      const res = await fetch(`/api/tournaments/secondary?season_id=${userSeasonId}`);
+      const res = await fetchWithTokenRefresh(`/api/tournaments/secondary?season_id=${userSeasonId}`);
       const data = await res.json();
       if (data.success && data.tournaments) {
         // Generate trophy options (just tournament names, not with positions)
@@ -162,7 +163,7 @@ export default function TrophyManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetch('/api/trophies/award', {
+      const res = await fetchWithTokenRefresh(/api/trophies/award', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ season_id: userSeasonId })
@@ -190,7 +191,7 @@ export default function TrophyManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetch(`/api/trophies/${trophyId}`, {
+      const res = await fetchWithTokenRefresh(`/api/trophies/${trophyId}`, {
         method: 'DELETE'
       });
       
@@ -219,7 +220,7 @@ export default function TrophyManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetch('/api/trophies/add', {
+      const res = await fetchWithTokenRefresh(/api/trophies/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

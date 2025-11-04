@@ -8,6 +8,7 @@ import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
   id: string;
@@ -76,7 +77,7 @@ export default function PlayerRatingsPage() {
         setCurrentSeason(season);
         
         // Fetch categories
-        const categoriesResponse = await fetch('/api/categories');
+        const categoriesResponse = await fetchWithTokenRefresh(/api/categories');
         const categoriesResult = await categoriesResponse.json();
         if (categoriesResult.success && categoriesResult.data) {
           setCategories(categoriesResult.data);
@@ -85,7 +86,7 @@ export default function PlayerRatingsPage() {
         
         // Fetch star rating config for base prices
         try {
-          const configResponse = await fetch(`/api/star-rating-config?seasonId=${userSeasonId}`);
+          const configResponse = await fetchWithTokenRefresh(`/api/star-rating-config?seasonId=${userSeasonId}`);
           const configResult = await configResponse.json();
           if (configResult.success && configResult.data) {
             setStarRatingConfig(configResult.data);
@@ -117,7 +118,7 @@ export default function PlayerRatingsPage() {
         
         if (isModernSeason) {
           // For Season 16+: Fetch from Neon via API (player_seasons table)
-          const response = await fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
+          const response = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
           const result = await response.json();
           
           if (result.success && result.data && result.data.length > 0) {
@@ -279,7 +280,7 @@ export default function PlayerRatingsPage() {
       });
 
       // Call API to update only categories (not star ratings)
-      const response = await fetch('/api/player-ratings/recalculate-categories', {
+      const response = await fetchWithTokenRefresh(/api/player-ratings/recalculate-categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -336,7 +337,7 @@ export default function PlayerRatingsPage() {
       });
 
       // Call API to update player ratings and categories
-      const response = await fetch('/api/player-ratings/assign', {
+      const response = await fetchWithTokenRefresh(/api/player-ratings/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

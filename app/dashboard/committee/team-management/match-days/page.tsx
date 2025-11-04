@@ -19,6 +19,7 @@ import { getISTNow, parseISTDate, createISTDateTime, getISTToday } from '@/lib/u
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function MatchDayManagementPage() {
   const { user, loading } = useAuth();
@@ -88,7 +89,7 @@ export default function MatchDayManagementPage() {
         setSeasonName(season.name);
 
         // Load all tournaments for this season
-        const tournamentsRes = await fetch(`/api/tournaments?season_id=${seasonId}`);
+        const tournamentsRes = await fetchWithTokenRefresh(`/api/tournaments?season_id=${seasonId}`);
         const tournamentsData = await tournamentsRes.json();
         
         if (!tournamentsData.success || !tournamentsData.tournaments || tournamentsData.tournaments.length === 0) {
@@ -102,7 +103,7 @@ export default function MatchDayManagementPage() {
         const allRounds: TournamentRound[] = [];
         for (const tournament of tournamentsData.tournaments) {
           // Fetch fixtures for this tournament
-          const fixturesRes = await fetch(`/api/tournaments/${tournament.id}/fixtures`);
+          const fixturesRes = await fetchWithTokenRefresh(`/api/tournaments/${tournament.id}/fixtures`);
           const fixturesData = await fixturesRes.json();
           
           if (fixturesData.success && fixturesData.fixtures && fixturesData.fixtures.length > 0) {
@@ -138,7 +139,7 @@ export default function MatchDayManagementPage() {
             
             // Fetch round_deadlines for this tournament to get scheduled dates and settings
             try {
-              const deadlinesRes = await fetch(`/api/round-deadlines?tournament_id=${tournament.id}`);
+              const deadlinesRes = await fetchWithTokenRefresh(`/api/round-deadlines?tournament_id=${tournament.id}`);
               if (deadlinesRes.ok) {
                 const deadlinesData = await deadlinesRes.json();
                 if (deadlinesData.roundDeadlines) {
@@ -207,7 +208,7 @@ export default function MatchDayManagementPage() {
       }
       
       // Start the round via API
-      const response = await fetch('/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -269,7 +270,7 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
       
-      const response = await fetch('/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -316,7 +317,7 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
       
-      const response = await fetch('/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -373,7 +374,7 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
       
-      const response = await fetch('/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -438,7 +439,7 @@ export default function MatchDayManagementPage() {
       const minutes = istTime.getUTCMinutes().toString().padStart(2, '0');
       const currentISTTime = `${hours}:${minutes}`;
       
-      const response = await fetch('/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

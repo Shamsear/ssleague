@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Shield, Users, Crown, Star, ChevronDown, Target, Award, TrendingUp } from 'lucide-react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FantasyTeam {
   fantasy_team_id: string;
@@ -59,7 +60,7 @@ export default function AllTeamsPage() {
 
       try {
         // Get user's team to find league ID
-        const myTeamResponse = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
+        const myTeamResponse = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
         
         if (myTeamResponse.status === 404) {
           setIsLoading(false);
@@ -71,7 +72,7 @@ export default function AllTeamsPage() {
         setMyTeamId(myTeamData.team.id);
 
         // Get all teams via leaderboard API
-        const leaderboardResponse = await fetch(`/api/fantasy/leaderboard/${leagueId}`);
+        const leaderboardResponse = await fetchWithTokenRefresh(`/api/fantasy/leaderboard/${leagueId}`);
         
         if (!leaderboardResponse.ok) {
           throw new Error('Failed to load teams');
@@ -102,7 +103,7 @@ export default function AllTeamsPage() {
     setIsLoadingPlayers(true);
 
     try {
-      const response = await fetch(`/api/fantasy/teams/${team.fantasy_team_id}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/teams/${team.fantasy_team_id}`);
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -139,7 +140,7 @@ export default function AllTeamsPage() {
     setIsLoadingPlayer(true);
 
     try {
-      const response = await fetch(`/api/fantasy/players/${playerId}/points?team_id=${selectedTeam.fantasy_team_id}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/points?team_id=${selectedTeam.fantasy_team_id}`);
       if (!response.ok) {
         throw new Error('Failed to load player data');
       }

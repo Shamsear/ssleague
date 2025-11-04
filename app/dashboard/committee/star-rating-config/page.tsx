@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface StarConfig {
   star_rating: number;
@@ -37,7 +38,7 @@ export default function StarRatingConfigPage() {
 
       try {
         setIsLoading(true);
-        const response = await fetch(`/api/star-rating-config?seasonId=${userSeasonId}`);
+        const response = await fetchWithTokenRefresh(`/api/star-rating-config?seasonId=${userSeasonId}`);
         const result = await response.json();
 
         if (result.success) {
@@ -73,7 +74,7 @@ export default function StarRatingConfigPage() {
       setError(null);
       setSuccess(null);
 
-      const response = await fetch('/api/star-rating-config', {
+      const response = await fetchWithTokenRefresh(/api/star-rating-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

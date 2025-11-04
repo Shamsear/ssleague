@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Tiebreaker {
   id: string;
@@ -64,7 +65,7 @@ export default function BulkRoundTiebreakersPage() {
       try {
         // TODO: Replace with actual API calls
         // Fetch round details
-        // const roundResponse = await fetch(`/api/rounds/${roundId}`);
+        // const roundResponse = await fetchWithTokenRefresh(`/api/rounds/${roundId}`);
         // const { success: roundSuccess, data: roundData } = await roundResponse.json();
 
         // Mock round data
@@ -77,7 +78,7 @@ export default function BulkRoundTiebreakersPage() {
         setBulkRound(mockRound);
 
         // Fetch tiebreakers for this round
-        // const tiebreakerResponse = await fetch(`/api/rounds/${roundId}/tiebreakers`);
+        // const tiebreakerResponse = await fetchWithTokenRefresh(`/api/rounds/${roundId}/tiebreakers`);
         // const { success: tbSuccess, data: tbData } = await tiebreakerResponse.json();
 
         // Mock tiebreakers data

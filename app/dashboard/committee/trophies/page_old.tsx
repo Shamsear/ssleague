@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Trophy {
   id: number;
@@ -65,7 +66,7 @@ export default function TrophyManagementPage() {
 
   const fetchSeasons = async () => {
     try {
-      const res = await fetch('/api/seasons');
+      const res = await fetchWithTokenRefresh(/api/seasons');
       const data = await res.json();
       if (data.success) {
         setSeasons(data.seasons || []);
@@ -80,7 +81,7 @@ export default function TrophyManagementPage() {
     
     setLoading(true);
     try {
-      const res = await fetch(`/api/trophies?season_id=${selectedSeason}`);
+      const res = await fetchWithTokenRefresh(`/api/trophies?season_id=${selectedSeason}`);
       const data = await res.json();
       if (data.success) {
         setTrophies(data.trophies || []);
@@ -96,7 +97,7 @@ export default function TrophyManagementPage() {
     if (!selectedSeason) return;
     
     try {
-      const res = await fetch(`/api/trophies/preview?season_id=${selectedSeason}`);
+      const res = await fetchWithTokenRefresh(`/api/trophies/preview?season_id=${selectedSeason}`);
       const data = await res.json();
       if (data.success) {
         setPreview(data.preview || []);
@@ -115,7 +116,7 @@ export default function TrophyManagementPage() {
     
     setAwarding(true);
     try {
-      const res = await fetch('/api/trophies/award', {
+      const res = await fetchWithTokenRefresh(/api/trophies/award', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ season_id: selectedSeason })
@@ -141,7 +142,7 @@ export default function TrophyManagementPage() {
     if (!confirm('Delete this trophy?')) return;
     
     try {
-      const res = await fetch(`/api/trophies/${trophyId}`, {
+      const res = await fetchWithTokenRefresh(`/api/trophies/${trophyId}`, {
         method: 'DELETE'
       });
       
@@ -168,7 +169,7 @@ export default function TrophyManagementPage() {
     }
     
     try {
-      const res = await fetch('/api/trophies/add', {
+      const res = await fetchWithTokenRefresh(/api/trophies/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

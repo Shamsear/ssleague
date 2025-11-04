@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { useModal } from '@/hooks/useModal'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FootballPlayer {
   id: string
@@ -177,7 +178,7 @@ export default function CommitteePlayersPage() {
     if (!confirmed) return
 
     try {
-      const response = await fetch(`/api/players/${playerId}`, {
+      const response = await fetchWithTokenRefresh(`/api/players/${playerId}`, {
         method: 'DELETE'
       })
       

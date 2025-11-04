@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FantasyTeam {
   id: string;
@@ -75,7 +76,7 @@ export default function DraftResultsPage() {
 
       try {
         // Get league details and teams
-        const leagueResponse = await fetch(`/api/fantasy/leagues/${leagueId}`);
+        const leagueResponse = await fetchWithTokenRefresh(`/api/fantasy/leagues/${leagueId}`);
         if (!leagueResponse.ok) throw new Error('League not found');
         
         const leagueData = await leagueResponse.json();
@@ -83,7 +84,7 @@ export default function DraftResultsPage() {
         setFantasyTeams(leagueData.teams);
 
         // Get star rating pricing
-        const pricingResponse = await fetch(`/api/fantasy/pricing/${leagueId}`);
+        const pricingResponse = await fetchWithTokenRefresh(`/api/fantasy/pricing/${leagueId}`);
         if (pricingResponse.ok) {
           const pricingData = await pricingResponse.json();
           const priceMap: Record<number, number> = {};
@@ -94,7 +95,7 @@ export default function DraftResultsPage() {
         }
 
         // Get drafted players for all teams
-        const draftedResponse = await fetch(`/api/fantasy/players/drafted?league_id=${leagueId}`);
+        const draftedResponse = await fetchWithTokenRefresh(`/api/fantasy/players/drafted?league_id=${leagueId}`);
         if (draftedResponse.ok) {
           const draftedData = await draftedResponse.json();
           const playersByTeam: Record<string, DraftedPlayer[]> = {};
@@ -113,7 +114,7 @@ export default function DraftResultsPage() {
           await Promise.all(
             leagueData.teams.map(async (team: any) => {
               try {
-                const detailsResponse = await fetch(`/api/fantasy/teams/${team.id}`);
+                const detailsResponse = await fetchWithTokenRefresh(`/api/fantasy/teams/${team.id}`);
                 if (detailsResponse.ok) {
                   const details = await detailsResponse.json();
                   detailsMap[team.id] = details;

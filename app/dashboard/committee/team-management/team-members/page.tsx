@@ -9,6 +9,7 @@ import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface RealPlayer {
   id: string;
@@ -157,7 +158,7 @@ export default function TeamMembersPage() {
         setTeams(teamsData);
         
         // Fetch categories
-        const categoriesRes = await fetch('/api/categories');
+        const categoriesRes = await fetchWithTokenRefresh(/api/categories');
         const categoriesData = await categoriesRes.json();
         if (categoriesData.success) setCategories(categoriesData.data);
       } catch (error) {
@@ -205,7 +206,7 @@ export default function TeamMembersPage() {
     e.preventDefault();
     
     try {
-      const response = await fetch(`/api/real-players/${selectedPlayer}`, {
+      const response = await fetchWithTokenRefresh(`/api/real-players/${selectedPlayer}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -270,7 +271,7 @@ export default function TeamMembersPage() {
     
     try {
       const updates = selectedPlayerIds.map(async (playerId) => {
-        const response = await fetch(`/api/real-players/${playerId}`, {
+        const response = await fetchWithTokenRefresh(`/api/real-players/${playerId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -443,7 +444,7 @@ export default function TeamMembersPage() {
         }
         
         try {
-          const response = await fetch(`/api/real-players/${row.player.id}`, {
+          const response = await fetchWithTokenRefresh(`/api/real-players/${row.player.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function ClaimFantasyTeamPage() {
   const { user, loading } = useAuth();
@@ -31,7 +32,7 @@ export default function ClaimFantasyTeamPage() {
     setMessage('');
 
     try {
-      const response = await fetch('/api/fantasy/teams/claim', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/teams/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { DollarSign, Star, Save, Check } from 'lucide-react';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface StarPricing {
   stars: number;
@@ -52,7 +53,7 @@ export default function FantasyPricingPage() {
   const fetchPricing = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/fantasy/pricing/${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/pricing/${leagueId}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch pricing');
@@ -98,7 +99,7 @@ export default function FantasyPricingPage() {
         return;
       }
 
-      const response = await fetch(`/api/fantasy/pricing/${leagueId}`, {
+      const response = await fetchWithTokenRefresh(`/api/fantasy/pricing/${leagueId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

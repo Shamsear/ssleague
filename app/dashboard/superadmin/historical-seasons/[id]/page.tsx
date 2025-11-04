@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getIdToken } from 'firebase/auth';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 // Types for the season data
 interface Season {
@@ -259,7 +260,7 @@ export default function HistoricalSeasonDetailPage() {
         
         // Fetch trophies from team_trophies table
         try {
-          const trophiesResponse = await fetch(`/api/trophies?season_id=${seasonId}`);
+          const trophiesResponse = await fetchWithTokenRefresh(`/api/trophies?season_id=${seasonId}`);
           if (trophiesResponse.ok) {
             const trophiesData = await trophiesResponse.json();
             if (trophiesData.success) {
@@ -273,7 +274,7 @@ export default function HistoricalSeasonDetailPage() {
         
         // Fetch player awards from player_awards table
         try {
-          const awardsResponse = await fetch(`/api/player-awards?season_id=${seasonId}`);
+          const awardsResponse = await fetchWithTokenRefresh(`/api/player-awards?season_id=${seasonId}`);
           if (awardsResponse.ok) {
             const awardsData = await awardsResponse.json();
             if (awardsData.success) {
@@ -494,7 +495,7 @@ export default function HistoricalSeasonDetailPage() {
       
       const token = await getIdToken(firebaseUser);
       // Use a parse-only endpoint to get preview data
-      const response = await fetch(`/api/seasons/historical/${seasonId}/parse`, {
+      const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}/parse`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -838,7 +839,7 @@ export default function HistoricalSeasonDetailPage() {
       };
       
       const token = await getIdToken(firebaseUser);
-      const response = await fetch(`/api/seasons/historical/${seasonId}/import`, {
+      const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}/import`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

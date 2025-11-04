@@ -3,6 +3,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface ImportStep {
   name: string;
@@ -64,7 +65,7 @@ function ImportProgressContent() {
 
     const fetchProgress = async () => {
       try {
-        const response = await fetch(`/api/seasons/historical/import?importId=${importId}`);
+        const response = await fetchWithTokenRefresh(`/api/seasons/historical/import?importId=${importId}`);
         const result = await response.json();
         
         if (result.success) {
@@ -453,7 +454,7 @@ function ImportProgressContent() {
                     
                     setIsCleaningUp(true);
                     try {
-                      const response = await fetch(`/api/seasons/historical/${seasonId}/cleanup`, {
+                      const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}/cleanup`, {
                         method: 'DELETE',
                       });
                       

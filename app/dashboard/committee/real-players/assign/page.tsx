@@ -9,6 +9,7 @@ import { Season } from '@/types/season';
 import { TeamData } from '@/types/team';
 import { useCachedTeams } from '@/hooks/useCachedData';
 import { calculateRealPlayerSalary } from '@/lib/contracts';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function AssignRealPlayerPage() {
   const { user, loading } = useAuth();
@@ -88,7 +89,7 @@ export default function AssignRealPlayerPage() {
       const endSeason = formData.startSeason.replace(/\d+/, endSeasonNum.toString());
 
       // Call API to assign real player
-      const response = await fetch('/api/contracts/assign', {
+      const response = await fetchWithTokenRefresh(/api/contracts/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

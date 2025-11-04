@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function EditCategoryPage() {
   const { user, loading } = useAuth();
@@ -46,7 +47,7 @@ export default function EditCategoryPage() {
       setIsLoadingCategory(true);
       
       try {
-        const response = await fetch(`/api/categories/${categoryId}`);
+        const response = await fetchWithTokenRefresh(`/api/categories/${categoryId}`);
         const result = await response.json();
 
         if (!response.ok || !result.success) {
@@ -131,7 +132,7 @@ export default function EditCategoryPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`/api/categories/${categoryId}`, {
+      const response = await fetchWithTokenRefresh(`/api/categories/${categoryId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getIdToken } from 'firebase/auth';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Season {
   id: string;
@@ -69,7 +70,7 @@ export default function EditHistoricalSeasonPage() {
     const fetchSeasonData = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(`/api/seasons/historical/${seasonId}`);
+        const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch season data');
@@ -160,7 +161,7 @@ export default function EditHistoricalSeasonPage() {
         updateData.potm = parseInt(formData.potm);
       }
 
-      const response = await fetch(`/api/seasons/historical/${seasonId}`, {
+      const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,

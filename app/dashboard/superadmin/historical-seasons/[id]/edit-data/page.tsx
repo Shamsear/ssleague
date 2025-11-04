@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { getIdToken } from 'firebase/auth';
 import { getSmartCache, setSmartCache, CACHE_DURATIONS } from '@/utils/smartCache';
 import { clearCache } from '@/utils/cache';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Team {
   id: string;
@@ -202,7 +203,7 @@ export default function EditSeasonDataPage() {
         }
         
         console.log('🔥 Fetching fresh historical season data');
-        const response = await fetch(`/api/seasons/historical/${seasonId}?loadAll=true`);
+        const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}?loadAll=true`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch season data');
@@ -286,7 +287,7 @@ export default function EditSeasonDataPage() {
 
       const token = await getIdToken(firebaseUser);
       
-      const response = await fetch(`/api/seasons/historical/${seasonId}/bulk-update`, {
+      const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}/bulk-update`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

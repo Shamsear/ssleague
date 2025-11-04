@@ -7,6 +7,7 @@ import RegisteredTeamDashboard from './RegisteredTeamDashboard';
 import { useCachedSeasons } from '@/hooks/useCachedFirebase';
 import { useTeamHistory } from '@/hooks/useTeamHistory';
 import { useDashboardWebSocket } from '@/hooks/useWebSocket';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function TeamDashboard() {
   const { user, loading } = useAuth();
@@ -296,7 +297,7 @@ export default function TeamDashboard() {
         const queryParams = seasonStatus.seasonId 
           ? `?season_id=${seasonStatus.seasonId}` 
           : '';
-        const response = await fetch(`/api/team/historical-stats${queryParams}`);
+        const response = await fetchWithTokenRefresh(`/api/team/historical-stats${queryParams}`);
         const data = await response.json();
         
         if (data.success) {
@@ -318,7 +319,7 @@ export default function TeamDashboard() {
     
     try {
       setLoadingActiveDetails(true);
-      const response = await fetch(`/api/seasons/${seasonStatus.seasonId}/details`);
+      const response = await fetchWithTokenRefresh(`/api/seasons/${seasonStatus.seasonId}/details`);
       const data = await response.json();
       
       if (data.success) {

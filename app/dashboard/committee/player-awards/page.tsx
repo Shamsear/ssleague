@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface PlayerAward {
   id: number;
@@ -93,7 +94,7 @@ export default function PlayerAwardsManagementPage() {
     if (!userSeasonId) return;
     
     try {
-      const res = await fetch(`/api/stats/real-players?season_id=${userSeasonId}`);
+      const res = await fetchWithTokenRefresh(`/api/stats/real-players?season_id=${userSeasonId}`);
       const data = await res.json();
       if (data.success && data.players) {
         setPlayers(data.players);
@@ -113,7 +114,7 @@ export default function PlayerAwardsManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetch('/api/player-awards/auto-award', {
+      const res = await fetchWithTokenRefresh(/api/player-awards/auto-award', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ season_id: userSeasonId })
@@ -140,7 +141,7 @@ export default function PlayerAwardsManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetch(`/api/player-awards/${awardId}`, {
+      const res = await fetchWithTokenRefresh(`/api/player-awards/${awardId}`, {
         method: 'DELETE'
       });
       
@@ -174,7 +175,7 @@ export default function PlayerAwardsManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetch('/api/player-awards/add', {
+      const res = await fetchWithTokenRefresh(/api/player-awards/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

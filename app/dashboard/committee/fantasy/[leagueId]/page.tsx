@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FantasyLeague {
   id: string;
@@ -51,7 +52,7 @@ export default function FantasyLeagueDashboard() {
       if (!leagueId) return;
 
       try {
-        const response = await fetch(`/api/fantasy/leagues/${leagueId}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/leagues/${leagueId}`);
         
         if (!response.ok) {
           // If it's a 404 and we haven't exceeded retries, wait and try again

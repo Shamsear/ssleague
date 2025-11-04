@@ -11,6 +11,7 @@ import { useAutoLockLineups } from '@/hooks/useAutoLockLineups';
 import { useRoundPhaseMonitor } from '@/hooks/useRoundPhaseMonitor';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Matchup {
   home_player_id: string;
@@ -382,7 +383,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
         setIsLoading(true);
 
         // Get fixture from Neon
-        const fixtureResponse = await fetch(`/api/fixtures/${fixtureId}`);
+        const fixtureResponse = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}`);
         
         if (!fixtureResponse.ok) {
           showAlert({
@@ -721,7 +722,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
         firstMatchup: matchupsToSave[0]
       });
 
-      const response = await fetch(`/api/fixtures/${fixtureId}/matchups`, {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -765,7 +766,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
     newMatchups[position2].away_player_name = tempName;
 
     try {
-      const response = await fetch(`/api/fixtures/${fixtureId}/matchups`, {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -807,7 +808,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
       newMatchups[index2].away_player_id = tempAwayId;
       newMatchups[index2].away_player_name = tempAwayName;
       
-      const response = await fetch(`/api/fixtures/${fixtureId}/matchups`, {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchups: newMatchups }),
@@ -901,7 +902,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
         newMatchups[subMatchupIndex].away_sub_penalty = totalPenalty;
       }
       
-      const response = await fetch(`/api/fixtures/${fixtureId}/matchups`, {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchups: newMatchups }),
@@ -1571,7 +1572,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                     onClick={async () => {
                       setIsSaving(true);
                       try {
-                        const response = await fetch(`/api/fixtures/${fixtureId}/matchups`, {
+                        const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`, {
                           method: 'PUT',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ matchups }),
@@ -2376,7 +2377,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           away_goals: matchResults[idx]?.away_goals ?? 0,
                         }));
 
-                        const response = await fetch(`/api/fixtures/${fixtureId}/matchups`, {
+                        const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`, {
                           method: 'PATCH',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2412,7 +2413,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
 
                         console.log('Saving MOTM and penalty goals:', { motmPlayerId, motmPlayerName, homePenaltyGoals, awayPenaltyGoals });
 
-                        const motmResponse = await fetch(`/api/fixtures/${fixtureId}`, {
+                        const motmResponse = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}`, {
                           method: 'PATCH',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2456,7 +2457,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           away_goals: matchResults[idx]?.away_goals ?? 0,
                         }));
                         
-                        const pointsResponse = await fetch('/api/realplayers/update-points', {
+                        const pointsResponse = await fetchWithTokenRefresh(/api/realplayers/update-points', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2493,7 +2494,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           away_goals: matchResults[idx]?.away_goals ?? 0,
                         }));
 
-                        const statsResponse = await fetch('/api/realplayers/update-stats', {
+                        const statsResponse = await fetchWithTokenRefresh(/api/realplayers/update-stats', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2510,7 +2511,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         }
 
                         // Update team stats (wins, draws, losses, goals)
-                        const teamStatsResponse = await fetch('/api/teamstats/update-stats', {
+                        const teamStatsResponse = await fetchWithTokenRefresh(/api/teamstats/update-stats', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2538,7 +2539,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         // Calculate fantasy points (auto-trigger)
                         try {
                           console.log('🏆 Calculating fantasy points...');
-                          const fantasyResponse = await fetch('/api/fantasy/calculate-points', {
+                          const fantasyResponse = await fetchWithTokenRefresh(/api/fantasy/calculate-points', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -2562,7 +2563,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         // Generate match result news (auto-trigger)
                         try {
                           console.log('📰 Generating match result news...');
-                          const newsResponse = await fetch('/api/news/trigger', {
+                          const newsResponse = await fetchWithTokenRefresh(/api/news/trigger', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -2594,7 +2595,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         // Record player participation from lineups (auto-trigger)
                         try {
                           console.log('📋 Recording player participation...');
-                          const participationResponse = await fetch(`/api/fixtures/${fixtureId}/record-participation`, {
+                          const participationResponse = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/record-participation`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                           });

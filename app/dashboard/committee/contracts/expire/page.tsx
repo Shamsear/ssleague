@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function ExpireContractsPage() {
   const { user, loading } = useAuth();
@@ -60,7 +61,7 @@ export default function ExpireContractsPage() {
       setSuccess(null);
       setResult(null);
 
-      const response = await fetch('/api/contracts/expire', {
+      const response = await fetchWithTokenRefresh('/api/contracts/expire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

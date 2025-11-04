@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { useModal } from '@/hooks/useModal'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FootballPlayer {
   id: string
@@ -66,7 +67,7 @@ export default function PlayerSelectionPage() {
         console.log('🔄 Fetching ALL players from Neon database via API')
         
         // Fetch without limit to get all players
-        const response = await fetch('/api/players?limit=999999')
+        const response = await fetchWithTokenRefresh(/api/players?limit=999999')
         const { data, success } = await response.json()
         
         if (!success) {
@@ -161,7 +162,7 @@ export default function PlayerSelectionPage() {
   const handleTogglePlayer = async (playerId: string, currentStatus: boolean) => {
     setUpdating(prev => new Set(prev).add(playerId))
     try {
-      const response = await fetch(`/api/players/${playerId}`, {
+      const response = await fetchWithTokenRefresh(`/api/players/${playerId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_auction_eligible: !currentStatus })
@@ -209,7 +210,7 @@ export default function PlayerSelectionPage() {
     try {
       const playerIds = paginatedPlayers.map(p => p.id)
       
-      const response = await fetch('/api/players/bulk', {
+      const response = await fetchWithTokenRefresh(/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -277,7 +278,7 @@ export default function PlayerSelectionPage() {
         .filter(p => p.is_auction_eligible)
         .map(p => p.id)
       
-      const response = await fetch('/api/players/bulk', {
+      const response = await fetchWithTokenRefresh(/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -536,7 +537,7 @@ export default function PlayerSelectionPage() {
       formData.append('file', selectedFile)
       formData.append('position', selectedExportPosition)
 
-      const response = await fetch('/api/parse-player-selection', {
+      const response = await fetchWithTokenRefresh(/api/parse-player-selection', {
         method: 'POST',
         body: formData
       })

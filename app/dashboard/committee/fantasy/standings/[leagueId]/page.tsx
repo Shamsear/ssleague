@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface LeaderboardEntry {
   rank: number;
@@ -44,7 +45,7 @@ export default function FantasyStandingsPage() {
       if (!leagueId) return;
 
       try {
-        const response = await fetch(`/api/fantasy/leaderboard/${leagueId}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/leaderboard/${leagueId}`);
         if (!response.ok) throw new Error('Failed to load leaderboard');
 
         const data = await response.json();

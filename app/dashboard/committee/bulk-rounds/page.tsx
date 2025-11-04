@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface BulkRound {
   id: number;
@@ -87,7 +88,7 @@ export default function BulkRoundsPage() {
           params.append('status', filterStatus);
         }
 
-        const response = await fetch(`/api/rounds?${params}`);
+        const response = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const { success, data } = await response.json();
 
         if (success) {
@@ -117,7 +118,7 @@ export default function BulkRoundsPage() {
       : 1;
 
     try {
-      const response = await fetch('/api/rounds', {
+      const response = await fetchWithTokenRefresh(/api/rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -147,7 +148,7 @@ export default function BulkRoundsPage() {
           season_id: currentSeasonId,
           round_type: 'bulk'
         });
-        const refreshResponse = await fetch(`/api/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setBulkRounds(refreshData.data);

@@ -10,6 +10,7 @@ import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import PromptModal from '@/components/modals/PromptModal';
 import FixtureShareButton from '@/components/FixtureShareButton';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Matchup {
   id: number;
@@ -94,7 +95,7 @@ export default function CommitteeFixtureDetailPage() {
     setIsLoading(true);
     try {
       // Fetch fixture
-      const fixtureRes = await fetch(`/api/fixtures/${fixtureId}`);
+      const fixtureRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}`);
       const fixtureData = await fixtureRes.json();
       
       if (fixtureData.fixture) {
@@ -102,7 +103,7 @@ export default function CommitteeFixtureDetailPage() {
       }
 
       // Fetch matchups
-      const matchupsRes = await fetch(`/api/fixtures/${fixtureId}/matchups`);
+      const matchupsRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`);
       const matchupsData = await matchupsRes.json();
       
       if (matchupsData.matchups) {
@@ -144,7 +145,7 @@ export default function CommitteeFixtureDetailPage() {
 
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/fixtures/${fixtureId}/declare-wo`, {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/declare-wo`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,7 +195,7 @@ export default function CommitteeFixtureDetailPage() {
 
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/fixtures/${fixtureId}/declare-null`, {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/declare-null`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -265,7 +266,7 @@ export default function CommitteeFixtureDetailPage() {
         away_goals: editedScores[m.position]?.away ?? m.away_goals ?? 0,
       }));
 
-      const response = await fetch(`/api/fixtures/${fixtureId}/edit-result`, {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/edit-result`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

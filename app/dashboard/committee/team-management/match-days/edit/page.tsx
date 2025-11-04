@@ -9,6 +9,7 @@ import { getRoundDeadlines, updateRoundDeadlines } from '@/lib/firebase/fixtures
 import { getISTToday, parseISTDate, createISTDateTime, formatISTDateTime } from '@/lib/utils/timezone';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 function EditRoundDeadlinesContent() {
   const { user, loading } = useAuth();
@@ -65,7 +66,7 @@ function EditRoundDeadlinesContent() {
       let tournamentIdToUse = tournamentId;
       if (!tournamentIdToUse && seasonId) {
         console.log('No tournament_id provided, fetching from season:', seasonId);
-        const tournamentsRes = await fetch(`/api/tournaments?season_id=${seasonId}`);
+        const tournamentsRes = await fetchWithTokenRefresh(`/api/tournaments?season_id=${seasonId}`);
         const tournamentsData = await tournamentsRes.json();
         
         if (tournamentsData.success && tournamentsData.tournaments && tournamentsData.tournaments.length > 0) {
@@ -84,7 +85,7 @@ function EditRoundDeadlinesContent() {
       }
 
       // Fetch round deadlines from tournament API
-      const response = await fetch(`/api/round-deadlines?tournament_id=${tournamentIdToUse}&round_number=${roundNumber}&leg=${leg}`);
+      const response = await fetchWithTokenRefresh(`/api/round-deadlines?tournament_id=${tournamentIdToUse}&round_number=${roundNumber}&leg=${leg}`);
       if (!response.ok) {
         console.error('Failed to fetch round deadlines');
         return;
@@ -140,7 +141,7 @@ function EditRoundDeadlinesContent() {
       // If tournament_id is not provided, fetch it from season
       let tournamentIdToUse = tournamentId;
       if (!tournamentIdToUse && seasonId) {
-        const tournamentsRes = await fetch(`/api/tournaments?season_id=${seasonId}`);
+        const tournamentsRes = await fetchWithTokenRefresh(`/api/tournaments?season_id=${seasonId}`);
         const tournamentsData = await tournamentsRes.json();
         
         if (tournamentsData.success && tournamentsData.tournaments && tournamentsData.tournaments.length > 0) {
@@ -158,7 +159,7 @@ function EditRoundDeadlinesContent() {
       }
       
       // Update round deadlines via tournament API
-      const response = await fetch('/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

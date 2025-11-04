@@ -6,6 +6,7 @@ import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useAuctionWebSocket } from '@/hooks/useWebSocket';
 import { useAutoFinalize } from '@/hooks/useAutoFinalize';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Bid {
   id: string;
@@ -88,7 +89,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
   const fetchRound = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/rounds/${roundId}`);
+      const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`);
       const { success, data } = await response.json();
 
       if (success) {

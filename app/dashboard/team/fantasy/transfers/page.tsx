@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
   ArrowLeftRight,
   Shield,
   DollarSign,
@@ -104,7 +105,7 @@ export default function TeamTransfersPage() {
   const loadTransferData = async () => {
     try {
       // Get my fantasy team
-      const teamRes = await fetch(`/api/fantasy/teams/my-team?user_id=${user!.uid}`);
+      const teamRes = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user!.uid}`);
       if (teamRes.status === 404) {
         setIsLoading(false);
         return;
@@ -128,8 +129,7 @@ export default function TeamTransfersPage() {
       }
 
       // Get active transfer window
-      const windowsRes = await fetch(
-        `/api/fantasy/transfer-windows?league_id=${teamData.team.fantasy_league_id}`
+      const windowsRes = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${teamData.team.fantasy_league_id}`
       );
       
       let activeWindow = null;
@@ -141,8 +141,7 @@ export default function TeamTransfersPage() {
 
       // Get transfer settings for the active window
       if (activeWindow) {
-        const settingsRes = await fetch(
-          `/api/fantasy/transfers/settings?window_id=${activeWindow.window_id}`
+        const settingsRes = await fetchWithTokenRefresh(`/api/fantasy/transfers/settings?window_id=${activeWindow.window_id}`
         );
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
@@ -158,8 +157,7 @@ export default function TeamTransfersPage() {
       }
 
       // Get available players
-      const playersRes = await fetch(
-        `/api/fantasy/players/available?league_id=${teamData.team.fantasy_league_id}`
+      const playersRes = await fetchWithTokenRefresh(`/api/fantasy/players/available?league_id=${teamData.team.fantasy_league_id}`
       );
       if (playersRes.ok) {
         const playersData = await playersRes.json();
@@ -167,8 +165,7 @@ export default function TeamTransfersPage() {
       }
 
       // Get transfer history
-      const transfersRes = await fetch(
-        `/api/fantasy/transfers/history?user_id=${user!.uid}`
+      const transfersRes = await fetchWithTokenRefresh(`/api/fantasy/transfers/history?user_id=${user!.uid}`
       );
       if (transfersRes.ok) {
         const transfersData = await transfersRes.json();
@@ -177,7 +174,7 @@ export default function TeamTransfersPage() {
       }
 
       // Get real teams for team affiliation changes
-      const teamsRes = await fetch('/api/teams/registered');
+      const teamsRes = await fetchWithTokenRefresh(/api/teams/registered');
       if (teamsRes.ok) {
         const teamsData = await teamsRes.json();
         setRealTeams(teamsData.teams || []);
@@ -204,7 +201,7 @@ export default function TeamTransfersPage() {
     
     setIsSavingCaptains(true);
     try {
-      const response = await fetch('/api/fantasy/squad/set-captain', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/squad/set-captain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,7 +247,7 @@ export default function TeamTransfersPage() {
     
     setIsSavingTeam(true);
     try {
-      const response = await fetch('/api/fantasy/teams/select-supported', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/teams/select-supported', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -298,7 +295,7 @@ export default function TeamTransfersPage() {
         return;
       }
       
-      const res = await fetch('/api/fantasy/transfers/make-transfer', {
+      const res = await fetchWithTokenRefresh(/api/fantasy/transfers/make-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

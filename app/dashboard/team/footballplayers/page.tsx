@@ -7,6 +7,7 @@ import Link from 'next/link';
 import PlayerImage, { PlayerAvatar } from '@/components/PlayerImage';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 // Position constants
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST'];
@@ -69,8 +70,7 @@ export default function PlayerStatisticsPage() {
 
       setIsLoading(true);
       try {
-        const response = await fetch(
-          `/api/players/database?page=${currentPage}&limit=${itemsPerPage}`,
+        const response = await fetchWithTokenRefresh(`/api/players/database?page=${currentPage}&limit=${itemsPerPage}`,
           { headers: { 'Cache-Control': 'no-cache' } }
         );
         const { success, data } = await response.json();

@@ -8,6 +8,7 @@ import { useCachedTeams } from '@/hooks/useCachedData';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { calculateReleaseRefund } from '@/lib/player-transfers';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
   id: string;
@@ -137,7 +138,7 @@ export default function PlayerTransfersPage() {
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/players/release', {
+      const response = await fetchWithTokenRefresh(/api/players/release', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -183,7 +184,7 @@ export default function PlayerTransfersPage() {
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/players/transfer', {
+      const response = await fetchWithTokenRefresh(/api/players/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -241,7 +242,7 @@ export default function PlayerTransfersPage() {
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/players/swap', {
+      const response = await fetchWithTokenRefresh(/api/players/swap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

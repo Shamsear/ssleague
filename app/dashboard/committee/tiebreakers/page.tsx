@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Tiebreaker {
   id: string;
@@ -65,7 +66,7 @@ export default function CommitteeTiebreakerPage() {
 
   const fetchTiebreakers = async () => {
     try {
-      const response = await fetch(`/api/admin/tiebreakers?status=${statusFilter}`);
+      const response = await fetchWithTokenRefresh(`/api/admin/tiebreakers?status=${statusFilter}`);
       const result = await response.json();
       
       if (result.success) {
@@ -108,7 +109,7 @@ export default function CommitteeTiebreakerPage() {
     setResolving(tiebreakerId);
     
     try {
-      const response = await fetch(`/api/tiebreakers/${tiebreakerId}/resolve`, {
+      const response = await fetchWithTokenRefresh(`/api/tiebreakers/${tiebreakerId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolutionType }),

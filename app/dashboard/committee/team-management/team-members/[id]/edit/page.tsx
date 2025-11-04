@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Team {
   id: string;
@@ -113,7 +114,7 @@ export default function EditTeamMemberPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`/api/real-players/${playerId}`, {
+      const response = await fetchWithTokenRefresh(`/api/real-players/${playerId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

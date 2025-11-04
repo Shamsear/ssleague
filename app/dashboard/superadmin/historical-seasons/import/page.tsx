@@ -3,6 +3,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function ImportHistoricalSeason() {
   const { user, loading } = useAuth();
@@ -56,7 +57,7 @@ export default function ImportHistoricalSeason() {
       formData.append('file', selectedFile);
       formData.append('seasonNumber', seasonNumber.trim());
       
-      const response = await fetch('/api/seasons/historical/upload', {
+      const response = await fetchWithTokenRefresh(/api/seasons/historical/upload', {
         method: 'POST',
         body: formData,
       });
@@ -89,7 +90,7 @@ export default function ImportHistoricalSeason() {
     try {
       setIsDownloadingTemplate(true);
       
-      const response = await fetch('/api/seasons/historical/template');
+      const response = await fetchWithTokenRefresh(/api/seasons/historical/template');
       
       if (!response.ok) {
         throw new Error('Failed to download template');

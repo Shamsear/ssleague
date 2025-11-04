@@ -3,6 +3,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TeamData {
   team_name: string;
@@ -283,7 +284,7 @@ export default function PreviewHistoricalSeason() {
         // matches: matches
       };
       
-      const response = await fetch('/api/seasons/historical/import', {
+      const response = await fetchWithTokenRefresh(/api/seasons/historical/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

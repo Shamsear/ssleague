@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 type AwardTab = 'POTD' | 'POTW' | 'TOD' | 'TOW' | 'POTS' | 'TOTS';
 
@@ -67,7 +68,7 @@ export default function AwardsManagementPage() {
       if (!userSeasonId) return;
       
       try {
-        const response = await fetch(`/api/fixtures?season_id=${userSeasonId}`);
+        const response = await fetchWithTokenRefresh(`/api/fixtures?season_id=${userSeasonId}`);
         const result = await response.json();
         
         if (result.success && result.data && result.data.length > 0) {
@@ -119,7 +120,7 @@ export default function AwardsManagementPage() {
         awardParams.append('week_number', currentWeek.toString());
       }
 
-      const awardsRes = await fetch(`/api/awards?${awardParams}`);
+      const awardsRes = await fetchWithTokenRefresh(`/api/awards?${awardParams}`);
       const awardsData = await awardsRes.json();
       setAwards(awardsData.success ? awardsData.data : []);
 
@@ -136,7 +137,7 @@ export default function AwardsManagementPage() {
         candidateParams.append('week_number', currentWeek.toString());
       }
 
-      const candidatesRes = await fetch(`/api/awards/eligible?${candidateParams}`);
+      const candidatesRes = await fetchWithTokenRefresh(`/api/awards/eligible?${candidateParams}`);
       const candidatesData = await candidatesRes.json();
       setCandidates(candidatesData.success ? candidatesData.data : []);
       
@@ -178,7 +179,7 @@ export default function AwardsManagementPage() {
         notes: '',
       };
 
-      const response = await fetch('/api/awards', {
+      const response = await fetchWithTokenRefresh(/api/awards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -204,7 +205,7 @@ export default function AwardsManagementPage() {
     if (!confirm('Are you sure you want to remove this award?')) return;
 
     try {
-      const response = await fetch(`/api/awards?id=${awardId}`, {
+      const response = await fetchWithTokenRefresh(`/api/awards?id=${awardId}`, {
         method: 'DELETE',
       });
 

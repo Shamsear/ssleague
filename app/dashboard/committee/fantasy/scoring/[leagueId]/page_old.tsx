@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface ScoringRule {
   id: string;
@@ -44,7 +45,7 @@ export default function FantasyScoringPage() {
       if (!leagueId) return;
 
       try {
-        const response = await fetch(`/api/fantasy/leagues/${leagueId}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/leagues/${leagueId}`);
         if (!response.ok) throw new Error('Failed to load league');
 
         const data = await response.json();
@@ -77,7 +78,7 @@ export default function FantasyScoringPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`/api/fantasy/scoring-rules/${editingRule.id}`, {
+      const response = await fetchWithTokenRefresh(`/api/fantasy/scoring-rules/${editingRule.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

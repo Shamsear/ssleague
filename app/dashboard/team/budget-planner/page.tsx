@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 type PlayerType = 'football' | 'real';
 
@@ -71,7 +72,7 @@ export default function BudgetPlannerPage() {
       
       try {
         setIsLoadingBudget(true);
-        const response = await fetch('/api/team/dashboard');
+        const response = await fetchWithTokenRefresh(/api/team/dashboard');
         const data = await response.json();
         
         if (data.success && data.data) {

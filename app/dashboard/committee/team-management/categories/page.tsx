@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Category {
   id: string;
@@ -51,7 +52,7 @@ function CategoriesPageContent() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch('/api/categories');
+        const response = await fetchWithTokenRefresh(/api/categories');
         const result = await response.json();
         
         if (result.success) {
@@ -85,7 +86,7 @@ function CategoriesPageContent() {
 
   const handleDelete = async (categoryId: string) => {
     try {
-      const response = await fetch(`/api/categories/${categoryId}`, {
+      const response = await fetchWithTokenRefresh(`/api/categories/${categoryId}`, {
         method: 'DELETE',
       });
       

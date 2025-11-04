@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getPendingUsers } from '@/lib/firebase/auth';
 import { getPendingResetRequests } from '@/lib/firebase/passwordResetRequests';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function SuperAdminDashboard() {
   const { user, loading } = useAuth();
@@ -52,14 +53,14 @@ export default function SuperAdminDashboard() {
       
       try {
         // Fetch active season
-        const seasonRes = await fetch('/api/seasons/active');
+        const seasonRes = await fetchWithTokenRefresh(/api/seasons/active');
         if (seasonRes.ok) {
           const seasonData = await seasonRes.json();
           if (seasonData.season) {
             setActiveSeason(seasonData.season);
             
             // Fetch teams count for active season
-            const teamsRes = await fetch(`/api/teams?seasonId=${seasonData.season.id}`);
+            const teamsRes = await fetchWithTokenRefresh(`/api/teams?seasonId=${seasonData.season.id}`);
             if (teamsRes.ok) {
               const teamsData = await teamsRes.json();
               setTeamsCount(teamsData.teams?.length || 0);

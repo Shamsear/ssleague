@@ -6,6 +6,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Round {
   id: number;
@@ -71,7 +72,7 @@ export default function RoundsManagementPage() {
         }
 
         // Fetch available positions from auction eligible players
-        const playersResponse = await fetch('/api/players?is_auction_eligible=true');
+        const playersResponse = await fetchWithTokenRefresh(/api/players?is_auction_eligible=true');
         const { success, data } = await playersResponse.json();
         if (success && data.length > 0) {
           const positions = [...new Set(data.map((p: any) => p.position).filter(Boolean))];
@@ -93,7 +94,7 @@ export default function RoundsManagementPage() {
       setIsLoading(true);
       try {
         const params = new URLSearchParams({ season_id: currentSeasonId });
-        const response = await fetch(`/api/rounds?${params}`);
+        const response = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const { success, data } = await response.json();
 
         if (success) {
@@ -171,7 +172,7 @@ export default function RoundsManagementPage() {
     const durationSeconds = Math.round(parseFloat(formData.duration_hours) * 3600);
 
     try {
-      const response = await fetch('/api/rounds', {
+      const response = await fetchWithTokenRefresh(/api/rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -195,7 +196,7 @@ export default function RoundsManagementPage() {
         });
         // Refresh rounds
         const params = new URLSearchParams({ season_id: currentSeasonId });
-        const refreshResponse = await fetch(`/api/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setRounds(refreshData.data);
@@ -216,7 +217,7 @@ export default function RoundsManagementPage() {
     }
 
     try {
-      const response = await fetch(`/api/rounds/${roundId}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,7 +231,7 @@ export default function RoundsManagementPage() {
         alert(`Added ${minutes} minute${minutes !== 1 ? 's' : ''} to the timer`);
         // Refresh rounds
         const params = new URLSearchParams({ season_id: currentSeasonId! });
-        const refreshResponse = await fetch(`/api/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setRounds(refreshData.data);
@@ -248,7 +249,7 @@ export default function RoundsManagementPage() {
     }
 
     try {
-      const response = await fetch(`/api/rounds/${roundId}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'completed' }),
@@ -259,7 +260,7 @@ export default function RoundsManagementPage() {
       if (success) {
         alert('Round finalized successfully');
         const params = new URLSearchParams({ season_id: currentSeasonId! });
-        const refreshResponse = await fetch(`/api/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setRounds(refreshData.data);
@@ -277,7 +278,7 @@ export default function RoundsManagementPage() {
     }
 
     try {
-      const response = await fetch(`/api/rounds/${roundId}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`, {
         method: 'DELETE',
       });
 
@@ -286,7 +287,7 @@ export default function RoundsManagementPage() {
       if (success) {
         alert('Round deleted successfully');
         const params = new URLSearchParams({ season_id: currentSeasonId! });
-        const refreshResponse = await fetch(`/api/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setRounds(refreshData.data);

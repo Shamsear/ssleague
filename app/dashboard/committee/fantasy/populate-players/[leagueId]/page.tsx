@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function PopulateFantasyPlayersPage() {
   const { user, loading } = useAuth();
@@ -31,7 +32,7 @@ export default function PopulateFantasyPlayersPage() {
       if (!leagueId) return;
 
       try {
-        const response = await fetch(`/api/fantasy/leagues/${leagueId}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/leagues/${leagueId}`);
         if (!response.ok) throw new Error('League not found');
         
         const data = await response.json();
@@ -55,7 +56,7 @@ export default function PopulateFantasyPlayersPage() {
     setResult(null);
 
     try {
-      const response = await fetch('/api/fantasy/players/populate', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/players/populate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

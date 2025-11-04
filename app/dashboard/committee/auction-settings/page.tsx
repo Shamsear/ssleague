@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface AuctionSettings {
   id: number;
@@ -68,7 +69,7 @@ export default function AuctionSettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch('/api/auction-settings');
+      const response = await fetchWithTokenRefresh(/api/auction-settings');
       const { data, success } = await response.json();
 
       if (success) {
@@ -93,7 +94,7 @@ export default function AuctionSettingsPage() {
     setSaving(true);
 
     try {
-      const response = await fetch('/api/auction-settings', {
+      const response = await fetchWithTokenRefresh(/api/auction-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

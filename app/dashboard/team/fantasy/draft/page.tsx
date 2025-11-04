@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star, Trash2, Lock, Edit } from 'lucide-react';
 import { useAutoCloseDraft } from '@/hooks/useAutoCloseDraft';
 import { useDraftWebSocket } from '@/hooks/useDraftWebSocket';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
   real_player_id: string;
@@ -80,7 +81,7 @@ export default function TeamDraftPage() {
   const loadDraftData = useCallback(async () => {
     try {
       // Get my fantasy team
-      const teamRes = await fetch(`/api/fantasy/teams/my-team?user_id=${user!.uid}`);
+      const teamRes = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user!.uid}`);
       if (teamRes.status === 404) {
         setIsLoading(false);
         return;
@@ -96,7 +97,7 @@ export default function TeamDraftPage() {
       if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
       // Get draft settings and league info
-      const settingsRes = await fetch(`/api/fantasy/draft/settings?league_id=${teamData.team.fantasy_league_id}`);
+      const settingsRes = await fetchWithTokenRefresh(`/api/fantasy/draft/settings?league_id=${teamData.team.fantasy_league_id}`);
       let leagueSeasonId = null;
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
@@ -117,7 +118,7 @@ export default function TeamDraftPage() {
       }
 
       // Get available players
-      const playersRes = await fetch(`/api/fantasy/players/available?league_id=${teamData.team.fantasy_league_id}`);
+      const playersRes = await fetchWithTokenRefresh(`/api/fantasy/players/available?league_id=${teamData.team.fantasy_league_id}`);
       if (playersRes.ok) {
         const playersData = await playersRes.json();
         setAvailablePlayers(playersData.available_players || []);
@@ -194,7 +195,7 @@ export default function TeamDraftPage() {
 
     setIsSelectingTeam(true);
     try {
-      const res = await fetch('/api/fantasy/teams/select-supported', {
+      const res = await fetchWithTokenRefresh(/api/fantasy/teams/select-supported', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -240,7 +241,7 @@ export default function TeamDraftPage() {
     
     setIsSavingCaptains(true);
     try {
-      const response = await fetch('/api/fantasy/squad/set-captain', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/squad/set-captain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -296,7 +297,7 @@ export default function TeamDraftPage() {
 
     setIsDrafting(playerId);
     try {
-      const res = await fetch('/api/fantasy/draft/player', {
+      const res = await fetchWithTokenRefresh(/api/fantasy/draft/player', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -338,8 +339,7 @@ export default function TeamDraftPage() {
 
     setIsRemoving(playerId);
     try {
-      const res = await fetch(
-        `/api/fantasy/draft/player?user_id=${user.uid}&real_player_id=${playerId}`,
+      const res = await fetchWithTokenRefresh(`/api/fantasy/draft/player?user_id=${user.uid}&real_player_id=${playerId}`,
         { method: 'DELETE' }
       );
 
@@ -395,7 +395,7 @@ export default function TeamDraftPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/fantasy/draft/submit', {
+      const res = await fetchWithTokenRefresh(/api/fantasy/draft/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: user.uid }),
@@ -425,7 +425,7 @@ export default function TeamDraftPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/fantasy/draft/submit?user_id=${user.uid}`, {
+      const res = await fetchWithTokenRefresh(`/api/fantasy/draft/submit?user_id=${user.uid}`, {
         method: 'DELETE',
       });
 

@@ -6,6 +6,7 @@ import { useTeamDashboard, useDeleteBid } from '@/hooks/useTeamDashboard';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 // Position constants
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -167,7 +168,7 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
     if (!confirmed) return;
     
     try {
-      const response = await fetch('/api/team/bids/clear-all', {
+      const response = await fetchWithTokenRefresh(/api/team/bids/clear-all', {
         method: 'POST',
       });
       

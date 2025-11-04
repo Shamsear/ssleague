@@ -6,6 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import LineupSubmission from '@/components/LineupSubmission';
 import { useAutoLockLineups } from '@/hooks/useAutoLockLineups';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function FixtureLineupPage() {
   const { user, loading } = useAuth();
@@ -39,7 +40,7 @@ export default function FixtureLineupPage() {
       setLoadingData(true);
 
       // Fetch fixture details
-      const fixtureRes = await fetch(`/api/fixtures/${fixtureId}`);
+      const fixtureRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}`);
       
       if (!fixtureRes.ok) {
         throw new Error('Fixture not found');
@@ -54,7 +55,7 @@ export default function FixtureLineupPage() {
       setFixture(fixtureData.fixture);
 
       // Fetch deadline information from editable API
-      const editableRes = await fetch(`/api/fixtures/${fixtureId}/editable`);
+      const editableRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/editable`);
       const editableData = await editableRes.json();
       
       if (editableData.deadline) {
@@ -62,7 +63,7 @@ export default function FixtureLineupPage() {
       }
 
       // Fetch user's team_id from team_seasons for this season
-      const teamSeasonsRes = await fetch(`/api/team-seasons?user_id=${user?.uid}&season_id=${fixtureData.fixture.season_id}`);
+      const teamSeasonsRes = await fetchWithTokenRefresh(`/api/team-seasons?user_id=${user?.uid}&season_id=${fixtureData.fixture.season_id}`);
       const teamSeasonsData = await teamSeasonsRes.json();
       
       console.log('🔍 DEBUG - Team seasons data:', teamSeasonsData);

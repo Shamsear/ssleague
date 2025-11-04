@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, use, useCallback } from 'react';
 import Link from 'next/link';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface BulkBid {
   player_id: string;
@@ -277,7 +278,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const fetchRound = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/bulk-rounds/${resolvedParams.id}`);
+      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}`);
       const { success, data } = await response.json();
 
       if (success) {
@@ -323,7 +324,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       if (!showAddPlayers) return;
 
       try {
-        const response = await fetch('/api/players?is_auction_eligible=true');
+        const response = await fetchWithTokenRefresh(/api/players?is_auction_eligible=true');
         const { success, data } = await response.json();
 
         if (success) {
@@ -361,7 +362,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           console.log('✅ Token refreshed before starting round');
         }
         
-        const response = await fetch(`/api/admin/bulk-rounds/${round.id}/start`, {
+        const response = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${round.id}/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -386,7 +387,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     // Handle finalize/complete
     if (newStatus === 'completed') {
       try {
-        const response = await fetch(`/api/admin/bulk-rounds/${round.id}/finalize`, {
+        const response = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${round.id}/finalize`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -408,7 +409,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
 
     // Handle other status changes
     try {
-      const response = await fetch(`/api/rounds/${round.id}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${round.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -434,7 +435,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     }
 
     try {
-      const response = await fetch(`/api/admin/bulk-rounds/${round.id}/create-tiebreaker`, {
+      const response = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${round.id}/create-tiebreaker`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ player_id: playerId }),
@@ -466,7 +467,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     if (!confirm(confirmMessage)) return;
 
     try {
-      const response = await fetch(`/api/rounds/${round.id}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${round.id}`, {
         method: 'DELETE',
       });
 
@@ -855,7 +856,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                                 if (!playerBids.has(player.player_id) && !loadingBids.has(player.player_id)) {
                                   setLoadingBids(prev => new Set(prev).add(player.player_id));
                                   try {
-                                    const response = await fetch(`/api/rounds/${round.id}/players/${player.player_id}/bids`);
+                                    const response = await fetchWithTokenRefresh(`/api/rounds/${round.id}/players/${player.player_id}/bids`);
                                     const { success, data } = await response.json();
                                     if (success) {
                                       setPlayerBids(prev => {
@@ -1103,7 +1104,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                                     setLoadingBids(prev => new Set(prev).add(player.player_id));
                                     try {
                                       console.log(`[Bids] Fetching bids for player ${player.player_id}`);
-                                      const response = await fetch(`/api/rounds/${round.id}/players/${player.player_id}/bids`);
+                                      const response = await fetchWithTokenRefresh(`/api/rounds/${round.id}/players/${player.player_id}/bids`);
                                       const { success, data, error } = await response.json();
                                       console.log(`[Bids] Response:`, { success, data, error });
                                       if (success) {

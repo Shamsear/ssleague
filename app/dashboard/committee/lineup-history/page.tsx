@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface LineupHistoryEntry {
   lineup_id: string;
@@ -73,7 +74,7 @@ export default function LineupHistoryPage() {
 
   const fetchSeasons = async () => {
     try {
-      const response = await fetch('/api/seasons?status=active');
+      const response = await fetchWithTokenRefresh(/api/seasons?status=active');
       const data = await response.json();
       if (data.success && data.seasons.length > 0) {
         setSeasons(data.seasons);
@@ -89,7 +90,7 @@ export default function LineupHistoryPage() {
       setLoadingData(true);
       setError(null);
 
-      const response = await fetch(`/api/lineups/history?season_id=${seasonId}`);
+      const response = await fetchWithTokenRefresh(`/api/lineups/history?season_id=${seasonId}`);
       const data = await response.json();
 
       if (data.success) {
@@ -110,7 +111,7 @@ export default function LineupHistoryPage() {
       setLoadingData(true);
       setError(null);
 
-      const response = await fetch(`/api/substitutions/history?season_id=${seasonId}`);
+      const response = await fetchWithTokenRefresh(`/api/substitutions/history?season_id=${seasonId}`);
       const data = await response.json();
 
       if (data.success) {

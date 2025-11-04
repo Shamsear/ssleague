@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 // Only these positions are used for position groups
 const POSITION_GROUP_POSITIONS = ['CB', 'DMF', 'CMF', 'AMF', 'CF'] as const;
@@ -85,7 +86,7 @@ export default function PositionGroupsPage() {
   const fetchPlayers = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/players');
+      const response = await fetchWithTokenRefresh(/api/players');
       const { data: players, success } = await response.json();
 
       if (success) {
@@ -190,7 +191,7 @@ export default function PositionGroupsPage() {
       : `${selectedPosition}-1`;
 
     try {
-      const response = await fetch(`/api/players/${player.id}`, {
+      const response = await fetchWithTokenRefresh(`/api/players/${player.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ position_group: newGroup })

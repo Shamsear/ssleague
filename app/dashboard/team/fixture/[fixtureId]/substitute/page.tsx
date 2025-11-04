@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import LineupSubstitution from '@/components/LineupSubstitution';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function FixtureSubstitutePage() {
   const { user, loading } = useAuth();
@@ -36,7 +37,7 @@ export default function FixtureSubstitutePage() {
       setError(null);
 
       // Fetch fixture details
-      const fixtureRes = await fetch(`/api/fixtures/${fixtureId}`);
+      const fixtureRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}`);
       const fixtureData = await fixtureRes.json();
       
       if (!fixtureData.success) {
@@ -53,7 +54,7 @@ export default function FixtureSubstitutePage() {
       setTeamId(userTeamId);
 
       // Fetch lineup
-      const lineupRes = await fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${userTeamId}`);
+      const lineupRes = await fetchWithTokenRefresh(`/api/lineups?fixture_id=${fixtureId}&team_id=${userTeamId}`);
       const lineupData = await lineupRes.json();
       
       if (!lineupData.success || !lineupData.lineups) {

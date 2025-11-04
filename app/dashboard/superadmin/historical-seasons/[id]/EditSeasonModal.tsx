@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getIdToken } from 'firebase/auth';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface EditSeasonModalProps {
   isOpen: boolean;
@@ -95,7 +96,7 @@ export default function EditSeasonModal({ isOpen, onClose, season, firebaseUser,
         updateData.most_assists_count = parseInt(formData.most_assists_count);
       }
 
-      const response = await fetch(`/api/seasons/historical/${season.id}`, {
+      const response = await fetchWithTokenRefresh(`/api/seasons/historical/${season.id}`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,

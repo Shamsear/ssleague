@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { getISTNow, parseISTDate, createISTDateTime } from '@/lib/utils/timezone';
 import { useRoundPhaseMonitor, calculatePhase } from '@/hooks/useRoundPhaseMonitor';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Match {
   id: string;
@@ -140,7 +141,7 @@ export default function TeamMatchesPage() {
         // Fetch fixtures from Neon database
         console.log('🔍 Fetching fixtures from Neon for season:', currentSeasonId, 'team:', teamId);
         
-        const fixturesResponse = await fetch(`/api/fixtures/team?team_id=${teamId}&season_id=${currentSeasonId}`);
+        const fixturesResponse = await fetchWithTokenRefresh(`/api/fixtures/team?team_id=${teamId}&season_id=${currentSeasonId}`);
         
         if (!fixturesResponse.ok) {
           const errorData = await fixturesResponse.json().catch(() => ({ error: 'Unknown error' }));
@@ -184,7 +185,7 @@ export default function TeamMatchesPage() {
           };
           
           try {
-            const response = await fetch(`/api/round-deadlines?tournament_id=${tournamentId}&round_number=${roundNumber}&leg=${leg}`);
+            const response = await fetchWithTokenRefresh(`/api/round-deadlines?tournament_id=${tournamentId}&round_number=${roundNumber}&leg=${leg}`);
             
             if (response.ok) {
               const { roundDeadline } = await response.json();

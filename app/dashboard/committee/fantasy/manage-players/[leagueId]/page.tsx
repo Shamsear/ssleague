@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FantasyTeam {
   id: string;
@@ -66,7 +67,7 @@ export default function ManagePlayersPage() {
       if (!leagueId) return;
 
       try {
-        const leagueResponse = await fetch(`/api/fantasy/leagues/${leagueId}`);
+        const leagueResponse = await fetchWithTokenRefresh(`/api/fantasy/leagues/${leagueId}`);
         if (!leagueResponse.ok) throw new Error('League not found');
         
         const leagueData = await leagueResponse.json();
@@ -75,7 +76,7 @@ export default function ManagePlayersPage() {
 
         await loadDraftedPlayers();
 
-        const playersResponse = await fetch(`/api/fantasy/players/available?league_id=${leagueId}`);
+        const playersResponse = await fetchWithTokenRefresh(`/api/fantasy/players/available?league_id=${leagueId}`);
         if (playersResponse.ok) {
           const playersData = await playersResponse.json();
           setAvailablePlayers(playersData.available_players);
@@ -99,7 +100,7 @@ export default function ManagePlayersPage() {
 
   const loadDraftedPlayers = async () => {
     try {
-      const response = await fetch(`/api/fantasy/players/drafted?league_id=${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/drafted?league_id=${leagueId}`);
       if (response.ok) {
         const data = await response.json();
         setDraftedPlayers(data.drafted_players || []);
@@ -120,7 +121,7 @@ export default function ManagePlayersPage() {
     }
 
     try {
-      const response = await fetch('/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -164,7 +165,7 @@ export default function ManagePlayersPage() {
     const player = selectedPlayer as DraftedPlayer;
 
     try {
-      const response = await fetch('/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -210,7 +211,7 @@ export default function ManagePlayersPage() {
     const player2 = swapPlayer;
 
     try {
-      const response = await fetch('/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -249,7 +250,7 @@ export default function ManagePlayersPage() {
     }
 
     try {
-      const response = await fetch('/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

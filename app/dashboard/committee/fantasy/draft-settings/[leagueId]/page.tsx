@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface DraftSettings {
   id?: string;
@@ -49,7 +50,7 @@ export default function DraftSettingsPage() {
       if (!leagueId) return;
 
       try {
-        const response = await fetch(`/api/fantasy/draft/settings?fantasy_league_id=${leagueId}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/draft/settings?fantasy_league_id=${leagueId}`);
         if (response.ok) {
           const data = await response.json();
           if (data.id) {
@@ -73,7 +74,7 @@ export default function DraftSettingsPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch('/api/fantasy/draft/settings', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/draft/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

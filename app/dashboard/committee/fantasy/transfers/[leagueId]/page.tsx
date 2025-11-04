@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeftRight, Calendar, Save, AlertCircle, Plus, Settings } from 'lucide-react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TransferWindow {
   window_id: string;
@@ -75,7 +76,7 @@ export default function TransfersManagementPage() {
 
   const loadWindows = async () => {
     try {
-      const response = await fetch(`/api/fantasy/transfer-windows?league_id=${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${leagueId}`);
       if (!response.ok) throw new Error('Failed to load windows');
       
       const data = await response.json();
@@ -101,7 +102,7 @@ export default function TransfersManagementPage() {
 
     setIsCreating(true);
     try {
-      const response = await fetch('/api/fantasy/transfer-windows', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/transfer-windows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -132,7 +133,7 @@ export default function TransfersManagementPage() {
 
   const toggleWindow = async (windowId: string) => {
     try {
-      const response = await fetch(`/api/fantasy/transfer-windows/${windowId}/toggle`, {
+      const response = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows/${windowId}/toggle`, {
         method: 'POST',
       });
 
@@ -151,7 +152,7 @@ export default function TransfersManagementPage() {
   const fetchSettings = async (windowId: string) => {
     setIsLoadingSettings(true);
     try {
-      const res = await fetch(`/api/fantasy/transfers/settings?window_id=${windowId}`);
+      const res = await fetchWithTokenRefresh(`/api/fantasy/transfers/settings?window_id=${windowId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.settings) {
@@ -173,7 +174,7 @@ export default function TransfersManagementPage() {
 
     setSaving(true);
     try {
-      const res = await fetch('/api/fantasy/transfers/settings', {
+      const res = await fetchWithTokenRefresh(/api/fantasy/transfers/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -206,7 +207,7 @@ export default function TransfersManagementPage() {
 
     const newStatus = !settings.is_transfer_window_open;
     try {
-      const res = await fetch('/api/fantasy/transfers/settings', {
+      const res = await fetchWithTokenRefresh(/api/fantasy/transfers/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

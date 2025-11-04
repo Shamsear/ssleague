@@ -3,6 +3,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Season {
   id: string;
@@ -32,7 +33,7 @@ export default function HistoricalSeasons() {
     const fetchSeasons = async () => {
       try {
         setSeasonsLoading(true);
-        const response = await fetch('/api/seasons/list');
+        const response = await fetchWithTokenRefresh(/api/seasons/list');
         const data = await response.json();
         
         if (data.success) {
@@ -86,7 +87,7 @@ export default function HistoricalSeasons() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetch('/api/seasons/historical/template');
+      const response = await fetchWithTokenRefresh(/api/seasons/historical/template');
       
       if (!response.ok) {
         throw new Error('Failed to download template');
@@ -115,7 +116,7 @@ export default function HistoricalSeasons() {
 
     try {
       setDeleting(seasonId);
-      const response = await fetch(`/api/seasons/historical/${seasonId}`, {
+      const response = await fetchWithTokenRefresh(`/api/seasons/historical/${seasonId}`, {
         method: 'DELETE',
       });
 

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import LineupSubmission from '@/components/LineupSubmission';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function SelectOpponentLineupPage() {
   const { user, loading } = useAuth();
@@ -38,7 +39,7 @@ export default function SelectOpponentLineupPage() {
       setError(null);
 
       // Fetch fixture details
-      const fixtureRes = await fetch(`/api/fixtures/${fixtureId}`);
+      const fixtureRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}`);
       
       if (!fixtureRes.ok) {
         throw new Error('Fixture not found');
@@ -70,7 +71,7 @@ export default function SelectOpponentLineupPage() {
       setOpponentTeamName(opponentName);
 
       // Check if opponent lineup is eligible for selection
-      const eligibilityRes = await fetch(`/api/lineups/opponent-selection-eligibility?fixture_id=${fixtureId}&opponent_team_id=${opponentId}`);
+      const eligibilityRes = await fetchWithTokenRefresh(`/api/lineups/opponent-selection-eligibility?fixture_id=${fixtureId}&opponent_team_id=${opponentId}`);
       const eligibilityData = await eligibilityRes.json();
 
       if (!eligibilityData.success || !eligibilityData.eligible) {
@@ -80,7 +81,7 @@ export default function SelectOpponentLineupPage() {
         setCanSelectLineup(true);
 
         // Check if lineup already selected
-        const lineupRes = await fetch(`/api/lineups?fixture_id=${fixtureId}&team_id=${opponentId}`);
+        const lineupRes = await fetchWithTokenRefresh(`/api/lineups?fixture_id=${fixtureId}&team_id=${opponentId}`);
         const lineupData = await lineupRes.json();
         
         if (lineupData.success && lineupData.lineups) {

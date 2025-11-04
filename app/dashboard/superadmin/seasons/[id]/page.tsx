@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
 import { usePlayerStats, useTeamStats } from '@/hooks';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function SeasonDetails() {
   const { user, loading } = useAuth();
@@ -79,7 +80,7 @@ export default function SeasonDetails() {
       // For multi-season types (season 16+), fetch auction data from Neon
       if (seasonData.type === 'multi') {
         try {
-          const auctionResponse = await fetch(`/api/seasons/${seasonId}/auction-data`);
+          const auctionResponse = await fetchWithTokenRefresh(`/api/seasons/${seasonId}/auction-data`);
           if (auctionResponse.ok) {
             const auctionData = await auctionResponse.json();
             if (auctionData.success) {

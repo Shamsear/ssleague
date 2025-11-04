@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useDraftWebSocket } from '@/hooks/useDraftWebSocket';
 import { useAutoCloseDraft } from '@/hooks/useAutoCloseDraft';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface DraftSettings {
   draft_status: 'pending' | 'active' | 'closed';
@@ -64,7 +65,7 @@ export default function DraftControlPage() {
   // Define loadSettings with useCallback to make it stable
   const loadSettings = useCallback(async () => {
     try {
-      const response = await fetch(`/api/fantasy/draft/settings?league_id=${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/draft/settings?league_id=${leagueId}`);
       if (!response.ok) throw new Error('Failed to load settings');
       
       const data = await response.json();
@@ -155,7 +156,7 @@ export default function DraftControlPage() {
   const updateDraftStatus = async () => {
     setIsSaving(true);
     try {
-      const response = await fetch('/api/fantasy/draft/control', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/draft/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

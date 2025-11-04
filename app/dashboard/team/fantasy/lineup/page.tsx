@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
   draft_id: string;
@@ -53,7 +54,7 @@ export default function LineupManagementPage() {
 
       try {
         // Get fantasy team and players
-        const teamResponse = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
+        const teamResponse = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
         
         if (teamResponse.status === 404) {
           setIsLoading(false);
@@ -71,7 +72,7 @@ export default function LineupManagementPage() {
         const playersWithPositions = await Promise.all(
           teamData.players.map(async (player: Player) => {
             try {
-              const playerResponse = await fetch(`/api/fantasy/players/all`);
+              const playerResponse = await fetchWithTokenRefresh(`/api/fantasy/players/all`);
               const allPlayersData = await playerResponse.json();
               const playerDetails = allPlayersData.players.find(
                 (p: any) => p.real_player_id === player.real_player_id
@@ -89,8 +90,7 @@ export default function LineupManagementPage() {
         setAllPlayers(playersWithPositions);
 
         // Load existing lineup for current matchday
-        const lineupResponse = await fetch(
-          `/api/fantasy/lineups?fantasy_team_id=${teamData.team.id}&matchday=${currentMatchday}`
+        const lineupResponse = await fetchWithTokenRefresh(`/api/fantasy/lineups?fantasy_team_id=${teamData.team.id}&matchday=${currentMatchday}`
         );
         
         if (lineupResponse.ok) {
@@ -200,7 +200,7 @@ export default function LineupManagementPage() {
     setMessage(null);
 
     try {
-      const response = await fetch('/api/fantasy/lineups', {
+      const response = await fetchWithTokenRefresh(/api/fantasy/lineups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

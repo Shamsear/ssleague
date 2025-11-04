@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function MidSeasonSalaryPage() {
   const { user, loading } = useAuth();
@@ -61,7 +62,7 @@ export default function MidSeasonSalaryPage() {
       setSuccess(null);
       setResult(null);
 
-      const response = await fetch('/api/contracts/mid-season-salary', {
+      const response = await fetchWithTokenRefresh('/api/contracts/mid-season-salary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

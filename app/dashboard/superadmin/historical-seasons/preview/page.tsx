@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { findMatches, MatchResult } from '@/lib/utils/fuzzyMatch';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TeamData {
   rank: number;
@@ -322,7 +323,7 @@ export default function PreviewHistoricalSeason() {
   const loadExistingEntitiesAndCheckDuplicates = useCallback(async () => {
     setLoadingDuplicates(true);
     try {
-      const response = await fetch('/api/seasons/historical/check-duplicates');
+      const response = await fetchWithTokenRefresh(/api/seasons/historical/check-duplicates');
       const result = await response.json();
       
       if (result.success && result.data) {
@@ -672,7 +673,7 @@ export default function PreviewHistoricalSeason() {
         })
       };
       
-      const response = await fetch('/api/seasons/historical/import', {
+      const response = await fetchWithTokenRefresh(/api/seasons/historical/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

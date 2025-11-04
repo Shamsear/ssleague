@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface LeaderboardEntry {
   rank: number;
@@ -39,7 +40,7 @@ export default function FantasyLeaderboardPage() {
 
       try {
         // First get user's team to find league ID
-        const myTeamResponse = await fetch(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
+        const myTeamResponse = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
         
         if (myTeamResponse.status === 404) {
           setIsLoading(false);
@@ -51,7 +52,7 @@ export default function FantasyLeaderboardPage() {
         setMyTeamId(myTeamData.team.id);
 
         // Get leaderboard
-        const leaderboardResponse = await fetch(`/api/fantasy/leaderboard/${leagueId}`);
+        const leaderboardResponse = await fetchWithTokenRefresh(`/api/fantasy/leaderboard/${leagueId}`);
         
         if (!leaderboardResponse.ok) {
           throw new Error('Failed to load leaderboard');

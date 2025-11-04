@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import Link from 'next/link';
 import Image from 'next/image';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface RealPlayerDetails {
   id: string;
@@ -67,7 +68,7 @@ export default function RealPlayerDetailPage() {
         setLoadingPlayer(true);
         
         // Fetch from API endpoint
-        const response = await fetch(`/api/real-player/${playerId}?season_id=${userSeasonId}`);
+        const response = await fetchWithTokenRefresh(`/api/real-player/${playerId}?season_id=${userSeasonId}`);
         const result = await response.json();
         
         if (result.success && result.data) {

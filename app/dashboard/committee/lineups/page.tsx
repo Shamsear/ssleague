@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAutoLockLineups } from '@/hooks/useAutoLockLineups';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface LineupStatus {
   fixture_id: string;
@@ -65,7 +66,7 @@ export default function CommitteeLineupMonitoringPage() {
 
   const fetchSeasons = async () => {
     try {
-      const response = await fetch('/api/seasons?status=active');
+      const response = await fetchWithTokenRefresh(/api/seasons?status=active');
       const data = await response.json();
       if (data.success && data.seasons.length > 0) {
         setSeasons(data.seasons);
@@ -78,7 +79,7 @@ export default function CommitteeLineupMonitoringPage() {
 
   const fetchRounds = async () => {
     try {
-      const response = await fetch(`/api/rounds?season_id=${seasonId}`);
+      const response = await fetchWithTokenRefresh(`/api/rounds?season_id=${seasonId}`);
       const data = await response.json();
       if (data.success && data.rounds) {
         const roundNumbers = [...new Set(data.rounds.map((r: any) => r.round_number))].sort((a, b) => a - b);
@@ -97,7 +98,7 @@ export default function CommitteeLineupMonitoringPage() {
       setLoadingData(true);
       setError(null);
 
-      const response = await fetch(`/api/lineups/missing?round_number=${selectedRound}&season_id=${seasonId}`);
+      const response = await fetchWithTokenRefresh(`/api/lineups/missing?round_number=${selectedRound}&season_id=${seasonId}`);
       const data = await response.json();
 
       if (!data.success) {
@@ -108,18 +109,18 @@ export default function CommitteeLineupMonitoringPage() {
       const statuses: LineupStatus[] = [];
       
       // Get all fixtures for this round
-      const fixturesRes = await fetch(`/api/fixtures?season_id=${seasonId}&round_number=${selectedRound}`);
+      const fixturesRes = await fetchWithTokenRefresh(`/api/fixtures?season_id=${seasonId}&round_number=${selectedRound}`);
       const fixturesData = await fixturesRes.json();
 
       if (fixturesData.success && fixturesData.fixtures) {
         for (const fixture of fixturesData.fixtures) {
           // Check if home team has lineup
-          const homeLineupRes = await fetch(`/api/lineups?fixture_id=${fixture.id}&team_id=${fixture.home_team_id}`);
+          const homeLineupRes = await fetchWithTokenRefresh(`/api/lineups?fixture_id=${fixture.id}&team_id=${fixture.home_team_id}`);
           const homeLineupData = await homeLineupRes.json();
           const homeLineup = homeLineupData.success && homeLineupData.lineups ? homeLineupData.lineups : null;
 
           // Check if away team has lineup
-          const awayLineupRes = await fetch(`/api/lineups?fixture_id=${fixture.id}&team_id=${fixture.away_team_id}`);
+          const awayLineupRes = await fetchWithTokenRefresh(`/api/lineups?fixture_id=${fixture.id}&team_id=${fixture.away_team_id}`);
           const awayLineupData = await awayLineupRes.json();
           const awayLineup = awayLineupData.success && awayLineupData.lineups ? awayLineupData.lineups : null;
 
@@ -156,7 +157,7 @@ export default function CommitteeLineupMonitoringPage() {
 
     try {
       const lineupId = `lineup_${fixtureId}_${teamId}`;
-      const response = await fetch(`/api/lineups/${lineupId}/lock`, {
+      const response = await fetchWithTokenRefresh(`/api/lineups/${lineupId}/lock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -184,7 +185,7 @@ export default function CommitteeLineupMonitoringPage() {
 
     try {
       setProcessing(true);
-      const response = await fetch('/api/lineups/process-locks', {
+      const response = await fetchWithTokenRefresh(/api/lineups/process-locks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
