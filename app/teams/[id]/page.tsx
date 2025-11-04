@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TeamSeasonData {
   id: string;
@@ -59,7 +60,7 @@ export default function TeamDetailPage() {
       setError(null);
 
       // Fetch team data across all seasons from Neon database
-      const response = await fetch(`/api/teams/${teamId}/all-seasons`);
+      const response = await fetchWithTokenRefresh(`/api/teams/${teamId}/all-seasons`);
       const data = await response.json();
 
       if (!data.success || !data.seasons || data.seasons.length === 0) {
