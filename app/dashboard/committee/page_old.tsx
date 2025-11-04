@@ -103,7 +103,7 @@ export default function CommitteeDashboard() {
         
         console.log('🔥 Fetching player stats from API...');
         // Fetch all players to calculate stats
-        const response = await fetch('/api/players');
+        const response = await fetchWithTokenRefresh('/api/players');
         const { data: players, success } = await response.json();
 
         if (success) {
