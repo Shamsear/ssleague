@@ -37,7 +37,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
   const [tiebreakerId, setTiebreakerId] = useState<string | null>(null);
   const [tiebreaker, setTiebreaker] = useState<TiebreakerDetail | null>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [bidAmount, setBidAmount] = useState<number | ''>(0);
+  const [bidAmount, setBidAmount] = useState<number | ''>('');
   const [hasUserModifiedBid, setHasUserModifiedBid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -420,7 +420,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                       onChange={(e) => {
                         setHasUserModifiedBid(true);
                         const value = e.target.value;
-                        const parsedValue = value === '' ? 0 : Math.floor(parseFloat(value));
+                        const parsedValue = value === '' ? '' : Math.floor(parseFloat(value));
                         console.log('🔤 Input changed:', { rawValue: value, parsedValue, currentBidAmount: bidAmount });
                         setBidAmount(parsedValue);
                       }}
