@@ -251,7 +251,7 @@ export async function POST(
     
     // Check if update succeeded (race condition check)
     if (updateResult.length === 0) {
-      // Someone else bid higher in the meantime
+      // Update failed - check why
       const latestTiebreaker = await sql`
         SELECT current_highest_bid, current_highest_team_id
         FROM bulk_tiebreakers
@@ -261,8 +261,13 @@ export async function POST(
       const actualHighest = latestTiebreaker[0]?.current_highest_bid || bid_amount;
       const actualHighestTeam = latestTiebreaker[0]?.current_highest_team_id;
       
-      // Only return error if someone ELSE has a higher bid
-      if (actualHighestTeam !== teamId && actualHighest >= bid_amount) {
+      // Check if this team is already the highest bidder with the same or higher amount
+      if (actualHighestTeam === teamId && actualHighest >= bid_amount) {
+        // Same team already has this bid or higher - treat as success (idempotent)
+        console.log(`✅ Team ${teamId} already has highest bid of £${actualHighest}, treating as success`);
+        // Continue to success response below (don't return error)
+      } else if (actualHighestTeam !== teamId && actualHighest >= bid_amount) {
+        // Someone ELSE has a higher or equal bid - this is a real race condition
         return NextResponse.json(
           { 
             success: false, 
@@ -272,26 +277,26 @@ export async function POST(
           },
           { status: 409 } // 409 Conflict
         );
-      }
-      
-      // If we reach here, update should have succeeded but didn't - retry once
-      console.log('⚠️ Update failed unexpectedly, retrying...');
-      const retryResult = await sql`
-        UPDATE bulk_tiebreakers
-        SET 
-          current_highest_bid = ${bid_amount},
-          current_highest_team_id = ${teamId},
-          last_activity_time = ${bidTime.toISOString()},
-          updated_at = NOW()
-        WHERE id = ${tiebreakerId}
-        RETURNING current_highest_bid
-      `;
-      
-      if (retryResult.length === 0) {
-        return NextResponse.json(
-          { success: false, error: 'Failed to update tiebreaker - please try again' },
-          { status: 500 }
-        );
+      } else {
+        // Unexpected case - retry the update
+        console.log('⚠️ Update failed unexpectedly, retrying...');
+        const retryResult = await sql`
+          UPDATE bulk_tiebreakers
+          SET 
+            current_highest_bid = ${bid_amount},
+            current_highest_team_id = ${teamId},
+            last_activity_time = ${bidTime.toISOString()},
+            updated_at = NOW()
+          WHERE id = ${tiebreakerId}
+          RETURNING current_highest_bid
+        `;
+        
+        if (retryResult.length === 0) {
+          return NextResponse.json(
+            { success: false, error: 'Failed to update tiebreaker - please try again' },
+            { status: 500 }
+          );
+        }
       }
     }
 
