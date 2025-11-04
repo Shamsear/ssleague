@@ -117,10 +117,8 @@ export default function RoundsManagementPage() {
       // Fetch rounds, positions, and tiebreakers in parallel
       const roundsParams = new URLSearchParams({ season_id: seasonId });
       const [roundsResponse, playersResponse, tbResponse] = await Promise.all([
-        fetch(`/api/admin/rounds?${roundsParams}`, {
-          headers: { 'Cache-Control': 'no-cache' },
-        }),
-        fetch('/api/players?is_auction_eligible=true'),
+        fetchWithTokenRefresh(`/api/admin/rounds?${roundsParams}`),
+        fetchWithTokenRefresh('/api/players?is_auction_eligible=true'),
         fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${seasonId}&status=active,pending`).catch(err => {
           console.error('Error fetching tiebreakers:', err);
           return null;
@@ -190,9 +188,7 @@ export default function RoundsManagementPage() {
       
       // Fetch rounds and tiebreakers in parallel
       const [roundsResponse, tbResponse] = await Promise.all([
-        fetch(`/api/admin/rounds?${params}`, {
-          headers: { 'Cache-Control': 'no-cache' },
-        }),
+        fetchWithTokenRefresh(`/api/admin/rounds?${params}`),
         fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${currentSeasonId}&status=active,pending`).catch(err => {
           console.error('Error fetching tiebreakers:', err);
           return null;
@@ -481,7 +477,7 @@ export default function RoundsManagementPage() {
     // Refresh rounds list
     if (currentSeasonId) {
       const params = new URLSearchParams({ season_id: currentSeasonId });
-      fetch(`/api/admin/rounds?${params}`)
+      fetchWithTokenRefresh(`/api/admin/rounds?${params}`)
         .then(res => res.json())
         .then(data => {
           if (data.success) {
