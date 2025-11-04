@@ -24,6 +24,15 @@ function getPusherInstance(): Pusher {
 }
 
 /**
+ * Sanitize channel name for Pusher compatibility
+ * Pusher doesn't allow colons (:) in channel names
+ * Replace with hyphens (-)
+ */
+function sanitizeChannelName(channel: string): string {
+  return channel.replace(/:/g, '-');
+}
+
+/**
  * Broadcast a message to all clients subscribed to a channel
  * 
  * @param channel - Pusher channel (e.g., 'tiebreaker:123', 'team:456')
@@ -37,14 +46,17 @@ export async function broadcastWebSocket(
   try {
     const pusher = getPusherInstance();
     
+    // Sanitize channel name for Pusher (no colons allowed)
+    const sanitizedChannel = sanitizeChannelName(channel);
+    
     // Extract event type from data, default to 'update'
     const eventType = data.type || 'update';
     const eventData = data.data || data;
     
     // Trigger event on Pusher
-    await pusher.trigger(channel, eventType, eventData);
+    await pusher.trigger(sanitizedChannel, eventType, eventData);
     
-    console.log(`📢 [Pusher] Broadcast to ${channel}, event: ${eventType}`);
+    console.log(`📢 [Pusher] Broadcast to ${sanitizedChannel}, event: ${eventType}`);
     return { success: true };
   } catch (error) {
     console.error('[Pusher] Broadcast error:', error);

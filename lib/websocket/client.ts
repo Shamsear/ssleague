@@ -13,6 +13,15 @@ type WebSocketMessage = {
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
+/**
+ * Sanitize channel name for Pusher compatibility
+ * Pusher doesn't allow colons (:) in channel names
+ * Replace with hyphens (-)
+ */
+function sanitizeChannelName(channel: string): string {
+  return channel.replace(/:/g, '-');
+}
+
 export class WSClient {
   private pusher: Pusher | null = null;
   private channels: Map<string, any> = new Map();
@@ -67,6 +76,9 @@ export class WSClient {
       this.connect();
     }
 
+    // Sanitize channel name for Pusher (no colons allowed)
+    const sanitizedChannel = sanitizeChannelName(channel);
+
     if (!this.handlers.has(channel)) {
       this.handlers.set(channel, new Set());
     }
@@ -74,7 +86,7 @@ export class WSClient {
 
     // Subscribe to Pusher channel if not already subscribed
     if (!this.channels.has(channel)) {
-      const pusherChannel = this.pusher!.subscribe(channel);
+      const pusherChannel = this.pusher!.subscribe(sanitizedChannel);
       this.channels.set(channel, pusherChannel);
 
       // Bind to all event types that might come through this channel
@@ -108,11 +120,12 @@ export class WSClient {
         });
       });
 
-      console.log(`[Pusher] Subscribed to channel: ${channel}`);
+      console.log(`[Pusher] Subscribed to channel: ${sanitizedChannel}`);
     }
   }
 
   unsubscribe(channel: string, handler: MessageHandler) {
+    const sanitizedChannel = sanitizeChannelName(channel);
     const handlers = this.handlers.get(channel);
     if (handlers) {
       handlers.delete(handler);
@@ -121,11 +134,11 @@ export class WSClient {
         
         // Unsubscribe from Pusher channel
         if (this.pusher && this.channels.has(channel)) {
-          this.pusher.unsubscribe(channel);
+          this.pusher.unsubscribe(sanitizedChannel);
           this.channels.delete(channel);
         }
         
-        console.log(`[Pusher] Unsubscribed from channel: ${channel}`);
+        console.log(`[Pusher] Unsubscribed from channel: ${sanitizedChannel}`);
       }
     }
   }
