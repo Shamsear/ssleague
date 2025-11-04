@@ -128,7 +128,7 @@ export default function TeamDraftPage() {
       const teamsUrl = leagueSeasonId 
         ? `/api/teams/registered?season_id=${leagueSeasonId}`
         : '/api/teams/registered';
-      const teamsRes = await fetch(teamsUrl);
+      const teamsRes = await fetchWithTokenRefresh(teamsUrl);
       if (teamsRes.ok) {
         const teamsData = await teamsRes.json();
         setRealTeams(teamsData.teams || []);

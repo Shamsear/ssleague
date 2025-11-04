@@ -96,7 +96,7 @@ export default function CommitteeDashboard() {
                 return;
               }
               
-              const response = await fetch(`/api/stats/registered-players?season_id=${userSeasonId}`);
+              const response = await fetchWithTokenRefresh(`/api/stats/registered-players?season_id=${userSeasonId}`);
               const data = await response.json();
 
               if (data.success && data.stats) {

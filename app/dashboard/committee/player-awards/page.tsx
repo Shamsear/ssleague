@@ -77,7 +77,7 @@ export default function PlayerAwardsManagementPage() {
         ? `/api/player-awards?season_id=${userSeasonId}`
         : `/api/player-awards?season_id=${userSeasonId}&award_category=${filterCategory}`;
       
-      const res = await fetch(url);
+      const res = await fetchWithTokenRefresh(url);
       const data = await res.json();
       if (data.success) {
         setAwards(data.awards || []);

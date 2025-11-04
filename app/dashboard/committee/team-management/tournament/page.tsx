@@ -171,7 +171,7 @@ export default function TournamentDashboardPage() {
           setActiveSeasonId(seasonId);
           
           // Fetch teams
-          const teamsRes = await fetch(`/api/team/all?season_id=${seasonId}`);
+          const teamsRes = await fetchWithTokenRefresh(`/api/team/all?season_id=${seasonId}`);
           const teamsData = await teamsRes.json();
           
           if (teamsData.success && teamsData.data && teamsData.data.teams) {
@@ -197,7 +197,7 @@ export default function TournamentDashboardPage() {
   
   const fetchCategories = async () => {
     try {
-      const res = await fetch('/api/categories');
+      const res = await fetchWithTokenRefresh('/api/categories');
       const data = await res.json();
       if (data.success) {
         setCategories(data.data || []);
@@ -209,7 +209,7 @@ export default function TournamentDashboardPage() {
   
   const loadTournaments = async (seasonId: string) => {
     try {
-      const res = await fetch(`/api/tournaments?season_id=${seasonId}`);
+      const res = await fetchWithTokenRefresh(`/api/tournaments?season_id=${seasonId}`);
       const data = await res.json();
       if (data.success) {
         setTournaments(data.tournaments || []);
@@ -217,7 +217,7 @@ export default function TournamentDashboardPage() {
         // Load fixtures from all tournaments
         const allTournamentFixtures: any[] = [];
         for (const tournament of data.tournaments || []) {
-          const fixturesRes = await fetch(`/api/tournaments/${tournament.id}/fixtures`);
+          const fixturesRes = await fetchWithTokenRefresh(`/api/tournaments/${tournament.id}/fixtures`);
           const fixturesData = await fixturesRes.json();
           if (fixturesData.success && fixturesData.fixtures) {
             allTournamentFixtures.push(...fixturesData.fixtures.map((f: any) => ({
@@ -249,7 +249,7 @@ export default function TournamentDashboardPage() {
     setIsCreatingTournament(true);
     
     try {
-      const res = await fetch('/api/tournaments', {
+      const res = await fetchWithTokenRefresh('/api/tournaments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -331,7 +331,7 @@ export default function TournamentDashboardPage() {
     if (!confirmed) return;
     
     try {
-      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}`, {
         method: 'DELETE'
       });
       
@@ -364,7 +364,7 @@ export default function TournamentDashboardPage() {
 
   const loadTournamentFixtures = async (tournamentId: string) => {
     try {
-      const res = await fetch(`/api/tournaments/${tournamentId}/fixtures`);
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/fixtures`);
       const data = await res.json();
       if (data.success) {
         setTournamentFixtures(data.fixtures || []);
@@ -405,7 +405,7 @@ export default function TournamentDashboardPage() {
     
     setIsGeneratingFixtures(true);
     try {
-      const res = await fetch(`/api/tournaments/${selectedTournamentForFixtures}/fixtures`, {
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${selectedTournamentForFixtures}/fixtures`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -457,7 +457,7 @@ export default function TournamentDashboardPage() {
     
     setIsDeletingFixtures(true);
     try {
-      const res = await fetch(`/api/tournaments/${selectedTournamentForFixtures}/fixtures`, {
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${selectedTournamentForFixtures}/fixtures`, {
         method: 'DELETE'
       });
       
@@ -491,7 +491,7 @@ export default function TournamentDashboardPage() {
 
   const loadTournamentTeams = async (tournamentId: string) => {
     try {
-      const res = await fetch(`/api/tournaments/${tournamentId}/teams`);
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/teams`);
       const data = await res.json();
       if (data.success) {
         setTournamentTeams(data.teams || []);
@@ -511,7 +511,7 @@ export default function TournamentDashboardPage() {
     
     setIsSavingTeams(true);
     try {
-      const res = await fetch(`/api/tournaments/${selectedTournamentForTeams}/teams`, {
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${selectedTournamentForTeams}/teams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -549,7 +549,7 @@ export default function TournamentDashboardPage() {
 
   const loadTournamentStandings = async (tournamentId: string) => {
     try {
-      const res = await fetch(`/api/tournaments/${tournamentId}/standings`);
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings`);
       const data = await res.json();
       if (data.success) {
         setTournamentStandings(data.standings || []);
@@ -1781,7 +1781,7 @@ export default function TournamentDashboardPage() {
                   e.preventDefault();
                   try {
                     // Update tournament basic info
-                    const tournamentRes = await fetch(`/api/tournaments/${editingTournament.id}`, {
+                    const tournamentRes = await fetchWithTokenRefresh(`/api/tournaments/${editingTournament.id}`, {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -1798,7 +1798,7 @@ export default function TournamentDashboardPage() {
                     });
                     
                     // Update tournament settings (squad_size, etc.)
-                    const settingsRes = await fetch('/api/tournament-settings', {
+                    const settingsRes = await fetchWithTokenRefresh('/api/tournament-settings', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -2040,7 +2040,7 @@ export default function TournamentDashboardPage() {
                           <button
                             onClick={async () => {
                               try {
-                                const res = await fetch(`/api/tournaments/${tournament.id}`, {
+                                const res = await fetchWithTokenRefresh(`/api/tournaments/${tournament.id}`, {
                                   method: 'PATCH',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -2076,7 +2076,7 @@ export default function TournamentDashboardPage() {
                           <button
                             onClick={async () => {
                               try {
-                                const res = await fetch(`/api/tournaments/${tournament.id}`, {
+                                const res = await fetchWithTokenRefresh(`/api/tournaments/${tournament.id}`, {
                                   method: 'PATCH',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -2113,7 +2113,7 @@ export default function TournamentDashboardPage() {
                             onClick={async () => {
                               try {
                                 // Fetch tournament settings
-                                const settingsRes = await fetch(`/api/tournament-settings?tournament_id=${tournament.id}`);
+                                const settingsRes = await fetchWithTokenRefresh(`/api/tournament-settings?tournament_id=${tournament.id}`);
                                 const settingsData = await settingsRes.json();
                                 
                                 // Merge tournament data with settings

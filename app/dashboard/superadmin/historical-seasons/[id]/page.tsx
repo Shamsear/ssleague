@@ -227,7 +227,7 @@ export default function HistoricalSeasonDetailPage() {
         // Use server-side API route to bypass client-side permission issues
         console.log('📞 Making API call to /api/seasons/historical/${seasonId}...');
         const url = `/api/seasons/historical/${seasonId}?loadAll=true`;
-        const response = await fetch(url);
+        const response = await fetchWithTokenRefresh(url);
         
         if (!response.ok) {
           const errorData = await response.json();
@@ -428,7 +428,7 @@ export default function HistoricalSeasonDetailPage() {
       const exportUrl = `/api/seasons/historical/${seasonId}/export`;
       console.log('📡 Fetching export from:', exportUrl);
       
-      const response = await fetch(exportUrl, {
+      const response = await fetchWithTokenRefresh(exportUrl, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

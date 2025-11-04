@@ -107,7 +107,7 @@ export default function FixtureLineupPage() {
       // Fetch existing lineup if any - only for the user's team
       const lineupUrl = `/api/lineups?fixture_id=${fixtureId}&team_id=${userTeamId}`;
       console.log('🔍 DEBUG - Fetching lineup from:', lineupUrl);
-      const lineupRes = await fetch(lineupUrl);
+      const lineupRes = await fetchWithTokenRefresh(lineupUrl);
       const lineupData = await lineupRes.json();
       
       console.log('🔍 DEBUG - Lineup API response:', lineupData);

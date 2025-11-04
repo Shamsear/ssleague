@@ -432,7 +432,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     });
     
     try {
-      const response = await fetch(`/api/team/bids/${bidId}`, {
+      const response = await fetchWithTokenRefresh(`/api/team/bids/${bidId}`, {
         method: 'DELETE',
       });
       

@@ -8,6 +8,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { getFixturesByRounds, TournamentRound } from '@/lib/firebase/fixtures';
 
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 interface Team {
   team: {
     id: string;
@@ -82,7 +83,7 @@ export default function LegacyTeamManagementPage() {
         const url = `/api/team/all?season_id=${userSeasonId}`;
         console.log('🔍 Fetching teams from:', url);
         
-        const response = await fetch(url);
+        const response = await fetchWithTokenRefresh(url);
         const data = await response.json();
         
         console.log('📦 API Response:', data);

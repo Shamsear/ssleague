@@ -351,17 +351,6 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       }
       
       try {
-        // Refresh Firebase token before making the request
-        if (firebaseUser) {
-          const idToken = await firebaseUser.getIdToken(true);
-          await fetch('/api/auth/set-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: idToken }),
-          });
-          console.log('✅ Token refreshed before starting round');
-        }
-        
         const response = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${round.id}/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

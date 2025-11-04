@@ -77,7 +77,7 @@ export default function PlayerTransfersPage() {
           ? `/api/stats/players?seasonId=${userSeasonId}&limit=1000`
           : `/api/football-players?seasonId=${userSeasonId}&limit=1000`;
         
-        const response = await fetch(endpoint);
+        const response = await fetchWithTokenRefresh(endpoint);
         const result = await response.json();
         
         if (!result.success) {

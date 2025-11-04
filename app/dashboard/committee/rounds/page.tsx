@@ -351,7 +351,7 @@ export default function RoundsManagementPage() {
     const durationSeconds = Math.round(totalHours * 3600);
 
     try {
-      const response = await fetch('/api/admin/rounds', {
+      const response = await fetchWithTokenRefresh('/api/admin/rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -379,7 +379,7 @@ export default function RoundsManagementPage() {
         
         // Refresh rounds
         const params = new URLSearchParams({ season_id: currentSeasonId });
-        const refreshResponse = await fetch(`/api/admin/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/admin/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setRounds(refreshData.data);
@@ -420,7 +420,7 @@ export default function RoundsManagementPage() {
       const currentEnd = new Date(round.end_time);
       const newEnd = new Date(currentEnd.getTime() + (minutes * 60 * 1000));
 
-      const response = await fetch(`/api/rounds/${roundId}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -439,7 +439,7 @@ export default function RoundsManagementPage() {
         
         // Refresh rounds
         const params = new URLSearchParams({ season_id: currentSeasonId! });
-        const refreshResponse = await fetch(`/api/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setRounds(refreshData.data);
@@ -511,7 +511,7 @@ export default function RoundsManagementPage() {
 
     try {
       // Call the tiebreaker resolution API
-      const response = await fetch(`/api/tiebreakers/${tiebreakerId}/resolve`, {
+      const response = await fetchWithTokenRefresh(`/api/tiebreakers/${tiebreakerId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolutionType: 'auto' }),
@@ -554,7 +554,7 @@ export default function RoundsManagementPage() {
       // Fetch round details if not already loaded
       if (!roundDetails[roundId]) {
         try {
-          const response = await fetch(`/api/rounds/${roundId}`);
+          const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`);
           const { success, data } = await response.json();
           if (success) {
             setRoundDetails(prev => ({ ...prev, [roundId]: data }));
@@ -609,7 +609,7 @@ export default function RoundsManagementPage() {
     }
 
     try {
-      const response = await fetch(`/api/rounds/${roundId}`, {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${roundId}`, {
         method: 'DELETE',
       });
 
@@ -622,7 +622,7 @@ export default function RoundsManagementPage() {
           message: 'Round deleted successfully'
         });
         const params = new URLSearchParams({ season_id: currentSeasonId! });
-        const refreshResponse = await fetch(`/api/rounds?${params}`);
+        const refreshResponse = await fetchWithTokenRefresh(`/api/rounds?${params}`);
         const refreshData = await refreshResponse.json();
         if (refreshData.success) {
           setRounds(refreshData.data);

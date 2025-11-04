@@ -151,7 +151,7 @@ export default function PlayerStatisticsPage() {
       : `/api/players/star/${playerId}`;
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetchWithTokenRefresh(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });

@@ -412,7 +412,7 @@ export default function RealPlayersPage() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         const freshToken = await currentUser.getIdToken(true);
-        await fetch('/api/auth/set-token', {
+        await fetchWithTokenRefresh('/api/auth/set-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: freshToken }),

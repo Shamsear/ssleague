@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { fetchWithTokenRetry } from '@/lib/fetch-with-retry';
 
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 interface TiebreakerDetail {
   id: string;
   round_id: string;
@@ -61,7 +62,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
       if (firebaseUser) {
         try {
           const idToken = await firebaseUser.getIdToken(true);
-          await fetch('/api/auth/set-token', {
+          await fetchWithTokenRefresh('/api/auth/set-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: idToken }),
@@ -188,7 +189,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
       if (firebaseUser) {
         try {
           const idToken = await firebaseUser.getIdToken(true);
-          await fetch('/api/auth/set-token', {
+          await fetchWithTokenRefresh('/api/auth/set-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: idToken }),

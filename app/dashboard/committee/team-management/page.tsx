@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { getUserFromToken } from '@/lib/auth/server';
 import TeamManagementClient from './team-management-client';
 
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 interface Team {
   team: {
     id: string;
@@ -54,7 +55,7 @@ async function getTeamsData(userSeasonId: string, token: string) {
     const apiUrl = `${baseUrl}/api/team/all?season_id=${userSeasonId}`;
     console.log('[getTeamsData] Calling API:', apiUrl);
     
-    const response = await fetch(apiUrl, {
+    const response = await fetchWithTokenRefresh(apiUrl, {
       cache: 'no-store',
       headers: {
         'Cookie': `auth-token=${token}`,
