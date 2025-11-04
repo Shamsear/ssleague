@@ -363,9 +363,14 @@ export default function TeamBulkTiebreakerPage() {
       // Check if error response includes updated bid data (race condition)
       const errorMessage = err instanceof Error ? err.message : 'Failed to place bid';
       
-      // If the error mentions the current bid, extract it and update
-      if (result && result.should_refresh) {
-        // Someone else bid in the meantime - fetch latest data immediately
+      // Check if this is a race condition (someone else bid higher)
+      // Only show race condition message if the highest bid changed from what we expected
+      const isActualRaceCondition = result && result.should_refresh && 
+        result.current_highest_bid && 
+        result.current_highest_bid > amount;
+      
+      if (isActualRaceCondition) {
+        // Someone else bid higher in the meantime - fetch latest data immediately
         console.log('⚠️ Race condition detected - fetching latest data...', result.current_highest_bid);
         
         // Fetch latest tiebreaker data to get correct bidder info
@@ -380,7 +385,7 @@ export default function TeamBulkTiebreakerPage() {
           message: `Someone else just bid! Current highest bid is now £${result.current_highest_bid}.`
         });
       } else {
-        // Other error - just reset bid amount and show error
+        // Validation error or other error - just reset bid amount and show error
         setBidAmount((previousTiebreaker.current_highest_bid + 1).toString());
         
         showAlert({
