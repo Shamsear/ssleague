@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
+import { broadcastWebSocket, BroadcastType } from '@/lib/websocket/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -188,29 +189,83 @@ export async function POST(
 
     const teamsLeft = winnerCheck[0]?.teams_left || 0;
     const winnerId = winnerCheck[0]?.winner_team_id;
+    const winnerBid = winnerCheck[0]?.winner_bid;
     const isWinnerDetermined = teamsLeft === 1;
 
-    // TODO: Broadcast via WebSocket
-    // - Notify all teams of withdrawal
-    // - Update UI in real-time
+    // Get team names for broadcast
+    const withdrawnTeamName = teamData.status === 'active' ? (await sql`
+      SELECT team_name FROM bulk_tiebreaker_teams
+      WHERE tiebreaker_id = ${tiebreakerId} AND team_id = ${teamId}
+    `)[0]?.team_name : 'Unknown';
+
+    // Broadcast withdrawal to all watching clients
+    await broadcastWebSocket(`tiebreaker:${tiebreakerId}`, {
+      type: BroadcastType.TIEBREAKER_WITHDRAW,
+      data: {
+        tiebreaker_id: tiebreakerId,
+        team_id: teamId,
+        team_name: withdrawnTeamName,
+        teams_remaining: teamsLeft,
+        is_winner_determined: isWinnerDetermined,
+      },
+    });
 
     if (isWinnerDetermined) {
       console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${winnerId} wins!`);
       
       // Auto-finalize immediately
+      console.log(`🔄 Calling finalizeBulkTiebreaker for tiebreaker ${tiebreakerId}...`);
       const finalizeResult = await finalizeBulkTiebreaker(tiebreakerId);
       
       if (!finalizeResult.success) {
-        console.error(`⚠️ Failed to auto-finalize tiebreaker: ${finalizeResult.error}`);
+        console.error(`⚠️ Failed to auto-finalize tiebreaker ${tiebreakerId}`);
+        console.error(`⚠️ Error details: ${finalizeResult.error}`);
+        console.error(`⚠️ Full result:`, JSON.stringify(finalizeResult, null, 2));
         // Still mark as pending for manual finalization
         await sql`
           UPDATE bulk_tiebreakers
           SET status = 'auto_finalize_pending'
           WHERE id = ${tiebreakerId}
         `;
+        console.log(`⚠️ Status set to 'auto_finalize_pending' - admin must manually finalize`);
       } else {
         console.log(`✅ Tiebreaker auto-finalized successfully`);
+        
+        // Get winner team name
+        const winnerTeamResult = await sql`
+          SELECT team_name FROM bulk_tiebreaker_teams
+          WHERE tiebreaker_id = ${tiebreakerId} AND team_id = ${winnerId}
+        `;
+        const winnerTeamName = winnerTeamResult[0]?.team_name || 'Unknown';
+        
+        // Broadcast tiebreaker completion to all clients
+        await broadcastWebSocket(`tiebreaker:${tiebreakerId}`, {
+          type: BroadcastType.TIEBREAKER_FINALIZED,
+          data: {
+            tiebreaker_id: tiebreakerId,
+            player_name: tiebreaker.player_name,
+            position: tiebreaker.position,
+            winner_team_id: winnerId,
+            winner_team_name: winnerTeamName,
+            final_bid: winnerBid,
+            status: 'resolved',
+          },
+        });
       }
+    }
+
+    // Get winner details if determined
+    let winnerDetails = null;
+    if (isWinnerDetermined && winnerId) {
+      const winnerTeamResult = await sql`
+        SELECT team_name FROM bulk_tiebreaker_teams
+        WHERE tiebreaker_id = ${tiebreakerId} AND team_id = ${winnerId}
+      `;
+      winnerDetails = {
+        winner_team_id: winnerId,
+        winner_team_name: winnerTeamResult[0]?.team_name || 'Unknown',
+        final_bid: winnerBid,
+      };
     }
 
     return NextResponse.json({
@@ -218,11 +273,13 @@ export async function POST(
       data: {
         tiebreaker_id: tiebreakerId,
         player_name: tiebreaker.player_name,
+        position: tiebreaker.position,
         withdrawn: true,
         teams_remaining: teamsLeft,
         is_winner_determined: isWinnerDetermined,
+        winner: winnerDetails,
         message: isWinnerDetermined
-          ? `You have withdrawn. The tiebreaker is now over. Team ${winnerId} wins ${tiebreaker.player_name}!`
+          ? `You have withdrawn. The tiebreaker is now over. Team ${winnerDetails?.winner_team_name} wins ${tiebreaker.player_name}!`
           : `You have successfully withdrawn from the tiebreaker for ${tiebreaker.player_name}. ${teamsLeft} team(s) remaining.`,
       },
     });

@@ -482,18 +482,28 @@ export async function GET(request: NextRequest) {
     }));
 
     // Fetch bulk tiebreakers from SQL (if any)
+    // Note: Query bulk_tiebreaker_teams to find active tiebreakers for this team
     const bulkTiebreakersResult = dbTeamId ? await sql`
       SELECT 
-        bt.*,
+        bt.id,
+        bt.bulk_round_id,
+        bt.player_id,
+        bt.base_price,
+        bt.status,
+        bt.current_highest_bid,
         p.name as player_name,
         p.position,
         p.overall_rating,
-        p.team_name as player_team
+        p.team_name as player_team,
+        btt.current_bid as team_current_bid,
+        btt.status as team_status
       FROM bulk_tiebreakers bt
       INNER JOIN footballplayers p ON bt.player_id = p.id
+      INNER JOIN bulk_tiebreaker_teams btt ON bt.id = btt.tiebreaker_id
       WHERE bt.season_id = ${seasonId}
-      AND bt.status = 'active'
-      AND bt.tied_teams::jsonb @> ${JSON.stringify([{ team_id: dbTeamId }])}
+      AND bt.status IN ('active', 'ongoing')
+      AND btt.team_id = ${dbTeamId}
+      AND btt.status = 'active'
       ORDER BY bt.created_at DESC
     ` : [];
     
@@ -508,7 +518,9 @@ export async function GET(request: NextRequest) {
         overall_rating: bt.overall_rating,
         nfl_team: bt.player_team,
       },
-      original_amount: bt.original_amount,
+      base_price: bt.base_price,
+      current_highest_bid: bt.current_highest_bid,
+      team_current_bid: bt.team_current_bid,
       status: bt.status,
       is_bulk: true,
     }));

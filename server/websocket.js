@@ -193,19 +193,58 @@ function getStats() {
 global.wsBroadcast = broadcast;
 global.wsStats = getStats;
 
-// Health check endpoint
+// HTTP endpoints for health check and broadcasting
 server.on('request', (req, res) => {
-  if (req.url === '/health') {
+  // Health check endpoint
+  if (req.url === '/health' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'ok',
       ...getStats(),
       uptime: process.uptime(),
     }));
-  } else {
-    res.writeHead(404);
-    res.end('WebSocket server - use ws:// protocol');
+    return;
   }
+  
+  // Broadcast endpoint for API routes to trigger WebSocket broadcasts
+  if (req.url === '/broadcast' && req.method === 'POST') {
+    let body = '';
+    
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    
+    req.on('end', () => {
+      try {
+        const { channel, data } = JSON.parse(body);
+        
+        if (!channel || !data) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing channel or data' }));
+          return;
+        }
+        
+        // Broadcast to WebSocket clients
+        broadcast(channel, data);
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          channel,
+          subscribers: channels.get(channel)?.size || 0 
+        }));
+      } catch (error) {
+        console.error('❌ Broadcast endpoint error:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to broadcast' }));
+      }
+    });
+    return;
+  }
+  
+  // Default response
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('WebSocket server - use ws:// protocol for connections, POST /broadcast for API broadcasts');
 });
 
 // Cleanup on shutdown

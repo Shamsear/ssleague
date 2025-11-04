@@ -9,6 +9,7 @@ import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import TiebreakerWinnerPage from '@/components/TiebreakerWinnerModal';
 
 interface Player {
   id: string;
@@ -50,6 +51,7 @@ export default function TeamBulkTiebreakerPage() {
   const [player, setPlayer] = useState<Player | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [bidAmount, setBidAmount] = useState('');
+  const [activeTeams, setActiveTeams] = useState(2); // Track active teams count
 
   // Modal system
   const {
@@ -64,6 +66,16 @@ export default function TeamBulkTiebreakerPage() {
   const [teamBalance, setTeamBalance] = useState(1000); // Mock balance
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  
+  // Winner modal state
+  const [showWinnerModal, setShowWinnerModal] = useState(false);
+  const [winnerData, setWinnerData] = useState<{
+    playerName: string;
+    position: string;
+    winnerTeamName: string;
+    winnerTeamId: string;
+    finalBid: number;
+  } | null>(null);
   
   // Use ref to store fetchData to avoid dependency issues
   const fetchDataRef = useRef<() => Promise<void>>();
@@ -126,6 +138,24 @@ export default function TeamBulkTiebreakerPage() {
         // Set default bid amount (current highest + 1)
         setBidAmount((highestBid + 1).toString());
         setFetchError(null); // Clear any previous errors
+        
+        // Store active teams count
+        if (tiebreakerData.statistics?.active_teams !== undefined) {
+          setActiveTeams(tiebreakerData.statistics.active_teams);
+        }
+        
+        // Check if tiebreaker is already resolved
+        if (tiebreakerData.status === 'resolved' && tiebreakerData.current_highest_team_id) {
+          const winnerTeam = teams.find((t: any) => t.team_id === tiebreakerData.current_highest_team_id);
+          setWinnerData({
+            playerName: tiebreakerData.player_name,
+            position: tiebreakerData.position,
+            winnerTeamName: winnerTeam?.team_name || 'Winner',
+            winnerTeamId: tiebreakerData.current_highest_team_id,
+            finalBid: tiebreakerData.current_highest_bid,
+          });
+          setShowWinnerModal(true);
+        }
       } else {
         console.error('❌ API returned error:', result);
         setFetchError(result.error || 'Failed to load tiebreaker data');
@@ -149,9 +179,79 @@ export default function TeamBulkTiebreakerPage() {
     enabled: !!tiebreakerId,
     onMessage: useCallback((message: any) => {
       console.log('[Tiebreaker WS] Received:', message);
-      // Refetch data when WebSocket update arrives
-      if (message.type !== 'subscribed' && fetchDataRef.current) {
-        fetchDataRef.current();
+      
+      // ⚡ INSTANT UPDATE - Use broadcast data directly for lightning-fast updates
+      if (message.type === 'tiebreaker_bid' && message.data) {
+        const bidData = message.data;
+        const userTeamName = (user as any)?.teamName || 'Your Team';
+        const isOwnBid = bidData.team_name === userTeamName;
+        
+        // Always update the highest bid info (even if it's our own bid)
+        // This ensures the UI always shows the correct current highest bidder
+        setTiebreaker(prev => {
+          if (!prev) return prev;
+          
+          const newBid = {
+            team_id: bidData.team_id,
+            team_name: bidData.team_name,
+            amount: bidData.bid_amount,
+            timestamp: new Date().toISOString(),
+          };
+          
+          return {
+            ...prev,
+            current_highest_bid: bidData.bid_amount,
+            highest_bidder_team_id: bidData.team_id,
+            highest_bidder_team_name: bidData.team_name,
+            // Only add to history if it's not our own bid (to avoid duplicates)
+            bid_history: isOwnBid ? prev.bid_history : [newBid, ...prev.bid_history],
+          };
+        });
+        
+        if (isOwnBid) {
+          console.log('⚡ WebSocket confirmed own bid - updated current highest but skipped history');
+        } else {
+          console.log('⚡ WebSocket update from other team - full update');
+        }
+        
+        // Update default bid amount (current highest + 1)
+        setBidAmount((bidData.bid_amount + 1).toString());
+        
+        console.log('⚡ Instant UI update from WebSocket broadcast');
+      } else if (message.type === 'tiebreaker_withdraw' && message.data) {
+        // Someone withdrew - check if we're now the winner
+        const withdrawData = message.data;
+        console.log('🚺 Team withdrew:', withdrawData);
+        
+        if (withdrawData.is_winner_determined && withdrawData.winner_team_id) {
+          // Winner determined - show winner page
+          setWinnerData({
+            playerName: withdrawData.player_name,
+            position: withdrawData.position || '',
+            winnerTeamName: withdrawData.winner_team_name,
+            winnerTeamId: withdrawData.winner_team_id,
+            finalBid: withdrawData.final_bid || 0,
+          });
+          setShowWinnerModal(true);
+        }
+      } else if (message.type === 'tiebreaker_finalized' && message.data) {
+        // Tiebreaker completed - show winner modal
+        const finalData = message.data;
+        console.log('🏆 Tiebreaker finalized:', finalData);
+        
+        setWinnerData({
+          playerName: finalData.player_name,
+          position: finalData.position,
+          winnerTeamName: finalData.winner_team_name,
+          winnerTeamId: finalData.winner_team_id,
+          finalBid: finalData.final_bid,
+        });
+        setShowWinnerModal(true);
+      } else if (message.type !== 'subscribed' && message.type !== 'connected') {
+        // For other message types, refetch data
+        if (fetchDataRef.current) {
+          fetchDataRef.current();
+        }
       }
     }, []), // Empty deps - uses ref instead
   });
@@ -232,37 +332,56 @@ export default function TeamBulkTiebreakerPage() {
     });
     setBidAmount((amount + 1).toString());
     
+    let result: any = null;
     try {
       const response = await fetchWithTokenRefresh(`/api/team/bulk-tiebreakers/${tiebreakerId}/bid`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bid_amount: amount }),
       });
-      const result = await response.json();
+      result = await response.json();
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to place bid');
       }
 
-      showAlert({
-        type: 'success',
-        title: 'Bid Placed',
-        message: `Your bid of £${amount} has been placed successfully!`
-      });
-      
-      // ⚡ IMMEDIATE REFETCH - Get latest data from server immediately after bid
-      fetchData();
+      // ⚡ NO MODAL - Silent success for faster bidding
+      // WebSocket will handle real-time updates from other bidders
+      // No need to refetch - optimistic update is already done
     } catch (err) {
       console.error('Error placing bid:', err);
       
-      // Rollback optimistic update on error
+      // Always rollback optimistic update first
       setTiebreaker(previousTiebreaker);
-      setBidAmount(amount.toString());
       
+      // Check if error response includes updated bid data (race condition)
+      const errorMessage = err instanceof Error ? err.message : 'Failed to place bid';
+      
+      // If the error mentions the current bid, extract it and update
+      if (result && result.current_highest_bid) {
+        // Someone else bid in the meantime - update only the bid amount
+        // Don't update bidder name to avoid showing wrong info
+        console.log('⚠️ Race condition detected - updating to latest bid:', result.current_highest_bid);
+        
+        // Update ONLY the bid amount, keep old bidder info to avoid confusion
+        // WebSocket will provide the correct bidder info shortly
+        setTiebreaker(prev => ({
+          ...prev!,
+          current_highest_bid: result.current_highest_bid,
+          // Keep old highest_bidder info - WebSocket will update with correct info
+        }));
+        
+        setBidAmount((result.current_highest_bid + 1).toString());
+      } else {
+        // Other error - just reset bid amount
+        setBidAmount((previousTiebreaker.current_highest_bid + 1).toString());
+      }
+      
+      // Don't fetch - WebSocket will provide updates
       showAlert({
         type: 'error',
         title: 'Bid Failed',
-        message: 'Failed to place bid'
+        message: errorMessage
       });
     } finally {
       setIsSubmitting(false);
@@ -283,6 +402,22 @@ export default function TeamBulkTiebreakerPage() {
     }
 
     try {
+      // Check teams remaining BEFORE withdrawing
+      // If only 2 teams, show processing page immediately
+      const teamsRemainingBeforeWithdraw = activeTeams;
+      
+      if (teamsRemainingBeforeWithdraw <= 2) {
+        // Show processing page immediately
+        setWinnerData({
+          playerName: tiebreaker?.player_name || '',
+          position: tiebreaker?.position || '',
+          winnerTeamName: '', // Will be updated when finalized
+          winnerTeamId: '',
+          finalBid: tiebreaker?.current_highest_bid || 0,
+        });
+        setShowWinnerModal(true);
+      }
+      
       const response = await fetchWithTokenRefresh(`/api/team/bulk-tiebreakers/${tiebreakerId}/withdraw`, {
         method: 'POST',
       });
@@ -292,18 +427,43 @@ export default function TeamBulkTiebreakerPage() {
         throw new Error(result.error || 'Failed to withdraw');
       }
 
-      showAlert({
-        type: 'success',
-        title: 'Withdrawn',
-        message: result.data?.message || 'You have successfully withdrawn from this tiebreaker'
-      });
-      router.push('/dashboard/team');
+      // Update winner data with actual results
+      if (result.data?.is_winner_determined && result.data?.winner) {
+        // Winner determined - update with final data
+        setWinnerData({
+          playerName: result.data.player_name,
+          position: result.data.position,
+          winnerTeamName: result.data.winner.winner_team_name,
+          winnerTeamId: result.data.winner.winner_team_id,
+          finalBid: result.data.winner.final_bid,
+        });
+        setShowWinnerModal(true);
+      } else if (teamsRemainingBeforeWithdraw > 2) {
+        // Still teams left - show status page
+        const teamsLeft = result.data?.teams_remaining || 2;
+        setWinnerData({
+          playerName: result.data.player_name,
+          position: result.data.position,
+          winnerTeamName: '', // No winner yet
+          winnerTeamId: '',
+          finalBid: result.data.current_highest_bid || 0,
+        });
+        // Show status page with teams left info
+        showAlert({
+          type: 'info',
+          title: 'Withdrawn Successfully',
+          message: `You have withdrawn. ${teamsLeft} team(s) still bidding.`
+        });
+        
+        // Redirect after showing message
+        setTimeout(() => router.push('/dashboard/team'), 2000);
+      }
     } catch (err) {
       console.error('Error withdrawing:', err);
       showAlert({
         type: 'error',
         title: 'Withdrawal Failed',
-        message: 'Failed to withdraw'
+        message: err instanceof Error ? err.message : 'Failed to withdraw'
       });
     }
   };
@@ -332,6 +492,19 @@ export default function TeamBulkTiebreakerPage() {
           <p className="text-gray-600">Tiebreaker not found</p>
         </div>
       </div>
+    );
+  }
+
+  // Show winner page if tiebreaker is resolved
+  if (showWinnerModal && winnerData) {
+    return (
+      <TiebreakerWinnerPage
+        playerName={winnerData.playerName}
+        position={winnerData.position}
+        winnerTeamName={winnerData.winnerTeamName}
+        finalBid={winnerData.finalBid}
+        isCurrentTeamWinner={winnerData.winnerTeamId === user?.uid}
+      />
     );
   }
 
@@ -561,7 +734,7 @@ export default function TeamBulkTiebreakerPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {[...tiebreaker.bid_history].reverse().map((bid, index) => (
+              {tiebreaker.bid_history.map((bid, index) => (
                 <div
                   key={index}
                   className={`flex items-center justify-between p-4 rounded-xl border ${
@@ -589,7 +762,7 @@ export default function TeamBulkTiebreakerPage() {
                   </div>
                   <div className="text-right">
                     <div className="text-2xl font-bold text-gray-900">£{bid.amount}</div>
-                    {index === 0 && (
+                    {bid.amount === tiebreaker.current_highest_bid && (
                       <div className="text-xs text-green-600 font-semibold">Highest Bid</div>
                     )}
                   </div>

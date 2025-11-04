@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import PlayerImage from '@/components/PlayerImage';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 // Position constants
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST'];
@@ -45,7 +46,7 @@ export default function TeamPlayersPage() {
       if (!user) return;
 
       try {
-        const response = await fetch('/api/team/players', {
+        const response = await fetchWithTokenRefresh('/api/team/players', {
           headers: { 'Cache-Control': 'no-cache' },
         });
         

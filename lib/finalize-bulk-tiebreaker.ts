@@ -5,6 +5,7 @@
 import { neon } from '@neondatabase/serverless';
 import { logAuctionWin } from './transaction-logger';
 import { getFirestore } from 'firebase-admin/firestore';
+import { triggerNews } from './news/trigger';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -30,7 +31,8 @@ export async function finalizeBulkTiebreaker(
         t.id,
         t.player_id,
         t.player_name,
-        t.round_id,
+        t.player_position as position,
+        t.bulk_round_id as round_id,
         t.current_highest_bid,
         t.current_highest_team_id,
         t.status
@@ -48,7 +50,7 @@ export async function finalizeBulkTiebreaker(
     const tiebreaker = tiebreakerResult[0];
 
     // Check if already finalized
-    if (tiebreaker.status === 'finalized') {
+    if (tiebreaker.status === 'resolved' || tiebreaker.status === 'finalized') {
       return {
         success: false,
         error: 'Tiebreaker already finalized',
@@ -127,17 +129,54 @@ export async function finalizeBulkTiebreaker(
       WHERE id = ${tiebreaker.player_id}
     `;
 
-    // Mark tiebreaker as finalized
+    // Insert into team_players table
+    await sql`
+      INSERT INTO team_players (
+        team_id,
+        player_id,
+        season_id,
+        round_id,
+        purchase_price,
+        acquired_at
+      ) VALUES (
+        ${tiebreaker.current_highest_team_id},
+        ${tiebreaker.player_id},
+        ${seasonId},
+        ${tiebreaker.round_id},
+        ${winningAmount},
+        NOW()
+      )
+      ON CONFLICT (team_id, player_id) DO UPDATE
+      SET 
+        season_id = ${seasonId},
+        round_id = ${tiebreaker.round_id},
+        purchase_price = ${winningAmount},
+        acquired_at = NOW()
+    `;
+
+    // Mark bulk tiebreaker as resolved
     await sql`
       UPDATE bulk_tiebreakers
       SET 
-        status = 'finalized',
-        finalized_at = NOW(),
+        status = 'resolved',
+        resolved_at = NOW(),
+        updated_at = NOW()
+      WHERE id = ${tiebreakerId}
+    `;
+    
+    // Also update the corresponding tiebreakers table entry
+    await sql`
+      UPDATE tiebreakers
+      SET 
+        status = 'resolved',
+        winning_team_id = ${tiebreaker.current_highest_team_id},
+        winning_bid = ${winningAmount},
         updated_at = NOW()
       WHERE id = ${tiebreakerId}
     `;
 
     console.log(`✅ Bulk tiebreaker ${tiebreakerId} finalized. Winner: Team ${tiebreaker.current_highest_team_id}, Amount: £${winningAmount}`);
+    console.log(`✅ Updated both bulk_tiebreakers and tiebreakers tables`);
     
     // Update team balance and log transaction
     const adminDb = getFirestore();
@@ -147,12 +186,26 @@ export async function finalizeBulkTiebreaker(
     
     if (teamSeasonSnap.exists) {
       const teamSeasonData = teamSeasonSnap.data();
-      const currentBalance = teamSeasonData?.euro_balance || 0;
-      const newBalance = currentBalance - winningAmount;
       
-      // Update balance
+      // Get current balances and spent amounts
+      const currentFootballBudget = teamSeasonData?.football_budget || 0;
+      const currentFootballSpent = teamSeasonData?.football_spent || 0;
+      const newFootballBudget = currentFootballBudget - winningAmount;
+      const newFootballSpent = currentFootballSpent + winningAmount;
+      
+      // Get current position counts
+      const positionCounts = teamSeasonData?.position_counts || {};
+      const currentPositionCount = positionCounts[tiebreaker.position] || 0;
+      const newPositionCounts = {
+        ...positionCounts,
+        [tiebreaker.position]: currentPositionCount + 1
+      };
+      
+      // Update budget, spent, and position counts
       await teamSeasonRef.update({
-        euro_balance: newBalance,
+        football_budget: newFootballBudget,
+        football_spent: newFootballSpent,
+        position_counts: newPositionCounts,
         updated_at: new Date()
       });
       
@@ -164,11 +217,30 @@ export async function finalizeBulkTiebreaker(
         tiebreaker.player_id,
         'football',
         winningAmount,
-        currentBalance,
+        currentFootballBudget,
         tiebreaker.round_id
       );
       
-      console.log(`💰 Deducted £${winningAmount} from team ${tiebreaker.current_highest_team_id}`);
+      console.log(`💰 Updated team ${tiebreaker.current_highest_team_id}:`);
+      console.log(`   - Deducted £${winningAmount} from football_budget (${currentFootballBudget} → ${newFootballBudget})`);
+      console.log(`   - Increased football_spent by £${winningAmount} (${currentFootballSpent} → ${newFootballSpent})`);
+      console.log(`   - Incremented ${tiebreaker.position} count (${currentPositionCount} → ${currentPositionCount + 1})`);
+      
+      // Trigger news generation for Last Person Standing auction completion
+      const teamName = teamSeasonData?.team_name || 'Team';
+      await triggerNews('last_person_standing', {
+        season_id: seasonId,
+        player_id: tiebreaker.player_id,
+        player_name: tiebreaker.player_name,
+        team_id: tiebreaker.current_highest_team_id,
+        team_name: teamName,
+        team_winning: teamName,
+        winning_bid: winningAmount,
+        position: tiebreaker.position,
+        context: `After an intense Last Person Standing auction, ${teamName} emerged victorious, securing ${tiebreaker.player_name} (${tiebreaker.position}) for £${winningAmount}. In this open bidding battle, rival teams withdrew one by one until only ${teamName} remained standing.`
+      });
+      
+      console.log(`📰 News generation triggered for tiebreaker completion`);
     } else {
       console.warn(`⚠️ Team season ${teamSeasonId} not found - balance not updated`);
     }

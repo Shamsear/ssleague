@@ -138,13 +138,34 @@ export class WSClient {
       globalHandlers.forEach(handler => handler(message));
     }
 
-    // Handle type-specific messages
+    // Handle type-specific messages (e.g., 'bid', 'tiebreaker_bid')
     const typeHandlers = this.handlers.get(type);
     if (typeHandlers) {
       typeHandlers.forEach(handler => handler(message));
     }
 
-    // Handle channel-specific messages (e.g., round:123)
+    // Handle channel-specific messages
+    // The broadcast comes directly to subscribed channels, so we need to
+    // notify all channel handlers for this message type
+    // For tiebreaker messages: data should contain tiebreaker_id
+    if (type === 'tiebreaker_bid' && data?.tiebreaker_id) {
+      const channel = `tiebreaker:${data.tiebreaker_id}`;
+      const channelHandlers = this.handlers.get(channel);
+      if (channelHandlers) {
+        channelHandlers.forEach(handler => handler(message));
+      }
+    }
+    
+    // For round bid messages: data should contain round_id
+    if (type === 'bid' && data?.round_id) {
+      const channel = `round:${data.round_id}`;
+      const channelHandlers = this.handlers.get(channel);
+      if (channelHandlers) {
+        channelHandlers.forEach(handler => handler(message));
+      }
+    }
+    
+    // Generic channel handling if data has a channel property
     if (data?.channel) {
       const channelHandlers = this.handlers.get(data.channel);
       if (channelHandlers) {

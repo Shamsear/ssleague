@@ -199,10 +199,11 @@ export async function POST(
     
     const playerInfo = playerDetails[0] || {};
     
-    // Create bulk_tiebreakers record (matching actual table schema)
-    // Columns: id, bulk_round_id, season_id, player_id, player_name, original_amount, 
-    //          tied_teams, status, duration_minutes, winning_team_id, winning_amount, 
-    //          winning_bid, created_at, updated_at, resolved_at
+    // Create bulk_tiebreakers record (new schema after cleanup)
+    // Columns: id, bulk_round_id, season_id, player_id, player_name, player_position,
+    //          status, current_highest_bid, current_highest_team_id,
+    //          start_time, last_activity_time, max_end_time, teams_remaining,
+    //          base_price, created_at, updated_at, resolved_at
     await sql`
       INSERT INTO bulk_tiebreakers (
         id,
@@ -210,10 +211,12 @@ export async function POST(
         season_id,
         player_id,
         player_name,
-        original_amount,
-        tied_teams,
+        player_position,
+        base_price,
         status,
-        duration_minutes,
+        teams_remaining,
+        start_time,
+        max_end_time,
         created_at,
         updated_at
       ) VALUES (
@@ -222,10 +225,12 @@ export async function POST(
         ${round.season_id},
         ${player_id},
         ${playerInfo.player_name || playerName},
+        ${playerInfo.position || 'Unknown'},
         ${round.base_price},
-        ${JSON.stringify(tiedTeams)}::jsonb,
-        'pending',
-        1440,
+        'active',
+        ${tiedTeams.length},
+        NOW(),
+        NOW() + INTERVAL '24 hours',
         NOW(),
         NOW()
       )
@@ -233,6 +238,8 @@ export async function POST(
         bulk_round_id = EXCLUDED.bulk_round_id,
         season_id = EXCLUDED.season_id,
         player_name = EXCLUDED.player_name,
+        player_position = EXCLUDED.player_position,
+        teams_remaining = EXCLUDED.teams_remaining,
         updated_at = NOW()
     `;
     

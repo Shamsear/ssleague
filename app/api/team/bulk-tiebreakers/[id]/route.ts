@@ -68,14 +68,15 @@ export async function GET(
         bt.season_id,
         bt.player_id,
         bt.player_name,
-        bt.original_amount,
-        bt.tied_teams,
+        bt.player_position,
+        bt.base_price,
         bt.status,
-        bt.duration_minutes,
-        bt.winning_team_id,
-        bt.winning_amount,
+        bt.current_highest_bid,
+        bt.current_highest_team_id,
+        bt.teams_remaining,
         bt.created_at,
-        bt.updated_at
+        bt.updated_at,
+        bt.resolved_at
       FROM bulk_tiebreakers bt
       WHERE bt.id = ${tiebreakerId}
     `;
@@ -175,9 +176,9 @@ export async function GET(
     const activeTeamsCount = participatingTeams.filter(t => t.status === 'active').length;
     const withdrawnTeamsCount = participatingTeams.filter(t => t.status === 'withdrawn').length;
     
-    // Find current highest bid from teams
-    const currentHighestBid = Math.max(
-      tiebreaker.original_amount,
+    // Use current_highest_bid from tiebreaker or calculate from teams
+    const currentHighestBid = tiebreaker.current_highest_bid || Math.max(
+      tiebreaker.base_price,
       ...participatingTeams.map(t => t.current_bid || 0)
     );
     
@@ -195,20 +196,23 @@ export async function GET(
       success: true,
       data: {
         id: tiebreaker.id,
-        round_id: tiebreaker.bulk_round_id,
+        bulk_round_id: tiebreaker.bulk_round_id,
         player_id: tiebreaker.player_id,
         player_name: player.name || tiebreaker.player_name,
-        position: player.position || '',
+        position: player.position || tiebreaker.player_position || '',
         player_team: player.player_team || '',
         overall_rating: player.overall_rating || 0,
         status: tiebreaker.status,
         season_id: tiebreaker.season_id,
-        tie_amount: tiebreaker.original_amount,
-        original_amount: tiebreaker.original_amount,
-        tied_team_count: tiebreaker.tied_teams ? tiebreaker.tied_teams.length : 0,
+        base_price: tiebreaker.base_price,
+        tie_amount: tiebreaker.base_price,
+        original_amount: tiebreaker.base_price,
+        teams_remaining: tiebreaker.teams_remaining,
+        tied_team_count: participatingTeams.length,
         current_highest_bid: currentHighestBid,
-        current_highest_team_id: highestBidder?.team_id,
+        current_highest_team_id: tiebreaker.current_highest_team_id || highestBidder?.team_id,
         created_at: tiebreaker.created_at,
+        resolved_at: tiebreaker.resolved_at,
         teams: participatingTeams.map(team => ({
           team_id: team.team_id,
           team_name: team.team_name,

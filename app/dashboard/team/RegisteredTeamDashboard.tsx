@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
@@ -8,6 +8,7 @@ import ConfirmModal from '@/components/modals/ConfirmModal';
 import Image from 'next/image';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import ContractInfo from '@/components/ContractInfo';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 // Position constants
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -109,13 +110,15 @@ interface Tiebreaker {
 }
 
 interface BulkTiebreaker {
-  id: number;
-  tiebreaker_id: number;
+  id: string;
   player_id: number;
   player: Player;
   bulk_round_id: number;
-  current_amount: number;
-  last_bid?: number;
+  base_price: number;
+  current_highest_bid?: number;
+  team_current_bid?: number;
+  status: string;
+  is_bulk: boolean;
 }
 
 interface BulkRound {
@@ -199,10 +202,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   const timerRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
   const bulkTimerRefs = useRef<{ [key: number]: NodeJS.Timeout }>({});
   const previousDataRef = useRef<string>('');
+  const fetchDashboardRef = useRef<(showLoader?: boolean) => Promise<void>>();
 
   // Fetch dashboard data
-  useEffect(() => {
-    const fetchDashboard = async (showLoader = true) => {
+  const fetchDashboard = useCallback(async (showLoader = true) => {
       if (!seasonStatus?.seasonId) return;
       if (showLoader) setIsLoading(true);
 
@@ -244,8 +247,53 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
       } finally {
         if (showLoader) setIsLoading(false);
       }
-    };
+    }, [seasonStatus?.seasonId]);
 
+  // Update ref whenever fetchDashboard changes
+  useEffect(() => {
+    fetchDashboardRef.current = fetchDashboard;
+  }, [fetchDashboard]);
+
+  // ⚡ Enable WebSocket for real-time dashboard updates
+  const { isConnected } = useWebSocket({
+    channel: `team:${dashboardData?.team?.id}`,
+    enabled: !!dashboardData?.team?.id,
+    onMessage: useCallback((message: any) => {
+      console.log('[Dashboard WS] Received:', message);
+      
+      // Handle different update types
+      if (message.type === 'wallet_update' && message.data) {
+        // ⚡ Instant wallet update
+        setDashboardData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            team: {
+              ...prev.team,
+              balance: message.data.balance,
+              football_budget: message.data.football_budget,
+            },
+            stats: {
+              ...prev.stats,
+              balance: message.data.balance,
+            },
+          };
+        });
+      } else if (message.type === 'squad_update') {
+        // Refetch for squad changes
+        fetchDashboardRef.current?.(false);
+      } else if (message.type === 'new_round' || message.type === 'tiebreaker_created') {
+        // Refetch for new rounds/tiebreakers
+        fetchDashboardRef.current?.(false);
+      } else if (message.type !== 'subscribed' && message.type !== 'connected') {
+        // For other updates, do a background refetch
+        fetchDashboardRef.current?.(false);
+      }
+    }, []),
+  });
+
+  // Polling logic with WebSocket fallback
+  useEffect(() => {
     // Small delay to allow AuthContext to refresh token on page load
     const initialTimeout = setTimeout(() => {
       fetchDashboard(true);
@@ -598,18 +646,67 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <h3 className="font-bold text-gray-900 text-sm sm:text-base">Auction</h3>
             </div>
             <div className="space-y-2">
-              {activeRounds.length > 0 ? (
-                <button onClick={() => setActiveTab('auctions')} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-xs sm:text-sm font-medium text-center">
-                  🔥 {activeRounds.length} Active Round{activeRounds.length > 1 ? 's' : ''}
-                </button>
-              ) : (
-                <div className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-500 text-xs sm:text-sm text-center">No active rounds</div>
-              )}
+              {/* Quick Links to Active Auctions */}
+              {activeRounds.filter(r => r.round_type !== 'bulk').map(round => (
+                <Link 
+                  key={round.id}
+                  href={`/dashboard/team/round/${round.id}`}
+                  className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-xs sm:text-sm font-medium text-center"
+                >
+                  🔥 Round #{round.round_number}{round.position ? ` - ${round.position}` : ''}
+                </Link>
+              ))}
+              
+              {activeRounds.filter(r => r.round_type === 'bulk').map(round => (
+                <Link 
+                  key={round.id}
+                  href={`/dashboard/team/bulk-round/${round.id}`}
+                  className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 transition-all text-xs sm:text-sm font-medium text-center"
+                >
+                  ⚡ Bulk Round #{round.round_number}
+                </Link>
+              ))}
+              
+              {activeBulkRounds.map(bulkRound => (
+                <Link 
+                  key={bulkRound.id}
+                  href={`/dashboard/team/bulk-round/${bulkRound.id}`}
+                  className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 transition-all text-xs sm:text-sm font-medium text-center"
+                >
+                  ⚡ Bulk Auction
+                </Link>
+              ))}
+              
+              {tiebreakers.filter(t => !t.is_bulk).map(tiebreaker => (
+                <Link 
+                  key={tiebreaker.id}
+                  href={`/dashboard/team/tiebreaker/${tiebreaker.id}`}
+                  className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600 transition-all text-xs sm:text-sm font-medium text-center animate-pulse"
+                >
+                  ⚠️ Tiebreaker - {tiebreaker.player.name}
+                </Link>
+              ))}
+              
+              {tiebreakers.filter(t => t.is_bulk).map(tiebreaker => (
+                <Link 
+                  key={tiebreaker.id}
+                  href={`/dashboard/team/bulk-tiebreaker/${tiebreaker.id}`}
+                  className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-red-500 to-pink-500 text-white hover:from-red-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center animate-pulse"
+                >
+                  🚨 Bulk Tiebreaker - {tiebreaker.player.name}
+                </Link>
+              ))}
+              
               {activeBids.length > 0 && (
                 <button onClick={() => setActiveTab('auctions')} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all text-xs sm:text-sm font-medium text-center">
                   📋 {activeBids.length} Active Bid{activeBids.length > 1 ? 's' : ''}
                 </button>
               )}
+              
+              {activeRounds.length === 0 && activeBulkRounds.length === 0 && tiebreakers.length === 0 && activeBids.length === 0 && (
+                <div className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-500 text-xs sm:text-sm text-center">No active auctions</div>
+              )}
+              
               {roundResults.length > 0 && (
                 <button onClick={() => setActiveTab('results')} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                   📊 View Results

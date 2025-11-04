@@ -3,11 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { getAuctionSettings } from '@/lib/auction-settings';
-
-// WebSocket broadcast function (set by WebSocket server)
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
+import { broadcastWebSocket } from '@/lib/websocket/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -285,20 +281,17 @@ export async function POST(
     `;
     const bidCount = parseInt(bidCountResult[0].count) || 0;
 
-    // Broadcast to WebSocket clients for real-time updates
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`round:${roundId}`, {
-        type: 'bid_added',
-        data: {
-          team_id: teamId,
-          team_name: teamName,
-          player_id,
-          bid_amount: round.base_price,
-          bid_count: bidCount,
-        },
-      });
-      console.log(`📢 [WebSocket] Broadcast bid added to round:${roundId} (player ${player_id} now has ${bidCount} bids)`);
-    }
+    // ⚡ Broadcast to WebSocket - Committee sees this INSTANTLY!
+    await broadcastWebSocket(`round:${roundId}`, {
+      type: 'bid_added',
+      data: {
+        team_id: teamId,
+        team_name: teamName,
+        player_id,
+        bid_amount: round.base_price,
+        bid_count: bidCount,
+      },
+    });
 
     // NOTE: Balance is NOT deducted yet - only reserved
     // Money will be deducted after round finalization
@@ -555,18 +548,15 @@ export async function DELETE(
     `;
     const bidCount = parseInt(bidCountResult[0].count) || 0;
 
-    // Broadcast to WebSocket
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`round:${roundId}`, {
-        type: 'bid_removed',
-        data: {
-          team_id: teamId,
-          player_id,
-          bid_count: bidCount,
-        },
-      });
-      console.log(`📢 [WebSocket] Broadcast bid removed from round:${roundId} (player ${player_id} now has ${bidCount} bids)`);
-    }
+    // ⚡ Broadcast to WebSocket - Committee sees this INSTANTLY!
+    await broadcastWebSocket(`round:${roundId}`, {
+      type: 'bid_removed',
+      data: {
+        team_id: teamId,
+        player_id,
+        bid_count: bidCount,
+      },
+    });
 
     return NextResponse.json({
       success: true,

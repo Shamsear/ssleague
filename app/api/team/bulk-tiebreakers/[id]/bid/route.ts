@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
+import { broadcastTiebreakerBid, broadcastWebSocket } from '@/lib/websocket/broadcast';
 
 // WebSocket broadcast function (set by WebSocket server)
 declare global {
@@ -94,12 +95,13 @@ export async function POST(
     const tiebreakerCheck = await sql`
       SELECT 
         id, 
+        bulk_round_id,
         player_name, 
         status, 
+        season_id,
         current_highest_bid,
         current_highest_team_id,
-        max_end_time,
-        round_id
+        max_end_time
       FROM bulk_tiebreakers
       WHERE id = ${tiebreakerId}
     `;
@@ -113,8 +115,8 @@ export async function POST(
 
     const tiebreaker = tiebreakerCheck[0];
 
-    // VALIDATION 1: Tiebreaker must be active
-    if (tiebreaker.status !== 'active') {
+    // VALIDATION 1: Tiebreaker must be active or ongoing
+    if (tiebreaker.status !== 'active' && tiebreaker.status !== 'ongoing') {
       return NextResponse.json(
         { success: false, error: `Tiebreaker is not active. Current status: ${tiebreaker.status}` },
         { status: 400 }
@@ -163,17 +165,17 @@ export async function POST(
       return NextResponse.json(
         { 
           success: false, 
-          error: `Bid must be higher than current highest bid of £${tiebreaker.current_highest_bid}` 
+          error: `Bid must be higher than current highest bid of £${tiebreaker.current_highest_bid}`,
+          current_highest_bid: tiebreaker.current_highest_bid,
+          should_refresh: true
         },
         { status: 400 }
       );
     }
 
     // VALIDATION 6: Check team balance from Neon teams table
-    const roundCheck = await sql`
-      SELECT season_id FROM rounds WHERE id = ${tiebreaker.round_id}
-    `;
-    const seasonId = roundCheck[0]?.season_id;
+    // Get season_id from bulk_tiebreakers (already has it)
+    const seasonId = tiebreaker.season_id;
 
     const balanceData = await sql`
       SELECT football_budget
@@ -228,8 +230,8 @@ export async function POST(
       AND team_id = ${teamId}
     `;
 
-    // Update tiebreaker with new highest bid
-    await sql`
+    // Update tiebreaker with new highest bid (with optimistic locking)
+    const updateResult = await sql`
       UPDATE bulk_tiebreakers
       SET 
         current_highest_bid = ${bid_amount},
@@ -237,33 +239,68 @@ export async function POST(
         last_activity_time = ${bidTime.toISOString()},
         updated_at = NOW()
       WHERE id = ${tiebreakerId}
+      AND current_highest_bid < ${bid_amount}
+      RETURNING current_highest_bid
     `;
+    
+    // Check if update succeeded (race condition check)
+    if (updateResult.length === 0) {
+      // Someone else bid higher in the meantime
+      const latestTiebreaker = await sql`
+        SELECT current_highest_bid, current_highest_team_id
+        FROM bulk_tiebreakers
+        WHERE id = ${tiebreakerId}
+      `;
+      
+      const actualHighest = latestTiebreaker[0]?.current_highest_bid || bid_amount;
+      
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Bid was outbid! Current highest bid is now £${actualHighest}`,
+          current_highest_bid: actualHighest,
+          should_refresh: true
+        },
+        { status: 409 } // 409 Conflict
+      );
+    }
 
     console.log(`✅ Bid placed: £${bid_amount} by team ${teamId}`);
 
     // Check if this is the last team (auto-finalize condition)
-    const winnerCheck = await sql`
-      SELECT * FROM check_tiebreaker_winner(${tiebreakerId})
+    const activeTeamsCheck = await sql`
+      SELECT COUNT(*) as teams_left
+      FROM bulk_tiebreaker_teams
+      WHERE tiebreaker_id = ${tiebreakerId}
+      AND status = 'active'
     `;
 
-    const teamsLeft = winnerCheck[0]?.teams_left || 0;
+    const teamsLeft = parseInt(activeTeamsCheck[0]?.teams_left) || 0;
     const isWinner = teamsLeft === 1;
 
-    // ✅ Broadcast to WebSocket clients for real-time tiebreaker updates
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`tiebreaker:${tiebreakerId}`, {
+    // ✅ Broadcast to WebSocket clients for real-time updates
+    // Broadcast to BOTH tiebreaker channel AND round channel
+    await broadcastTiebreakerBid(tiebreakerId, {
+      team_id: teamId,
+      team_name: userData.teamName || 'Unknown Team',
+      bid_amount,
+      player_name: tiebreaker.player_name,
+      teams_remaining: teamsLeft,
+      is_winner: isWinner,
+    });
+    
+    // ⚡ ALSO broadcast to round channel so committee page gets instant updates!
+    if (tiebreaker.bulk_round_id) {
+      await broadcastWebSocket(`round:${tiebreaker.bulk_round_id}`, {
         type: 'tiebreaker_bid',
         data: {
           tiebreaker_id: tiebreakerId,
-          player_name: tiebreaker.player_name,
           team_id: teamId,
           team_name: userData.teamName || 'Unknown Team',
           bid_amount,
-          teams_remaining: teamsLeft,
-          is_winner: isWinner,
+          player_name: tiebreaker.player_name,
         },
       });
-      console.log(`📢 [WebSocket] Broadcast tiebreaker bid to tiebreaker:${tiebreakerId}`);
     }
 
     if (isWinner) {

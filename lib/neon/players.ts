@@ -147,16 +147,70 @@ export async function getAllPlayers(filters?: {
  * Get a single player by ID
  */
 export async function getPlayerById(id: string): Promise<FootballPlayer | null> {
-  const result = await sql`SELECT * FROM footballplayers WHERE id = ${id}`;
-  return result.length > 0 ? result[0] as FootballPlayer : null;
+  const result = await sql`
+    SELECT 
+      fp.*,
+      t.name as owning_team_name,
+      t.id as owning_team_id,
+      r.round_type
+    FROM footballplayers fp
+    LEFT JOIN teams t ON fp.team_id = t.id
+    LEFT JOIN rounds r ON fp.round_id = r.id
+    WHERE fp.id = ${id}
+  `;
+  
+  if (result.length === 0) return null;
+  
+  const player = result[0] as any;
+  
+  // Add team object if player is assigned to a team
+  if (player.team_id && player.owning_team_name) {
+    player.team = {
+      id: player.owning_team_id,
+      name: player.owning_team_name
+    };
+  }
+  
+  // Clean up extra fields
+  delete player.owning_team_name;
+  delete player.owning_team_id;
+  
+  return player as FootballPlayer;
 }
 
 /**
  * Get player by player_id (unique identifier)
  */
 export async function getPlayerByPlayerId(playerId: string): Promise<FootballPlayer | null> {
-  const result = await sql`SELECT * FROM footballplayers WHERE player_id = ${playerId}`;
-  return result.length > 0 ? result[0] as FootballPlayer : null;
+  const result = await sql`
+    SELECT 
+      fp.*,
+      t.name as owning_team_name,
+      t.id as owning_team_id,
+      r.round_type
+    FROM footballplayers fp
+    LEFT JOIN teams t ON fp.team_id = t.id
+    LEFT JOIN rounds r ON fp.round_id = r.id
+    WHERE fp.player_id = ${playerId}
+  `;
+  
+  if (result.length === 0) return null;
+  
+  const player = result[0] as any;
+  
+  // Add team object if player is assigned to a team
+  if (player.team_id && player.owning_team_name) {
+    player.team = {
+      id: player.owning_team_id,
+      name: player.owning_team_name
+    };
+  }
+  
+  // Clean up extra fields
+  delete player.owning_team_name;
+  delete player.owning_team_id;
+  
+  return player as FootballPlayer;
 }
 
 /**

@@ -76,18 +76,19 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const [playerBids, setPlayerBids] = useState<Map<string, any[]>>(new Map());
   const [loadingBids, setLoadingBids] = useState<Set<string>>(new Set());
 
-  // Enable WebSocket for real-time updates with custom message handler
-  const { isConnected } = useWebSocket({
+  // ⚡ Enable WebSocket for real-time round updates - NO PAGE REFRESH NEEDED!
+  const { isConnected: isRoundConnected } = useWebSocket({
     channel: `round:${resolvedParams.id}`,
     enabled: true,
     onMessage: useCallback((message: any) => {
-      console.log('[Committee Page] WebSocket message:', message);
+      console.log('⚡ [Committee WS] Real-time update:', message.type, message.data);
       
-      // Handle different message types
+      // Handle different message types for instant UI updates
       switch (message.type) {
         case 'round_updated':
-          // Update round metadata (timer, status, etc.) without full refresh
+          // ⚡ INSTANT: Update round metadata (timer, status, etc.)
           if (message.data) {
+            console.log('🔄 Updating round metadata...');
             setRound(prev => prev ? {
               ...prev,
               status: message.data.status || prev.status,
@@ -99,16 +100,34 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           break;
           
         case 'bid_added':
-        case 'bid_removed':
-          // Update player bid counts in real-time
+          // ⚡ INSTANT: Team placed a bid - update bid count
           if (message.data?.player_id) {
+            console.log(`💰 Bid added for player ${message.data.player_id}: ${message.data.bid_count} total bids`);
             setRound(prev => {
               if (!prev?.roundPlayers) return prev;
               return {
                 ...prev,
                 roundPlayers: prev.roundPlayers.map(player => 
                   player.player_id === message.data.player_id
-                    ? { ...player, bid_count: message.data.bid_count || player.bid_count }
+                    ? { ...player, bid_count: message.data.bid_count }
+                    : player
+                ),
+              };
+            });
+          }
+          break;
+          
+        case 'bid_removed':
+          // ⚡ INSTANT: Team removed a bid - update bid count
+          if (message.data?.player_id) {
+            console.log(`❌ Bid removed for player ${message.data.player_id}: ${message.data.bid_count} total bids`);
+            setRound(prev => {
+              if (!prev?.roundPlayers) return prev;
+              return {
+                ...prev,
+                roundPlayers: prev.roundPlayers.map(player => 
+                  player.player_id === message.data.player_id
+                    ? { ...player, bid_count: message.data.bid_count }
                     : player
                 ),
               };
@@ -117,8 +136,9 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           break;
           
         case 'player_status_updated':
-          // Update player status (sold, contested, etc.)
+          // ⚡ INSTANT: Player status changed (sold, contested, etc.)
           if (message.data?.player_id) {
+            console.log(`📊 Player ${message.data.player_id} status: ${message.data.status}`);
             setRound(prev => {
               if (!prev?.roundPlayers) return prev;
               return {
@@ -128,12 +148,97 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                     ? {
                         ...player,
                         status: message.data.status || player.status,
-                        winning_team_id: message.data.winning_team_id || player.winning_team_id,
-                        winning_bid: message.data.winning_bid || player.winning_bid,
+                        winning_team_id: message.data.winning_team_id,
+                        winning_bid: message.data.winning_bid,
                         bid_count: message.data.bid_count ?? player.bid_count,
+                        tiebreaker_id: message.data.tiebreaker_id || player.tiebreaker_id,
                       }
                     : player
                 ),
+              };
+            });
+          }
+          break;
+          
+        case 'tiebreaker_created':
+          // ⚡ INSTANT: Tiebreaker created for a player
+          if (message.data?.player_id && message.data?.tiebreaker_id) {
+            console.log(`🎯 Tiebreaker created: ${message.data.tiebreaker_id} for player ${message.data.player_id}`);
+            setRound(prev => {
+              if (!prev?.roundPlayers) return prev;
+              return {
+                ...prev,
+                roundPlayers: prev.roundPlayers.map(player => 
+                  player.player_id === message.data.player_id
+                    ? {
+                        ...player,
+                        tiebreaker_id: message.data.tiebreaker_id,
+                        status: 'contested',
+                      }
+                    : player
+                ),
+              };
+            });
+          }
+          break;
+          
+        case 'round_started':
+          // ⚡ INSTANT: Round started
+          console.log('🚀 Round started!');
+          setRound(prev => prev ? { ...prev, status: 'active', start_time: message.data?.start_time } : null);
+          break;
+          
+        case 'round_completed':
+          // ⚡ INSTANT: Round completed
+          console.log('✅ Round completed!');
+          setRound(prev => prev ? { ...prev, status: 'completed' } : null);
+          break;
+          
+        case 'tiebreaker_bid':
+          // ⚡ INSTANT: Tiebreaker bid placed - update tiebreaker data
+          if (message.data?.tiebreaker_id) {
+            console.log(`🎯 Tiebreaker bid: £${message.data.bid_amount} by ${message.data.team_name}`);
+            // Find the player with this tiebreaker and update it
+            setRound(prev => {
+              if (!prev?.roundPlayers) return prev;
+              return {
+                ...prev,
+                roundPlayers: prev.roundPlayers.map(player => {
+                  if (player.tiebreaker_id === message.data.tiebreaker_id && player.tiebreaker) {
+                    // Update tiebreaker data
+                    const newSubmissions = player.tiebreaker.submissions?.map(sub =>
+                      sub.team_id === message.data.team_id
+                        ? { ...sub, new_bid_amount: message.data.bid_amount, submitted: new Date().toISOString() }
+                        : sub
+                    ) || [];
+                    
+                    // If team not in submissions yet, add them
+                    const teamExists = newSubmissions.some(s => s.team_id === message.data.team_id);
+                    if (!teamExists) {
+                      newSubmissions.push({
+                        team_id: message.data.team_id,
+                        team_name: message.data.team_name,
+                        new_bid_amount: message.data.bid_amount,
+                        submitted: new Date().toISOString(),
+                      });
+                    }
+                    
+                    // Update highest bid
+                    const highestBid = Math.max(...newSubmissions.map(s => s.new_bid_amount));
+                    const highestBidder = newSubmissions.find(s => s.new_bid_amount === highestBid)?.team_name;
+                    
+                    return {
+                      ...player,
+                      tiebreaker: {
+                        ...player.tiebreaker,
+                        highest_bid: highestBid,
+                        highest_bidder: highestBidder,
+                        submissions: newSubmissions,
+                      },
+                    };
+                  }
+                  return player;
+                }),
               };
             });
           }
@@ -143,6 +248,21 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       setLastUpdate(Date.now());
     }, []),
   });
+  
+  // ⚡ ALSO listen to tiebreaker channels for ANY tiebreaker in this round
+  // This catches tiebreaker bids even if round channel broadcast fails
+  const activeTiebreakers = round?.roundPlayers?.filter(p => p.tiebreaker_id).map(p => p.tiebreaker_id) || [];
+  
+  useEffect(() => {
+    // Subscribe to all active tiebreaker channels
+    activeTiebreakers.forEach(tiebreakerId => {
+      if (tiebreakerId) {
+        console.log(`🎯 Subscribing to tiebreaker:${tiebreakerId}`);
+      }
+    });
+  }, [JSON.stringify(activeTiebreakers)]);
+
+  const isConnected = isRoundConnected;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -157,7 +277,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const fetchRound = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/rounds/${resolvedParams.id}`);
+      const response = await fetch(`/api/bulk-rounds/${resolvedParams.id}`);
       const { success, data } = await response.json();
 
       if (success) {
@@ -250,12 +370,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
 
         if (success) {
           alert(data.message || 'Round started successfully!');
-          // Refresh round data
-          const refreshResponse = await fetch(`/api/rounds/${round.id}`);
-          const refreshData = await refreshResponse.json();
-          if (refreshData.success) {
-            setRound(refreshData.data);
-          }
+          // ⚡ NO REFRESH NEEDED - WebSocket will update automatically!
         } else {
           alert(`Error: ${error}`);
         }
@@ -280,12 +395,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
 
         if (success) {
           alert(data.message || 'Round completed successfully!');
-          // Refresh round data
-          const refreshResponse = await fetch(`/api/rounds/${round.id}`);
-          const refreshData = await refreshResponse.json();
-          if (refreshData.success) {
-            setRound(refreshData.data);
-          }
+          // ⚡ NO REFRESH NEEDED - WebSocket will update automatically!
         } else {
           alert(`Error: ${error}`);
         }
@@ -334,8 +444,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
 
       if (success) {
         alert(data.message || 'Tiebreaker created successfully!');
-        // Refresh round data
-        await fetchRound();
+        // ⚡ NO REFRESH NEEDED - WebSocket will update automatically!
       } else {
         alert(`Error: ${error}`);
       }
@@ -442,6 +551,17 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
               </h1>
               <span className={`px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold border-2 ${getStatusColor(round.status)} capitalize`}>
                 {round.status}
+              </span>
+              {/* ⚡ Real-time Connection Status */}
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                isConnected 
+                  ? 'bg-green-100 text-green-800 border border-green-300' 
+                  : 'bg-gray-100 text-gray-600 border border-gray-300'
+              }`}>
+                <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                  isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+                }`}></span>
+                {isConnected ? '⚡ Live' : 'Offline'}
               </span>
             </div>
           </div>

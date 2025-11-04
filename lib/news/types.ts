@@ -59,6 +59,7 @@ export type NewsEventType =
   | 'player_sold'
   | 'auction_highlights'
   | 'tiebreaker_battle' // For tiebreaker rounds
+  | 'last_person_standing' // For open bidding bulk tiebreakers
   | 'record_breaking_bid'
   | 'bargain_steal'
   | 'player_unsold'
