@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { useRouter } from 'next/navigation';
 
@@ -11,6 +12,7 @@ export default function MobileNav() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const { user } = useAuth();
+  const { isRegistered } = useTeamRegistration();
   const { signOut } = useFirebaseAuth();
   const router = useRouter();
   
@@ -473,8 +475,8 @@ export default function MobileNav() {
                 </>
               )}
               
-              {/* Team Navigation */}
-              {user && user.role === 'team' && (
+              {/* Team Navigation - Only show if registered */}
+              {user && user.role === 'team' && isRegistered && (
                 <>
                   {/* My Team */}
                   <div className="border-b border-black/10">
