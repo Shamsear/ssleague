@@ -234,6 +234,7 @@ export async function POST(
     // Allow update if either:
     // 1. New bid is higher than current highest, OR
     // 2. This team is already the highest bidder (re-bidding)
+    console.log(`🔍 Attempting UPDATE: current=${tiebreaker.current_highest_bid}, new=${bid_amount}, currentTeam=${tiebreaker.current_highest_team_id}, newTeam=${teamId}`);
     const updateResult = await sql`
       UPDATE bulk_tiebreakers
       SET 
@@ -243,7 +244,8 @@ export async function POST(
         updated_at = NOW()
       WHERE id = ${tiebreakerId}
       AND (
-        current_highest_bid < ${bid_amount}
+        current_highest_bid IS NULL
+        OR current_highest_bid < ${bid_amount}
         OR current_highest_team_id = ${teamId}
       )
       RETURNING current_highest_bid, current_highest_team_id

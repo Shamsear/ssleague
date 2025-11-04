@@ -12,13 +12,48 @@ let pusherInstance: Pusher | null = null;
 
 function getPusherInstance(): Pusher {
   if (!pusherInstance) {
+    // Check if credentials are available
+    const creds = {
+      appId: process.env.PUSHER_APP_ID,
+      key: process.env.PUSHER_KEY,
+      secret: process.env.PUSHER_SECRET,
+      cluster: process.env.PUSHER_CLUSTER,
+    };
+    
+    console.log('[Pusher] Initializing with credentials:', {
+      hasAppId: !!creds.appId,
+      hasKey: !!creds.key,
+      hasSecret: !!creds.secret,
+      hasCluster: !!creds.cluster,
+      cluster: creds.cluster,
+      // Show first 4 chars of each credential for debugging
+      appIdPrefix: creds.appId?.substring(0, 4),
+      keyPrefix: creds.key?.substring(0, 4),
+      secretPrefix: creds.secret?.substring(0, 4),
+    });
+    
+    // Validate all credentials are present
+    if (!creds.appId || !creds.key || !creds.secret || !creds.cluster) {
+      const missing = [];
+      if (!creds.appId) missing.push('PUSHER_APP_ID');
+      if (!creds.key) missing.push('PUSHER_KEY');
+      if (!creds.secret) missing.push('PUSHER_SECRET');
+      if (!creds.cluster) missing.push('PUSHER_CLUSTER');
+      
+      console.error(`❌ [Pusher] Missing credentials: ${missing.join(', ')}`);
+      console.error('❌ [Pusher] CRITICAL: Broadcasts will FAIL. Restart dev server to load .env.local');
+      throw new Error(`Missing Pusher credentials: ${missing.join(', ')}`);
+    }
+    
     pusherInstance = new Pusher({
-      appId: process.env.PUSHER_APP_ID!,
-      key: process.env.PUSHER_KEY!,
-      secret: process.env.PUSHER_SECRET!,
-      cluster: process.env.PUSHER_CLUSTER!,
+      appId: creds.appId,
+      key: creds.key,
+      secret: creds.secret,
+      cluster: creds.cluster,
       useTLS: true,
     });
+    
+    console.log('✅ [Pusher] Instance created successfully');
   }
   return pusherInstance;
 }
