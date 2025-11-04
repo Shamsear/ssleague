@@ -98,7 +98,7 @@ export default function ImportProgressPage() {
       
       // Check for existing players first using Neon API
       updateStep(2, 'running', 'Checking for existing players...', 10)
-      const existingResponse = await fetchWithTokenRefresh(/api/players')
+      const existingResponse = await fetchWithTokenRefresh('/api/players')
       const { data: existingPlayers } = await existingResponse.json()
       
       const existingPlayerNames = new Set(
@@ -155,7 +155,7 @@ export default function ImportProgressPage() {
           
           const startTime = Date.now()
           
-          const importResponse = await fetchWithTokenRefresh(/api/players/bulk', {
+          const importResponse = await fetchWithTokenRefresh('/api/players/bulk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -200,7 +200,7 @@ export default function LineupManagementPage() {
     setMessage(null);
 
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/lineups', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/lineups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

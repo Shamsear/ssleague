@@ -33,7 +33,7 @@ export default function HistoricalSeasons() {
     const fetchSeasons = async () => {
       try {
         setSeasonsLoading(true);
-        const response = await fetchWithTokenRefresh(/api/seasons/list');
+        const response = await fetchWithTokenRefresh('/api/seasons/list');
         const data = await response.json();
         
         if (data.success) {
@@ -87,7 +87,7 @@ export default function HistoricalSeasons() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetchWithTokenRefresh(/api/seasons/historical/template');
+      const response = await fetchWithTokenRefresh('/api/seasons/historical/template');
       
       if (!response.ok) {
         throw new Error('Failed to download template');

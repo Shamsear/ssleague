@@ -118,7 +118,7 @@ export default function BulkRoundsPage() {
       : 1;
 
     try {
-      const response = await fetchWithTokenRefresh(/api/rounds', {
+      const response = await fetchWithTokenRefresh('/api/rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -3,6 +3,7 @@ import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { getAuthToken } from '@/lib/auth/token-helper';
 import { calculateFootballPlayerSalary, isMidSeasonRound } from '@/lib/contracts';
 import { logSalaryPayment } from '@/lib/transaction-logger';
+import { getAuctionDb } from '@/lib/neon/auction-config';
 
 export async function POST(request: NextRequest) {
   try {
@@ -71,73 +72,112 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get all teams in this season
-    const teamsSnapshot = await adminDb
-      .collection('teams')
+    // Get all team_seasons for this season
+    const teamSeasonsSnapshot = await adminDb
+      .collection('team_seasons')
       .where('season_id', '==', seasonId)
+      .where('status', '==', 'registered')
       .get();
+
+    console.log(`Found ${teamSeasonsSnapshot.docs.length} registered teams for season ${seasonId}`);
 
     let teamsProcessed = 0;
     let totalDeducted = 0;
     const errors: string[] = [];
+    const sql = getAuctionDb();
 
     // Process each team
-    const batch = adminDb.batch();
-
-    for (const teamDoc of teamsSnapshot.docs) {
+    for (const teamSeasonDoc of teamSeasonsSnapshot.docs) {
       try {
-        const teamData = teamDoc.data();
-        const footballPlayers = teamData?.football_players || [];
-        const currentEuroBalance = teamData?.euroBalance || 0;
+        const teamSeasonData = teamSeasonDoc.data();
+        const teamId = teamSeasonData.team_id;
+        const teamName = teamSeasonData.team_name || 'Unknown Team';
+        const currentEuroBalance = teamSeasonData.football_budget || 0;
+
+        console.log(`\nProcessing team: ${teamName} (${teamId})`);
+        console.log(`  Current Euro balance: €${currentEuroBalance.toFixed(2)}`);
+
+        // Fetch football players from Neon DB
+        const footballPlayers = await sql`
+          SELECT * FROM footballplayers
+          WHERE team_id = ${teamId}
+          AND season_id = ${seasonId}
+        `;
+
+        console.log(`  Football players found: ${footballPlayers.length}`);
 
         let teamSalaryTotal = 0;
 
         // Calculate total salary for all football players
         for (const player of footballPlayers) {
-          const salary = calculateFootballPlayerSalary(player.auctionValue || 0);
+          const auctionValue = player.acquisition_value || 0;
+          const salary = calculateFootballPlayerSalary(auctionValue);
+          console.log(`    - ${player.name}: €${auctionValue} → salary €${salary.toFixed(2)}`);
           teamSalaryTotal += salary;
+        }
+
+        console.log(`  Total salary to deduct: €${teamSalaryTotal.toFixed(2)}`);
+
+        if (footballPlayers.length === 0) {
+          console.log(`  ⚠️ No football players found, skipping`);
+          continue;
         }
 
         // Check if team has enough balance
         if (currentEuroBalance < teamSalaryTotal) {
-          errors.push(`${teamData.team_name}: Insufficient euro balance`);
+          const msg = `${teamName}: Insufficient euro balance (€${currentEuroBalance.toFixed(2)} < €${teamSalaryTotal.toFixed(2)})`;
+          console.log(`  ❌ ${msg}`);
+          errors.push(msg);
           continue;
         }
 
         // Deduct salary from euro balance
         const newEuroBalance = currentEuroBalance - teamSalaryTotal;
 
-        batch.update(teamDoc.ref, {
-          euroBalance: newEuroBalance,
-          lastSalaryDeduction: {
+        // Update team_seasons document
+        await teamSeasonDoc.ref.update({
+          football_budget: newEuroBalance,
+          football_spent: (teamSeasonData.football_spent || 0) + teamSalaryTotal,
+          last_salary_deduction: {
             round: roundNumber,
             amount: teamSalaryTotal,
-            date: new Date().toISOString(),
+            date: new Date(),
           },
-          updated_at: new Date().toISOString(),
+          updated_at: new Date(),
         });
+        
+        console.log(`  ✅ Balance updated: €${currentEuroBalance.toFixed(2)} → €${newEuroBalance.toFixed(2)}`);
         
         // Log salary payment transaction
         await logSalaryPayment(
-          teamDoc.id,
+          teamId,
           seasonId,
           teamSalaryTotal,
           currentEuroBalance,
           'football',
           undefined,
           roundNumber,
-          footballPlayers.length
+          footballPlayers.length,
+          `Mid-season salary for ${footballPlayers.length} football players`
         );
+
+        console.log(`  ✅ Transaction logged`);
 
         teamsProcessed++;
         totalDeducted += teamSalaryTotal;
       } catch (error) {
-        errors.push(`${teamDoc.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const msg = `${teamSeasonDoc.data().team_name || teamSeasonDoc.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        console.error(`  ❌ Error: ${msg}`);
+        errors.push(msg);
       }
     }
 
-    // Commit all updates
-    await batch.commit();
+    console.log(`\n📊 Summary:`);
+    console.log(`  ✅ Teams processed: ${teamsProcessed}`);
+    console.log(`  💶 Total deducted: €${totalDeducted.toFixed(2)}`);
+    if (errors.length > 0) {
+      console.log(`  ❌ Errors: ${errors.length}`);
+    }
 
     return NextResponse.json({
       success: true,

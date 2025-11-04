@@ -323,7 +323,7 @@ export default function PreviewHistoricalSeason() {
   const loadExistingEntitiesAndCheckDuplicates = useCallback(async () => {
     setLoadingDuplicates(true);
     try {
-      const response = await fetchWithTokenRefresh(/api/seasons/historical/check-duplicates');
+      const response = await fetchWithTokenRefresh('/api/seasons/historical/check-duplicates');
       const result = await response.json();
       
       if (result.success && result.data) {
@@ -673,7 +673,7 @@ export default function PreviewHistoricalSeason() {
         })
       };
       
-      const response = await fetchWithTokenRefresh(/api/seasons/historical/import', {
+      const response = await fetchWithTokenRefresh('/api/seasons/historical/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

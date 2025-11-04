@@ -2457,7 +2457,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           away_goals: matchResults[idx]?.away_goals ?? 0,
                         }));
                         
-                        const pointsResponse = await fetchWithTokenRefresh(/api/realplayers/update-points', {
+                        const pointsResponse = await fetchWithTokenRefresh('/api/realplayers/update-points', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2494,7 +2494,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                           away_goals: matchResults[idx]?.away_goals ?? 0,
                         }));
 
-                        const statsResponse = await fetchWithTokenRefresh(/api/realplayers/update-stats', {
+                        const statsResponse = await fetchWithTokenRefresh('/api/realplayers/update-stats', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2511,7 +2511,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         }
 
                         // Update team stats (wins, draws, losses, goals)
-                        const teamStatsResponse = await fetchWithTokenRefresh(/api/teamstats/update-stats', {
+                        const teamStatsResponse = await fetchWithTokenRefresh('/api/teamstats/update-stats', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -2539,7 +2539,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         // Calculate fantasy points (auto-trigger)
                         try {
                           console.log('🏆 Calculating fantasy points...');
-                          const fantasyResponse = await fetchWithTokenRefresh(/api/fantasy/calculate-points', {
+                          const fantasyResponse = await fetchWithTokenRefresh('/api/fantasy/calculate-points', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -2563,7 +2563,7 @@ _Powered by SS Super League S${seasonNumber} Committee_ 💫`;
                         // Generate match result news (auto-trigger)
                         try {
                           console.log('📰 Generating match result news...');
-                          const newsResponse = await fetchWithTokenRefresh(/api/news/trigger', {
+                          const newsResponse = await fetchWithTokenRefresh('/api/news/trigger', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({

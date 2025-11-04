@@ -263,7 +263,7 @@ export default function RealPlayersPage() {
       }
 
       // Call API to save all players for both seasons
-      const response = await fetchWithTokenRefresh(/api/contracts/assign-bulk', {
+      const response = await fetchWithTokenRefresh('/api/contracts/assign-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -159,7 +159,7 @@ function EditRoundDeadlinesContent() {
       }
       
       // Update round deadlines via tournament API
-      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

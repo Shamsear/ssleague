@@ -81,7 +81,7 @@ export default function EnableFantasyTeamsPage() {
     setIsEnabling(true);
     setResult(null);
     try {
-      const res = await fetchWithTokenRefresh(/api/fantasy/teams/enable-all', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/teams/enable-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ season_id: userSeasonId }),
@@ -108,7 +108,7 @@ export default function EnableFantasyTeamsPage() {
 
     setTogglingTeams(prev => new Set(prev).add(teamId));
     try {
-      const res = await fetchWithTokenRefresh(/api/fantasy/teams/toggle', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/teams/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

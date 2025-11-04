@@ -53,7 +53,7 @@ export default function SuperAdminDashboard() {
       
       try {
         // Fetch active season
-        const seasonRes = await fetchWithTokenRefresh(/api/seasons/active');
+        const seasonRes = await fetchWithTokenRefresh('/api/seasons/active');
         if (seasonRes.ok) {
           const seasonData = await seasonRes.json();
           if (seasonData.season) {

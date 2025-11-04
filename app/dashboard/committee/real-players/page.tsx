@@ -422,7 +422,7 @@ export default function RealPlayersPage() {
       const { start: startSeason, end: endSeason } = getContractSeasons();
 
       // Save only this team's players with their individual contracts
-      const response = await fetchWithTokenRefresh(/api/contracts/assign-bulk', {
+      const response = await fetchWithTokenRefresh('/api/contracts/assign-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

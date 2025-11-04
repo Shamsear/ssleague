@@ -195,7 +195,7 @@ export default function TeamDraftPage() {
 
     setIsSelectingTeam(true);
     try {
-      const res = await fetchWithTokenRefresh(/api/fantasy/teams/select-supported', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/teams/select-supported', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -241,7 +241,7 @@ export default function TeamDraftPage() {
     
     setIsSavingCaptains(true);
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/squad/set-captain', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -297,7 +297,7 @@ export default function TeamDraftPage() {
 
     setIsDrafting(playerId);
     try {
-      const res = await fetchWithTokenRefresh(/api/fantasy/draft/player', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/draft/player', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -395,7 +395,7 @@ export default function TeamDraftPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetchWithTokenRefresh(/api/fantasy/draft/submit', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/draft/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: user.uid }),

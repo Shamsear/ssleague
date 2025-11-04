@@ -114,7 +114,7 @@ export default function PlayerAwardsManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetchWithTokenRefresh(/api/player-awards/auto-award', {
+      const res = await fetchWithTokenRefresh('/api/player-awards/auto-award', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ season_id: userSeasonId })
@@ -175,7 +175,7 @@ export default function PlayerAwardsManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetchWithTokenRefresh(/api/player-awards/add', {
+      const res = await fetchWithTokenRefresh('/api/player-awards/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

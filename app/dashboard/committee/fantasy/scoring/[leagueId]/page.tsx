@@ -102,7 +102,7 @@ export default function CustomScoringRulesPage() {
         };
       }
       
-      const response = await fetchWithTokenRefresh(/api/fantasy/scoring-rules', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/scoring-rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

@@ -77,7 +77,7 @@ export default function PlayerRatingsPage() {
         setCurrentSeason(season);
         
         // Fetch categories
-        const categoriesResponse = await fetchWithTokenRefresh(/api/categories');
+        const categoriesResponse = await fetchWithTokenRefresh('/api/categories');
         const categoriesResult = await categoriesResponse.json();
         if (categoriesResult.success && categoriesResult.data) {
           setCategories(categoriesResult.data);
@@ -280,7 +280,7 @@ export default function PlayerRatingsPage() {
       });
 
       // Call API to update only categories (not star ratings)
-      const response = await fetchWithTokenRefresh(/api/player-ratings/recalculate-categories', {
+      const response = await fetchWithTokenRefresh('/api/player-ratings/recalculate-categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -337,7 +337,7 @@ export default function PlayerRatingsPage() {
       });
 
       // Call API to update player ratings and categories
-      const response = await fetchWithTokenRefresh(/api/player-ratings/assign', {
+      const response = await fetchWithTokenRefresh('/api/player-ratings/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

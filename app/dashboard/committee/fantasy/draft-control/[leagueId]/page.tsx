@@ -156,7 +156,7 @@ export default function DraftControlPage() {
   const updateDraftStatus = async () => {
     setIsSaving(true);
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/draft/control', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/draft/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

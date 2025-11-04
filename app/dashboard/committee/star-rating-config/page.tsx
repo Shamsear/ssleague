@@ -74,7 +74,7 @@ export default function StarRatingConfigPage() {
       setError(null);
       setSuccess(null);
 
-      const response = await fetchWithTokenRefresh(/api/star-rating-config', {
+      const response = await fetchWithTokenRefresh('/api/star-rating-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -56,7 +56,7 @@ export default function RealPlayersPage() {
         setIsLoading(true);
 
         // Get active season
-        const seasonResponse = await fetchWithTokenRefresh(/api/cached/firebase/seasons?isActive=true');
+        const seasonResponse = await fetchWithTokenRefresh('/api/cached/firebase/seasons?isActive=true');
         
         if (!seasonResponse.ok) {
           console.error('Failed to fetch seasons:', seasonResponse.statusText);

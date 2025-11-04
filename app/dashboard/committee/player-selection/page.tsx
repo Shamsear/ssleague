@@ -67,7 +67,7 @@ export default function PlayerSelectionPage() {
         console.log('🔄 Fetching ALL players from Neon database via API')
         
         // Fetch without limit to get all players
-        const response = await fetchWithTokenRefresh(/api/players?limit=999999')
+        const response = await fetchWithTokenRefresh('/api/players?limit=999999')
         const { data, success } = await response.json()
         
         if (!success) {
@@ -210,7 +210,7 @@ export default function PlayerSelectionPage() {
     try {
       const playerIds = paginatedPlayers.map(p => p.id)
       
-      const response = await fetchWithTokenRefresh(/api/players/bulk', {
+      const response = await fetchWithTokenRefresh('/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -278,7 +278,7 @@ export default function PlayerSelectionPage() {
         .filter(p => p.is_auction_eligible)
         .map(p => p.id)
       
-      const response = await fetchWithTokenRefresh(/api/players/bulk', {
+      const response = await fetchWithTokenRefresh('/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -537,7 +537,7 @@ export default function PlayerSelectionPage() {
       formData.append('file', selectedFile)
       formData.append('position', selectedExportPosition)
 
-      const response = await fetchWithTokenRefresh(/api/parse-player-selection', {
+      const response = await fetchWithTokenRefresh('/api/parse-player-selection', {
         method: 'POST',
         body: formData
       })

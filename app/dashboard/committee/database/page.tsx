@@ -50,7 +50,7 @@ export default function DatabaseManagementPage() {
   const fetchPlayerCount = async () => {
     try {
       console.log('🔄 Fetching player stats from Neon database')
-      const response = await fetchWithTokenRefresh(/api/players/stats')
+      const response = await fetchWithTokenRefresh('/api/players/stats')
       const { data, success } = await response.json()
       
       if (!success) {
@@ -196,7 +196,7 @@ export default function DatabaseManagementPage() {
       const players = JSON.parse(parsedData)
       
       // Fetch existing players from Neon to check for duplicates
-      const existingResponse = await fetchWithTokenRefresh(/api/players')
+      const existingResponse = await fetchWithTokenRefresh('/api/players')
       const { data: existingPlayers } = await existingResponse.json()
       
       const existingPlayerNames = new Set(
@@ -226,7 +226,7 @@ export default function DatabaseManagementPage() {
       }
       
       // Use bulk create API endpoint
-      const importResponse = await fetchWithTokenRefresh(/api/players/bulk', {
+      const importResponse = await fetchWithTokenRefresh('/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -272,7 +272,7 @@ export default function DatabaseManagementPage() {
       const players = JSON.parse(parsedData)
       
       // Use bulk update API endpoint that preserves ownership
-      const updateResponse = await fetchWithTokenRefresh(/api/players/bulk', {
+      const updateResponse = await fetchWithTokenRefresh('/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -325,7 +325,7 @@ export default function DatabaseManagementPage() {
 
     try {
       // Call Neon API to delete all players
-      const response = await fetchWithTokenRefresh(/api/players/bulk', {
+      const response = await fetchWithTokenRefresh('/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'deleteAll' })
@@ -353,7 +353,7 @@ export default function DatabaseManagementPage() {
 
     try {
       // Fetch all players from Neon
-      const response = await fetchWithTokenRefresh(/api/players')
+      const response = await fetchWithTokenRefresh('/api/players')
       const { data: players, success } = await response.json()
       
       if (!success) {
@@ -407,7 +407,7 @@ export default function DatabaseManagementPage() {
       }
 
       // Delete all existing players using Neon API
-      const deleteResponse = await fetchWithTokenRefresh(/api/players/bulk', {
+      const deleteResponse = await fetchWithTokenRefresh('/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'deleteAll' })
@@ -419,7 +419,7 @@ export default function DatabaseManagementPage() {
       }
 
       // Restore players from backup using Neon API
-      const restoreResponse = await fetchWithTokenRefresh(/api/players/bulk', {
+      const restoreResponse = await fetchWithTokenRefresh('/api/players/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -448,7 +448,7 @@ export default function DatabaseManagementPage() {
   const handleFilterPlayers = async () => {
     try {
       // Fetch all players from Neon
-      const response = await fetchWithTokenRefresh(/api/players')
+      const response = await fetchWithTokenRefresh('/api/players')
       const { data: allPlayers } = await response.json()
       
       // Apply filters client-side

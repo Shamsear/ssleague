@@ -284,7 +284,7 @@ export default function PreviewHistoricalSeason() {
         // matches: matches
       };
       
-      const response = await fetchWithTokenRefresh(/api/seasons/historical/import', {
+      const response = await fetchWithTokenRefresh('/api/seasons/historical/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

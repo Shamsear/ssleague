@@ -193,7 +193,7 @@ export default function MyFantasyTeamPage() {
 
     setIsRegistering(true);
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/teams/my-team', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/teams/my-team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

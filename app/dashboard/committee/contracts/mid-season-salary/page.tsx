@@ -13,11 +13,13 @@ export default function MidSeasonSalaryPage() {
   const router = useRouter();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
   const [currentSeason, setCurrentSeason] = useState<Season | null>(null);
+  const [tournamentInfo, setTournamentInfo] = useState<any>(null);
   const [roundNumber, setRoundNumber] = useState(1);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
+  const [loadingTournament, setLoadingTournament] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -33,10 +35,62 @@ export default function MidSeasonSalaryPage() {
       if (!userSeasonId) return;
 
       try {
+        setLoadingTournament(true);
         const season = await getSeasonById(userSeasonId);
         setCurrentSeason(season);
+
+        // Fetch primary tournament info with fixtures
+        const tournamentRes = await fetchWithTokenRefresh(
+          `/api/tournaments?season_id=${userSeasonId}`
+        );
+        
+        console.log('🏆 Tournament API response status:', tournamentRes.status);
+        
+        if (tournamentRes.ok) {
+          const tournamentData = await tournamentRes.json();
+          console.log('🏆 Tournament data:', tournamentData);
+          console.log('🏆 Tournaments array:', tournamentData.tournaments);
+          
+          // Filter for primary tournament
+          const primaryTournament = tournamentData.tournaments?.find((t: any) => t.is_primary);
+          console.log('🏆 Primary tournament found:', primaryTournament);
+          
+          if (primaryTournament) {
+            
+            // Fetch fixtures count for this tournament
+            const fixturesRes = await fetchWithTokenRefresh(
+              `/api/fixtures/season?tournament_id=${primaryTournament.id}&season_id=${userSeasonId}`
+            );
+            
+            if (fixturesRes.ok) {
+              const fixturesData = await fixturesRes.json();
+              const fixtures = fixturesData.fixtures || [];
+              
+              // Get unique rounds
+              const rounds = new Set(fixtures.map((f: any) => f.round_number));
+              const maxRound = fixtures.length > 0 ? Math.max(...fixtures.map((f: any) => f.round_number || 0)) : 0;
+              
+              const plannedTotalRounds = primaryTournament.total_rounds || season.totalRounds || 38;
+              
+              setTournamentInfo({
+                name: primaryTournament.tournament_name || primaryTournament.name,
+                totalRounds: rounds.size, // Show generated rounds
+                plannedRounds: plannedTotalRounds,
+                fixturesGenerated: fixtures.length,
+                roundsWithFixtures: rounds.size,
+                maxRound: maxRound,
+              });
+              
+              // Set default round number to mid-season of planned rounds
+              const midSeasonRound = Math.floor(plannedTotalRounds / 2);
+              setRoundNumber(midSeasonRound);
+            }
+          }
+        }
       } catch (error) {
-        console.error('Error fetching season:', error);
+        console.error('Error fetching season/tournament:', error);
+      } finally {
+        setLoadingTournament(false);
       }
     };
 
@@ -171,19 +225,46 @@ export default function MidSeasonSalaryPage() {
           </div>
 
           <div className="p-8 space-y-6">
-            {/* Current Season Info */}
-            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Season</p>
-                  <p className="font-semibold text-gray-900">{currentSeason?.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Rounds</p>
-                  <p className="font-semibold text-gray-900">{currentSeason?.totalRounds || 38}</p>
+            {/* Current Season & Tournament Info */}
+            {loadingTournament ? (
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-[#9580FF] mx-auto mb-2"></div>
+                <p className="text-sm text-gray-600">Loading tournament details...</p>
+              </div>
+            ) : tournamentInfo ? (
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Season</p>
+                    <p className="font-semibold text-gray-900">{currentSeason?.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Tournament</p>
+                    <p className="font-semibold text-gray-900">{tournamentInfo.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Rounds Generated</p>
+                    <p className="font-semibold text-gray-900">{tournamentInfo.totalRounds} of {tournamentInfo.plannedRounds}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Fixtures</p>
+                    <p className="font-semibold text-gray-900">{tournamentInfo.fixturesGenerated} fixtures</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Latest Round</p>
+                    <p className="font-semibold text-gray-900">Round {tournamentInfo.maxRound}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Mid-Season Round</p>
+                    <p className="font-semibold text-[#9580FF]">Round {Math.floor(tournamentInfo.plannedRounds / 2)}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
+                <p className="text-sm text-amber-800">No primary tournament found with fixtures for this season</p>
+              </div>
+            )}
 
             {/* Round Number Input */}
             <div>
@@ -199,9 +280,11 @@ export default function MidSeasonSalaryPage() {
                 className="block w-full px-4 py-3 rounded-2xl border-2 border-gray-200 bg-white shadow-sm focus:ring-4 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
                 placeholder="Enter current round number"
               />
-              <p className="mt-2 text-sm text-gray-500">
-                Mid-season is typically at Round {Math.floor((currentSeason?.totalRounds || 38) / 2)}
-              </p>
+              {tournamentInfo && (
+                <p className="mt-2 text-sm text-gray-500">
+                  Mid-season is typically at Round {Math.floor(tournamentInfo.plannedRounds / 2)}
+                </p>
+              )}
             </div>
 
             {/* Warning */}

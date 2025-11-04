@@ -208,7 +208,7 @@ export default function MatchDayManagementPage() {
       }
       
       // Start the round via API
-      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -270,7 +270,7 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
       
-      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -317,7 +317,7 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
       
-      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -374,7 +374,7 @@ export default function MatchDayManagementPage() {
       const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
       
-      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -439,7 +439,7 @@ export default function MatchDayManagementPage() {
       const minutes = istTime.getUTCMinutes().toString().padStart(2, '0');
       const currentISTTime = `${hours}:${minutes}`;
       
-      const response = await fetchWithTokenRefresh(/api/round-deadlines', {
+      const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

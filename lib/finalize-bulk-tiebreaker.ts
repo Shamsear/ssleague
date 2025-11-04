@@ -178,7 +178,24 @@ export async function finalizeBulkTiebreaker(
     console.log(`✅ Bulk tiebreaker ${tiebreakerId} finalized. Winner: Team ${tiebreaker.current_highest_team_id}, Amount: £${winningAmount}`);
     console.log(`✅ Updated both bulk_tiebreakers and tiebreakers tables`);
     
-    // Update team balance and log transaction
+    // Update Neon teams table - deduct from football_budget, increase football_spent
+    try {
+      await sql`
+        UPDATE teams
+        SET 
+          football_spent = football_spent + ${winningAmount},
+          football_budget = football_budget - ${winningAmount},
+          football_players_count = football_players_count + 1,
+          updated_at = NOW()
+        WHERE id = ${tiebreaker.current_highest_team_id}
+        AND season_id = ${seasonId}
+      `;
+      console.log(`✅ Updated Neon teams table for ${tiebreaker.current_highest_team_id}`);
+    } catch (error) {
+      console.error(`❌ Error updating Neon teams table:`, error);
+    }
+    
+    // Update team balance and log transaction in Firebase
     const adminDb = getFirestore();
     const teamSeasonId = `${tiebreaker.current_highest_team_id}_${seasonId}`;
     const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);

@@ -74,7 +74,7 @@ export default function LineupHistoryPage() {
 
   const fetchSeasons = async () => {
     try {
-      const response = await fetchWithTokenRefresh(/api/seasons?status=active');
+      const response = await fetchWithTokenRefresh('/api/seasons?status=active');
       const data = await response.json();
       if (data.success && data.seasons.length > 0) {
         setSeasons(data.seasons);

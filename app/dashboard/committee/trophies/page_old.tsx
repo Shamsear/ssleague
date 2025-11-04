@@ -66,7 +66,7 @@ export default function TrophyManagementPage() {
 
   const fetchSeasons = async () => {
     try {
-      const res = await fetchWithTokenRefresh(/api/seasons');
+      const res = await fetchWithTokenRefresh('/api/seasons');
       const data = await res.json();
       if (data.success) {
         setSeasons(data.seasons || []);
@@ -116,7 +116,7 @@ export default function TrophyManagementPage() {
     
     setAwarding(true);
     try {
-      const res = await fetchWithTokenRefresh(/api/trophies/award', {
+      const res = await fetchWithTokenRefresh('/api/trophies/award', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ season_id: selectedSeason })
@@ -169,7 +169,7 @@ export default function TrophyManagementPage() {
     }
     
     try {
-      const res = await fetchWithTokenRefresh(/api/trophies/add', {
+      const res = await fetchWithTokenRefresh('/api/trophies/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

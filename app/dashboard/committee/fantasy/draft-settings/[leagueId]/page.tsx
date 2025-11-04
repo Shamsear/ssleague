@@ -74,7 +74,7 @@ export default function DraftSettingsPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/draft/settings', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/draft/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

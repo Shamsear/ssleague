@@ -102,7 +102,7 @@ export default function TransfersManagementPage() {
 
     setIsCreating(true);
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/transfer-windows', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/transfer-windows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -174,7 +174,7 @@ export default function TransfersManagementPage() {
 
     setSaving(true);
     try {
-      const res = await fetchWithTokenRefresh(/api/fantasy/transfers/settings', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/transfers/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -207,7 +207,7 @@ export default function TransfersManagementPage() {
 
     const newStatus = !settings.is_transfer_window_open;
     try {
-      const res = await fetchWithTokenRefresh(/api/fantasy/transfers/settings', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/transfers/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

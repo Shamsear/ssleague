@@ -72,7 +72,7 @@ export default function RoundsManagementPage() {
         }
 
         // Fetch available positions from auction eligible players
-        const playersResponse = await fetchWithTokenRefresh(/api/players?is_auction_eligible=true');
+        const playersResponse = await fetchWithTokenRefresh('/api/players?is_auction_eligible=true');
         const { success, data } = await playersResponse.json();
         if (success && data.length > 0) {
           const positions = [...new Set(data.map((p: any) => p.position).filter(Boolean))];
@@ -172,7 +172,7 @@ export default function RoundsManagementPage() {
     const durationSeconds = Math.round(parseFloat(formData.duration_hours) * 3600);
 
     try {
-      const response = await fetchWithTokenRefresh(/api/rounds', {
+      const response = await fetchWithTokenRefresh('/api/rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -72,7 +72,7 @@ export default function BudgetPlannerPage() {
       
       try {
         setIsLoadingBudget(true);
-        const response = await fetchWithTokenRefresh(/api/team/dashboard');
+        const response = await fetchWithTokenRefresh('/api/team/dashboard');
         const data = await response.json();
         
         if (data.success && data.data) {

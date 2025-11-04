@@ -52,7 +52,7 @@ function CategoriesPageContent() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetchWithTokenRefresh(/api/categories');
+        const response = await fetchWithTokenRefresh('/api/categories');
         const result = await response.json();
         
         if (result.success) {

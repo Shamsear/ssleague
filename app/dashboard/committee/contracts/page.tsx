@@ -152,7 +152,7 @@ export default function ContractsPage() {
       const firstDoc = contractDocs[0];
       
       // Call the release API to properly handle the contract cancellation
-      const response = await fetchWithTokenRefresh(/api/players/release', {
+      const response = await fetchWithTokenRefresh('/api/players/release', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

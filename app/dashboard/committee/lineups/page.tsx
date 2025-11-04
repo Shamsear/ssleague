@@ -66,7 +66,7 @@ export default function CommitteeLineupMonitoringPage() {
 
   const fetchSeasons = async () => {
     try {
-      const response = await fetchWithTokenRefresh(/api/seasons?status=active');
+      const response = await fetchWithTokenRefresh('/api/seasons?status=active');
       const data = await response.json();
       if (data.success && data.seasons.length > 0) {
         setSeasons(data.seasons);
@@ -185,7 +185,7 @@ export default function CommitteeLineupMonitoringPage() {
 
     try {
       setProcessing(true);
-      const response = await fetchWithTokenRefresh(/api/lineups/process-locks', {
+      const response = await fetchWithTokenRefresh('/api/lineups/process-locks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -51,7 +51,7 @@ export default function PlayerSelectionPreviewPage() {
         const parsed: PreviewData = JSON.parse(storedData)
         
         // Fetch current player statuses from Neon API
-        const playersResponse = await fetchWithTokenRefresh(/api/players')
+        const playersResponse = await fetchWithTokenRefresh('/api/players')
         const { data: players } = await playersResponse.json()
         
         const playerStatusMap = new Map<string, boolean>()
@@ -102,7 +102,7 @@ export default function PlayerSelectionPreviewPage() {
     setApplying(true)
     try {
       // Fetch all players to get IDs
-      const playersResponse = await fetchWithTokenRefresh(/api/players')
+      const playersResponse = await fetchWithTokenRefresh('/api/players')
       const { data: players } = await playersResponse.json()
       
       const playerIdMap = new Map<string, number>() // player_id -> id
@@ -126,7 +126,7 @@ export default function PlayerSelectionPreviewPage() {
       const toDisable = playerIdsToUpdate.filter(p => !p!.status).map(p => p!.id)
 
       if (toEnable.length > 0) {
-        const response = await fetchWithTokenRefresh(/api/players/bulk', {
+        const response = await fetchWithTokenRefresh('/api/players/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -141,7 +141,7 @@ export default function PlayerSelectionPreviewPage() {
       }
 
       if (toDisable.length > 0) {
-        const response = await fetchWithTokenRefresh(/api/players/bulk', {
+        const response = await fetchWithTokenRefresh('/api/players/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

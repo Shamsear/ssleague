@@ -121,7 +121,7 @@ export default function ManagePlayersPage() {
     }
 
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -165,7 +165,7 @@ export default function ManagePlayersPage() {
     const player = selectedPlayer as DraftedPlayer;
 
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -211,7 +211,7 @@ export default function ManagePlayersPage() {
     const player2 = swapPlayer;
 
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,7 +250,7 @@ export default function ManagePlayersPage() {
     }
 
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/players/manage', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/players/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

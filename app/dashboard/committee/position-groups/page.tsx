@@ -86,7 +86,7 @@ export default function PositionGroupsPage() {
   const fetchPlayers = async () => {
     try {
       setLoading(true);
-      const response = await fetchWithTokenRefresh(/api/players');
+      const response = await fetchWithTokenRefresh('/api/players');
       const { data: players, success } = await response.json();
 
       if (success) {

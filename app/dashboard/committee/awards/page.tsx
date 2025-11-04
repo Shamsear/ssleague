@@ -179,7 +179,7 @@ export default function AwardsManagementPage() {
         notes: '',
       };
 
-      const response = await fetchWithTokenRefresh(/api/awards', {
+      const response = await fetchWithTokenRefresh('/api/awards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

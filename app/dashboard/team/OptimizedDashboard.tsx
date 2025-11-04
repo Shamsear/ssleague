@@ -168,7 +168,7 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
     if (!confirmed) return;
     
     try {
-      const response = await fetchWithTokenRefresh(/api/team/bids/clear-all', {
+      const response = await fetchWithTokenRefresh('/api/team/bids/clear-all', {
         method: 'POST',
       });
       

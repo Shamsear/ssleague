@@ -163,7 +163,7 @@ export default function TrophyManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetchWithTokenRefresh(/api/trophies/award', {
+      const res = await fetchWithTokenRefresh('/api/trophies/award', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ season_id: userSeasonId })
@@ -220,7 +220,7 @@ export default function TrophyManagementPage() {
     setSuccess(null);
     
     try {
-      const res = await fetchWithTokenRefresh(/api/trophies/add', {
+      const res = await fetchWithTokenRefresh('/api/trophies/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

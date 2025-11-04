@@ -89,7 +89,7 @@ export default function AssignRealPlayerPage() {
       const endSeason = formData.startSeason.replace(/\d+/, endSeasonNum.toString());
 
       // Call API to assign real player
-      const response = await fetchWithTokenRefresh(/api/contracts/assign', {
+      const response = await fetchWithTokenRefresh('/api/contracts/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -4,8 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import {
   ArrowLeftRight,
   Shield,
   DollarSign,
@@ -174,7 +174,7 @@ export default function TeamTransfersPage() {
       }
 
       // Get real teams for team affiliation changes
-      const teamsRes = await fetchWithTokenRefresh(/api/teams/registered');
+      const teamsRes = await fetchWithTokenRefresh('/api/teams/registered');
       if (teamsRes.ok) {
         const teamsData = await teamsRes.json();
         setRealTeams(teamsData.teams || []);
@@ -201,7 +201,7 @@ export default function TeamTransfersPage() {
     
     setIsSavingCaptains(true);
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/squad/set-captain', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,7 +247,7 @@ export default function TeamTransfersPage() {
     
     setIsSavingTeam(true);
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/teams/select-supported', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/teams/select-supported', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -295,7 +295,7 @@ export default function TeamTransfersPage() {
         return;
       }
       
-      const res = await fetchWithTokenRefresh(/api/fantasy/transfers/make-transfer', {
+      const res = await fetchWithTokenRefresh('/api/fantasy/transfers/make-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

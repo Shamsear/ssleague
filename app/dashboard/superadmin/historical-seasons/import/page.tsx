@@ -57,7 +57,7 @@ export default function ImportHistoricalSeason() {
       formData.append('file', selectedFile);
       formData.append('seasonNumber', seasonNumber.trim());
       
-      const response = await fetchWithTokenRefresh(/api/seasons/historical/upload', {
+      const response = await fetchWithTokenRefresh('/api/seasons/historical/upload', {
         method: 'POST',
         body: formData,
       });
@@ -90,7 +90,7 @@ export default function ImportHistoricalSeason() {
     try {
       setIsDownloadingTemplate(true);
       
-      const response = await fetchWithTokenRefresh(/api/seasons/historical/template');
+      const response = await fetchWithTokenRefresh('/api/seasons/historical/template');
       
       if (!response.ok) {
         throw new Error('Failed to download template');

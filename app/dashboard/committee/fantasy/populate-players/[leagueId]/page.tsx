@@ -56,7 +56,7 @@ export default function PopulateFantasyPlayersPage() {
     setResult(null);
 
     try {
-      const response = await fetchWithTokenRefresh(/api/fantasy/players/populate', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/players/populate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

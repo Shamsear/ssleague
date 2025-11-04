@@ -158,7 +158,7 @@ export default function TeamMembersPage() {
         setTeams(teamsData);
         
         // Fetch categories
-        const categoriesRes = await fetchWithTokenRefresh(/api/categories');
+        const categoriesRes = await fetchWithTokenRefresh('/api/categories');
         const categoriesData = await categoriesRes.json();
         if (categoriesData.success) setCategories(categoriesData.data);
       } catch (error) {

@@ -81,7 +81,7 @@ export default function CreateFantasyLeaguePage() {
         }
         
         // Fetch seasons from PostgreSQL API
-        const seasonsResponse = await fetchWithTokenRefresh(/api/seasons');
+        const seasonsResponse = await fetchWithTokenRefresh('/api/seasons');
         if (!seasonsResponse.ok) {
           throw new Error('Failed to fetch seasons');
         }

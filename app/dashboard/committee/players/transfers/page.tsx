@@ -138,7 +138,7 @@ export default function PlayerTransfersPage() {
     setSuccess(null);
 
     try {
-      const response = await fetchWithTokenRefresh(/api/players/release', {
+      const response = await fetchWithTokenRefresh('/api/players/release', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -184,7 +184,7 @@ export default function PlayerTransfersPage() {
     setSuccess(null);
 
     try {
-      const response = await fetchWithTokenRefresh(/api/players/transfer', {
+      const response = await fetchWithTokenRefresh('/api/players/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -242,7 +242,7 @@ export default function PlayerTransfersPage() {
     setSuccess(null);
 
     try {
-      const response = await fetchWithTokenRefresh(/api/players/swap', {
+      const response = await fetchWithTokenRefresh('/api/players/swap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

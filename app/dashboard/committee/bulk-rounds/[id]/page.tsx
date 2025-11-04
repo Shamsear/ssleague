@@ -324,7 +324,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       if (!showAddPlayers) return;
 
       try {
-        const response = await fetchWithTokenRefresh(/api/players?is_auction_eligible=true');
+        const response = await fetchWithTokenRefresh('/api/players?is_auction_eligible=true');
         const { success, data } = await response.json();
 
         if (success) {
