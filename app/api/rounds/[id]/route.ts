@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { adminDb } from '@/lib/firebase/admin';
 import { decryptBidData } from '@/lib/encryption';
+import { broadcastWebSocket } from '@/lib/websocket/broadcast';
 
 const sql = neon(process.env.NEON_DATABASE_URL!);
 
@@ -304,6 +305,20 @@ export async function PATCH(
         { status: 404 }
       );
     }
+
+    // Broadcast WebSocket event for round update
+    const updatedData = updatedRound[0];
+    await broadcastWebSocket(`season:${updatedData.season_id}`, {
+      type: end_time !== undefined ? 'round_time_extended' : 'round_updated',
+      data: {
+        round_id: roundId,
+        status: updatedData.status,
+        end_time: updatedData.end_time,
+        position: updatedData.position,
+      },
+    });
+
+    console.log(`📢 Broadcasted round update for round ${roundId}`);
 
     return NextResponse.json({
       success: true,

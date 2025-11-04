@@ -249,36 +249,33 @@ export default function RoundsManagementPage() {
     fetchAllData();
   }, [fetchAllData]);
 
-  // WebSocket for real-time updates
+  // WebSocket for real-time updates (no polling needed)
   useWebSocket({
     channel: `season:${currentSeasonId}`,
     enabled: !!currentSeasonId,
     onMessage: useCallback((message: any) => {
       console.log('🔴 Rounds WebSocket message:', message);
       
-      if (
-        message.type === 'bid_placed' ||
-        message.type === 'bid_cancelled' ||
-        message.type === 'round_finalized' ||
-        message.type === 'round_updated' ||
-        message.type === 'round_status_changed'
-      ) {
-        // Refetch rounds when there's an update
-        fetchRounds(false);
+      // Handle different WebSocket message types
+      switch (message.type) {
+        case 'bid_placed':
+        case 'bid_cancelled':
+        case 'round_finalized':
+        case 'round_updated':
+        case 'round_status_changed':
+        case 'round_created':
+        case 'round_time_extended':
+        case 'tiebreaker_created':
+        case 'tiebreaker_updated':
+          // Refetch rounds when there's an update
+          console.log('🔄 Fetching rounds due to WebSocket update:', message.type);
+          fetchRounds(false);
+          break;
+        default:
+          console.log('🔵 Unhandled WebSocket message type:', message.type);
       }
     }, [fetchRounds]),
   });
-
-  // Polling interval as fallback (every 3 seconds)
-  useEffect(() => {
-    if (!currentSeasonId) return;
-
-    const interval = setInterval(() => {
-      fetchRounds(false);
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [currentSeasonId, fetchRounds]);
 
   // Timer management for active rounds
   useEffect(() => {
