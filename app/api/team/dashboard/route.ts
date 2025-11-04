@@ -437,6 +437,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch tiebreakers from Neon (if any)
     // Include both regular tiebreakers (team_id matches) and bulk round tiebreakers (composite ID pattern)
+    // Note: Filter by round's season_id instead of tiebreaker's season_id (which may be null)
     const tiebreakersResult = dbTeamId ? await sql`
       SELECT 
         t.*,
@@ -453,11 +454,11 @@ export async function GET(request: NextRequest) {
         tt.submitted_at as team_submitted_at
       FROM tiebreakers t
       INNER JOIN footballplayers p ON t.player_id = p.id
-      LEFT JOIN rounds r ON t.round_id = r.id
+      INNER JOIN rounds r ON t.round_id = r.id
       INNER JOIN team_tiebreakers tt ON t.id = tt.tiebreaker_id
       WHERE (tt.team_id = ${dbTeamId} OR tt.id LIKE ${userId + '_%'})
       AND t.status = 'active'
-      AND t.season_id = ${seasonId}
+      AND r.season_id = ${seasonId}
       ORDER BY t.created_at DESC
     ` : [];
     
@@ -478,6 +479,7 @@ export async function GET(request: NextRequest) {
       status: tiebreaker.status,
       old_bid: tiebreaker.team_old_bid,
       new_bid: tiebreaker.team_new_bid,
+      new_amount: tiebreaker.team_new_bid, // Alias for frontend compatibility
       submitted: tiebreaker.team_submitted,
     }));
 
