@@ -21,6 +21,7 @@ interface Round {
   season_id: string;
   position: string;
   round_number?: number;
+  round_type?: string;
   max_bids_per_team: number;
   status: string;
   end_time: string;
@@ -128,13 +129,15 @@ export default function RoundsManagementPage() {
       // Process rounds
       const { success: roundsSuccess, data: roundsData } = await roundsResponse.json();
       if (roundsSuccess) {
-        const dataString = JSON.stringify(roundsData);
+        // Filter out bulk rounds - only show normal auction rounds
+        const normalRounds = roundsData.filter((r: Round) => r.round_type !== 'bulk');
+        const dataString = JSON.stringify(normalRounds);
         if (dataString !== previousRoundsRef.current) {
           previousRoundsRef.current = dataString;
-          setRounds(roundsData);
+          setRounds(normalRounds);
           
           // Initialize add time inputs for active rounds
-          roundsData.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+          normalRounds.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
             setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
           });
         }
@@ -197,13 +200,15 @@ export default function RoundsManagementPage() {
 
       const { success, data } = await roundsResponse.json();
       if (success) {
-        const dataString = JSON.stringify(data);
+        // Filter out bulk rounds - only show normal auction rounds
+        const normalRounds = data.filter((r: Round) => r.round_type !== 'bulk');
+        const dataString = JSON.stringify(normalRounds);
         if (dataString !== previousRoundsRef.current) {
           previousRoundsRef.current = dataString;
-          setRounds(data);
+          setRounds(normalRounds);
           
           // Initialize add time inputs for active rounds
-          data.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+          normalRounds.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
             setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
           });
         }
