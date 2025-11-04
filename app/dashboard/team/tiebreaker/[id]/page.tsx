@@ -219,10 +219,24 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
       
       const result = await response.json();
       
+      console.log('📬 API Response:', result);
+      
       if (result.success) {
+        // Clear any previous errors
+        setError('');
+        
+        // Log success with details
+        if (result.message) {
+          console.log('✅ Success:', result.message);
+        }
+        if (result.data) {
+          console.log('📊 Details:', result.data);
+        }
+        
         // Refresh to show submitted state
         fetchTiebreakerDetails();
       } else {
+        // Show error message from API
         setError(result.error || 'Failed to submit bid');
       }
     } catch (error) {
