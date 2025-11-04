@@ -186,7 +186,86 @@ export async function POST(
       AND player_id = ${player_id}
     `;
 
+    // 🆕 CREATE BULK TIEBREAKER INFRASTRUCTURE
+    // This enables the "Last Person Standing" auction system
+    
+    // Get player details for bulk tiebreaker
+    const playerDetails = await sql`
+      SELECT rp.player_name, fp.position, fp.team_name as player_team
+      FROM round_players rp
+      LEFT JOIN footballplayers fp ON rp.player_id = fp.id
+      WHERE rp.round_id = ${roundId} AND rp.player_id = ${player_id}
+    `;
+    
+    const playerInfo = playerDetails[0] || {};
+    
+    // Create bulk_tiebreakers record (matching actual table schema)
+    // Columns: id, bulk_round_id, season_id, player_id, player_name, original_amount, 
+    //          tied_teams, status, duration_minutes, winning_team_id, winning_amount, 
+    //          winning_bid, created_at, updated_at, resolved_at
+    await sql`
+      INSERT INTO bulk_tiebreakers (
+        id,
+        bulk_round_id,
+        season_id,
+        player_id,
+        player_name,
+        original_amount,
+        tied_teams,
+        status,
+        duration_minutes,
+        created_at,
+        updated_at
+      ) VALUES (
+        ${tiebreakerId},
+        ${roundId},
+        ${round.season_id},
+        ${player_id},
+        ${playerInfo.player_name || playerName},
+        ${round.base_price},
+        ${JSON.stringify(tiedTeams)}::jsonb,
+        'pending',
+        1440,
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        bulk_round_id = EXCLUDED.bulk_round_id,
+        season_id = EXCLUDED.season_id,
+        player_name = EXCLUDED.player_name,
+        updated_at = NOW()
+    `;
+    
+    // Create bulk_tiebreaker_teams records for participating teams
+    for (const bid of bidsResult) {
+      await sql`
+        INSERT INTO bulk_tiebreaker_teams (
+          tiebreaker_id,
+          team_id,
+          team_name,
+          season_id,
+          status,
+          current_bid,
+          joined_at
+        ) VALUES (
+          ${tiebreakerId},
+          ${bid.team_id},
+          ${bid.team_name},
+          ${round.season_id},
+          'active',
+          ${round.base_price},
+          NOW()
+        )
+        ON CONFLICT (tiebreaker_id, team_id) DO UPDATE SET
+          team_name = EXCLUDED.team_name,
+          season_id = EXCLUDED.season_id,
+          status = 'active',
+          current_bid = EXCLUDED.current_bid
+      `;
+    }
+
     console.log(`✅ Created tiebreaker ${tiebreakerId} for ${playerName} with ${bidsResult.length} teams`);
+    console.log(`✅ Created bulk tiebreaker infrastructure for Last Person Standing auction`);
 
     // Broadcast tiebreaker creation via WebSocket
     if (global.wsBroadcast) {

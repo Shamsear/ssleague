@@ -28,19 +28,55 @@ export async function GET(
 
     const round = rounds[0];
 
-    // Fetch players for bulk rounds from round_players table
+    // Fetch players for bulk rounds from round_players table with tiebreaker info
     let roundPlayers = [];
     if (round.round_type === 'bulk') {
       roundPlayers = await sql`
         SELECT 
           rp.*,
-          COUNT(rb.id) as bid_count
+          COUNT(rb.id) as bid_count,
+          t.id as tiebreaker_id,
+          t.status as tiebreaker_status,
+          t.created_at as tiebreaker_created_at
         FROM round_players rp
         LEFT JOIN round_bids rb ON rp.round_id::text = rb.round_id::text AND rp.player_id = rb.player_id
+        LEFT JOIN tiebreakers t ON rp.player_id = t.player_id AND t.round_id::text = ${roundId}
         WHERE rp.round_id::text = ${roundId}
-        GROUP BY rp.id
+        GROUP BY rp.id, t.id, t.status, t.created_at
         ORDER BY rp.status, rp.player_name
       `;
+      
+      // For each player with a tiebreaker, fetch tiebreaker details
+      for (let i = 0; i < roundPlayers.length; i++) {
+        if (roundPlayers[i].tiebreaker_id) {
+          const tiebreakerDetails = await sql`
+            SELECT 
+              tt.*
+            FROM team_tiebreakers tt
+            WHERE tt.tiebreaker_id = ${roundPlayers[i].tiebreaker_id}
+            ORDER BY tt.submitted DESC, tt.new_bid_amount DESC NULLS LAST
+          `;
+          
+          const submissions = tiebreakerDetails.map(tb => ({
+            team_id: tb.team_id,
+            team_name: tb.team_name,
+            new_bid_amount: tb.new_bid_amount || 0,
+            submitted: tb.submitted,
+          }));
+          
+          const highestSubmission = submissions[0];
+          
+          roundPlayers[i].tiebreaker = {
+            id: roundPlayers[i].tiebreaker_id,
+            status: roundPlayers[i].tiebreaker_status,
+            created_at: roundPlayers[i].tiebreaker_created_at,
+            team_count: tiebreakerDetails.length,
+            highest_bid: highestSubmission?.new_bid_amount,
+            highest_bidder: highestSubmission?.team_name,
+            submissions,
+          };
+        }
+      }
     }
 
     // Fetch bids for this round with player information

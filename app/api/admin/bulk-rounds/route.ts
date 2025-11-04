@@ -157,12 +157,13 @@ export async function POST(request: NextRequest) {
     
     // Build bulk insert values
     const playerValues = eligiblePlayers.map((player: any) => 
-      `('${createdRoundId}', '${player.player_id}', '${player.name.replace(/'/g, "''")}', '${player.position || ''}', '${player.position_group || ''}', ${base_price}, 'pending')`
+      `('${createdRoundId}', '${season_id}', '${player.player_id}', '${player.name.replace(/'/g, "''")}', '${player.position || ''}', '${player.position_group || ''}', ${base_price}, 'pending')`
     ).join(',');
 
     await sql.unsafe(`
       INSERT INTO round_players (
-        round_id, 
+        round_id,
+        season_id,
         player_id, 
         player_name, 
         position, 

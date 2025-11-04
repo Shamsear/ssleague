@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
@@ -64,6 +64,9 @@ export default function TeamBulkTiebreakerPage() {
   const [teamBalance, setTeamBalance] = useState(1000); // Mock balance
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  
+  // Use ref to store fetchData to avoid dependency issues
+  const fetchDataRef = useRef<() => Promise<void>>();
 
   // Fetch data function (to be called on mount and WebSocket updates)
   const fetchData = useCallback(async () => {
@@ -72,30 +75,25 @@ export default function TeamBulkTiebreakerPage() {
 
     setIsLoading(true);
     try {
-      console.log('🔍 Fetching tiebreaker:', tiebreakerId);
-      const response = await fetchWithTokenRefresh(`/api/tiebreakers/${tiebreakerId}`);
+      console.log('🔍 Fetching bulk tiebreaker:', tiebreakerId);
+      const response = await fetchWithTokenRefresh(`/api/team/bulk-tiebreakers/${tiebreakerId}`);
       const result = await response.json();
       console.log('📦 API Response:', result);
       const { success, data } = result;
 
       if (success && data) {
-        console.log('✅ Tiebreaker data loaded:', data);
+        console.log('✅ Bulk tiebreaker data loaded:', data);
         
-        // API returns data.tiebreaker, not data directly
-        const tiebreakerData = data.tiebreaker;
-        const teamTiebreakers = data.teamTiebreakers || [];
+        // For bulk tiebreakers, data structure is different
+        const tiebreakerData = data;
+        const teams = data.teams || [];
         
-        // Find the highest bid from team_tiebreakers
-        const highestBid = teamTiebreakers.reduce((max: number, tt: any) => {
-          const bidAmount = tt.new_bid_amount || 0;
-          return bidAmount > max ? bidAmount : max;
-        }, tiebreakerData.original_amount || 0);
+        // Current highest bid is already in the data - ensure it's a valid number
+        const highestBid = tiebreakerData.current_highest_bid || tiebreakerData.tie_amount || tiebreakerData.original_amount || 10;
         
-        // Find the highest bidder
-        const highestBidder = teamTiebreakers.find((tt: any) => tt.new_bid_amount === highestBid && tt.submitted);
-        
-        // Find current user's last bid
-        const myBid = teamTiebreakers.find((tt: any) => tt.is_current_user);
+        // Find current user's team
+        const myTeam = teams.find((t: any) => t.is_current_user);
+        const myLastBid = myTeam?.current_bid || null;
         
         setTiebreaker({
           id: tiebreakerData.id,
@@ -103,20 +101,13 @@ export default function TeamBulkTiebreakerPage() {
           player_id: tiebreakerData.player_id,
           player_name: tiebreakerData.player_name,
           position: tiebreakerData.position,
-          original_amount: tiebreakerData.original_amount,
+          original_amount: tiebreakerData.tie_amount || tiebreakerData.original_amount,
           current_highest_bid: highestBid,
-          highest_bidder_team_id: highestBidder?.team_id,
-          highest_bidder_team_name: highestBidder?.team_name,
+          highest_bidder_team_id: tiebreakerData.current_highest_team_id,
+          highest_bidder_team_name: teams.find((t: any) => t.team_id === tiebreakerData.current_highest_team_id)?.team_name,
           status: tiebreakerData.status,
-          my_last_bid: myBid?.new_bid_amount,
-          bid_history: teamTiebreakers
-            .filter((tt: any) => tt.submitted)
-            .map((tt: any) => ({
-              team_id: tt.team_id,
-              team_name: tt.team_name,
-              amount: tt.new_bid_amount,
-              timestamp: tt.submitted,
-            })),
+          my_last_bid: myLastBid,
+          bid_history: tiebreakerData.bid_history || [],
         });
 
         setPlayer({
@@ -124,12 +115,12 @@ export default function TeamBulkTiebreakerPage() {
           name: tiebreakerData.player_name,
           position: tiebreakerData.position,
           team_name: tiebreakerData.player_team || '',
-          overall_rating: tiebreakerData.overall_rating || 0,
+          overall_rating: 0,
         });
         
         // Set team balance from current user's team data
-        if (myBid && myBid.team_balance) {
-          setTeamBalance(myBid.team_balance);
+        if (myTeam && myTeam.team_balance) {
+          setTeamBalance(myTeam.team_balance);
         }
 
         // Set default bid amount (current highest + 1)
@@ -146,6 +137,11 @@ export default function TeamBulkTiebreakerPage() {
       setIsLoading(false);
     }
   }, [tiebreakerId, loading, user]);
+  
+  // Update ref whenever fetchData changes
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+  }, [fetchData]);
 
   // ✅ Enable WebSocket for real-time tiebreaker bid updates
   const { isConnected } = useWebSocket({
@@ -154,10 +150,10 @@ export default function TeamBulkTiebreakerPage() {
     onMessage: useCallback((message: any) => {
       console.log('[Tiebreaker WS] Received:', message);
       // Refetch data when WebSocket update arrives
-      if (message.type !== 'subscribed') {
-        fetchData();
+      if (message.type !== 'subscribed' && fetchDataRef.current) {
+        fetchDataRef.current();
       }
-    }, [fetchData]),
+    }, []), // Empty deps - uses ref instead
   });
 
 
@@ -175,18 +171,11 @@ export default function TeamBulkTiebreakerPage() {
     fetchData();
   }, [fetchData]);
 
-  // Fast polling for real-time updates (500ms intervals)
-  // TODO: Replace with actual WebSocket server implementation for true real-time updates
-  // For now, this provides near-instant updates (0.5s delay max) for open auction
-  useEffect(() => {
-    if (!user || loading) return;
-    
-    const interval = setInterval(() => {
-      fetchData();
-    }, 500); // Poll every 500ms for very fast updates
-    
-    return () => clearInterval(interval);
-  }, [fetchData, user, loading]);
+  // Removed auto-refresh polling - relying on WebSocket for live updates
+  // Data will refresh when:
+  // 1. Page loads (initial fetch)
+  // 2. WebSocket receives updates from server
+  // 3. User places a bid (manual refresh after action)
 
   const handlePlaceBid = async () => {
     if (!tiebreaker) return;
@@ -220,18 +209,7 @@ export default function TeamBulkTiebreakerPage() {
       return;
     }
 
-    const confirmed = await showConfirm({
-      type: 'warning',
-      title: 'Place Bid',
-      message: `Place bid of £${amount} for ${tiebreaker.player_name}?`,
-      confirmText: 'Place Bid',
-      cancelText: 'Cancel'
-    });
-    
-    if (!confirmed) {
-      return;
-    }
-
+    // No confirmation needed - place bid immediately for faster bidding
     setIsSubmitting(true);
     
     // ⚡ OPTIMISTIC UPDATE - Update UI immediately for instant feedback
@@ -255,22 +233,21 @@ export default function TeamBulkTiebreakerPage() {
     setBidAmount((amount + 1).toString());
     
     try {
-      // TODO: Replace with actual API call
-      // const response = await fetchWithTokenRefresh(`/api/team/tiebreakers/${tiebreakerId}/bid`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ amount }),
-      // });
-      // const result = await response.json();
-      // if (!result.success) throw new Error(result.error);
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 100));
+      const response = await fetchWithTokenRefresh(`/api/team/bulk-tiebreakers/${tiebreakerId}/bid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bid_amount: amount }),
+      });
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to place bid');
+      }
 
       showAlert({
         type: 'success',
         title: 'Bid Placed',
-        message: 'Bid placed successfully! (Feature coming soon)'
+        message: `Your bid of £${amount} has been placed successfully!`
       });
       
       // ⚡ IMMEDIATE REFETCH - Get latest data from server immediately after bid
@@ -306,15 +283,19 @@ export default function TeamBulkTiebreakerPage() {
     }
 
     try {
-      // TODO: API call to withdraw
-      // const response = await fetch(`/api/team/tiebreakers/${tiebreakerId}/withdraw`, {
-      //   method: 'POST',
-      // });
+      const response = await fetchWithTokenRefresh(`/api/team/bulk-tiebreakers/${tiebreakerId}/withdraw`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to withdraw');
+      }
 
       showAlert({
         type: 'success',
         title: 'Withdrawn',
-        message: 'Withdrawn successfully! (Feature coming soon)'
+        message: result.data?.message || 'You have successfully withdrawn from this tiebreaker'
       });
       router.push('/dashboard/team');
     } catch (err) {

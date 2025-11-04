@@ -2,12 +2,14 @@ import Link from 'next/link';
 import HeroSection from './components/HeroSection';
 import HallOfFameSelector from './components/HallOfFameSelector';
 
+export const dynamic = 'force-dynamic';
+
 const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 async function fetchData() {
   try {
     // Check and finalize expired rounds (background task)
-    fetch(`${baseUrl}/api/public/check-rounds`, { cache: 'no-store' }).catch(() => {});
+    fetch(`${baseUrl}/api/public/check-rounds`, { next: { revalidate: 0 } }).catch(() => {});
     
     // Fetch all data in parallel
     const [
@@ -18,12 +20,12 @@ async function fetchData() {
       awardsRes,
       seasonRes
     ] = await Promise.all([
-      fetch(`${baseUrl}/api/public/league-stats`, { cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/hall-of-fame`, { cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/league-records`, { cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/champions`, { cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/award-winners`, { cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/current-season`, { cache: 'no-store' })
+      fetch(`${baseUrl}/api/public/league-stats`, { next: { revalidate: 300 } }),
+      fetch(`${baseUrl}/api/public/hall-of-fame`, { next: { revalidate: 300 } }),
+      fetch(`${baseUrl}/api/public/league-records`, { next: { revalidate: 300 } }),
+      fetch(`${baseUrl}/api/public/champions`, { next: { revalidate: 300 } }),
+      fetch(`${baseUrl}/api/public/award-winners`, { next: { revalidate: 300 } }),
+      fetch(`${baseUrl}/api/public/current-season`, { next: { revalidate: 60 } })
     ]);
     
     const [
@@ -55,7 +57,7 @@ async function fetchData() {
     // Fetch current season standings if season exists
     let topTeams: any[] = [];
     if (currentSeason) {
-      const teamsRes = await fetch(`${baseUrl}/api/team/all?season_id=${currentSeason.id}`, { cache: 'no-store' });
+      const teamsRes = await fetch(`${baseUrl}/api/team/all?season_id=${currentSeason.id}`, { next: { revalidate: 300 } });
       const teamsData = await teamsRes.json();
       if (teamsData.success && teamsData.data?.teamStats) {
         topTeams = teamsData.data.teamStats.sort((a: any, b: any) => a.rank - b.rank).slice(0, 3);

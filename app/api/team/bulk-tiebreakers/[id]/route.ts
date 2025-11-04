@@ -60,27 +60,23 @@ export async function GET(
 
     console.log(`📊 Team ${userId} viewing tiebreaker ${tiebreakerId}`);
 
-    // Get tiebreaker details
+    // Get tiebreaker details (matching actual bulk_tiebreakers schema)
     const tiebreakerData = await sql`
       SELECT 
         bt.id,
-        bt.round_id,
+        bt.bulk_round_id,
+        bt.season_id,
+        bt.player_id,
         bt.player_name,
-        bt.player_team,
-        bt.player_position,
+        bt.original_amount,
+        bt.tied_teams,
         bt.status,
-        bt.tie_amount,
-        bt.tied_team_count,
-        bt.current_highest_bid,
-        bt.current_highest_team_id,
-        bt.start_time,
-        bt.last_activity_time,
-        bt.max_end_time,
+        bt.duration_minutes,
+        bt.winning_team_id,
+        bt.winning_amount,
         bt.created_at,
-        ar.round_name,
-        ar.season_id
+        bt.updated_at
       FROM bulk_tiebreakers bt
-      LEFT JOIN rounds ar ON bt.round_id = ar.id
       WHERE bt.id = ${tiebreakerId}
     `;
 
@@ -92,6 +88,39 @@ export async function GET(
     }
 
     const tiebreaker = tiebreakerData[0];
+    
+    // Get player details from footballplayers table
+    const playerDetails = await sql`
+      SELECT 
+        id,
+        name,
+        position,
+        team_name as player_team,
+        overall_rating
+      FROM footballplayers
+      WHERE id = ${tiebreaker.player_id}
+    `;
+    
+    const player = playerDetails[0] || {
+      name: tiebreaker.player_name,
+      position: '',
+      player_team: '',
+      overall_rating: 0
+    };
+    
+    // Get team_id from teams table using Firebase UID
+    const teamResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId}
+    `;
+    
+    if (teamResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found' },
+        { status: 404 }
+      );
+    }
+    
+    const teamId = teamResult[0].id;
 
     // Check if team is participating
     const myTeamData = await sql`
@@ -102,7 +131,7 @@ export async function GET(
         withdrawn_at
       FROM bulk_tiebreaker_teams
       WHERE tiebreaker_id = ${tiebreakerId}
-      AND team_id = ${userId}
+      AND team_id = ${teamId}
     `;
 
     if (myTeamData.length === 0) {
@@ -145,50 +174,55 @@ export async function GET(
     // Calculate statistics
     const activeTeamsCount = participatingTeams.filter(t => t.status === 'active').length;
     const withdrawnTeamsCount = participatingTeams.filter(t => t.status === 'withdrawn').length;
+    
+    // Find current highest bid from teams
+    const currentHighestBid = Math.max(
+      tiebreaker.original_amount,
+      ...participatingTeams.map(t => t.current_bid || 0)
+    );
+    
+    const highestBidder = participatingTeams.find(t => t.current_bid === currentHighestBid);
 
     // Determine if user can bid or withdraw
     const canBid = tiebreaker.status === 'active' && myTeam.status === 'active';
     const canWithdraw = tiebreaker.status === 'active' 
       && myTeam.status === 'active' 
-      && tiebreaker.current_highest_team_id !== userId;
+      && highestBidder?.team_id !== teamId;
 
-    const youAreHighest = tiebreaker.current_highest_team_id === userId;
-
-    // Time remaining calculation
-    let timeRemaining = null;
-    if (tiebreaker.max_end_time) {
-      const now = new Date();
-      const maxEnd = new Date(tiebreaker.max_end_time);
-      const diffMs = maxEnd.getTime() - now.getTime();
-      if (diffMs > 0) {
-        const hours = Math.floor(diffMs / (1000 * 60 * 60));
-        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        timeRemaining = `${hours}h ${minutes}m`;
-      } else {
-        timeRemaining = 'EXPIRED';
-      }
-    }
+    const youAreHighest = highestBidder?.team_id === teamId;
 
     return NextResponse.json({
       success: true,
       data: {
-        tiebreaker: {
-          id: tiebreaker.id,
-          player_name: tiebreaker.player_name,
-          player_team: tiebreaker.player_team,
-          player_position: tiebreaker.player_position,
-          status: tiebreaker.status,
-          round_name: tiebreaker.round_name,
-          season_id: tiebreaker.season_id,
-          tie_amount: tiebreaker.tie_amount,
-          tied_team_count: tiebreaker.tied_team_count,
-          current_highest_bid: tiebreaker.current_highest_bid,
-          current_highest_team_id: tiebreaker.current_highest_team_id,
-          start_time: tiebreaker.start_time,
-          last_activity_time: tiebreaker.last_activity_time,
-          max_end_time: tiebreaker.max_end_time,
-          time_remaining: timeRemaining,
-        },
+        id: tiebreaker.id,
+        round_id: tiebreaker.bulk_round_id,
+        player_id: tiebreaker.player_id,
+        player_name: player.name || tiebreaker.player_name,
+        position: player.position || '',
+        player_team: player.player_team || '',
+        overall_rating: player.overall_rating || 0,
+        status: tiebreaker.status,
+        season_id: tiebreaker.season_id,
+        tie_amount: tiebreaker.original_amount,
+        original_amount: tiebreaker.original_amount,
+        tied_team_count: tiebreaker.tied_teams ? tiebreaker.tied_teams.length : 0,
+        current_highest_bid: currentHighestBid,
+        current_highest_team_id: highestBidder?.team_id,
+        created_at: tiebreaker.created_at,
+        teams: participatingTeams.map(team => ({
+          team_id: team.team_id,
+          team_name: team.team_name,
+          status: team.status,
+          current_bid: team.current_bid,
+          is_current_user: team.team_id === teamId,
+          team_balance: team.team_id === teamId ? 1000 : null,
+        })),
+        bid_history: bidHistory.map(bid => ({
+          team_id: bid.team_id,
+          team_name: bid.team_name,
+          amount: bid.bid_amount,
+          timestamp: bid.bid_time,
+        })),
         my_status: {
           status: myTeam.status,
           current_bid: myTeam.current_bid,

@@ -86,6 +86,30 @@ export async function POST(
 
     const round = roundCheck[0];
 
+    if (round.status === 'completed') {
+      // Round already finalized - return success with current state
+      const soldPlayers = await sql`
+        SELECT COUNT(*) as count FROM round_players
+        WHERE round_id = ${roundId} AND status = 'sold'
+      `;
+      const contestedPlayers = await sql`
+        SELECT COUNT(*) as count FROM round_players
+        WHERE round_id = ${roundId} AND bid_count > 1
+      `;
+      
+      return NextResponse.json({
+        success: true,
+        data: {
+          round_id: roundId,
+          round_number: round.round_number,
+          status: 'completed',
+          immediately_assigned: soldPlayers[0]?.count || 0,
+          conflicts: contestedPlayers[0]?.count || 0,
+          message: 'Round already finalized. No changes made.',
+        },
+      });
+    }
+
     if (round.status !== 'active') {
       return NextResponse.json(
         { success: false, error: `Cannot finalize round. Current status: ${round.status}. Round must be active.` },
@@ -188,37 +212,53 @@ export async function POST(
           SET 
             winning_team_id = ${bid.team_id},
             winning_bid = ${round.base_price},
-            status = 'sold'
+            status = 'sold',
+            bid_count = 1
           WHERE round_id = ${roundId}
           AND player_id = ${playerId}
         `;
 
+        // Mark the winning bid
+        await sql`
+          UPDATE round_bids
+          SET is_winning = true
+          WHERE round_id = ${roundId}
+          AND player_id = ${playerId}
+          AND team_id = ${bid.team_id}
+        `;
+
         // Insert into team_players to track player ownership (skip if already exists)
-        try {
-          await sql`
-            INSERT INTO team_players (
-              team_id,
-              player_id,
-              season_id,
-              round_id,
-              purchase_price,
-              acquired_at
-            ) VALUES (
-              ${bid.team_id},
-              ${playerId},
-              ${round.season_id},
-              ${roundId},
-              ${round.base_price},
-              NOW()
-            )
-            ON CONFLICT (player_id, season_id) DO NOTHING
-          `;
-        } catch (error) {
-          console.warn(`⚠️ Player ${playerId} already in team_players for season ${round.season_id}`);
+        const teamPlayerResult = await sql`
+          INSERT INTO team_players (
+            team_id,
+            player_id,
+            season_id,
+            round_id,
+            purchase_price,
+            acquired_at
+          ) VALUES (
+            ${bid.team_id},
+            ${playerId},
+            ${round.season_id},
+            ${roundId},
+            ${round.base_price},
+            NOW()
+          )
+          ON CONFLICT (player_id, season_id) DO UPDATE
+          SET 
+            team_id = EXCLUDED.team_id,
+            round_id = EXCLUDED.round_id,
+            purchase_price = EXCLUDED.purchase_price
+          RETURNING (xmax = 0) AS inserted
+        `;
+        
+        const wasInserted = teamPlayerResult[0]?.inserted;
+        if (!wasInserted) {
+          console.log(`🔄 Updated existing team_players entry for player ${playerId}`);
         }
 
-        // Update player in footballplayers table with contract info
-        await sql`
+        // Update player in footballplayers table with contract info (idempotent)
+        const playerUpdateResult = await sql`
           UPDATE footballplayers
           SET 
             is_sold = true,
@@ -234,22 +274,39 @@ export async function POST(
             updated_at = NOW()
           WHERE id = ${playerId}
         `;
+        
+        if (playerUpdateResult.length === 0) {
+          console.warn(`⚠️ Player ${playerId} not found in footballplayers table`);
+        }
 
         // Update Neon teams table - bid.team_id contains readable team ID (SSPSLT0001)
-        try {
-          await sql`
-            UPDATE teams 
-            SET 
-              football_spent = football_spent + ${round.base_price},
-              football_budget = football_budget - ${round.base_price},
-              football_players_count = football_players_count + 1,
-              updated_at = NOW()
-            WHERE id = ${bid.team_id}
-            AND season_id = ${round.season_id}
-          `;
-          console.log(`✅ Updated Neon teams table for ${bid.team_id}`);
-        } catch (error) {
-          console.error(`❌ Error updating Neon teams for ${bid.team_id}:`, error);
+        // Check if player already assigned to this team to avoid double-deducting budget
+        const existingAssignment = await sql`
+          SELECT team_id FROM team_players
+          WHERE player_id = ${playerId}
+          AND season_id = ${round.season_id}
+        `;
+        
+        const isNewAssignment = existingAssignment.length === 0 || existingAssignment[0].team_id !== bid.team_id;
+        
+        if (isNewAssignment) {
+          try {
+            await sql`
+              UPDATE teams 
+              SET 
+                football_spent = football_spent + ${round.base_price},
+                football_budget = football_budget - ${round.base_price},
+                football_players_count = football_players_count + 1,
+                updated_at = NOW()
+              WHERE id = ${bid.team_id}
+              AND season_id = ${round.season_id}
+            `;
+            console.log(`✅ Updated Neon teams table for ${bid.team_id}`);
+          } catch (error) {
+            console.error(`❌ Error updating Neon teams for ${bid.team_id}:`, error);
+          }
+        } else {
+          console.log(`🔄 Skipped team budget update (player already assigned to ${bid.team_id})`);
         }
 
         // Get firebase_uid for this team for Firebase updates
@@ -331,10 +388,23 @@ export async function POST(
       console.log(`✅ Assigned ${immediatelyAssigned} players immediately`);
     }
 
-    // PART 2: Skip automatic tiebreaker creation - will be created manually
-    // Just log the conflicts for committee to handle manually
+    // PART 2: Update bid counts for contested players
     if (conflicts.length > 0) {
       console.log(`\n⚠️ Found ${conflicts.length} contested players (manual tiebreaker creation required)`);
+      
+      // Update round_players with correct bid counts for contested players
+      for (const playerId of conflicts) {
+        const bids = bidsByPlayer.get(playerId)!;
+        await sql`
+          UPDATE round_players
+          SET 
+            bid_count = ${bids.length},
+            status = 'pending'
+          WHERE round_id = ${roundId}
+          AND player_id = ${playerId}
+        `;
+      }
+      
       tiebreakerCreated = conflicts.length; // Track count for status
     }
 

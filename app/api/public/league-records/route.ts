@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 
+export const dynamic = 'force-dynamic';
 export const revalidate = 300; // Cache for 5 minutes
 
 /**

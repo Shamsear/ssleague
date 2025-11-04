@@ -257,6 +257,7 @@ export async function POST(
     await sql`
       INSERT INTO round_bids (
         round_id,
+        season_id,
         player_id,
         team_id,
         team_name,
@@ -264,6 +265,7 @@ export async function POST(
         bid_time
       ) VALUES (
         ${roundId},
+        ${round.season_id},
         ${player_id},
         ${teamId},
         ${teamName},
