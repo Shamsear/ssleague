@@ -133,24 +133,34 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
     if (user && tiebreakerId) {
       fetchTiebreakerDetails();
       
-      // Auto-refresh every 3 seconds
+      // Auto-refresh every 3 seconds, but stop if resolved/completed
       const interval = setInterval(() => {
+        // Stop polling if tiebreaker is resolved or completed
+        if (tiebreaker?.status === 'resolved' || tiebreaker?.status === 'completed') {
+          clearInterval(interval);
+          return;
+        }
         fetchTiebreakerDetails();
       }, 3000);
       
       return () => clearInterval(interval);
     }
-  }, [user, tiebreakerId]);
+  }, [user, tiebreakerId, tiebreaker?.status]);
 
-  // Check if tiebreaker is resolved and redirect to dashboard
+  // Redirect when tiebreaker is completed, resolved, or expired
   useEffect(() => {
-    if (tiebreaker && tiebreaker.submitted && tiebreaker.status === 'resolved') {
-      console.log('✅ Tiebreaker resolved, redirecting to dashboard...');
-      setTimeout(() => {
+    if (!tiebreaker) return;
+    
+    // Redirect if tiebreaker is resolved or completed
+    if (tiebreaker.status === 'resolved' || tiebreaker.status === 'completed') {
+      console.log(`✅ Tiebreaker ${tiebreaker.status}, redirecting to dashboard...`);
+      const redirectTimer = setTimeout(() => {
         router.push('/dashboard/team');
-      }, 2000); // Wait 2 seconds to show resolution message
+      }, 2000); // Wait 2 seconds to show message
+      
+      return () => clearTimeout(redirectTimer);
     }
-  }, [tiebreaker, router]);
+  }, [tiebreaker?.status, router]);
 
   // Update current time every second for dynamic timer
   useEffect(() => {
