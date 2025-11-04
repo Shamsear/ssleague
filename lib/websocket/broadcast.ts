@@ -1,38 +1,53 @@
 /**
- * WebSocket Broadcast Helper
+ * WebSocket Broadcast Helper - Now using Pusher
  * 
- * Sends real-time updates to WebSocket clients via HTTP endpoint.
+ * Sends real-time updates to connected clients via Pusher Channels.
  * Used by API routes to notify connected clients of data changes.
  */
+
+import Pusher from 'pusher';
+
+// Initialize Pusher (singleton pattern)
+let pusherInstance: Pusher | null = null;
+
+function getPusherInstance(): Pusher {
+  if (!pusherInstance) {
+    pusherInstance = new Pusher({
+      appId: process.env.PUSHER_APP_ID!,
+      key: process.env.PUSHER_KEY!,
+      secret: process.env.PUSHER_SECRET!,
+      cluster: process.env.PUSHER_CLUSTER!,
+      useTLS: true,
+    });
+  }
+  return pusherInstance;
+}
 
 /**
  * Broadcast a message to all clients subscribed to a channel
  * 
- * @param channel - WebSocket channel (e.g., 'tiebreaker:123', 'team:456')
- * @param data - Message data to broadcast
- * @returns Broadcast result with success status and subscriber count
+ * @param channel - Pusher channel (e.g., 'tiebreaker:123', 'team:456')
+ * @param data - Message data to broadcast (should include 'type' and 'data' fields)
+ * @returns Broadcast result with success status
  */
 export async function broadcastWebSocket(
   channel: string, 
   data: any
-): Promise<{ success: boolean; subscribers?: number; error?: any }> {
+): Promise<{ success: boolean; error?: any }> {
   try {
-    const wsPort = process.env.WS_PORT || 3001;
-    const response = await fetch(`http://localhost:${wsPort}/broadcast`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel, data }),
-    });
+    const pusher = getPusherInstance();
     
-    if (!response.ok) {
-      throw new Error(`Broadcast failed: ${response.statusText}`);
-    }
+    // Extract event type from data, default to 'update'
+    const eventType = data.type || 'update';
+    const eventData = data.data || data;
     
-    const result = await response.json();
-    console.log(`📢 [WebSocket] Broadcast to ${channel}: ${result.subscribers || 0} subscribers`);
-    return result;
+    // Trigger event on Pusher
+    await pusher.trigger(channel, eventType, eventData);
+    
+    console.log(`📢 [Pusher] Broadcast to ${channel}, event: ${eventType}`);
+    return { success: true };
   } catch (error) {
-    console.error('[WebSocket] Broadcast error:', error);
+    console.error('[Pusher] Broadcast error:', error);
     // Don't throw - failing broadcast shouldn't break API requests
     return { success: false, error };
   }
