@@ -707,11 +707,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 <div className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-500 text-xs sm:text-sm text-center">No active auctions</div>
               )}
               
-              {roundResults.length > 0 && (
-                <button onClick={() => setActiveTab('results')} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
-                  📊 View Results
-                </button>
-              )}
+              <Link href="/dashboard/team/auction-results" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600 transition-all text-xs sm:text-sm font-medium text-center">
+                📊 Auction Results
+              </Link>
             </div>
           </div>
 
