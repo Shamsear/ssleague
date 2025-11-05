@@ -105,6 +105,7 @@ export const getAllTeams = async (): Promise<TeamData[]> => {
       const currentBudget = data.budget || 0;
       const totalSpent = initialBudget - currentBudget;
       
+      const logoUrl = data.logo_url || data.team_logo || data.logo || null;
       teams.push({
         id: docSnap.id,
         team_id: docSnap.id,
@@ -124,7 +125,8 @@ export const getAllTeams = async (): Promise<TeamData[]> => {
         players_count: data.players_count || 0,
         stats: data.stats || initializeTeamStats(),
         is_active: data.status === 'registered' || data.is_active !== false,
-        logo: data.team_logo || data.logo || null,
+        logo: logoUrl,
+        logo_url: logoUrl,
         team_color: data.team_color || null,
         created_at: convertTimestamp(data.joined_at || data.created_at),
         updated_at: convertTimestamp(data.updated_at || data.joined_at),
@@ -138,6 +140,7 @@ export const getAllTeams = async (): Promise<TeamData[]> => {
     for (const docSnap of teamsSnapshot.docs) {
       const data = docSnap.data();
       
+      const logoUrl = data.logo_url || data.team_logo || data.logo || null;
       teams.push({
         id: docSnap.id,
         team_id: docSnap.id,
@@ -157,7 +160,8 @@ export const getAllTeams = async (): Promise<TeamData[]> => {
         players_count: 0,
         stats: initializeTeamStats(),
         is_active: data.is_active !== false,
-        logo: data.team_logo || data.logo || null,
+        logo: logoUrl,
+        logo_url: logoUrl,
         team_color: data.team_color || null,
         created_at: convertTimestamp(data.created_at),
         updated_at: convertTimestamp(data.updated_at),
@@ -205,6 +209,7 @@ export const getTeamsBySeason = async (seasonId: string): Promise<TeamData[]> =>
       const currentBudget = data.budget || 0;
       const totalSpent = initialBudget - currentBudget;
       
+      const logoUrl = data.logo_url || data.team_logo || data.logo || null;
       const teamData = {
         id: docSnap.id,
         team_id: docSnap.id,
@@ -235,7 +240,8 @@ export const getTeamsBySeason = async (seasonId: string): Promise<TeamData[]> =>
           win_rate: 0,
         },
         is_active: data.status === 'registered' || data.is_active !== false,
-        logo: data.team_logo || data.logo || null,
+        logo: logoUrl,
+        logo_url: logoUrl,
         team_color: data.team_color || null,
         created_at: convertTimestamp(data.joined_at || data.created_at),
         updated_at: convertTimestamp(data.updated_at || data.joined_at),
@@ -276,6 +282,7 @@ export const getTeamById = async (teamId: string): Promise<TeamData | null> => {
       const currentBudget = data.budget || 0;
       const totalSpent = initialBudget - currentBudget;
       
+      const logoUrl = data.logo_url || data.team_logo || data.logo || null;
       return {
         id: teamSeasonsDoc.id,
         team_id: teamSeasonsDoc.id,
@@ -295,7 +302,8 @@ export const getTeamById = async (teamId: string): Promise<TeamData | null> => {
         players_count: data.players_count || 0,
         stats: data.stats || initializeTeamStats(),
         is_active: data.status === 'registered' || data.is_active !== false,
-        logo: data.team_logo || data.logo || null,
+        logo: logoUrl,
+        logo_url: logoUrl,
         team_color: data.team_color || null,
         created_at: convertTimestamp(data.joined_at || data.created_at),
         updated_at: convertTimestamp(data.updated_at || data.joined_at),
@@ -312,6 +320,7 @@ export const getTeamById = async (teamId: string): Promise<TeamData | null> => {
     
     const data = teamsDoc.data();
     
+    const logoUrl = data.logo_url || data.team_logo || data.logo || null;
     return {
       id: teamsDoc.id,
       team_id: teamsDoc.id,
@@ -331,7 +340,8 @@ export const getTeamById = async (teamId: string): Promise<TeamData | null> => {
       players_count: 0,
       stats: initializeTeamStats(),
       is_active: data.is_active !== false,
-      logo: data.team_logo || data.logo || null,
+      logo: logoUrl,
+      logo_url: logoUrl,
       team_color: data.team_color || null,
       created_at: convertTimestamp(data.created_at),
       updated_at: convertTimestamp(data.updated_at),

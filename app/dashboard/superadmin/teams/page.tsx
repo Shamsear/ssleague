@@ -423,12 +423,12 @@ export default function TeamsManagement() {
                       <tr key={team.id} className="hover:bg-white/60 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10 rounded-xl overflow-hidden bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 flex items-center justify-center">
-                              {team.logo ? (
+                            <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-white flex items-center justify-center">
+                              {team.logo_url ? (
                                 <img 
-                                  src={team.logo} 
+                                  src={team.logo_url} 
                                   alt={`${team.team_name} logo`}
-                                  className="w-full h-full object-cover rounded-xl"
+                                  className="max-w-full max-h-full object-contain p-1"
                                   onError={(e) => {
                                     // Fallback to team code if image fails to load
                                     const target = e.target as HTMLElement;
@@ -528,12 +528,12 @@ export default function TeamsManagement() {
                   <div key={team.id} className="p-6 hover:bg-white/30 transition-colors">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center">
-                        <div className="flex-shrink-0 h-12 w-12 rounded-xl overflow-hidden bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 flex items-center justify-center mr-3">
-                          {team.logo ? (
+                        <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-white flex items-center justify-center mr-3">
+                          {team.logo_url ? (
                             <img 
-                              src={team.logo} 
+                              src={team.logo_url} 
                               alt={`${team.team_name} logo`}
-                              className="w-full h-full object-cover rounded-xl"
+                              className="max-w-full max-h-full object-contain p-1"
                               onError={(e) => {
                                 // Fallback to team code if image fails to load
                                 const target = e.target as HTMLElement;

@@ -23,6 +23,7 @@ export interface TeamSummary {
     goal_difference: number;
   };
   logo: string | null;
+  logo_url: string | null;
   season_id: string;
 }
 
@@ -76,6 +77,7 @@ export async function buildTeamsSummary(seasonId?: string): Promise<TeamSummary[
     
     teamSeasonsSnapshot.forEach((doc) => {
       const data = doc.data();
+      const logoUrl = data.logo_url || data.team_logo || data.logo || null;
       teams.push({
         id: doc.id,
         team_id: doc.id,
@@ -92,7 +94,8 @@ export async function buildTeamsSummary(seasonId?: string): Promise<TeamSummary[
           points: data.stats?.points || 0,
           goal_difference: data.stats?.goal_difference || 0,
         },
-        logo: data.team_logo || data.logo || null,
+        logo: logoUrl,
+        logo_url: logoUrl,
         season_id: data.season_id || '',
       });
     });
@@ -114,6 +117,7 @@ export async function buildTeamsSummary(seasonId?: string): Promise<TeamSummary[
         const seasonStats = data.performance_history?.[seasonId];
         if (!seasonStats) return; // Skip teams without data for this season
         
+        const logoUrl = data.logo_url || data.team_logo || data.logo || null;
         teams.push({
           id: doc.id,
           team_id: doc.id,
@@ -130,11 +134,13 @@ export async function buildTeamsSummary(seasonId?: string): Promise<TeamSummary[
             points: seasonStats.season_stats?.total_points || 0,
             goal_difference: seasonStats.season_stats?.goal_difference || (seasonStats.season_stats?.total_goals || 0) - (seasonStats.season_stats?.total_conceded || 0),
           },
-          logo: data.team_logo || data.logo || null,
+          logo: logoUrl,
+          logo_url: logoUrl,
           season_id: seasonId,
         });
       } else {
         // If no season filter, include all teams with their latest stats
+        const logoUrl = data.logo_url || data.team_logo || data.logo || null;
         teams.push({
           id: doc.id,
           team_id: doc.id,
@@ -151,7 +157,8 @@ export async function buildTeamsSummary(seasonId?: string): Promise<TeamSummary[
             points: 0,
             goal_difference: 0,
           },
-          logo: data.team_logo || data.logo || null,
+          logo: logoUrl,
+          logo_url: logoUrl,
           season_id: '',
         });
       }
