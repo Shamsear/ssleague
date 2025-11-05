@@ -158,13 +158,13 @@ export default function CurrentSeasonPage() {
               <div className="text-center">
                 <div className="text-4xl mb-3">🥈</div>
                 {sortedTeams[1].logo_url && (
-                  <div className="w-20 h-20 mx-auto mb-4 rounded-lg overflow-hidden bg-white p-2">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-lg bg-white p-2 flex items-center justify-center">
                     <Image
                       src={sortedTeams[1].logo_url}
                       alt={sortedTeams[1].team_name}
                       width={80}
                       height={80}
-                      className="object-contain"
+                      className="object-contain w-full h-full"
                     />
                   </div>
                 )}
@@ -181,13 +181,13 @@ export default function CurrentSeasonPage() {
               <div className="text-center">
                 <div className="text-5xl mb-3">🥇</div>
                 {sortedTeams[0].logo_url && (
-                  <div className="w-24 h-24 mx-auto mb-4 rounded-lg overflow-hidden bg-white p-2">
+                  <div className="w-24 h-24 mx-auto mb-4 rounded-lg bg-white p-2 flex items-center justify-center">
                     <Image
                       src={sortedTeams[0].logo_url}
                       alt={sortedTeams[0].team_name}
                       width={96}
                       height={96}
-                      className="object-contain"
+                      className="object-contain w-full h-full"
                     />
                   </div>
                 )}
@@ -204,13 +204,13 @@ export default function CurrentSeasonPage() {
               <div className="text-center">
                 <div className="text-4xl mb-3">🥉</div>
                 {sortedTeams[2].logo_url && (
-                  <div className="w-20 h-20 mx-auto mb-4 rounded-lg overflow-hidden bg-white p-2">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-lg bg-white p-2 flex items-center justify-center">
                     <Image
                       src={sortedTeams[2].logo_url}
                       alt={sortedTeams[2].team_name}
                       width={80}
                       height={80}
-                      className="object-contain"
+                      className="object-contain w-full h-full"
                     />
                   </div>
                 )}
@@ -267,13 +267,13 @@ export default function CurrentSeasonPage() {
                   <td className="py-3 px-4">
                     <Link href={`/teams/${team.team_id}?season=${season.id}`} className="flex items-center gap-3 hover:text-blue-600 transition-colors">
                       {team.logo_url && (
-                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-white">
+                        <div className="w-10 h-10 rounded-lg bg-white p-1 flex items-center justify-center">
                           <Image
                             src={team.logo_url}
                             alt={team.team_name}
                             width={40}
                             height={40}
-                            className="object-contain p-1"
+                            className="object-contain w-full h-full"
                           />
                         </div>
                       )}

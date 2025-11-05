@@ -285,12 +285,12 @@ export default function TeamDetailPage() {
               {/* Team Card */}
               <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
                 {/* Team Logo */}
-                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl shadow-md bg-white flex items-center justify-center">
+                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl shadow-md bg-white flex items-center justify-center p-3">
                   {team.logo_url ? (
                     <img
                       src={team.logo_url}
                       alt={team.team_name}
-                      className="object-contain max-w-full max-h-full p-2"
+                      className="object-contain w-full h-full"
                     />
                   ) : (
                     <div className="bg-primary/10 w-full h-full flex items-center justify-center">
