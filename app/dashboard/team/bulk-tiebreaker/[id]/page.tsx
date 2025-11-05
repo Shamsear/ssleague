@@ -66,6 +66,7 @@ export default function TeamBulkTiebreakerPage() {
   const [teamBalance, setTeamBalance] = useState(1000); // Mock balance
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [myTeamId, setMyTeamId] = useState<string | null>(null); // Store actual team ID from API
   
   // Winner modal state
   const [showWinnerModal, setShowWinnerModal] = useState(false);
@@ -106,6 +107,11 @@ export default function TeamBulkTiebreakerPage() {
         // Find current user's team
         const myTeam = teams.find((t: any) => t.is_current_user);
         const myLastBid = myTeam?.current_bid || null;
+        
+        // Store the actual team ID for comparison
+        if (myTeam && myTeam.team_id) {
+          setMyTeamId(myTeam.team_id);
+        }
         
         setTiebreaker({
           id: tiebreakerData.id,
@@ -183,8 +189,8 @@ export default function TeamBulkTiebreakerPage() {
       // ⚡ INSTANT UPDATE - Use broadcast data directly for lightning-fast updates
       if (message.type === 'tiebreaker_bid' && message.data) {
         const bidData = message.data;
-        const userTeamName = (user as any)?.teamName || 'Your Team';
-        const isOwnBid = bidData.team_name === userTeamName;
+        // Use team ID for accurate comparison (not team name which can be duplicate)
+        const isOwnBid = myTeamId && bidData.team_id === myTeamId;
         
         // Always update the highest bid info (even if it's our own bid)
         // This ensures the UI always shows the correct current highest bidder
@@ -317,13 +323,13 @@ export default function TeamBulkTiebreakerPage() {
     setTiebreaker({
       ...tiebreaker,
       current_highest_bid: amount,
-      highest_bidder_team_id: user?.uid,
+      highest_bidder_team_id: myTeamId || user?.uid,
       highest_bidder_team_name: (user as any)?.teamName || 'Your Team',
       my_last_bid: amount,
       bid_history: [
         ...tiebreaker.bid_history,
         {
-          team_id: user?.uid || '',
+          team_id: myTeamId || user?.uid || '',
           team_name: (user as any)?.teamName || 'Your Team',
           amount,
           timestamp: new Date().toISOString(),
@@ -357,32 +363,37 @@ export default function TeamBulkTiebreakerPage() {
       // Check if error response includes updated bid data (race condition)
       const errorMessage = err instanceof Error ? err.message : 'Failed to place bid';
       
-      // If the error mentions the current bid, extract it and update
-      if (result && result.current_highest_bid) {
-        // Someone else bid in the meantime - update only the bid amount
-        // Don't update bidder name to avoid showing wrong info
-        console.log('⚠️ Race condition detected - updating to latest bid:', result.current_highest_bid);
-        
-        // Update ONLY the bid amount, keep old bidder info to avoid confusion
-        // WebSocket will provide the correct bidder info shortly
-        setTiebreaker(prev => ({
-          ...prev!,
-          current_highest_bid: result.current_highest_bid,
-          // Keep old highest_bidder info - WebSocket will update with correct info
-        }));
-        
-        setBidAmount((result.current_highest_bid + 1).toString());
-      } else {
-        // Other error - just reset bid amount
-        setBidAmount((previousTiebreaker.current_highest_bid + 1).toString());
-      }
+      // Check if this is a race condition (someone else bid higher)
+      // Only show race condition message if the highest bid changed from what we expected
+      const isActualRaceCondition = result && result.should_refresh && 
+        result.current_highest_bid && 
+        result.current_highest_bid > amount;
       
-      // Don't fetch - WebSocket will provide updates
-      showAlert({
-        type: 'error',
-        title: 'Bid Failed',
-        message: errorMessage
-      });
+      if (isActualRaceCondition) {
+        // Someone else bid higher in the meantime - fetch latest data immediately
+        console.log('⚠️ Race condition detected - fetching latest data...', result.current_highest_bid);
+        
+        // Fetch latest tiebreaker data to get correct bidder info
+        if (fetchDataRef.current) {
+          fetchDataRef.current();
+        }
+        
+        // Show informational message (not error)
+        showAlert({
+          type: 'warning',
+          title: 'Bid Updated',
+          message: `Someone else just bid! Current highest bid is now £${result.current_highest_bid}.`
+        });
+      } else {
+        // Validation error or other error - just reset bid amount and show error
+        setBidAmount((previousTiebreaker.current_highest_bid + 1).toString());
+        
+        showAlert({
+          type: 'error',
+          title: 'Bid Failed',
+          message: errorMessage
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -469,10 +480,10 @@ export default function TeamBulkTiebreakerPage() {
   };
 
   const isMyBid = (teamId: string) => {
-    return teamId === user?.uid;
+    return teamId === myTeamId;
   };
 
-  const isWinning = tiebreaker?.highest_bidder_team_id === user?.uid;
+  const isWinning = tiebreaker?.highest_bidder_team_id === myTeamId;
 
   if (loading || !user || user.role !== 'team' || isLoading) {
     return (
@@ -503,7 +514,7 @@ export default function TeamBulkTiebreakerPage() {
         position={winnerData.position}
         winnerTeamName={winnerData.winnerTeamName}
         finalBid={winnerData.finalBid}
-        isCurrentTeamWinner={winnerData.winnerTeamId === user?.uid}
+        isCurrentTeamWinner={winnerData.winnerTeamId === myTeamId}
       />
     );
   }

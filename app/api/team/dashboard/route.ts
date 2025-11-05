@@ -437,6 +437,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch tiebreakers from Neon (if any)
     // Include both regular tiebreakers (team_id matches) and bulk round tiebreakers (composite ID pattern)
+    // Note: Filter by round's season_id instead of tiebreaker's season_id (which may be null)
     const tiebreakersResult = dbTeamId ? await sql`
       SELECT 
         t.*,
@@ -453,11 +454,11 @@ export async function GET(request: NextRequest) {
         tt.submitted_at as team_submitted_at
       FROM tiebreakers t
       INNER JOIN footballplayers p ON t.player_id = p.id
-      LEFT JOIN rounds r ON t.round_id = r.id
+      INNER JOIN rounds r ON t.round_id = r.id
       INNER JOIN team_tiebreakers tt ON t.id = tt.tiebreaker_id
       WHERE (tt.team_id = ${dbTeamId} OR tt.id LIKE ${userId + '_%'})
       AND t.status = 'active'
-      AND t.season_id = ${seasonId}
+      AND r.season_id = ${seasonId}
       ORDER BY t.created_at DESC
     ` : [];
     
@@ -478,6 +479,7 @@ export async function GET(request: NextRequest) {
       status: tiebreaker.status,
       old_bid: tiebreaker.team_old_bid,
       new_bid: tiebreaker.team_new_bid,
+      new_amount: tiebreaker.team_new_bid, // Alias for frontend compatibility
       submitted: tiebreaker.team_submitted,
     }));
 
@@ -536,17 +538,70 @@ export async function GET(request: NextRequest) {
       ...doc.data(),
     }));
 
-    // Fetch round results
-    const resultsSnapshot = await adminDb
-      .collection('round_results')
-      .where('team_id', '==', userId)
-      .where('season_id', '==', seasonId)
-      .limit(20)
-      .get();
-    const roundResults = resultsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Fetch round results from completed rounds (won and lost bids)
+    const roundResultsRaw = dbTeamId ? await sql`
+      SELECT 
+        b.id,
+        b.team_id,
+        b.player_id,
+        b.round_id,
+        b.amount,
+        b.status,
+        b.encrypted_bid_data,
+        b.created_at,
+        p.name as player_name,
+        p.position as player_position,
+        p.overall_rating,
+        p.team_name as player_team,
+        r.position as round_position,
+        r.round_number,
+        r.end_time as round_end_time,
+        tp.purchase_price as final_amount
+      FROM bids b
+      INNER JOIN footballplayers p ON b.player_id = p.id
+      INNER JOIN rounds r ON b.round_id = r.id
+      LEFT JOIN team_players tp ON b.player_id = tp.player_id AND b.team_id = tp.team_id
+      WHERE b.team_id = ${dbTeamId}
+      AND b.status IN ('won', 'lost')
+      AND r.season_id = ${seasonId}
+      ORDER BY b.created_at DESC
+      LIMIT 50
+    ` : [];
+    
+    const roundResults = roundResultsRaw.map(result => {
+      // Decrypt bid amount if needed
+      let bidAmount = result.amount;
+      if (result.amount === null && result.encrypted_bid_data) {
+        try {
+          const decrypted = decryptBidData(result.encrypted_bid_data);
+          bidAmount = decrypted.amount;
+        } catch (err) {
+          console.error('Failed to decrypt bid:', err);
+          bidAmount = 0;
+        }
+      }
+      
+      return {
+        id: result.id,
+        won: result.status === 'won',
+        bid_amount: bidAmount,
+        final_amount: result.final_amount || bidAmount,
+        player: {
+          id: result.player_id,
+          name: result.player_name,
+          position: result.player_position,
+          overall_rating: result.overall_rating,
+          nfl_team: result.player_team,
+        },
+        round: {
+          id: result.round_id,
+          position: result.round_position,
+          round_number: result.round_number,
+          end_time: result.round_end_time,
+        },
+        created_at: result.created_at,
+      };
+    });
 
     // Calculate average rating from players (only stat we need to calculate)
     const avgRating = players.length > 0 

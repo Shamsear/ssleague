@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import RegisteredTeamDashboard from './RegisteredTeamDashboard';
@@ -11,6 +12,7 @@ import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function TeamDashboard() {
   const { user, loading } = useAuth();
+  const { setIsRegistered } = useTeamRegistration();
   const router = useRouter();
   const [seasonStatus, setSeasonStatus] = useState<{
     hasActiveSeason: boolean;
@@ -281,6 +283,7 @@ export default function TeamDashboard() {
             seasonName: activeSeason.name,
             seasonId: activeSeason.id,
           });
+          setIsRegistered(true); // Notify context
           console.log('✅ Status: Registered in active season');
         } else {
           // Active season exists but not registered
@@ -290,6 +293,7 @@ export default function TeamDashboard() {
             seasonName: activeSeason.name,
             seasonId: activeSeason.id,
           });
+          setIsRegistered(false); // Notify context - HIDE NAVIGATION
           console.log('📊 Status: Active season available, not registered');
         }
       } catch (err) {

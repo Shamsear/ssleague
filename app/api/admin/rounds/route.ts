@@ -4,6 +4,7 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
 import { generateRoundId } from '@/lib/id-generator';
 import { validateAuctionSettings } from '@/lib/auction-settings';
+import { broadcastWebSocket } from '@/lib/websocket/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -241,6 +242,19 @@ export async function POST(request: NextRequest) {
       )
       RETURNING *
     `;
+
+    // Broadcast WebSocket event for round creation
+    await broadcastWebSocket(`season:${season_id}`, {
+      type: 'round_created',
+      data: {
+        round_id: roundId,
+        position,
+        status: 'active',
+        end_time: endTime.toISOString(),
+      },
+    });
+
+    console.log(`📢 Broadcasted round_created event for round ${roundId}`);
 
     return NextResponse.json({
       success: true,

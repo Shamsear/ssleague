@@ -6,7 +6,8 @@ import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { db } from '@/lib/firebase/config';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query } from 'firebase/firestore';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TeamProfile {
   id: string;
@@ -170,9 +171,9 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
 
         // Fetch players, fixtures, and standings from API
         const [playersRes, fixturesRes, standingsRes] = await Promise.all([
-          fetch(`/api/team/${teamId}/players`),
-          fetch(`/api/team/${teamId}/fixtures?seasonId=${seasonId}`),
-          fetch(`/api/team/${teamId}/standings?seasonId=${seasonId}`)
+          fetchWithTokenRefresh(`/api/team/${teamId}/players`),
+          fetchWithTokenRefresh(`/api/team/${teamId}/fixtures?seasonId=${seasonId}`),
+          fetchWithTokenRefresh(`/api/team/${teamId}/standings?seasonId=${seasonId}`)
         ]);
 
         if (playersRes.ok) {

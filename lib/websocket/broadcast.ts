@@ -1,38 +1,100 @@
 /**
- * WebSocket Broadcast Helper
+ * WebSocket Broadcast Helper - Now using Pusher
  * 
- * Sends real-time updates to WebSocket clients via HTTP endpoint.
+ * Sends real-time updates to connected clients via Pusher Channels.
  * Used by API routes to notify connected clients of data changes.
  */
+
+import Pusher from 'pusher';
+
+// Initialize Pusher (singleton pattern)
+let pusherInstance: Pusher | null = null;
+
+function getPusherInstance(): Pusher {
+  if (!pusherInstance) {
+    // Check if credentials are available
+    const creds = {
+      appId: process.env.PUSHER_APP_ID,
+      key: process.env.PUSHER_KEY,
+      secret: process.env.PUSHER_SECRET,
+      cluster: process.env.PUSHER_CLUSTER,
+    };
+    
+    console.log('[Pusher] Initializing with credentials:', {
+      hasAppId: !!creds.appId,
+      hasKey: !!creds.key,
+      hasSecret: !!creds.secret,
+      hasCluster: !!creds.cluster,
+      cluster: creds.cluster,
+      // Show first 4 chars of each credential for debugging
+      appIdPrefix: creds.appId?.substring(0, 4),
+      keyPrefix: creds.key?.substring(0, 4),
+      secretPrefix: creds.secret?.substring(0, 4),
+    });
+    
+    // Validate all credentials are present
+    if (!creds.appId || !creds.key || !creds.secret || !creds.cluster) {
+      const missing = [];
+      if (!creds.appId) missing.push('PUSHER_APP_ID');
+      if (!creds.key) missing.push('PUSHER_KEY');
+      if (!creds.secret) missing.push('PUSHER_SECRET');
+      if (!creds.cluster) missing.push('PUSHER_CLUSTER');
+      
+      console.error(`❌ [Pusher] Missing credentials: ${missing.join(', ')}`);
+      console.error('❌ [Pusher] CRITICAL: Broadcasts will FAIL. Restart dev server to load .env.local');
+      throw new Error(`Missing Pusher credentials: ${missing.join(', ')}`);
+    }
+    
+    pusherInstance = new Pusher({
+      appId: creds.appId,
+      key: creds.key,
+      secret: creds.secret,
+      cluster: creds.cluster,
+      useTLS: true,
+    });
+    
+    console.log('✅ [Pusher] Instance created successfully');
+  }
+  return pusherInstance;
+}
+
+/**
+ * Sanitize channel name for Pusher compatibility
+ * Pusher doesn't allow colons (:) in channel names
+ * Replace with hyphens (-)
+ */
+function sanitizeChannelName(channel: string): string {
+  return channel.replace(/:/g, '-');
+}
 
 /**
  * Broadcast a message to all clients subscribed to a channel
  * 
- * @param channel - WebSocket channel (e.g., 'tiebreaker:123', 'team:456')
- * @param data - Message data to broadcast
- * @returns Broadcast result with success status and subscriber count
+ * @param channel - Pusher channel (e.g., 'tiebreaker:123', 'team:456')
+ * @param data - Message data to broadcast (should include 'type' and 'data' fields)
+ * @returns Broadcast result with success status
  */
 export async function broadcastWebSocket(
   channel: string, 
   data: any
-): Promise<{ success: boolean; subscribers?: number; error?: any }> {
+): Promise<{ success: boolean; error?: any }> {
   try {
-    const wsPort = process.env.WS_PORT || 3001;
-    const response = await fetch(`http://localhost:${wsPort}/broadcast`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel, data }),
-    });
+    const pusher = getPusherInstance();
     
-    if (!response.ok) {
-      throw new Error(`Broadcast failed: ${response.statusText}`);
-    }
+    // Sanitize channel name for Pusher (no colons allowed)
+    const sanitizedChannel = sanitizeChannelName(channel);
     
-    const result = await response.json();
-    console.log(`📢 [WebSocket] Broadcast to ${channel}: ${result.subscribers || 0} subscribers`);
-    return result;
+    // Extract event type from data, default to 'update'
+    const eventType = data.type || 'update';
+    const eventData = data.data || data;
+    
+    // Trigger event on Pusher
+    await pusher.trigger(sanitizedChannel, eventType, eventData);
+    
+    console.log(`📢 [Pusher] Broadcast to ${sanitizedChannel}, event: ${eventType}`);
+    return { success: true };
   } catch (error) {
-    console.error('[WebSocket] Broadcast error:', error);
+    console.error('[Pusher] Broadcast error:', error);
     // Don't throw - failing broadcast shouldn't break API requests
     return { success: false, error };
   }

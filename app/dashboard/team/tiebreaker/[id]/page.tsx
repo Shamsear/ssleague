@@ -37,7 +37,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
   const [tiebreakerId, setTiebreakerId] = useState<string | null>(null);
   const [tiebreaker, setTiebreaker] = useState<TiebreakerDetail | null>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [bidAmount, setBidAmount] = useState<number | ''>(0);
+  const [bidAmount, setBidAmount] = useState<number | ''>('');
   const [hasUserModifiedBid, setHasUserModifiedBid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -133,24 +133,34 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
     if (user && tiebreakerId) {
       fetchTiebreakerDetails();
       
-      // Auto-refresh every 3 seconds
+      // Auto-refresh every 3 seconds, but stop if resolved/completed
       const interval = setInterval(() => {
+        // Stop polling if tiebreaker is resolved or completed
+        if (tiebreaker?.status === 'resolved' || tiebreaker?.status === 'completed') {
+          clearInterval(interval);
+          return;
+        }
         fetchTiebreakerDetails();
       }, 3000);
       
       return () => clearInterval(interval);
     }
-  }, [user, tiebreakerId]);
+  }, [user, tiebreakerId, tiebreaker?.status]);
 
-  // Check if tiebreaker is resolved and redirect to dashboard
+  // Redirect when tiebreaker is completed, resolved, or expired
   useEffect(() => {
-    if (tiebreaker && tiebreaker.submitted && tiebreaker.status === 'resolved') {
-      console.log('✅ Tiebreaker resolved, redirecting to dashboard...');
-      setTimeout(() => {
+    if (!tiebreaker) return;
+    
+    // Redirect if tiebreaker is resolved or completed
+    if (tiebreaker.status === 'resolved' || tiebreaker.status === 'completed') {
+      console.log(`✅ Tiebreaker ${tiebreaker.status}, redirecting to dashboard...`);
+      const redirectTimer = setTimeout(() => {
         router.push('/dashboard/team');
-      }, 2000); // Wait 2 seconds to show resolution message
+      }, 2000); // Wait 2 seconds to show message
+      
+      return () => clearTimeout(redirectTimer);
     }
-  }, [tiebreaker, router]);
+  }, [tiebreaker?.status, router]);
 
   // Update current time every second for dynamic timer
   useEffect(() => {
@@ -209,10 +219,24 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
       
       const result = await response.json();
       
+      console.log('📬 API Response:', result);
+      
       if (result.success) {
+        // Clear any previous errors
+        setError('');
+        
+        // Log success with details
+        if (result.message) {
+          console.log('✅ Success:', result.message);
+        }
+        if (result.data) {
+          console.log('📊 Details:', result.data);
+        }
+        
         // Refresh to show submitted state
         fetchTiebreakerDetails();
       } else {
+        // Show error message from API
         setError(result.error || 'Failed to submit bid');
       }
     } catch (error) {
@@ -420,7 +444,7 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                       onChange={(e) => {
                         setHasUserModifiedBid(true);
                         const value = e.target.value;
-                        const parsedValue = value === '' ? 0 : Math.floor(parseFloat(value));
+                        const parsedValue = value === '' ? '' : Math.floor(parseFloat(value));
                         console.log('🔤 Input changed:', { rawValue: value, parsedValue, currentBidAmount: bidAmount });
                         setBidAmount(parsedValue);
                       }}
