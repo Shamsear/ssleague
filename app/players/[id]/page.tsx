@@ -145,6 +145,39 @@ export default function PlayerDetailPage() {
   );
 
 
+  // Fetch player base data from Firestore realplayers
+  useEffect(() => {
+    const fetchPlayerBaseData = async () => {
+      try {
+        const playersRef = collection(db, 'realplayers');
+        const q = query(playersRef, where('player_id', '==', playerId));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const playerDoc = snapshot.docs[0];
+          const playerData = playerDoc.data();
+          
+          // Store photo_url and other base data
+          setPlayer(prev => prev ? {
+            ...prev,
+            photo_url: playerData.photo_url,
+            email: playerData.email,
+            phone: playerData.phone,
+            psn_id: playerData.psn_id,
+            xbox_id: playerData.xbox_id,
+            steam_id: playerData.steam_id,
+          } : null);
+        }
+      } catch (error) {
+        console.error('Error fetching player base data:', error);
+      }
+    };
+    
+    if (playerId) {
+      fetchPlayerBaseData();
+    }
+  }, [playerId]);
+  
   // Process player stats data from Neon when it arrives
   useEffect(() => {
     // Clear error when data starts loading
