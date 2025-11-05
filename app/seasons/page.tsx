@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import Link from 'next/link';
 
 interface Season {
@@ -38,33 +36,13 @@ export default function SeasonsArchivePage() {
     try {
       setLoading(true);
       
-      // Fetch all seasons
-      const seasonsRef = collection(db, 'seasons');
-      const seasonsQuery = query(seasonsRef, orderBy('created_at', 'desc'));
-      const seasonsSnapshot = await getDocs(seasonsQuery);
+      // Fetch from API (cached)
+      const response = await fetch('/api/seasons/all');
+      const data = await response.json();
       
-      const seasonsData = seasonsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        let name = data.name;
-        
-        // Generate name from ID if missing (for historical seasons like sspsls15)
-        if (!name && doc.id) {
-          const seasonNum = doc.id.match(/\d+/);
-          if (seasonNum) {
-            name = `Season ${seasonNum[0]}`;
-          } else {
-            name = doc.id;
-          }
-        }
-        
-        return {
-          id: doc.id,
-          ...data,
-          name
-        };
-      }) as Season[];
-      
-      setSeasons(seasonsData);
+      if (data.success && data.seasons) {
+        setSeasons(data.seasons);
+      }
     } catch (error) {
       console.error('Error fetching seasons:', error);
     } finally {

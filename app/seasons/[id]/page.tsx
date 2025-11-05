@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -90,33 +88,23 @@ export default function SeasonDetailPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch season details from Firebase
-      const seasonDoc = await getDoc(doc(db, 'seasons', seasonId));
+      // Fetch season details from API
+      const seasonRes = await fetch(`/api/seasons/${seasonId}/details`);
       
-      if (!seasonDoc.exists()) {
+      if (!seasonRes.ok) {
         setError('Season not found');
         setLoading(false);
         return;
       }
 
-      const seasonData = seasonDoc.data();
-      let name = seasonData.name;
-      
-      // Generate name from ID if missing
-      if (!name && seasonId) {
-        const seasonNum = seasonId.match(/\d+/);
-        if (seasonNum) {
-          name = `Season ${seasonNum[0]}`;
-        } else {
-          name = seasonId;
-        }
+      const seasonResult = await seasonRes.json();
+      if (!seasonResult.success) {
+        setError('Season not found');
+        setLoading(false);
+        return;
       }
 
-      setSeason({
-        id: seasonDoc.id,
-        ...seasonData,
-        name
-      } as Season);
+      setSeason(seasonResult.data as Season);
 
       // Fetch team and player stats for this season
       const [statsRes, awardsRes, trophiesRes] = await Promise.all([
