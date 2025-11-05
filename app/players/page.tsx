@@ -71,20 +71,23 @@ export default function AllPlayersPage() {
           // Get players from the API response
           const players = seasonData.data.players || [];
           
-          // Also need to fetch photo_url from Firestore for each player
-          const photoPromises = players.map(async (player: any) => {
-            try {
-              const photoRes = await fetch(`/api/real-players/${player.player_id}`);
-              const photoData = await photoRes.json();
-              return photoData.success ? photoData.player?.photo_url : null;
-            } catch {
-              return null;
+          // Fetch player photos from the overall players API which includes photo_url
+          let photoMap = new Map<string, string>();
+          try {
+            const allPlayersRes = await fetch('/api/players/with-stats');
+            const allPlayersData = await allPlayersRes.json();
+            if (allPlayersData.success && allPlayersData.players) {
+              allPlayersData.players.forEach((p: any) => {
+                if (p.photo_url) {
+                  photoMap.set(p.player_id, p.photo_url);
+                }
+              });
             }
-          });
+          } catch (err) {
+            console.error('Error fetching player photos:', err);
+          }
           
-          const photoUrls = await Promise.all(photoPromises);
-          
-          playersData = players.map((player: any, index: number) => ({
+          playersData = players.map((player: any) => ({
             id: player.player_id,
             player_id: player.player_id,
             name: player.player_name,
@@ -92,7 +95,7 @@ export default function AllPlayersPage() {
             category: player.category,
             team: player.team_name,
             team_name: player.team_name,
-            photo_url: photoUrls[index],
+            photo_url: photoMap.get(player.player_id) || null,
             current_season_id: seasonId,
             stats: {
               points: player.points || 0,
