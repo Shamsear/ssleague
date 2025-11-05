@@ -96,6 +96,7 @@ export default function PlayerDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedView, setSelectedView] = useState<'overall' | 'all-seasons' | string>('overall');
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [playerDataLoaded, setPlayerDataLoaded] = useState(false);
 
   const playerId = params.id as string;
   const [firebaseSeasons, setFirebaseSeasons] = useState<any[]>([]);
@@ -145,9 +146,52 @@ export default function PlayerDetailPage() {
   );
 
 
-  // Fetch player base data from Firestore realplayers
+  // Process player stats data from Neon when it arrives
   useEffect(() => {
-    const fetchPlayerBaseData = async () => {
+    const processPlayerData = async () => {
+      // Clear error when data starts loading
+      if (statsLoading) {
+        setError(null);
+        return;
+      }
+      
+      // Wait for Firebase seasons to load before filtering
+      if (firebaseSeasons.length === 0) {
+        return;
+      }
+      
+      // Only show error if done loading and no data
+      if (!playerStatsData || playerStatsData.length === 0) {
+        setError('No season stats found for this player');
+        return;
+      }
+      
+      // Clear error when we have data
+      setError(null);
+      
+      // Only show seasons that exist in Firebase and have started
+      const startedSeasons = playerStatsData.filter((statsData: any) => {
+        const seasonId = statsData.season_id;
+        
+        // Find the season in Firebase
+        const fbSeason = firebaseSeasons.find(s => s.id === seasonId);
+        
+        // If season not found in Firebase, exclude it
+        if (!fbSeason) return false;
+        
+        // Check if season has started
+        if (fbSeason.start_date) {
+          const startDate = fbSeason.start_date.toDate ? fbSeason.start_date.toDate() : new Date(fbSeason.start_date);
+          const now = new Date();
+          return startDate <= now;
+        }
+        
+        // If no start_date field, include it (for backward compatibility with old seasons)
+        return true;
+      });
+      
+      // Fetch photo_url from Firestore for this player
+      let photoUrl: string | undefined;
       try {
         const playersRef = collection(db, 'realplayers');
         const q = query(playersRef, where('player_id', '==', playerId));
@@ -155,74 +199,14 @@ export default function PlayerDetailPage() {
         
         if (!snapshot.empty) {
           const playerDoc = snapshot.docs[0];
-          const playerData = playerDoc.data();
-          
-          // Store photo_url and other base data
-          setPlayer(prev => prev ? {
-            ...prev,
-            photo_url: playerData.photo_url,
-            email: playerData.email,
-            phone: playerData.phone,
-            psn_id: playerData.psn_id,
-            xbox_id: playerData.xbox_id,
-            steam_id: playerData.steam_id,
-          } : null);
+          photoUrl = playerDoc.data().photo_url;
         }
       } catch (error) {
-        console.error('Error fetching player base data:', error);
-      }
-    };
-    
-    if (playerId) {
-      fetchPlayerBaseData();
-    }
-  }, [playerId]);
-  
-  // Process player stats data from Neon when it arrives
-  useEffect(() => {
-    // Clear error when data starts loading
-    if (statsLoading) {
-      setError(null);
-      return;
-    }
-    
-    // Wait for Firebase seasons to load before filtering
-    if (firebaseSeasons.length === 0) {
-      return;
-    }
-    
-    // Only show error if done loading and no data
-    if (!playerStatsData || playerStatsData.length === 0) {
-      setError('No season stats found for this player');
-      return;
-    }
-    
-    // Clear error when we have data
-    setError(null);
-    
-    // Only show seasons that exist in Firebase and have started
-    const startedSeasons = playerStatsData.filter((statsData: any) => {
-      const seasonId = statsData.season_id;
-      
-      // Find the season in Firebase
-      const fbSeason = firebaseSeasons.find(s => s.id === seasonId);
-      
-      // If season not found in Firebase, exclude it
-      if (!fbSeason) return false;
-      
-      // Check if season has started
-      if (fbSeason.start_date) {
-        const startDate = fbSeason.start_date.toDate ? fbSeason.start_date.toDate() : new Date(fbSeason.start_date);
-        const now = new Date();
-        return startDate <= now;
+        console.error('Error fetching player photo:', error);
       }
       
-      // If no start_date field, include it (for backward compatibility with old seasons)
-      return true;
-    });
-    
-    // Process all season data from Neon
-    const allData = startedSeasons.map((statsData: any) => {
+      // Process all season data from Neon
+      const allData = startedSeasons.map((statsData: any) => {
       const seasonName = statsData.season_name || statsData.season_id;
       
       const matchesPlayed = statsData.matches_played || 0;
@@ -239,6 +223,7 @@ export default function PlayerDetailPage() {
         team: statsData.team,
         team_id: statsData.team_id,
         category: statsData.category,
+        photo_url: photoUrl,
         stats: {
           matches_played: matchesPlayed,
           matches_won: wins,
@@ -260,17 +245,23 @@ export default function PlayerDetailPage() {
       };
     });
     
-    setAllSeasonData(allData);
+      setAllSeasonData(allData);
+      
+      // Set the first season as default
+      if (allData.length > 0) {
+        setPlayer(allData[0]);
+        setSeasonName(allData[0].season_name || 'Season');
+      } else if (startedSeasons.length === 0 && playerStatsData.length > 0) {
+        // If we have data but all seasons were filtered out, show message
+        setError('No active seasons found for this player');
+      }
+      
+      // Mark data as loaded
+      setPlayerDataLoaded(true);
+    };
     
-    // Set the first season as default
-    if (allData.length > 0) {
-      setPlayer(allData[0]);
-      setSeasonName(allData[0].season_name || 'Season');
-    } else if (startedSeasons.length === 0 && playerStatsData.length > 0) {
-      // If we have data but all seasons were filtered out, show message
-      setError('No active seasons found for this player');
-    }
-  }, [playerStatsData, statsLoading, firebaseSeasons]);
+    processPlayerData();
+  }, [playerStatsData, statsLoading, firebaseSeasons, playerId]);
 
 
   const fetchSeasonName = async (seasonId: string) => {
@@ -342,7 +333,7 @@ export default function PlayerDetailPage() {
     }
   };
 
-  if (statsLoading || (firebaseSeasons.length === 0 && !error)) {
+  if (statsLoading || firebaseSeasons.length === 0 || !playerDataLoaded) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
