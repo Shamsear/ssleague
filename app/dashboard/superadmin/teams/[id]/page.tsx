@@ -197,12 +197,12 @@ export default function TeamDetailsPage() {
               </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 flex items-center justify-center flex-shrink-0">
-                    {team.logo ? (
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-white flex items-center justify-center flex-shrink-0">
+                    {team.logo_url ? (
                       <img 
-                        src={team.logo} 
+                        src={team.logo_url} 
                         alt={`${team.team_name} logo`}
-                        className="w-full h-full object-cover"
+                        className="max-w-full max-h-full object-contain p-1"
                         onError={(e) => {
                           const target = e.target as HTMLElement;
                           target.style.display = 'none';
