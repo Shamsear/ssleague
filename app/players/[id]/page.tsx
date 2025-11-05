@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import Link from 'next/link';
+import OptimizedImage from '@/components/OptimizedImage';
 import { usePlayerStats, usePlayerAwards, useTeamTrophies, useTeamSeasonStats, type PlayerAward, type TeamTrophy, type TeamStats } from '@/hooks';
 
 interface PlayerData {
@@ -537,21 +538,26 @@ export default function PlayerDetailPage() {
               {/* Player Card */}
               <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
                 {/* Player Image */}
-                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl shadow-md bg-white flex items-center justify-center">
+                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl shadow-md bg-white overflow-hidden">
                   {player.photo_url ? (
-                    <img
+                    <OptimizedImage
                       src={player.photo_url}
                       alt={player.name}
+                      width={160}
+                      height={160}
+                      quality={90}
                       className="object-cover w-full h-full rounded-xl"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                      }}
+                      fallback={
+                        <div className="bg-primary/10 w-full h-full flex items-center justify-center">
+                          <span className="text-5xl font-bold text-primary">{player.name?.[0] || 'P'}</span>
+                        </div>
+                      }
                     />
-                  ) : null}
-                  <div className={`bg-primary/10 w-full h-full flex items-center justify-center ${player.photo_url ? 'hidden' : ''}`}>
-                    <span className="text-5xl font-bold text-primary">{player.name?.[0] || 'P'}</span>
-                  </div>
+                  ) : (
+                    <div className="bg-primary/10 w-full h-full flex items-center justify-center">
+                      <span className="text-5xl font-bold text-primary">{player.name?.[0] || 'P'}</span>
+                    </div>
+                  )}
                   
                   {/* POTM Badge */}
                   {player.is_potm && (
