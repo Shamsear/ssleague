@@ -102,6 +102,12 @@ export default function Navbar() {
               <Link href="/teams" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
                 Teams
               </Link>
+              <Link href="/fixtures" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
+                Fixtures
+              </Link>
+              <Link href="/results" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
+                Results
+              </Link>
               <Link href="/seasons" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
                 Archive
               </Link>

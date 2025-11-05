@@ -276,6 +276,34 @@ export default function MobileNav() {
                     </Link>
                   </div>
                   
+                  {/* Fixtures */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/fixtures" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">Fixtures</span>
+                        <span className="text-sm text-gray-700 mt-1">Upcoming matches</span>
+                      </div>
+                    </Link>
+                  </div>
+                  
+                  {/* Results */}
+                  <div className="border-b border-black/10">
+                    <Link 
+                      href="/results" 
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">Results</span>
+                        <span className="text-sm text-gray-700 mt-1">Match results</span>
+                      </div>
+                    </Link>
+                  </div>
+                  
                   {/* Archive */}
                   <div className="border-b border-black/10">
                     <Link 

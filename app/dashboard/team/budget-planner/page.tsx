@@ -11,7 +11,6 @@ type PlayerType = 'football' | 'real';
 interface PlayerEstimate {
   id: string;
   position: string;
-  category?: 'Legend' | 'Classic'; // For real players (SS Members)
   stars?: number; // For real players (3-10)
   estimatedCost: string;
   minCost: number;
@@ -32,8 +31,8 @@ interface BudgetData {
 }
 
 const FOOTBALL_POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
-const REAL_PLAYER_CATEGORIES = ['Legend', 'Classic'];
 const STAR_RATINGS = [3, 4, 5, 6, 7, 8, 9, 10];
+const MATCH_MILESTONES = [1, 5, 10, 15, 20, 25, 30, 38]; // Match milestones for salary calculation
 
 export default function BudgetPlannerPage() {
   const { user, loading } = useAuth();
@@ -108,7 +107,6 @@ export default function BudgetPlannerPage() {
     const newPlayer: PlayerEstimate = {
       id: Date.now().toString(),
       position: type === 'football' ? 'GK' : '',
-      category: type === 'real' ? 'Legend' : undefined,
       stars: type === 'real' ? 5 : undefined,
       estimatedCost: '',
       minCost: 0,
@@ -442,71 +440,70 @@ export default function BudgetPlannerPage() {
                 </div>
               ) : (
                 /* Real Players (SS Members) */
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
-                  {/* Category */}
-                  <div>
-                    <label className="text-xs text-gray-600 mb-1 block">Category</label>
-                    <select
-                      value={player.category || 'Legend'}
-                      onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'category', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      {REAL_PLAYER_CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                    {/* Star Rating */}
+                    <div>
+                      <label className="text-xs text-gray-600 mb-1 block">Star Rating</label>
+                      <select
+                        value={player.stars || 5}
+                        onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'stars', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        {STAR_RATINGS.map(star => (
+                          <option key={star} value={star}>{star}☆</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Estimated Cost */}
+                    <div>
+                      <label className="text-xs text-gray-600 mb-1 block">Estimated Bid ($)</label>
+                      <input
+                        type="text"
+                        value={player.estimatedCost}
+                        onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'estimatedCost', e.target.value)}
+                        placeholder="e.g., 100-200 or 150"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Min bid: $100, increment +$10</p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-end justify-end">
+                      <button
+                        onClick={() => removePlayerEstimate(activeTab, player.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-300"
+                        title="Remove player"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Star Rating */}
-                  <div>
-                    <label className="text-xs text-gray-600 mb-1 block">Star Rating</label>
-                    <select
-                      value={player.stars || 5}
-                      onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'stars', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      {STAR_RATINGS.map(star => (
-                        <option key={star} value={star}>{star}☆</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Estimated Cost */}
-                  <div>
-                    <label className="text-xs text-gray-600 mb-1 block">Estimated Bid ($)</label>
-                    <input
-                      type="text"
-                      value={player.estimatedCost}
-                      onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'estimatedCost', e.target.value)}
-                      placeholder="e.g., 100-200 or 150"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Min bid: $100, increment +$10</p>
-                  </div>
-
-                  {/* Salary Calculation */}
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-200">
-                    <label className="text-xs text-gray-600 mb-1 block">Per Match Salary</label>
-                    <p className="text-lg font-bold text-green-600">
-                      ${player.avgCost > 0 && player.stars ? calculateRealPlayerSalary(player.avgCost, player.stars).toFixed(2) : '0.00'}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Formula: (${player.avgCost.toFixed(0)} ÷ 100) × {player.stars || 5}☆ ÷ 10
-                    </p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => removePlayerEstimate(activeTab, player.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-300"
-                      title="Remove player"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
+                  {/* Salary Calculator Grid */}
+                  {player.avgCost > 0 && player.stars && (
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                      <h4 className="text-sm font-semibold text-green-800 mb-3">💰 Salary per Match</h4>
+                      <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                        {MATCH_MILESTONES.map((matches) => {
+                          const perMatchSalary = calculateRealPlayerSalary(player.avgCost, player.stars);
+                          const totalSalary = perMatchSalary * matches;
+                          return (
+                            <div key={matches} className="bg-white rounded-lg p-2 text-center border border-green-200">
+                              <div className="text-xs text-gray-600 mb-1">{matches} match{matches > 1 ? 'es' : ''}</div>
+                              <div className="text-sm font-bold text-green-600">${totalSalary.toFixed(2)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-3">
+                        Base formula: (${player.avgCost.toFixed(0)} ÷ 100) × {player.stars}☆ ÷ 10 = <span className="font-semibold">${calculateRealPlayerSalary(player.avgCost, player.stars).toFixed(2)}</span> per match
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -559,9 +556,9 @@ export default function BudgetPlannerPage() {
               <ul className="text-sm text-blue-700 space-y-1">
                 <li>• <strong>SS Players (Football):</strong> 25 player slots max, €100 min bid</li>
                 <li>• <strong>SS Members (Real):</strong> 5-7 member slots, $100 min bid</li>
-                <li>• <strong>Categories:</strong> Legend and Classic (for SS Members)</li>
                 <li>• <strong>Contract:</strong> 2 seasons for both player types</li>
                 <li>• <strong>Bid increment:</strong> +€10 or +$10 for each bid</li>
+                <li>• <strong>Season length:</strong> 38 matches (19 per half)</li>
               </ul>
             </div>
           </div>

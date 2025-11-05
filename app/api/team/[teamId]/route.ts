@@ -6,7 +6,7 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
     // Get token cookie and verify authentication
@@ -32,7 +32,7 @@ export async function GET(
       );
     }
 
-    const { id: teamId } = await params;
+    const { teamId } = await params;
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('season_id');
 
