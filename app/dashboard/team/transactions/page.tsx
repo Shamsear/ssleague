@@ -191,77 +191,64 @@ export default function TransactionsPage() {
       );
     }
 
-    const isFootball = currencyType === 'football';
-
     return (
-      <div className="space-y-4 sm:space-y-6">
-        {/* Summary Cards - Responsive Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* Current Balance - Featured Card */}
-          <div className={`col-span-2 lg:col-span-1 ${
-            isFootball 
-              ? 'bg-gradient-to-br from-blue-500 to-blue-600' 
-              : 'bg-gradient-to-br from-purple-500 to-purple-600'
-          } text-white rounded-xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-shadow`}>
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 shadow-lg">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-white/80 text-xs sm:text-sm font-medium">Current Balance</span>
-              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-white/80" />
+              <span className="text-blue-100 text-sm font-medium">Current Balance</span>
+              <DollarSign className="w-5 h-5 text-blue-100" />
             </div>
-            <p className="text-2xl sm:text-3xl lg:text-4xl font-bold">{data.current_balance.toLocaleString()}</p>
-            <p className="text-white/60 text-xs mt-1">{isFootball ? 'Coins' : 'Credits'}</p>
+            <p className="text-3xl font-bold">{data.current_balance.toLocaleString()}</p>
           </div>
 
-          {/* Starting Balance */}
-          <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 text-xs sm:text-sm font-medium">Starting</span>
-              <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+              <span className="text-gray-600 text-sm font-medium">Starting Balance</span>
+              <Calendar className="w-5 h-5 text-gray-400" />
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{data.starting_balance.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-gray-900">{data.starting_balance.toLocaleString()}</p>
           </div>
 
-          {/* Total Spent */}
-          <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-shadow border border-red-200">
+          <div className="bg-white rounded-xl p-6 shadow-lg border border-red-200">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 text-xs sm:text-sm font-medium">Spent</span>
-              <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
+              <span className="text-gray-600 text-sm font-medium">Total Spent</span>
+              <TrendingDown className="w-5 h-5 text-red-500" />
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-red-600">{data.total_spent.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-red-600">{data.total_spent.toLocaleString()}</p>
           </div>
 
-          {/* Total Earned */}
           {data.total_earned > 0 && (
-            <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-shadow border border-green-200">
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-green-200">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 text-xs sm:text-sm font-medium">Earned</span>
-                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                <span className="text-gray-600 text-sm font-medium">Total Earned</span>
+                <TrendingUp className="w-5 h-5 text-green-500" />
               </div>
-              <p className="text-xl sm:text-2xl font-bold text-green-600">+{data.total_earned.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-green-600">+{data.total_earned.toLocaleString()}</p>
             </div>
           )}
         </div>
 
-        {/* Filter and Export Bar - Mobile Optimized */}
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 flex-1">
-            <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg">
-              <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="flex-1 text-sm sm:text-base focus:outline-none bg-transparent"
-              >
-                {getTransactionTypes().map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Filter and Export Bar */}
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Filter className="w-5 h-5 text-gray-500" />
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {getTransactionTypes().map(type => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
             {filterType !== 'all' && (
               <button
                 onClick={() => setFilterType('all')}
-                className="text-sm text-blue-600 hover:text-blue-800 underline self-start sm:self-center"
+                className="text-sm text-blue-600 hover:text-blue-800 underline"
               >
                 Clear filter
               </button>
@@ -269,15 +256,15 @@ export default function TransactionsPage() {
           </div>
           <button
             onClick={() => exportTransactions(currencyType)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm sm:text-base"
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
           >
             <Download className="w-4 h-4" />
-            <span>Export CSV</span>
+            Export CSV
           </button>
         </div>
 
-        {/* Transactions - Desktop Table View (hidden on mobile) */}
-        <div className="hidden md:block bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        {/* Transactions Table */}
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -336,56 +323,6 @@ export default function TransactionsPage() {
             </table>
           </div>
         </div>
-
-        {/* Transactions - Mobile Card View (visible on mobile) */}
-        <div className="md:hidden space-y-3">
-          {filterTransactions(data.transactions).length === 0 ? (
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8 text-center">
-              <p className="text-gray-500">
-                {data.transactions.length === 0 ? 'No transactions yet' : 'No transactions match the selected filter'}
-              </p>
-            </div>
-          ) : (
-            filterTransactions(data.transactions).map((transaction) => (
-              <div
-                key={transaction.id}
-                className="bg-white rounded-xl shadow-md border border-gray-200 p-4 hover:shadow-lg transition-shadow"
-              >
-                {/* Card Header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{getTransactionIcon(transaction.type)}</span>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900 capitalize">
-                        {transaction.type.replace(/_/g, ' ')}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatDate(transaction.date)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`text-right font-bold text-lg ${getTransactionColor(transaction.amount)}`}>
-                    {transaction.amount > 0 ? '+' : ''}{transaction.amount.toLocaleString()}
-                  </div>
-                </div>
-
-                {/* Card Body */}
-                <div className="space-y-2 pt-3 border-t border-gray-100">
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Reason</p>
-                    <p className="text-sm text-gray-700">{transaction.reason}</p>
-                  </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-gray-100">
-                    <span className="text-xs text-gray-500 uppercase tracking-wide">Balance After</span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      {transaction.balance_after.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
       </div>
     );
   };
@@ -401,21 +338,21 @@ export default function TransactionsPage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-4 sm:py-8 px-3 sm:px-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6 sm:mb-8">
+        <div className="mb-8">
           <Link
             href="/dashboard/team"
-            className="inline-flex items-center gap-2 text-sm sm:text-base text-gray-600 hover:text-indigo-600 transition-colors mb-3 sm:mb-4"
+            className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors mb-4"
           >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to Dashboard
           </Link>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">Transaction History</h1>
-          <p className="text-sm sm:text-base text-gray-600">View all your financial transactions and budget breakdown</p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Transaction History</h1>
+          <p className="text-gray-600">View all your financial transactions and budget breakdown</p>
         </div>
 
         {/* Error Message */}
@@ -433,54 +370,52 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        {/* Tabs - Mobile Optimized */}
+        {/* Tabs */}
         <div className="bg-white rounded-t-xl shadow-lg border border-gray-200 border-b-0">
-          <div className="grid grid-cols-2 border-b border-gray-200">
+          <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('football')}
-              className={`px-3 sm:px-6 py-3 sm:py-4 text-center font-semibold transition-colors ${
+              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors ${
                 activeTab === 'football'
                   ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-                <span className="text-xl sm:text-2xl">⚽</span>
-                <span className="text-xs sm:text-base">Football</span>
-                <span className="hidden lg:inline text-xs sm:text-base">(Coins)</span>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-2xl">⚽</span>
+                <span>Football Budget (Coins)</span>
               </div>
             </button>
             <button
               onClick={() => setActiveTab('real_player')}
-              className={`px-3 sm:px-6 py-3 sm:py-4 text-center font-semibold transition-colors ${
+              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors ${
                 activeTab === 'real_player'
                   ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white'
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-                <span className="text-xl sm:text-2xl">💎</span>
-                <span className="text-xs sm:text-base">Real Player</span>
-                <span className="hidden lg:inline text-xs sm:text-base">(Credits)</span>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-2xl">💎</span>
+                <span>Real Player Budget (Credits)</span>
               </div>
             </button>
           </div>
         </div>
 
         {/* Tab Content */}
-        <div className="bg-gray-50 rounded-b-xl shadow-lg border border-gray-200 border-t-0 p-3 sm:p-6">
+        <div className="bg-gray-50 rounded-b-xl shadow-lg border border-gray-200 border-t-0 p-6">
           {activeTab === 'football' && renderCurrencySection(footballData, 'Football Budget', 'football')}
           {activeTab === 'real_player' && renderCurrencySection(realPlayerData, 'Real Player Budget', 'real_player')}
         </div>
 
-        {/* Info Box - Mobile Optimized */}
-        <div className="mt-4 sm:mt-6 bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
-          <h4 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">💡 About Your Budgets:</h4>
-          <ul className="text-xs sm:text-sm text-blue-800 space-y-1.5 sm:space-y-1">
-            <li>• <strong>Football Budget (Coins):</strong> For player auctions, salaries, and match expenses</li>
-            <li>• <strong>Real Player Budget (Credits):</strong> For registering real players and special fees</li>
-            <li>• Negative amounts (red) are deductions from your balance</li>
-            <li>• Positive amounts (green) are additions to your balance</li>
+        {/* Info Box */}
+        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-900 mb-2">💡 About Your Budgets:</h4>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• <strong>Football Budget (Coins):</strong> Used for player auctions, salaries, and match-related expenses</li>
+            <li>• <strong>Real Player Budget (Credits):</strong> Used for registering real players and special fees</li>
+            <li>• Negative amounts (in red) are deductions from your balance</li>
+            <li>• Positive amounts (in green) are additions to your balance</li>
           </ul>
         </div>
       </div>

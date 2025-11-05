@@ -84,8 +84,8 @@ export default function CommitteePlayersPage() {
       // Fetch teams from Firestore (keep) and players from Neon (new)
       const [teamsSnapshot, playersResponse] = await Promise.all([
         getDocs(collection(db, 'teams')),
-        fetchWithTokenRefresh(`/api/players?${params}`)
-      ]);
+        fetch(`/api/players?${params}`)
+      ])
       
       const { data: playersData, success, pagination } = await playersResponse.json()
       if (!success) {

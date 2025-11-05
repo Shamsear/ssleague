@@ -7,7 +7,6 @@ import Link from 'next/link';
 import ContractInfo from '@/components/ContractInfo';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TeamContractData {
   skipped_seasons?: number;
@@ -119,8 +118,8 @@ export default function TeamContractsPage() {
 
         // Fetch from both seasons
         const [currentResponse, nextResponse] = await Promise.all([
-          fetchWithTokenRefresh(`/api/stats/players?teamId=${teamId}&seasonId=${currentSeasonId}&limit=1000`),
-          fetchWithTokenRefresh(`/api/stats/players?teamId=${teamId}&seasonId=${nextSeasonId}&limit=1000`),
+          fetch(`/api/stats/players?teamId=${teamId}&seasonId=${currentSeasonId}&limit=1000`),
+          fetch(`/api/stats/players?teamId=${teamId}&seasonId=${nextSeasonId}&limit=1000`),
         ]);
 
         const allContracts: RealPlayerContract[] = [];

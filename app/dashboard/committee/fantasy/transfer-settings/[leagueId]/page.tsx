@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeftRight, Calendar, Save, AlertCircle } from 'lucide-react';
-import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TransferSettings {
   max_transfers_per_window: number;
@@ -47,7 +46,7 @@ export default function TransferSettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetchWithTokenRefresh(`/api/fantasy/transfers/settings?league_id=${leagueId}`);
+      const res = await fetch(`/api/fantasy/transfers/settings?league_id=${leagueId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.settings) {
@@ -64,7 +63,7 @@ export default function TransferSettingsPage() {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const res = await fetchWithTokenRefresh('/api/fantasy/transfers/settings', {
+      const res = await fetch('/api/fantasy/transfers/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...settings, fantasy_league_id: leagueId }),
@@ -88,7 +87,7 @@ export default function TransferSettingsPage() {
   const toggleTransferWindow = async () => {
     const newStatus = !settings.is_transfer_window_open;
     try {
-      const res = await fetchWithTokenRefresh('/api/fantasy/transfers/settings', {
+      const res = await fetch('/api/fantasy/transfers/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

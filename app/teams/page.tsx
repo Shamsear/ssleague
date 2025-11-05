@@ -159,13 +159,13 @@ export default function AllTeamsPage() {
               <div className="flex items-center gap-4 mb-4">
                 {/* Team Logo */}
                 {team.logo_url ? (
-                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-white flex-shrink-0 group-hover:scale-110 transition-transform">
+                  <div className="w-16 h-16 rounded-lg bg-white flex-shrink-0 flex items-center justify-center">
                     <Image
                       src={team.logo_url}
                       alt={team.team_name}
                       width={64}
                       height={64}
-                      className="object-contain p-1"
+                      className="object-contain p-2 max-w-full max-h-full"
                     />
                   </div>
                 ) : (

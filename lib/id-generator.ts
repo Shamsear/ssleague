@@ -63,30 +63,8 @@ async function getNextCounter(tableName: string, idColumn: string = 'id'): Promi
  * Generate a new Round ID
  */
 export async function generateRoundId(): Promise<string> {
-  try {
-    // Get the max counter from rounds with round_type = 'normal' or NULL
-    const result = await sql`
-      SELECT id FROM rounds 
-      WHERE round_type IS NULL OR round_type = 'normal'
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `;
-    
-    if (!result || result.length === 0) {
-      console.log('🆕 No existing normal rounds found, starting from 1');
-      return formatId(ID_PREFIXES.ROUND, 1, ID_PADDING.ROUND);
-    }
-    
-    const lastId = result[0].id as string;
-    const numericPart = lastId.replace(/\D/g, '');
-    const lastCounter = parseInt(numericPart, 10) || 0;
-    
-    console.log(`✅ Found last normal round ID: ${lastId}, next counter: ${lastCounter + 1}`);
-    return formatId(ID_PREFIXES.ROUND, lastCounter + 1, ID_PADDING.ROUND);
-  } catch (error) {
-    console.error('❌ Error getting normal round counter:', error);
-    return formatId(ID_PREFIXES.ROUND, 1, ID_PADDING.ROUND);
-  }
+  const counter = await getNextCounter('rounds');
+  return formatId(ID_PREFIXES.ROUND, counter, ID_PADDING.ROUND);
 }
 
 /**

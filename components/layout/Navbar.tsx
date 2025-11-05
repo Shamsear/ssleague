@@ -4,14 +4,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const { user, loading } = useAuth();
-  const { isRegistered } = useTeamRegistration();
   const { signOut } = useFirebaseAuth();
   const router = useRouter();
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
@@ -383,8 +381,8 @@ export default function Navbar() {
                 </>
               )}
               
-              {/* Team Navigation - Only show if registered */}
-              {user.role === 'team' && isRegistered && (
+              {/* Team Navigation */}
+              {user.role === 'team' && (
                 <>
                   {/* My Team Dropdown */}
                   <div className="relative" ref={(el) => { dropdownRefs.current['myteam'] = el; }}>

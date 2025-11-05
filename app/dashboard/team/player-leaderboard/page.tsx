@@ -11,7 +11,6 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { usePlayerStats } from '@/hooks';
 import { useTournament } from '@/hooks/useTournaments';
 import TournamentSelector from '@/components/TournamentSelector';
-import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface PlayerStats {
   id: string;
@@ -93,8 +92,8 @@ export default function PlayerLeaderboardPage() {
         
         // Fetch teams and categories for filters
         const [teamsRes, categoriesRes] = await Promise.all([
-          fetchWithTokenRefresh('/api/team/all'),
-          fetchWithTokenRefresh('/api/categories'),
+          fetch('/api/team/all'),
+          fetch('/api/categories'),
         ]);
 
         const [teamsData, categoriesData] = await Promise.all([

@@ -1,7 +1,6 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import RegisteredTeamDashboard from './RegisteredTeamDashboard';
@@ -12,7 +11,6 @@ import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 export default function TeamDashboard() {
   const { user, loading } = useAuth();
-  const { setIsRegistered } = useTeamRegistration();
   const router = useRouter();
   const [seasonStatus, setSeasonStatus] = useState<{
     hasActiveSeason: boolean;
@@ -283,7 +281,6 @@ export default function TeamDashboard() {
             seasonName: activeSeason.name,
             seasonId: activeSeason.id,
           });
-          setIsRegistered(true); // Notify context
           console.log('✅ Status: Registered in active season');
         } else {
           // Active season exists but not registered
@@ -293,7 +290,6 @@ export default function TeamDashboard() {
             seasonName: activeSeason.name,
             seasonId: activeSeason.id,
           });
-          setIsRegistered(false); // Notify context - HIDE NAVIGATION
           console.log('📊 Status: Active season available, not registered');
         }
       } catch (err) {
@@ -409,11 +405,11 @@ export default function TeamDashboard() {
                     title="Click to change logo"
                   >
                     {teamLogoUrl && teamLogoUrl !== 'skip' ? (
-                      <div className="relative">
+                      <div className="relative w-20 h-20 bg-white rounded-3xl flex items-center justify-center border-2 border-[#0066FF]/20">
                         <img 
                           src={teamLogoUrl}
                           alt="Team logo" 
-                          className="w-20 h-20 rounded-3xl object-contain bg-white p-1 border-2 border-[#0066FF]/20 group-hover:opacity-75 transition-opacity"
+                          className="max-w-full max-h-full object-contain p-2 group-hover:opacity-75 transition-opacity"
                           loading="lazy"
                         />
                         <div className="absolute inset-0 rounded-3xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -1007,7 +1003,9 @@ export default function TeamDashboard() {
                         >
                           <div className="flex items-center space-x-3">
                             {team.logo_url ? (
-                              <img src={team.logo_url} alt={team.team_name} className="w-12 h-12 rounded-xl object-cover" />
+                              <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center">
+                                <img src={team.logo_url} alt={team.team_name} className="max-w-full max-h-full object-contain p-1" />
+                              </div>
                             ) : (
                               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 flex items-center justify-center">
                                 <span className="text-lg font-bold text-blue-600">{team.team_name?.[0]}</span>

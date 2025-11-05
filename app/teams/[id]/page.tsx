@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TeamSeasonData {
   id: string;
@@ -60,7 +59,7 @@ export default function TeamDetailPage() {
       setError(null);
 
       // Fetch team data across all seasons from Neon database
-      const response = await fetchWithTokenRefresh(`/api/teams/${teamId}/all-seasons`);
+      const response = await fetch(`/api/teams/${teamId}/all-seasons`);
       const data = await response.json();
 
       if (!data.success || !data.seasons || data.seasons.length === 0) {
@@ -286,12 +285,12 @@ export default function TeamDetailPage() {
               {/* Team Card */}
               <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
                 {/* Team Logo */}
-                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl overflow-hidden shadow-md bg-white">
+                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl shadow-md bg-white flex items-center justify-center">
                   {team.logo_url ? (
                     <img
                       src={team.logo_url}
                       alt={team.team_name}
-                      className="object-contain w-full h-full p-2"
+                      className="object-contain max-w-full max-h-full p-2"
                     />
                   ) : (
                     <div className="bg-primary/10 w-full h-full flex items-center justify-center">

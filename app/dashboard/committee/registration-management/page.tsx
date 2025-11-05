@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
-import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface RegistrationStats {
   registration_phase: string;
@@ -57,7 +56,7 @@ export default function RegistrationManagementPage() {
         setCurrentSeason(season);
 
         // Fetch registration stats
-        const statsResponse = await fetchWithTokenRefresh(`/api/admin/registration-phases?season_id=${userSeasonId}`);
+        const statsResponse = await fetch(`/api/admin/registration-phases?season_id=${userSeasonId}`);
         const statsResult = await statsResponse.json();
         
         if (statsResult.success) {
@@ -66,7 +65,7 @@ export default function RegistrationManagementPage() {
         }
 
         // Fetch registered players
-        const playersResponse = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
+        const playersResponse = await fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
         const playersResult = await playersResponse.json();
         
         if (playersResult.success && playersResult.data) {
@@ -104,7 +103,7 @@ export default function RegistrationManagementPage() {
     setSuccess(null);
 
     try {
-      const response = await fetchWithTokenRefresh('/api/admin/registration-phases', {
+      const response = await fetch('/api/admin/registration-phases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

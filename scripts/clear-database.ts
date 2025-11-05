@@ -361,10 +361,12 @@ async function clearDatabase() {
     }
   }
   
-  // SKIP Tournament DB - preserve historical data
   if (hasTournamentDb && tournamentTables.length > 0) {
-    console.log('\n⚽ Skipping Neon Tournament DB (historical data preserved)...\n');
-    console.log(`  ℹ Tournament DB: ${tournamentTables.length} tables preserved`);
+    console.log('\n⚽ Clearing Neon Tournament DB...\n');
+    for (const table of tournamentTables) {
+      const deleted = await clearNeonTable(sqlTournament, table, 'Tournament DB');
+      tournamentDeleted += deleted;
+    }
   }
   
   if (hasFantasyDb && fantasyTables.length > 0) {

@@ -27,8 +27,7 @@ interface TiebreakerResult {
 export async function createTiebreaker(
   roundId: string,
   playerId: string,
-  tiedBids: TiedBid[],
-  seasonId?: string
+  tiedBids: TiedBid[]
 ): Promise<TiebreakerResult> {
   try {
     if (tiedBids.length < 2) {
@@ -36,13 +35,6 @@ export async function createTiebreaker(
         success: false,
         error: 'At least 2 tied bids are required to create a tiebreaker',
       };
-    }
-
-    // Get season_id from round if not provided
-    let resolvedSeasonId = seasonId;
-    if (!resolvedSeasonId) {
-      const roundResult = await sql`SELECT season_id FROM rounds WHERE id = ${roundId} LIMIT 1`;
-      resolvedSeasonId = roundResult[0]?.season_id;
     }
 
     // Check if tiebreaker already exists for this round + player
@@ -68,13 +60,12 @@ export async function createTiebreaker(
     // Generate readable tiebreaker ID
     const tiebreakerId = await generateTiebreakerId();
 
-    // Create tiebreaker record (no time limit) with season_id
+    // Create tiebreaker record (no time limit)
     await sql`
       INSERT INTO tiebreakers (
         id,
         round_id,
         player_id,
-        season_id,
         original_amount,
         tied_teams,
         status,
@@ -83,7 +74,6 @@ export async function createTiebreaker(
         ${tiebreakerId},
         ${roundId},
         ${playerId},
-        ${resolvedSeasonId},
         ${originalAmount},
         ${tiedTeamsCount},
         'active',

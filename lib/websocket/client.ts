@@ -1,9 +1,7 @@
 /**
- * Pusher Client for Real-Time Updates
+ * WebSocket Client for Real-Time Updates
  * Handles connections for live auction bidding, round updates, and tiebreakers
  */
-
-import Pusher from 'pusher-js';
 
 type WebSocketMessage = {
   type: 'bid' | 'round_update' | 'tiebreaker' | 'player_sold' | 'round_status';
@@ -13,170 +11,211 @@ type WebSocketMessage = {
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
-/**
- * Sanitize channel name for Pusher compatibility
- * Pusher doesn't allow colons (:) in channel names
- * Replace with hyphens (-)
- */
-function sanitizeChannelName(channel: string): string {
-  return channel.replace(/:/g, '-');
-}
-
 export class WSClient {
-  private pusher: Pusher | null = null;
-  private channels: Map<string, any> = new Map();
+  private ws: WebSocket | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectDelay = 1000;
   private handlers: Map<string, Set<MessageHandler>> = new Map();
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private isIntentionallyClosed = false;
 
-  constructor(private key: string, private cluster: string) {}
+  constructor(private url: string) {}
 
   connect() {
-    if (this.pusher) {
-      console.log('[Pusher] Already connected');
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      console.log('[WebSocket] Already connected');
       return;
     }
 
-    console.log('[Pusher] Connecting...');
+    this.isIntentionallyClosed = false;
+    console.log('[WebSocket] Connecting to:', this.url);
 
     try {
-      this.pusher = new Pusher(this.key, {
-        cluster: this.cluster,
-      });
+      this.ws = new WebSocket(this.url);
 
-      this.pusher.connection.bind('connected', () => {
-        console.log('[Pusher] Connected successfully');
-      });
+      this.ws.onopen = () => {
+        console.log('[WebSocket] Connected successfully');
+        this.reconnectAttempts = 0;
+        this.startHeartbeat();
+        
+        // Subscribe to all registered channels
+        this.handlers.forEach((_, channel) => {
+          this.send({
+            type: 'subscribe',
+            channel,
+          });
+          console.log(`[WebSocket] Subscribed to channel: ${channel}`);
+        });
+      };
 
-      this.pusher.connection.bind('error', (err: any) => {
-        console.error('[Pusher] Connection error:', err);
-      });
+      this.ws.onmessage = (event) => {
+        try {
+          const message: WebSocketMessage = JSON.parse(event.data);
+          this.handleMessage(message);
+        } catch (error) {
+          console.error('[WebSocket] Failed to parse message:', error);
+        }
+      };
 
-      this.pusher.connection.bind('disconnected', () => {
-        console.log('[Pusher] Disconnected');
-      });
+      this.ws.onerror = (error) => {
+        console.error('[WebSocket] Error:', error);
+      };
 
+      this.ws.onclose = (event) => {
+        console.log('[WebSocket] Connection closed:', event.code, event.reason);
+        this.stopHeartbeat();
+
+        // Only attempt reconnection if not intentionally closed
+        if (!this.isIntentionallyClosed && this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.reconnectAttempts++;
+          const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+          console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+          
+          setTimeout(() => this.connect(), delay);
+        }
+      };
     } catch (error) {
-      console.error('[Pusher] Connection failed:', error);
+      console.error('[WebSocket] Connection failed:', error);
     }
   }
 
   disconnect() {
-    if (this.pusher) {
-      this.pusher.disconnect();
-      this.pusher = null;
+    this.isIntentionallyClosed = true;
+    this.stopHeartbeat();
+    
+    if (this.ws) {
+      this.ws.close(1000, 'Client disconnecting');
+      this.ws = null;
     }
     
-    this.channels.clear();
-    this.handlers.clear();
-    
-    console.log('[Pusher] Disconnected');
+    console.log('[WebSocket] Disconnected');
   }
 
   subscribe(channel: string, handler: MessageHandler) {
-    if (!this.pusher) {
-      this.connect();
-    }
-
-    // Sanitize channel name for Pusher (no colons allowed)
-    const sanitizedChannel = sanitizeChannelName(channel);
-
     if (!this.handlers.has(channel)) {
       this.handlers.set(channel, new Set());
     }
     this.handlers.get(channel)!.add(handler);
 
-    // Subscribe to Pusher channel if not already subscribed
-    if (!this.channels.has(channel)) {
-      const pusherChannel = this.pusher!.subscribe(sanitizedChannel);
-      this.channels.set(channel, pusherChannel);
-
-      // Bind to all event types that might come through this channel
-      const eventTypes = [
-        'bid',
-        'bid_cancelled',
-        'player_sold',
-        'round_status',
-        'round_updated',
-        'round_update',
-        'tiebreaker_bid',
-        'tiebreaker_withdraw',
-        'tiebreaker_finalized',
-        'tiebreaker',
-        'wallet_update',
-        'squad_update',
-        'new_round',
-        'tiebreaker_created',
-        'draft_status_update',
-        'update', // generic fallback
-      ];
-
-      eventTypes.forEach((eventType) => {
-        pusherChannel.bind(eventType, (data: any) => {
-          const message: WebSocketMessage = {
-            type: eventType as any,
-            data,
-            timestamp: Date.now(),
-          };
-          this.handleMessage(message, channel);
-        });
+    // Send subscription message to server only if connected
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.send({
+        type: 'subscribe',
+        channel,
       });
-
-      console.log(`[Pusher] Subscribed to channel: ${sanitizedChannel}`);
+      console.log(`[WebSocket] Subscribed to channel: ${channel}`);
+    } else {
+      // Queue subscription for when connection is established
+      console.log(`[WebSocket] Queued subscription to channel: ${channel}`);
     }
   }
 
   unsubscribe(channel: string, handler: MessageHandler) {
-    const sanitizedChannel = sanitizeChannelName(channel);
     const handlers = this.handlers.get(channel);
     if (handlers) {
       handlers.delete(handler);
       if (handlers.size === 0) {
         this.handlers.delete(channel);
         
-        // Unsubscribe from Pusher channel
-        if (this.pusher && this.channels.has(channel)) {
-          this.pusher.unsubscribe(sanitizedChannel);
-          this.channels.delete(channel);
-        }
+        // Send unsubscribe message to server
+        this.send({
+          type: 'unsubscribe',
+          channel,
+        });
         
-        console.log(`[Pusher] Unsubscribed from channel: ${sanitizedChannel}`);
+        console.log(`[WebSocket] Unsubscribed from channel: ${channel}`);
       }
     }
   }
 
-  private handleMessage(message: WebSocketMessage, channel: string) {
-    // Notify all handlers subscribed to this specific channel
-    const channelHandlers = this.handlers.get(channel);
-    if (channelHandlers) {
-      channelHandlers.forEach(handler => handler(message));
+  private handleMessage(message: WebSocketMessage) {
+    const { type, data } = message;
+    
+    // Handle global messages
+    const globalHandlers = this.handlers.get('*');
+    if (globalHandlers) {
+      globalHandlers.forEach(handler => handler(message));
+    }
+
+    // Handle type-specific messages (e.g., 'bid', 'tiebreaker_bid')
+    const typeHandlers = this.handlers.get(type);
+    if (typeHandlers) {
+      typeHandlers.forEach(handler => handler(message));
+    }
+
+    // Handle channel-specific messages
+    // The broadcast comes directly to subscribed channels, so we need to
+    // notify all channel handlers for this message type
+    // For tiebreaker messages: data should contain tiebreaker_id
+    if (type === 'tiebreaker_bid' && data?.tiebreaker_id) {
+      const channel = `tiebreaker:${data.tiebreaker_id}`;
+      const channelHandlers = this.handlers.get(channel);
+      if (channelHandlers) {
+        channelHandlers.forEach(handler => handler(message));
+      }
+    }
+    
+    // For round bid messages: data should contain round_id
+    if (type === 'bid' && data?.round_id) {
+      const channel = `round:${data.round_id}`;
+      const channelHandlers = this.handlers.get(channel);
+      if (channelHandlers) {
+        channelHandlers.forEach(handler => handler(message));
+      }
+    }
+    
+    // Generic channel handling if data has a channel property
+    if (data?.channel) {
+      const channelHandlers = this.handlers.get(data.channel);
+      if (channelHandlers) {
+        channelHandlers.forEach(handler => handler(message));
+      }
+    }
+  }
+
+  private send(data: any) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(data));
+    } else {
+      console.warn('[WebSocket] Cannot send, not connected');
+    }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.send({ type: 'ping' });
+      }
+    }, 30000); // Ping every 30 seconds
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 
   isConnected(): boolean {
-    return this.pusher?.connection.state === 'connected';
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 }
 
 // Singleton instance
 let wsClient: WSClient | null = null;
 
-export function getWSClient(): WSClient {
-  // Only create client in browser environment
+export function getWSClient(): WSClient | null {
+  // Only create WebSocket client in browser environment
   if (typeof window === 'undefined') {
-    // Return a mock client for SSR
-    return {
-      connect: () => {},
-      disconnect: () => {},
-      subscribe: () => {},
-      unsubscribe: () => {},
-      isConnected: () => false,
-    } as any;
+    return null;
   }
   
   if (!wsClient) {
-    const key = process.env.NEXT_PUBLIC_PUSHER_KEY!;
-    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER!;
-    wsClient = new WSClient(key, cluster);
-    wsClient.connect();
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = process.env.NEXT_PUBLIC_WS_URL || `${protocol}//${window.location.host}`;
+    wsClient = new WSClient(`${host}/api/ws`);
   }
   return wsClient;
 }

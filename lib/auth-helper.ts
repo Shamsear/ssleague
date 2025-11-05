@@ -1,4 +1,4 @@
-import { cookies, headers } from 'next/headers';
+import { cookies } from 'next/headers';
 
 export interface AuthResult {
   authenticated: boolean;
@@ -9,32 +9,14 @@ export interface AuthResult {
 
 /**
  * Simple auth check - validates token exists
- * Checks Authorization header first, then falls back to cookies
  * For production, implement proper Firebase Admin token verification
  */
 export async function verifyAuth(requiredRoles?: string[]): Promise<AuthResult> {
   try {
-    // Check Authorization header first (preferred method)
-    const headersList = await headers();
-    const authHeader = headersList.get('authorization');
-    
-    let token: string | undefined;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7); // Remove 'Bearer ' prefix
-      console.log('✅ Token found in Authorization header');
-    } else {
-      // Fallback to cookies (check both possible cookie names)
-      const cookieStore = await cookies();
-      token = cookieStore.get('token')?.value || cookieStore.get('auth-token')?.value;
-      
-      if (token) {
-        console.log('✅ Token found in cookies');
-      }
-    }
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
 
     if (!token) {
-      console.log('❌ No token found in header or cookies');
       return {
         authenticated: false,
         error: 'No token provided',

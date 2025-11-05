@@ -5,7 +5,6 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import MobileNav from "@/components/layout/MobileNav";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { TeamRegistrationProvider } from "@/contexts/TeamRegistrationContext";
 import { QueryProvider } from "@/contexts/QueryProvider";
 import { TournamentProvider } from "@/contexts/TournamentContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
@@ -54,18 +53,16 @@ export default function RootLayout({
       >
         <QueryProvider>
           <AuthProvider>
-            <TeamRegistrationProvider>
-              <TournamentProvider>
-                <LanguageProvider>
-                  <Navbar />
-                  <main className="flex-grow">
-                    {children}
-                  </main>
-                  <Footer />
-                  <MobileNav />
-                </LanguageProvider>
-              </TournamentProvider>
-            </TeamRegistrationProvider>
+            <TournamentProvider>
+              <LanguageProvider>
+                <Navbar />
+                <main className="flex-grow">
+                  {children}
+                </main>
+                <Footer />
+                <MobileNav />
+              </LanguageProvider>
+            </TournamentProvider>
           </AuthProvider>
         </QueryProvider>
         <Analytics />

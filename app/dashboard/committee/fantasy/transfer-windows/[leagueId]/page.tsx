@@ -4,7 +4,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface TransferWindow {
   window_id: string;
@@ -47,7 +46,7 @@ export default function TransferWindowsManagementPage() {
 
   const loadWindows = async () => {
     try {
-      const response = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${leagueId}`);
+      const response = await fetch(`/api/fantasy/transfer-windows?league_id=${leagueId}`);
       if (!response.ok) throw new Error('Failed to load windows');
       
       const data = await response.json();
@@ -67,7 +66,7 @@ export default function TransferWindowsManagementPage() {
 
     setIsCreating(true);
     try {
-      const response = await fetchWithTokenRefresh('/api/fantasy/transfer-windows', {
+      const response = await fetch('/api/fantasy/transfer-windows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,7 +97,7 @@ export default function TransferWindowsManagementPage() {
 
   const toggleWindow = async (windowId: string) => {
     try {
-      const response = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows/${windowId}/toggle`, {
+      const response = await fetch(`/api/fantasy/transfer-windows/${windowId}/toggle`, {
         method: 'POST',
       });
 

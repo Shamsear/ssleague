@@ -151,7 +151,7 @@ export default function PositionGroupsPage() {
       sortedPlayers.forEach((player, index) => {
         const group = index % 2 === 0 ? `${selectedPosition}-1` : `${selectedPosition}-2`;
         updates.push(
-          fetchWithTokenRefresh(`/api/players/${player.id}`, {
+          fetch(`/api/players/${player.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ position_group: group })

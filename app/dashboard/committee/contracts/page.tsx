@@ -59,8 +59,8 @@ export default function ContractsPage() {
 
         // Fetch contracts from Neon player_seasons API for both seasons
         const [currentResponse, nextResponse] = await Promise.all([
-          fetchWithTokenRefresh(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`),
-          fetchWithTokenRefresh(`/api/stats/players?seasonId=${nextSeasonId}&limit=1000`),
+          fetch(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`),
+          fetch(`/api/stats/players?seasonId=${nextSeasonId}&limit=1000`),
         ]);
 
         const [currentResult, nextResult] = await Promise.all([

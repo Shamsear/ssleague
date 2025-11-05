@@ -57,9 +57,9 @@ export default function EditTeamMemberPage() {
     const fetchData = async () => {
       try {
         const [playerRes, teamsRes, categoriesRes] = await Promise.all([
-          fetchWithTokenRefresh(`/api/real-players/${playerId}`),
-          fetchWithTokenRefresh('/api/team/all'),
-          fetchWithTokenRefresh('/api/categories'),
+          fetch(`/api/real-players/${playerId}`),
+          fetch('/api/team/all'),
+          fetch('/api/categories'),
         ]);
 
         const [playerData, teamsData, categoriesData] = await Promise.all([

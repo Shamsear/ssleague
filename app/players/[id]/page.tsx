@@ -537,12 +537,12 @@ export default function PlayerDetailPage() {
               {/* Player Card */}
               <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
                 {/* Player Image */}
-                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl overflow-hidden shadow-md">
+                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl shadow-md bg-white flex items-center justify-center">
                   {player.photo_url ? (
                     <img
                       src={player.photo_url}
                       alt={player.name}
-                      className="object-cover w-full h-full"
+                      className="object-cover w-full h-full rounded-xl"
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
                         e.currentTarget.nextElementSibling?.classList.remove('hidden');

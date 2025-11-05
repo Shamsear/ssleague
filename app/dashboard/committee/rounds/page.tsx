@@ -21,7 +21,6 @@ interface Round {
   season_id: string;
   position: string;
   round_number?: number;
-  round_type?: string;
   max_bids_per_team: number;
   status: string;
   end_time: string;
@@ -129,15 +128,13 @@ export default function RoundsManagementPage() {
       // Process rounds
       const { success: roundsSuccess, data: roundsData } = await roundsResponse.json();
       if (roundsSuccess) {
-        // Filter out bulk rounds - only show normal auction rounds
-        const normalRounds = roundsData.filter((r: Round) => r.round_type !== 'bulk');
-        const dataString = JSON.stringify(normalRounds);
+        const dataString = JSON.stringify(roundsData);
         if (dataString !== previousRoundsRef.current) {
           previousRoundsRef.current = dataString;
-          setRounds(normalRounds);
+          setRounds(roundsData);
           
           // Initialize add time inputs for active rounds
-          normalRounds.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+          roundsData.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
             setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
           });
         }
@@ -200,15 +197,13 @@ export default function RoundsManagementPage() {
 
       const { success, data } = await roundsResponse.json();
       if (success) {
-        // Filter out bulk rounds - only show normal auction rounds
-        const normalRounds = data.filter((r: Round) => r.round_type !== 'bulk');
-        const dataString = JSON.stringify(normalRounds);
+        const dataString = JSON.stringify(data);
         if (dataString !== previousRoundsRef.current) {
           previousRoundsRef.current = dataString;
-          setRounds(normalRounds);
+          setRounds(data);
           
           // Initialize add time inputs for active rounds
-          normalRounds.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+          data.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
             setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
           });
         }
@@ -249,33 +244,36 @@ export default function RoundsManagementPage() {
     fetchAllData();
   }, [fetchAllData]);
 
-  // WebSocket for real-time updates (no polling needed)
+  // WebSocket for real-time updates
   useWebSocket({
     channel: `season:${currentSeasonId}`,
     enabled: !!currentSeasonId,
     onMessage: useCallback((message: any) => {
       console.log('🔴 Rounds WebSocket message:', message);
       
-      // Handle different WebSocket message types
-      switch (message.type) {
-        case 'bid_placed':
-        case 'bid_cancelled':
-        case 'round_finalized':
-        case 'round_updated':
-        case 'round_status_changed':
-        case 'round_created':
-        case 'round_time_extended':
-        case 'tiebreaker_created':
-        case 'tiebreaker_updated':
-          // Refetch rounds when there's an update
-          console.log('🔄 Fetching rounds due to WebSocket update:', message.type);
-          fetchRounds(false);
-          break;
-        default:
-          console.log('🔵 Unhandled WebSocket message type:', message.type);
+      if (
+        message.type === 'bid_placed' ||
+        message.type === 'bid_cancelled' ||
+        message.type === 'round_finalized' ||
+        message.type === 'round_updated' ||
+        message.type === 'round_status_changed'
+      ) {
+        // Refetch rounds when there's an update
+        fetchRounds(false);
       }
     }, [fetchRounds]),
   });
+
+  // Polling interval as fallback (every 3 seconds)
+  useEffect(() => {
+    if (!currentSeasonId) return;
+
+    const interval = setInterval(() => {
+      fetchRounds(false);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentSeasonId, fetchRounds]);
 
   // Timer management for active rounds
   useEffect(() => {
