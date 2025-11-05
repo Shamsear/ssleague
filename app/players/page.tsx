@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import OptimizedImage from '@/components/OptimizedImage';
 
@@ -23,6 +24,9 @@ interface Player {
 }
 
 export default function AllPlayersPage() {
+  const searchParams = useSearchParams();
+  const seasonId = searchParams.get('season');
+  
   const [players, setPlayers] = useState<Player[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,10 +35,11 @@ export default function AllPlayersPage() {
   const [teamFilter, setTeamFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('name');
   const [teams, setTeams] = useState<string[]>([]);
+  const [seasonName, setSeasonName] = useState<string>('');
 
   useEffect(() => {
     fetchPlayers();
-  }, []);
+  }, [seasonId]);
 
   useEffect(() => {
     applyFilters();
@@ -44,35 +49,90 @@ export default function AllPlayersPage() {
     try {
       setLoading(true);
       
-      // Fetch all players from Firebase and aggregate their stats
-      const response = await fetch('/api/players/with-stats');
-      const data = await response.json();
+      let playersData: Player[] = [];
       
-      if (data.success && data.players) {
-        const playersData = data.players.map((p: any) => ({
-          id: p.id,
-          player_id: p.player_id,
-          name: p.name,
-          display_name: p.display_name,
-          category: p.category,
-          team: p.team,
-          team_name: p.team_name,
-          photo_url: p.photo_url,
-          current_season_id: p.current_season_id,
-          stats: {
-            points: p.total_points || 0,
-            matches_played: p.matches_played || 0,
-            goals_scored: p.goals_scored || 0,
-            clean_sheets: p.clean_sheets || 0
+      // If season filter is provided, fetch season-specific stats
+      if (seasonId) {
+        const seasonRes = await fetch(`/api/seasons/${seasonId}/stats`);
+        const seasonData = await seasonRes.json();
+        
+        if (seasonData.success && seasonData.data) {
+          // Fetch season details for name
+          try {
+            const detailsRes = await fetch(`/api/seasons/${seasonId}/details`);
+            const detailsData = await detailsRes.json();
+            if (detailsData.success) {
+              setSeasonName(detailsData.data.name || '');
+            }
+          } catch (err) {
+            console.error('Error fetching season name:', err);
           }
-        })) as Player[];
+          
+          // Get players from the API response
+          const players = seasonData.data.players || [];
+          
+          // Also need to fetch photo_url from Firestore for each player
+          const photoPromises = players.map(async (player: any) => {
+            try {
+              const photoRes = await fetch(`/api/real-players/${player.player_id}`);
+              const photoData = await photoRes.json();
+              return photoData.success ? photoData.player?.photo_url : null;
+            } catch {
+              return null;
+            }
+          });
+          
+          const photoUrls = await Promise.all(photoPromises);
+          
+          playersData = players.map((player: any, index: number) => ({
+            id: player.player_id,
+            player_id: player.player_id,
+            name: player.player_name,
+            display_name: player.player_name,
+            category: player.category,
+            team: player.team_name,
+            team_name: player.team_name,
+            photo_url: photoUrls[index],
+            current_season_id: seasonId,
+            stats: {
+              points: player.points || 0,
+              matches_played: player.matches_played || 0,
+              goals_scored: player.goals_scored || 0,
+              clean_sheets: player.clean_sheets || 0
+            }
+          })) as Player[];
+        }
+      } else {
+        // Fetch all players with overall stats
+        const response = await fetch('/api/players/with-stats');
+        const data = await response.json();
         
-        setPlayers(playersData);
-        
-        // Extract unique teams for filter
-        const uniqueTeams = Array.from(new Set(playersData.map(p => p.team_name).filter(Boolean))) as string[];
-        setTeams(uniqueTeams.sort());
+        if (data.success && data.players) {
+          playersData = data.players.map((p: any) => ({
+            id: p.id,
+            player_id: p.player_id,
+            name: p.name,
+            display_name: p.display_name,
+            category: p.category,
+            team: p.team,
+            team_name: p.team_name,
+            photo_url: p.photo_url,
+            current_season_id: p.current_season_id,
+            stats: {
+              points: p.total_points || 0,
+              matches_played: p.matches_played || 0,
+              goals_scored: p.goals_scored || 0,
+              clean_sheets: p.clean_sheets || 0
+            }
+          })) as Player[];
+        }
       }
+      
+      setPlayers(playersData);
+      
+      // Extract unique teams for filter
+      const uniqueTeams = Array.from(new Set(playersData.map(p => p.team_name).filter(Boolean))) as string[];
+      setTeams(uniqueTeams.sort());
     } catch (error) {
       console.error('Error fetching players:', error);
     } finally {
@@ -137,10 +197,10 @@ export default function AllPlayersPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold bg-gradient-to-r from-[#0066FF] via-blue-500 to-[#0066FF] bg-clip-text text-transparent mb-2">
-                All Players
+                {seasonName ? `${seasonName} Players` : 'All Players'}
               </h1>
               <p className="text-gray-600">
-                {filteredPlayers.length} Player{filteredPlayers.length !== 1 ? 's' : ''}
+                {seasonName ? `Players in ${seasonName}:` : ''} {filteredPlayers.length} Player{filteredPlayers.length !== 1 ? 's' : ''}
               </p>
             </div>
             <div className="text-right">

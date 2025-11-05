@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -21,15 +22,19 @@ interface Team {
 }
 
 export default function AllTeamsPage() {
+  const searchParams = useSearchParams();
+  const seasonId = searchParams.get('season');
+  
   const [teams, setTeams] = useState<Team[]>([]);
   const [filteredTeams, setFilteredTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<string>('name');
+  const [seasonName, setSeasonName] = useState<string>('');
 
   useEffect(() => {
     fetchTeams();
-  }, []);
+  }, [seasonId]);
 
   useEffect(() => {
     applyFilters();
@@ -39,12 +44,23 @@ export default function AllTeamsPage() {
     try {
       setLoading(true);
       
-      // Fetch all teams from Firebase
-      const response = await fetch('/api/teams');
-      const data = await response.json();
-      
-      if (data.success && data.teams) {
-        setTeams(data.teams);
+      // If season filter is provided, fetch teams for that season
+      if (seasonId) {
+        const response = await fetch(`/api/seasons/${seasonId}/stats`);
+        const data = await response.json();
+        
+        if (data.success && data.data?.teams) {
+          setTeams(data.data.teams);
+          setSeasonName(data.data.season_name || '');
+        }
+      } else {
+        // Fetch all teams from Firebase
+        const response = await fetch('/api/teams');
+        const data = await response.json();
+        
+        if (data.success && data.teams) {
+          setTeams(data.teams);
+        }
       }
     } catch (error) {
       console.error('Error fetching teams:', error);
@@ -97,8 +113,12 @@ export default function AllTeamsPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold mb-2 gradient-text">All Teams</h1>
-        <p className="text-gray-600">Browse team profiles and standings</p>
+        <h1 className="text-3xl sm:text-4xl font-bold mb-2 gradient-text">
+          {seasonName ? `${seasonName} Teams` : 'All Teams'}
+        </h1>
+        <p className="text-gray-600">
+          {seasonName ? `Teams competing in ${seasonName}` : 'Browse team profiles and standings'}
+        </p>
       </div>
 
       {/* Filters */}

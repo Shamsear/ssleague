@@ -130,13 +130,13 @@ export default function CurrentSeasonPage() {
           
           <div className="flex flex-wrap gap-4 justify-center items-center">
             <Link
-              href="/players"
+              href={`/players?season=${season.id}`}
               className="glass px-6 py-2 rounded-lg text-blue-600 font-medium hover:shadow-md transition-all duration-200 hover:scale-105"
             >
               View All Players
             </Link>
             <Link
-              href="/teams"
+              href={`/teams?season=${season.id}`}
               className="glass px-6 py-2 rounded-lg text-blue-600 font-medium hover:shadow-md transition-all duration-200 hover:scale-105"
             >
               View All Teams
