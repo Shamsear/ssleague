@@ -485,38 +485,65 @@ export default function BudgetPlannerPage() {
                   </div>
 
                   {/* Salary Calculation */}
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 border-green-200 shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Per Match Salary */}
-                      <div>
-                        <label className="text-xs text-gray-600 mb-1 block">Per Match Salary</label>
-                        <p className="text-2xl font-bold text-green-600">
+                      <div className="bg-white/60 rounded-lg p-4 border border-green-100">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="bg-green-100 p-1.5 rounded-lg">
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <label className="text-xs font-semibold text-gray-700">Per Match Salary</label>
+                        </div>
+                        <p className="text-3xl font-bold text-green-600 mb-2">
                           ${player.avgCost > 0 && player.stars ? calculateRealPlayerSalary(player.avgCost, player.stars).toFixed(2) : '0.00'}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Formula: (${player.avgCost.toFixed(0)} ÷ 100) × {player.stars || 5}☆ ÷ 10
-                        </p>
+                        <div className="bg-gray-50 rounded px-2 py-1.5 border border-gray-200">
+                          <p className="text-xs text-gray-600">
+                            <span className="font-medium">Formula:</span> (${player.avgCost.toFixed(0)} ÷ 100) × {player.stars || 5}☆ ÷ 10
+                          </p>
+                        </div>
                       </div>
 
                       {/* Custom Matches Calculator */}
-                      <div>
-                        <label className="text-xs text-gray-600 mb-1 block">Salary for # Matches</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min="1"
-                            max="38"
-                            value={player.customMatches || ''}
-                            onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'customMatches', e.target.value)}
-                            placeholder="Enter matches"
-                            className="w-24 px-2 py-1 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                          />
-                          <span className="text-xs text-gray-600">matches</span>
+                      <div className="bg-white/60 rounded-lg p-4 border border-green-100">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="bg-blue-100 p-1.5 rounded-lg">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <label className="text-xs font-semibold text-gray-700">Custom Calculator</label>
                         </div>
-                        {player.customMatches && parseInt(player.customMatches) > 0 && player.avgCost > 0 && player.stars && (
-                          <p className="text-xl font-bold text-green-600 mt-2">
-                            ${(calculateRealPlayerSalary(player.avgCost, player.stars) * parseInt(player.customMatches)).toFixed(2)}
-                          </p>
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="relative flex-1">
+                            <input
+                              type="number"
+                              min="1"
+                              max="38"
+                              value={player.customMatches || ''}
+                              onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'customMatches', e.target.value)}
+                              placeholder="0"
+                              className="w-full px-3 py-2 text-center text-lg font-semibold rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-medium pointer-events-none">
+                              matches
+                            </span>
+                          </div>
+                        </div>
+                        {player.customMatches && parseInt(player.customMatches) > 0 && player.avgCost > 0 && player.stars ? (
+                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg px-3 py-2 border border-blue-200">
+                            <p className="text-xs text-gray-600 mb-1">Total Salary</p>
+                            <p className="text-2xl font-bold text-blue-600">
+                              ${(calculateRealPlayerSalary(player.avgCost, player.stars) * parseInt(player.customMatches)).toFixed(2)}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 text-center">
+                            <p className="text-xs text-gray-500">Enter matches to calculate</p>
+                          </div>
                         )}
                       </div>
                     </div>
