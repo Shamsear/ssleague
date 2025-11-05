@@ -7,9 +7,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { useRouter } from 'next/navigation';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 export default function Navbar() {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [teamLogo, setTeamLogo] = useState<string | null>(null);
   const { user, loading } = useAuth();
   const { isRegistered } = useTeamRegistration();
   const { signOut } = useFirebaseAuth();
@@ -60,6 +63,37 @@ export default function Navbar() {
       console.error('Sign out error:', error);
     }
   };
+  
+  // Fetch team logo if user is a team
+  useEffect(() => {
+    const fetchTeamLogo = async () => {
+      if (user && user.role === 'team') {
+        try {
+          // Query teams collection by userId field
+          const teamsRef = collection(db, 'teams');
+          const q = query(teamsRef, where('userId', '==', user.uid));
+          const querySnapshot = await getDocs(q);
+          
+          if (!querySnapshot.empty) {
+            const teamDoc = querySnapshot.docs[0];
+            const teamData = teamDoc.data();
+            // Check for logo_url field (common in team documents)
+            if (teamData.logo_url) {
+              setTeamLogo(teamData.logo_url);
+            } else if (teamData.team_logo) {
+              setTeamLogo(teamData.team_logo);
+            }
+          }
+        } catch (error) {
+          console.error('[Navbar] Error fetching team logo:', error);
+        }
+      } else {
+        setTeamLogo(null);
+      }
+    };
+    
+    fetchTeamLogo();
+  }, [user]);
   
   return (
     <nav className="nav-glass sticky top-0 z-50 hidden sm:block border-b border-white/10">
@@ -507,9 +541,21 @@ export default function Navbar() {
                   className="flex items-center space-x-3 px-4 py-2.5 rounded-xl hover:bg-white/70 transition-all duration-300 group border border-transparent hover:border-white/50"
                 >
                   <div className="flex items-center space-x-2">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-white/50 group-hover:ring-white/70 transition-all">
-                      {user.username.charAt(0).toUpperCase()}
-                    </div>
+                    {user.role === 'team' && teamLogo ? (
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-white shadow-lg ring-2 ring-white/50 group-hover:ring-white/70 transition-all">
+                        <Image
+                          src={teamLogo}
+                          alt="Team Logo"
+                          width={40}
+                          height={40}
+                          className="object-cover w-full h-full"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-white/50 group-hover:ring-white/70 transition-all">
+                        {user.username.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div className="text-left hidden xl:block">
                       <p className="text-sm font-semibold text-gray-800 leading-tight">{user.username}</p>
                       <p className="text-xs text-gray-500">

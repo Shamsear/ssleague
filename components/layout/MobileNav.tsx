@@ -7,10 +7,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { useRouter } from 'next/navigation';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 export default function MobileNav() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
+  const [teamLogo, setTeamLogo] = useState<string | null>(null);
   const { user } = useAuth();
   const { isRegistered } = useTeamRegistration();
   const { signOut } = useFirebaseAuth();
@@ -74,6 +77,45 @@ export default function MobileNav() {
   const toggleSubmenu = (menuName: string) => {
     setExpandedMenu(expandedMenu === menuName ? null : menuName);
   };
+  
+  // Fetch team logo if user is a team
+  useEffect(() => {
+    const fetchTeamLogo = async () => {
+      if (user && user.role === 'team') {
+        try {
+          console.log('[MobileNav] Fetching team logo for user:', user.uid);
+          // Query teams collection by userId field
+          const teamsRef = collection(db, 'teams');
+          const q = query(teamsRef, where('userId', '==', user.uid));
+          const querySnapshot = await getDocs(q);
+          
+          if (!querySnapshot.empty) {
+            const teamDoc = querySnapshot.docs[0];
+            const teamData = teamDoc.data();
+            console.log('[MobileNav] Team document found:', { id: teamDoc.id, hasLogoUrl: !!teamData.logo_url, hasTeamLogo: !!teamData.team_logo });
+            // Check for logo_url field (common in team documents)
+            if (teamData.logo_url) {
+              console.log('[MobileNav] Setting team logo from logo_url:', teamData.logo_url);
+              setTeamLogo(teamData.logo_url);
+            } else if (teamData.team_logo) {
+              console.log('[MobileNav] Setting team logo from team_logo:', teamData.team_logo);
+              setTeamLogo(teamData.team_logo);
+            } else {
+              console.log('[MobileNav] No logo found in team document');
+            }
+          } else {
+            console.log('[MobileNav] Team document not found for uid:', user.uid);
+          }
+        } catch (error) {
+          console.error('[MobileNav] Error fetching team logo:', error);
+        }
+      } else {
+        setTeamLogo(null);
+      }
+    };
+    
+    fetchTeamLogo();
+  }, [user]);
   
   return (
     <>
@@ -146,6 +188,20 @@ export default function MobileNav() {
                 <svg className="w-6 h-6 text-gray-900" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 1L9 7V9C9 10.1 9.9 11 11 11V14.5C11 15.6 11.4 16.6 12 17.4C12.6 16.6 13 15.6 13 14.5V11C14.1 11 15 10.1 15 9Z"/>
                 </svg>
+              </Link>
+            ) : user.role === 'team' && teamLogo ? (
+              <Link 
+                href={getDashboardUrl()} 
+                className="w-11 h-11 rounded-full overflow-hidden bg-white shadow-md transition-transform hover:scale-110"
+                title="Dashboard"
+              >
+                <Image
+                  src={teamLogo}
+                  alt="Team Logo"
+                  width={44}
+                  height={44}
+                  className="object-cover w-full h-full"
+                />
               </Link>
             ) : (
               <Link 
