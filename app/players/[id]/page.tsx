@@ -106,16 +106,34 @@ export default function PlayerDetailPage() {
     playerId: playerId
   });
   
-  // Fetch seasons from Firebase to check start dates
+  // Fetch seasons from cache or Firebase
   useEffect(() => {
     const fetchSeasons = async () => {
       try {
+        // Try to get from localStorage cache first (expires after 1 hour)
+        const cached = localStorage.getItem('seasons_cache');
+        const cacheTime = localStorage.getItem('seasons_cache_time');
+        
+        if (cached && cacheTime) {
+          const cacheAge = Date.now() - parseInt(cacheTime);
+          if (cacheAge < 3600000) { // 1 hour
+            setFirebaseSeasons(JSON.parse(cached));
+            return;
+          }
+        }
+        
+        // Fetch from Firebase if no cache or expired
         const seasonsRef = collection(db, 'seasons');
         const seasonsSnapshot = await getDocs(seasonsRef);
         const seasonsData = seasonsSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
+        
+        // Cache the results
+        localStorage.setItem('seasons_cache', JSON.stringify(seasonsData));
+        localStorage.setItem('seasons_cache_time', Date.now().toString());
+        
         setFirebaseSeasons(seasonsData);
       } catch (error) {
         console.error('Error fetching seasons:', error);
@@ -190,16 +208,15 @@ export default function PlayerDetailPage() {
         return true;
       });
       
-      // Fetch photo_url from Firestore for this player
+      // Fetch photo_url from API (single read instead of query)
       let photoUrl: string | undefined;
       try {
-        const playersRef = collection(db, 'realplayers');
-        const q = query(playersRef, where('player_id', '==', playerId));
-        const snapshot = await getDocs(q);
-        
-        if (!snapshot.empty) {
-          const playerDoc = snapshot.docs[0];
-          photoUrl = playerDoc.data().photo_url;
+        const response = await fetch(`/api/players/${playerId}/details`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            photoUrl = data.player?.photo_url;
+          }
         }
       } catch (error) {
         console.error('Error fetching player photo:', error);
