@@ -16,6 +16,7 @@ interface PlayerEstimate {
   minCost: number;
   maxCost: number;
   avgCost: number;
+  customMatches?: string; // Custom match count for salary calculation
 }
 
 interface BudgetData {
@@ -483,27 +484,43 @@ export default function BudgetPlannerPage() {
                     </div>
                   </div>
 
-                  {/* Salary Calculator Grid */}
-                  {player.avgCost > 0 && player.stars && (
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-                      <h4 className="text-sm font-semibold text-green-800 mb-3">💰 Salary per Match</h4>
-                      <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                        {MATCH_MILESTONES.map((matches) => {
-                          const perMatchSalary = calculateRealPlayerSalary(player.avgCost, player.stars);
-                          const totalSalary = perMatchSalary * matches;
-                          return (
-                            <div key={matches} className="bg-white rounded-lg p-2 text-center border border-green-200">
-                              <div className="text-xs text-gray-600 mb-1">{matches} match{matches > 1 ? 'es' : ''}</div>
-                              <div className="text-sm font-bold text-green-600">${totalSalary.toFixed(2)}</div>
-                            </div>
-                          );
-                        })}
+                  {/* Salary Calculation */}
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Per Match Salary */}
+                      <div>
+                        <label className="text-xs text-gray-600 mb-1 block">Per Match Salary</label>
+                        <p className="text-2xl font-bold text-green-600">
+                          ${player.avgCost > 0 && player.stars ? calculateRealPlayerSalary(player.avgCost, player.stars).toFixed(2) : '0.00'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Formula: (${player.avgCost.toFixed(0)} ÷ 100) × {player.stars || 5}☆ ÷ 10
+                        </p>
                       </div>
-                      <p className="text-xs text-gray-600 mt-3">
-                        Base formula: (${player.avgCost.toFixed(0)} ÷ 100) × {player.stars}☆ ÷ 10 = <span className="font-semibold">${calculateRealPlayerSalary(player.avgCost, player.stars).toFixed(2)}</span> per match
-                      </p>
+
+                      {/* Custom Matches Calculator */}
+                      <div>
+                        <label className="text-xs text-gray-600 mb-1 block">Salary for # Matches</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="38"
+                            value={player.customMatches || ''}
+                            onChange={(e) => updatePlayerEstimate(activeTab, player.id, 'customMatches', e.target.value)}
+                            placeholder="Enter matches"
+                            className="w-24 px-2 py-1 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          />
+                          <span className="text-xs text-gray-600">matches</span>
+                        </div>
+                        {player.customMatches && parseInt(player.customMatches) > 0 && player.avgCost > 0 && player.stars && (
+                          <p className="text-xl font-bold text-green-600 mt-2">
+                            ${(calculateRealPlayerSalary(player.avgCost, player.stars) * parseInt(player.customMatches)).toFixed(2)}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
