@@ -95,6 +95,34 @@ export default function RealPlayersPage() {
           if (playersData.success) {
             // Filter to show only players with star ratings (real players)
             const realPlayers = playersData.data?.filter((p: any) => p.star_rating && p.star_rating > 0) || [];
+            
+            // Fetch photo URLs from Firebase for each player
+            const playerIds = realPlayers.map((p: any) => p.player_id).filter(Boolean);
+            if (playerIds.length > 0) {
+              try {
+                const photosResponse = await fetchWithTokenRefresh('/api/real-players?' + new URLSearchParams({
+                  playerIds: playerIds.join(',')
+                }));
+                
+                if (photosResponse.ok) {
+                  const photosData = await photosResponse.json();
+                  if (photosData.success && photosData.players) {
+                    // Create a map of player_id to photo_url
+                    const photoMap = new Map(
+                      photosData.players.map((p: any) => [p.player_id, p.photo_url])
+                    );
+                    
+                    // Merge photo URLs into player data
+                    realPlayers.forEach((player: any) => {
+                      player.photo_url = photoMap.get(player.player_id) || null;
+                    });
+                  }
+                }
+              } catch (photoError) {
+                console.warn('Could not fetch player photos:', photoError);
+              }
+            }
+            
             setPlayers(realPlayers);
             
             // Extract unique teams for filter

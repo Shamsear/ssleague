@@ -177,7 +177,10 @@ export async function POST(
           current_season_id: seasonId,
           total_seasons_participated: updatedSeasons.length,
           logo_url: userData.logoUrl || null,
+          teamLogo: userData.logoUrl || null, // Update both fields
+          email: userData.email || existingData.email || '',
           updated_at: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(), // Update both fields
           // Phase 1: Add manager name if provided
           ...(managerName && { manager_name: managerName }),
           // Phase 1: Update fantasy participation if opted in
@@ -229,13 +232,19 @@ export async function POST(
         const teamDoc = {
           id: teamDocId,
           team_name: teamName,
+          teamName: teamName, // Add this field for consistency
           owner_name: userData.username || '',
           logo_url: userData.logoUrl || null,
+          teamLogo: userData.logoUrl || null, // Add this field for consistency
           
           // Login credentials (link to user account)
           username: userData.username || '',
           user_id: userId,
+          uid: userId, // Add this field for consistency
           role: 'team',
+          
+          // Email and contact info
+          email: userData.email || '',
           
           // Season relationship - include BOTH seasons
           seasons: [seasonId, nextSeasonId],
@@ -243,9 +252,26 @@ export async function POST(
           
           // Team metadata
           is_active: true,
+          isActive: true, // Add this field for consistency
           is_historical: false,
+          
+          // Approval fields (auto-approved for new registrations)
+          is_approved: true,
+          isApproved: true, // Add this field for consistency
+          approvedAt: FieldValue.serverTimestamp(),
+          approvedBy: 'system', // Auto-approved through registration
+          
+          // Committee association
+          committeeId: '', // Empty for now, can be set later
+          
+          // Players array (empty initially)
+          players: [],
+          
+          // Timestamps
           created_at: FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(), // Add this field for consistency
           updated_at: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(), // Add this field for consistency
           
           // Total seasons participated
           total_seasons_participated: 2,

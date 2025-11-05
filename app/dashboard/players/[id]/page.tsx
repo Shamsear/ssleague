@@ -100,16 +100,18 @@ export default function PlayerDetailPage() {
 
   const playerId = params.id as string;
   const [firebaseSeasons, setFirebaseSeasons] = useState<any[]>([]);
+  const [firebasePlayer, setFirebasePlayer] = useState<any>(null);
   
   // Use React Query hook for player stats from Neon
   const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
     playerId: playerId
   });
   
-  // Fetch seasons from Firebase to check start dates
+  // Fetch seasons and player data from Firebase
   useEffect(() => {
-    const fetchSeasons = async () => {
+    const fetchFirebaseData = async () => {
       try {
+        // Fetch seasons
         const seasonsRef = collection(db, 'seasons');
         const seasonsSnapshot = await getDocs(seasonsRef);
         const seasonsData = seasonsSnapshot.docs.map(doc => ({
@@ -117,12 +119,25 @@ export default function PlayerDetailPage() {
           ...doc.data()
         }));
         setFirebaseSeasons(seasonsData);
+        
+        // Fetch player from realplayers
+        const playersRef = collection(db, 'realplayers');
+        const q = query(playersRef, where('player_id', '==', playerId));
+        const playerSnapshot = await getDocs(q);
+        
+        if (!playerSnapshot.empty) {
+          const playerDoc = playerSnapshot.docs[0];
+          setFirebasePlayer({
+            id: playerDoc.id,
+            ...playerDoc.data()
+          });
+        }
       } catch (error) {
-        console.error('Error fetching seasons:', error);
+        console.error('Error fetching Firebase data:', error);
       }
     };
-    fetchSeasons();
-  }, []);
+    fetchFirebaseData();
+  }, [playerId]);
   
   // Fetch player awards for currently selected season
   const currentSeasonIdForAwards = selectedView === 'season' && selectedSeasonId ? selectedSeasonId : null;
@@ -170,14 +185,25 @@ export default function PlayerDetailPage() {
       return;
     }
     
-    // Wait for Firebase seasons to load before filtering
-    if (firebaseSeasons.length === 0) {
+    // Wait for Firebase data to load before processing
+    if (firebaseSeasons.length === 0 || !firebasePlayer) {
       return;
     }
     
-    // Only show error if done loading and no data
+    // If we have Firebase player data but no stats, show basic player info without error
     if (!playerStatsData || playerStatsData.length === 0) {
-      setError('No season stats found for this player');
+      // Set basic player data from Firebase
+      setPlayer({
+        id: firebasePlayer.id,
+        player_id: firebasePlayer.player_id,
+        name: firebasePlayer.name || 'Unknown Player',
+        display_name: firebasePlayer.display_name,
+        photo_url: firebasePlayer.photo_url,
+        team: firebasePlayer.team,
+        category: firebasePlayer.category,
+      } as any);
+      setAllSeasonData([]);
+      // Don't set error - player exists but has no stats yet
       return;
     }
     
@@ -217,7 +243,9 @@ export default function PlayerDetailPage() {
       return {
         ...statsData,
         id: statsData.id || statsData.player_id,
-        name: statsData.player_name || 'Unknown Player',
+        name: statsData.player_name || firebasePlayer?.name || 'Unknown Player',
+        display_name: firebasePlayer?.display_name || statsData.player_name,
+        photo_url: firebasePlayer?.photo_url,
         player_id: statsData.player_id,
         season_name: seasonName,
         team: statsData.team,
@@ -254,7 +282,7 @@ export default function PlayerDetailPage() {
       // If we have data but all seasons were filtered out, show message
       setError('No active seasons found for this player');
     }
-  }, [playerStatsData, statsLoading, firebaseSeasons]);
+  }, [playerStatsData, statsLoading, firebaseSeasons, firebasePlayer]);
 
 
   const fetchSeasonName = async (seasonId: string) => {
@@ -326,7 +354,7 @@ export default function PlayerDetailPage() {
     }
   };
 
-  if (authLoading || statsLoading || (firebaseSeasons.length === 0 && !error)) {
+  if (authLoading || statsLoading || firebaseSeasons.length === 0 || (!firebasePlayer && !error)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
@@ -828,19 +856,21 @@ export default function PlayerDetailPage() {
                    `Statistics - ${seasonName}`}
                 </h3>
 
-                {/* Points display */}
-                <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
-                    <p className="text-3xl font-bold text-blue-800">{stats.points || stats.total_points || 0}</p>
-                  </div>
-                  {selectedView === 'season' && selectedSeasonId === allSeasonData[0]?.id && currentSeasonData.ranking && (
-                    <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
-                      <p className="text-xs text-gray-500">League Ranking</p>
-                      <p className="text-xl font-bold text-primary">#{player.ranking}</p>
+                {/* Points display - Only for individual season view */}
+                {selectedView === 'season' && (
+                  <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
+                      <p className="text-3xl font-bold text-blue-800">{stats.points || stats.total_points || 0}</p>
                     </div>
-                  )}
-                </div>
+                    {selectedSeasonId === allSeasonData[0]?.id && currentSeasonData.ranking && (
+                      <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
+                        <p className="text-xs text-gray-500">League Ranking</p>
+                        <p className="text-xl font-bold text-primary">#{player.ranking}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Main Stats Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">

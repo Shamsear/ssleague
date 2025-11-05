@@ -11,10 +11,61 @@ import { CreateRealPlayerData } from '@/types/realPlayer';
 
 /**
  * GET /api/real-players
- * Get all real players
+ * Get all real players or specific players by IDs
+ * Query params:
+ *   - playerIds: comma-separated list of player IDs
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const playerIdsParam = searchParams.get('playerIds');
+    
+    // If playerIds provided, fetch only those players
+    if (playerIdsParam) {
+      const playerIds = playerIdsParam.split(',').map(id => id.trim()).filter(Boolean);
+      
+      if (playerIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          players: [],
+          count: 0,
+        });
+      }
+      
+      // Fetch players by IDs from Firebase
+      const players: any[] = [];
+      
+      // Firebase 'in' query has a limit of 30, so we need to batch
+      const batchSize = 30;
+      for (let i = 0; i < playerIds.length; i += batchSize) {
+        const batch = playerIds.slice(i, i + batchSize);
+        const snapshot = await adminDb
+          .collection('realplayers')
+          .where('player_id', 'in', batch)
+          .get();
+        
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          players.push({
+            id: doc.id,
+            player_id: data.player_id,
+            name: data.name,
+            display_name: data.display_name,
+            photo_url: data.photo_url,
+            team: data.team,
+            category: data.category,
+          });
+        });
+      }
+      
+      return NextResponse.json({
+        success: true,
+        players: players,
+        count: players.length,
+      });
+    }
+    
+    // Otherwise, fetch all players
     const players = await getAllRealPlayers();
     
     return NextResponse.json({
