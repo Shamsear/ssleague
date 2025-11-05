@@ -7,14 +7,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 
 export default function Navbar() {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [teamLogo, setTeamLogo] = useState<string | null>(null);
   const { user, loading } = useAuth();
-  const { isRegistered } = useTeamRegistration();
+  const { isRegistered, teamLogo } = useTeamRegistration();
   const { signOut } = useFirebaseAuth();
   const router = useRouter();
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
@@ -63,37 +60,6 @@ export default function Navbar() {
       console.error('Sign out error:', error);
     }
   };
-  
-  // Fetch team logo if user is a team
-  useEffect(() => {
-    const fetchTeamLogo = async () => {
-      if (user && user.role === 'team') {
-        try {
-          // Query teams collection by userId field
-          const teamsRef = collection(db, 'teams');
-          const q = query(teamsRef, where('userId', '==', user.uid));
-          const querySnapshot = await getDocs(q);
-          
-          if (!querySnapshot.empty) {
-            const teamDoc = querySnapshot.docs[0];
-            const teamData = teamDoc.data();
-            // Check for logo_url field (common in team documents)
-            if (teamData.logo_url) {
-              setTeamLogo(teamData.logo_url);
-            } else if (teamData.team_logo) {
-              setTeamLogo(teamData.team_logo);
-            }
-          }
-        } catch (error) {
-          console.error('[Navbar] Error fetching team logo:', error);
-        }
-      } else {
-        setTeamLogo(null);
-      }
-    };
-    
-    fetchTeamLogo();
-  }, [user]);
   
   return (
     <nav className="nav-glass sticky top-0 z-50 hidden sm:block border-b border-white/10">

@@ -7,15 +7,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
 import { useFirebaseAuth } from '@/hooks/useFirebase';
 import { useRouter } from 'next/navigation';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 
 export default function MobileNav() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
-  const [teamLogo, setTeamLogo] = useState<string | null>(null);
   const { user } = useAuth();
-  const { isRegistered } = useTeamRegistration();
+  const { isRegistered, teamLogo } = useTeamRegistration();
   const { signOut } = useFirebaseAuth();
   const router = useRouter();
   
@@ -77,45 +74,6 @@ export default function MobileNav() {
   const toggleSubmenu = (menuName: string) => {
     setExpandedMenu(expandedMenu === menuName ? null : menuName);
   };
-  
-  // Fetch team logo if user is a team
-  useEffect(() => {
-    const fetchTeamLogo = async () => {
-      if (user && user.role === 'team') {
-        try {
-          console.log('[MobileNav] Fetching team logo for user:', user.uid);
-          // Query teams collection by userId field
-          const teamsRef = collection(db, 'teams');
-          const q = query(teamsRef, where('userId', '==', user.uid));
-          const querySnapshot = await getDocs(q);
-          
-          if (!querySnapshot.empty) {
-            const teamDoc = querySnapshot.docs[0];
-            const teamData = teamDoc.data();
-            console.log('[MobileNav] Team document found:', { id: teamDoc.id, hasLogoUrl: !!teamData.logo_url, hasTeamLogo: !!teamData.team_logo });
-            // Check for logo_url field (common in team documents)
-            if (teamData.logo_url) {
-              console.log('[MobileNav] Setting team logo from logo_url:', teamData.logo_url);
-              setTeamLogo(teamData.logo_url);
-            } else if (teamData.team_logo) {
-              console.log('[MobileNav] Setting team logo from team_logo:', teamData.team_logo);
-              setTeamLogo(teamData.team_logo);
-            } else {
-              console.log('[MobileNav] No logo found in team document');
-            }
-          } else {
-            console.log('[MobileNav] Team document not found for uid:', user.uid);
-          }
-        } catch (error) {
-          console.error('[MobileNav] Error fetching team logo:', error);
-        }
-      } else {
-        setTeamLogo(null);
-      }
-    };
-    
-    fetchTeamLogo();
-  }, [user]);
   
   return (
     <>
