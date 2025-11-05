@@ -850,7 +850,7 @@ async function importTeams(
           // Team-specific data
           teamName: normalizedTeamName,
           teamId: teamId,
-          teamLogo: '',
+          logoUrl: '',
           players: [],
           
           // Mark as historical

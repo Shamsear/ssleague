@@ -176,6 +176,7 @@ export async function POST(
           seasons: updatedSeasons,
           current_season_id: seasonId,
           total_seasons_participated: updatedSeasons.length,
+          logo_url: userData.logoUrl || null,
           updated_at: FieldValue.serverTimestamp(),
           // Phase 1: Add manager name if provided
           ...(managerName && { manager_name: managerName }),
@@ -229,6 +230,7 @@ export async function POST(
           id: teamDocId,
           team_name: teamName,
           owner_name: userData.username || '',
+          logo_url: userData.logoUrl || null,
           
           // Login credentials (link to user account)
           username: userData.username || '',
@@ -313,7 +315,7 @@ export async function POST(
         username: userData.username || '',
         owner_name: userData.username || '',
         team_email: userData.email,
-        team_logo: userData.teamLogo || '',
+        team_logo: userData.logoUrl || '',
         status: 'registered',
         
         // Contract fields
@@ -406,7 +408,7 @@ export async function POST(
         username: userData.username || '',
         owner_name: userData.username || '',
         team_email: userData.email,
-        team_logo: userData.teamLogo || '',
+        team_logo: userData.logoUrl || '',
         status: 'registered',
         
         // Contract fields
@@ -545,7 +547,7 @@ export async function POST(
         const teamDoc = await adminDb.collection('teams').doc(teamDocId).get();
         const teamData = teamDoc.data();
         const isReturning = teamData?.seasons && teamData.seasons.length > 2; // More than just current 2-season contract
-        const teamLogo = userData.teamLogo || teamData?.team_logo || null;
+        const teamLogo = userData.logoUrl || teamData?.team_logo || null;
 
         await triggerNews('team_registered', {
           season_id: seasonId,
@@ -587,7 +589,7 @@ export async function POST(
         username: userData.username || '',
         owner_name: userData.username || '',
         team_email: userData.email,
-        team_logo: userData.teamLogo || '',
+        team_logo: userData.logoUrl || '',
         status: 'declined',
         players_count: 0,
         position_counts: {

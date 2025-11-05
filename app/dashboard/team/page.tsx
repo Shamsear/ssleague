@@ -149,11 +149,30 @@ export default function TeamDashboard() {
       const { doc, updateDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase/config');
       
+      // Update users collection
       await updateDoc(doc(db, 'users', user.uid), {
-        teamLogoUrl: result.url,
-        teamLogoFileId: result.fileId, // Store for deletion later
+        logoUrl: result.url,
+        logoFileId: result.fileId, // Store for deletion later
         updatedAt: new Date()
       });
+
+      // Update teams collection (need to find team ID first)
+      try {
+        const { getDoc } = await import('firebase/firestore');
+        const userDocData = await getDoc(doc(db, 'users', user.uid));
+        const teamId = userDocData.data()?.teamId;
+        
+        if (teamId) {
+          await updateDoc(doc(db, 'teams', teamId), {
+            logo_url: result.url,
+            updated_at: new Date()
+          });
+        } else {
+          console.log('No team ID found in user document');
+        }
+      } catch (teamError) {
+        console.log('Team document may not exist yet, will be created on season registration');
+      }
 
       setTeamLogoUrl(result.url);
       alert('Team logo uploaded successfully!');
@@ -390,7 +409,7 @@ export default function TeamDashboard() {
                         <img 
                           src={teamLogoUrl}
                           alt="Team logo" 
-                          className="w-20 h-20 rounded-3xl object-cover border-2 border-[#0066FF]/20 group-hover:opacity-75 transition-opacity"
+                          className="w-20 h-20 rounded-3xl object-contain bg-white p-1 border-2 border-[#0066FF]/20 group-hover:opacity-75 transition-opacity"
                           loading="lazy"
                         />
                         <div className="absolute inset-0 rounded-3xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

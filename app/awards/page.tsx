@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import InstagramEmbed from '@/components/InstagramEmbed';
 
 interface Award {
   id: string;
@@ -18,6 +19,8 @@ interface Award {
   selected_at: string;
   selected_by_name?: string;
   notes?: string;
+  instagram_link?: string;
+  instagram_post_url?: string;
 }
 
 interface PlayerAward {
@@ -32,6 +35,8 @@ interface PlayerAward {
   award_type: string; // e.g., 'Golden Boot', 'Best Attacker'
   award_position?: string; // 'Winner', 'Runner Up', 'Third Place'
   created_at: string;
+  instagram_link?: string;
+  instagram_post_url?: string;
 }
 
 interface Trophy {
@@ -44,6 +49,8 @@ interface Trophy {
   trophy_position?: string; // e.g., 'Champion', 'Runner-up'
   position?: number; // League position
   awarded_at: string;
+  instagram_link?: string;
+  instagram_post_url?: string;
 }
 
 
@@ -53,6 +60,7 @@ export default function PublicAwardsPage() {
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'awards' | 'trophies'>('awards');
+  const [selectedSeason, setSelectedSeason] = useState<string>('all');
   
 
 
@@ -127,24 +135,46 @@ export default function PublicAwardsPage() {
     return acc;
   }, {} as Record<string, Award[]>) : {};
 
-  // Get filtered data based on active tab
+  // Extract unique seasons from all data
+  const getUniqueSeasons = () => {
+    const safeAwards = Array.isArray(awards) ? awards : [];
+    const safePlayerAwards = Array.isArray(playerAwards) ? playerAwards : [];
+    const safeTrophies = Array.isArray(trophies) ? trophies : [];
+    
+    const allSeasons = new Set<string>();
+    [...safeAwards, ...safePlayerAwards, ...safeTrophies].forEach(item => {
+      if (item.season_id) allSeasons.add(item.season_id);
+    });
+    
+    return Array.from(allSeasons).sort();
+  };
+
+  // Get filtered data based on active tab and selected season
   const getFilteredData = () => {
     const safeAwards = Array.isArray(awards) ? awards : [];
     const safePlayerAwards = Array.isArray(playerAwards) ? playerAwards : [];
     const safeTrophies = Array.isArray(trophies) ? trophies : [];
     
+    // Apply season filter
+    const filterBySeason = (items: any[]) => {
+      if (selectedSeason === 'all') return items;
+      return items.filter(item => item.season_id === selectedSeason);
+    };
+    
     // Combine awards and player awards as they're both award types
-    const allAwards = [...safeAwards, ...safePlayerAwards];
+    const allAwards = [...filterBySeason(safeAwards), ...filterBySeason(safePlayerAwards)];
 
     switch (activeTab) {
       case 'awards':
         return { items: allAwards, type: 'awards' };
       case 'trophies':
-        return { items: safeTrophies, type: 'trophies' };
+        return { items: filterBySeason(safeTrophies), type: 'trophies' };
       default:
         return { items: allAwards, type: 'awards' };
     }
   };
+
+  const uniqueSeasons = getUniqueSeasons();
 
   const filteredData = getFilteredData();
 
@@ -171,6 +201,65 @@ export default function PublicAwardsPage() {
             </div>
           </div>
         </header>
+
+        {/* Season Filter - Prominent */}
+        {uniqueSeasons.length > 0 && (
+          <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-xl sm:rounded-2xl p-[2px] mb-4 sm:mb-6 shadow-xl">
+            <div className="bg-white/95 backdrop-blur-xl rounded-[10px] sm:rounded-[14px] p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-gray-900">Filter by Season</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">View awards from specific seasons</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <select
+                    id="season-filter"
+                    value={selectedSeason}
+                    onChange={(e) => setSelectedSeason(e.target.value)}
+                    className="flex-1 sm:flex-initial min-w-[200px] px-4 sm:px-6 py-3 sm:py-3.5 rounded-xl text-sm sm:text-base font-bold bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 text-gray-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer hover:border-blue-400 hover:shadow-lg appearance-none bg-no-repeat bg-right pr-10" 
+                    style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundSize: "1.5em 1.5em", backgroundPosition: "right 0.5rem center" }}
+                  >
+                    <option value="all">🌟 All Seasons</option>
+                    {uniqueSeasons.map((season) => (
+                      <option key={season} value={season}>
+                        📅 {season}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedSeason !== 'all' && (
+                    <button
+                      onClick={() => setSelectedSeason('all')}
+                      className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm transition-all flex items-center gap-1.5 whitespace-nowrap"
+                      title="Clear filter"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span className="hidden sm:inline">Clear</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+              {selectedSeason !== 'all' && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                    <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <span className="font-medium">Showing {filteredData.items.length} {activeTab === 'awards' ? 'awards' : 'trophies'} from season <span className="font-bold text-gray-900">{selectedSeason}</span></span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tabs - Mobile Optimized */}
         <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-lg mb-4 sm:mb-6 sticky top-2 sm:top-4 z-10">
@@ -227,13 +316,29 @@ export default function PublicAwardsPage() {
         {!loading && filteredData.items.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 mb-8 sm:mb-12">
             {/* Team Awards (from awards table) */}
-            {activeTab === 'awards' && Array.isArray(awards) && awards.map((award) => (
-              <div
+            {activeTab === 'awards' && Array.isArray(awards) && awards.map((award) => {
+              const Wrapper = award.instagram_post_url ? 'a' : 'div';
+              return (
+              <Wrapper
+                {...(award.instagram_post_url ? { href: award.instagram_post_url, target: '_blank', rel: 'noopener noreferrer' } : {})}
                 key={award.id}
-                className="group bg-white/70 backdrop-blur-xl border-2 border-white/40 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:border-yellow-300"
+                className="group bg-white/70 backdrop-blur-xl border-2 border-white/40 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:border-yellow-300"
               >
-                {/* Award Header */}
-                <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                {/* Instagram Image - Top */}
+                {award.instagram_link && (
+                  <div className="relative w-full overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200">
+                    <InstagramEmbed 
+                      postUrl={award.instagram_link} 
+                      instagramPostUrl={award.instagram_post_url ? '' : undefined}
+                      className="" 
+                    />
+                  </div>
+                )}
+
+                {/* Card Content */}
+                <div key={`award-content-${award.id}`} className="p-4 sm:p-6">
+                  {/* Award Header */}
+                  <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
                   <div className="text-3xl sm:text-4xl flex-shrink-0">{getAwardIcon(award.award_type)}</div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-gray-900 text-sm sm:text-base lg:text-lg leading-tight mb-1 truncate">
@@ -301,14 +406,15 @@ export default function PublicAwardsPage() {
                   </div>
                 </div>
 
-                {/* Notes */}
-                {award.notes && (
-                  <div className="mt-3 p-2.5 sm:p-3 bg-blue-50/50 border-l-2 border-blue-400 rounded text-[10px] sm:text-xs text-gray-700">
-                    <span className="font-semibold">Note:</span> {award.notes}
-                  </div>
-                )}
-              </div>
-            ))}
+                  {/* Notes */}
+                  {award.notes && (
+                    <div className="mt-3 p-2.5 sm:p-3 bg-blue-50/50 border-l-2 border-blue-400 rounded text-[10px] sm:text-xs text-gray-700">
+                      <span className="font-semibold">Note:</span> {award.notes}
+                    </div>
+                  )}
+                </div>
+              </Wrapper>
+              );})}
 
             {/* Player Awards (from player_awards table) */}
             {activeTab === 'awards' && Array.isArray(playerAwards) && playerAwards.map((award) => {
@@ -316,19 +422,34 @@ export default function PublicAwardsPage() {
               const isWinner = award.award_position?.toLowerCase().includes('winner');
               const isRunnerUp = award.award_position?.toLowerCase().includes('runner');
               const isThird = award.award_position?.toLowerCase().includes('third');
+              const Wrapper = award.instagram_post_url ? 'a' : 'div';
               
               return (
-              <div
+              <Wrapper
+                {...(award.instagram_post_url ? { href: award.instagram_post_url, target: '_blank', rel: 'noopener noreferrer' } : {})}
                 key={`player-${award.id}`}
-                className={`group bg-white/70 backdrop-blur-xl border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 ${
+                className={`group bg-white/70 backdrop-blur-xl border-2 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 ${
                   isWinner ? 'border-yellow-400 hover:border-yellow-500 bg-gradient-to-br from-yellow-50/30 to-white/70' :
                   isRunnerUp ? 'border-gray-300 hover:border-gray-400 bg-gradient-to-br from-gray-50/30 to-white/70' :
                   isThird ? 'border-orange-300 hover:border-orange-400 bg-gradient-to-br from-orange-50/30 to-white/70' :
                   'border-white/40 hover:border-blue-300'
                 }`}
               >
-                {/* Award Header */}
-                <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                {/* Instagram Image - Top */}
+                {award.instagram_link && (
+                  <div key={`player-instagram-${award.id}`} className="relative w-full overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200">
+                    <InstagramEmbed 
+                      postUrl={award.instagram_link} 
+                      instagramPostUrl={award.instagram_post_url ? '' : undefined}
+                      className="" 
+                    />
+                  </div>
+                )}
+
+                {/* Card Content */}
+                <div key={`player-award-content-${award.id}`} className="p-4 sm:p-6">
+                  {/* Award Header */}
+                  <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
                   <div className="relative">
                     <div className="text-3xl sm:text-4xl flex-shrink-0">⭐</div>
                     {isWinner && <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>}
@@ -383,16 +504,17 @@ export default function PublicAwardsPage() {
                   </div>
                 </div>
 
-                {/* Bottom Info */}
-                <div className="space-y-1.5 pt-2 border-t border-gray-200">
-                  <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-gray-500">
-                    <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="font-medium">Season:</span> {award.season_id}
+                  {/* Bottom Info */}
+                  <div className="space-y-1.5 pt-2 border-t border-gray-200">
+                    <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-gray-500">
+                      <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="font-medium">Season:</span> {award.season_id}
+                    </div>
                   </div>
                 </div>
-              </div>
+              </Wrapper>
               );
             })}
 
@@ -402,19 +524,34 @@ export default function PublicAwardsPage() {
               const isChampion = trophy.position === 1 || trophy.trophy_position?.toLowerCase().includes('champion') || trophy.trophy_position?.toLowerCase().includes('1st');
               const isRunnerUp = trophy.position === 2 || trophy.trophy_position?.toLowerCase().includes('runner') || trophy.trophy_position?.toLowerCase().includes('2nd');
               const isThird = trophy.position === 3 || trophy.trophy_position?.toLowerCase().includes('third') || trophy.trophy_position?.toLowerCase().includes('3rd');
+              const Wrapper = trophy.instagram_post_url ? 'a' : 'div';
               
               return (
-              <div
+              <Wrapper
+                {...(trophy.instagram_post_url ? { href: trophy.instagram_post_url, target: '_blank', rel: 'noopener noreferrer' } : {})}
                 key={`trophy-${trophy.id}`}
-                className={`group bg-white/70 backdrop-blur-xl border-2 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 ${
+                className={`group bg-white/70 backdrop-blur-xl border-2 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 ${
                   isChampion ? 'border-yellow-400 hover:border-yellow-500 bg-gradient-to-br from-yellow-50/40 to-white/70' :
                   isRunnerUp ? 'border-gray-300 hover:border-gray-400 bg-gradient-to-br from-gray-50/40 to-white/70' :
                   isThird ? 'border-orange-300 hover:border-orange-400 bg-gradient-to-br from-orange-50/30 to-white/70' :
                   'border-blue-300 hover:border-blue-400'
                 }`}
               >
-                {/* Trophy Header */}
-                <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                {/* Instagram Image - Top */}
+                {trophy.instagram_link && (
+                  <div key={`trophy-img-${trophy.id}`} className="relative w-full overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200">
+                    <InstagramEmbed 
+                      postUrl={trophy.instagram_link} 
+                      instagramPostUrl={trophy.instagram_post_url ? '' : undefined}
+                      className="" 
+                    />
+                  </div>
+                )}
+
+                {/* Card Content */}
+                <div key={`trophy-content-${trophy.id}`} className="p-4 sm:p-6">
+                  {/* Trophy Header */}
+                  <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
                   <div className="relative">
                     <div className="text-3xl sm:text-4xl flex-shrink-0">🏆</div>
                     {isChampion && <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>}
@@ -466,14 +603,15 @@ export default function PublicAwardsPage() {
                   </div>
                 </div>
 
-                {/* Bottom Info */}
-                <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-gray-500 pt-2 border-t border-gray-200">
-                  <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-medium">Season:</span> {trophy.season_id}
+                  {/* Bottom Info */}
+                  <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-gray-500 pt-2 border-t border-gray-200">
+                    <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-medium">Season:</span> {trophy.season_id}
+                  </div>
                 </div>
-              </div>
+              </Wrapper>
               );
             })}
           </div>

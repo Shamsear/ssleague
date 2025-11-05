@@ -659,10 +659,13 @@ export default function PlayerDetailPage() {
                       {goalDifference > 0 ? '+' : ''}{goalDifference}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
-                    <span className="text-sm text-gray-600">Points:</span>
-                    <span className="text-sm font-bold text-indigo-600">{stats.points || stats.total_points || 0}</span>
-                  </div>
+                  {/* Only show points for individual seasons, not overall */}
+                  {selectedView === 'season' && (
+                    <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
+                      <span className="text-sm text-gray-600">Points:</span>
+                      <span className="text-sm font-bold text-indigo-600">{stats.points || stats.total_points || 0}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
                     <span className="text-sm text-gray-600">Clean Sheets:</span>
                     <span className="text-sm font-bold text-purple-600">{stats.clean_sheets || 0}</span>
@@ -810,19 +813,21 @@ export default function PlayerDetailPage() {
                    `Statistics - ${seasonName}`}
                 </h3>
 
-                {/* Points display */}
-                <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
-                    <p className="text-3xl font-bold text-blue-800">{stats.points || stats.total_points || 0}</p>
-                  </div>
-                  {selectedView === 'season' && selectedSeasonId === allSeasonData[0]?.id && currentSeasonData.ranking && (
-                    <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
-                      <p className="text-xs text-gray-500">League Ranking</p>
-                      <p className="text-xl font-bold text-primary">#{player.ranking}</p>
+                {/* Points display - Only for individual seasons, not overall */}
+                {selectedView === 'season' && (
+                  <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
+                      <p className="text-3xl font-bold text-blue-800">{stats.points || stats.total_points || 0}</p>
                     </div>
-                  )}
-                </div>
+                    {selectedSeasonId === allSeasonData[0]?.id && currentSeasonData.ranking && (
+                      <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
+                        <p className="text-xs text-gray-500">League Ranking</p>
+                        <p className="text-xl font-bold text-primary">#{player.ranking}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Main Stats Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">

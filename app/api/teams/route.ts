@@ -21,8 +21,66 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get team IDs
+    // Get team IDs and map to user IDs
     const teamIds = teamsSnapshot.docs.map(doc => doc.id);
+    const userIdToTeamIdMap = new Map();
+    const userIds: string[] = [];
+    
+    teamsSnapshot.docs.forEach(doc => {
+      const teamData = doc.data();
+      const userId = teamData.userId || teamData.user_id || teamData.owner_id;
+      if (userId) {
+        userIds.push(userId);
+        userIdToTeamIdMap.set(userId, doc.id);
+      }
+    });
+    
+    // Fetch logo URLs from teams collection first, fallback to users
+    console.log('[Teams API] Fetching logo URLs...');
+    const logoUrlMap = new Map();
+    
+    // First, get logos from teams collection
+    teamsSnapshot.docs.forEach(doc => {
+      const teamData = doc.data();
+      if (teamData.logo_url) {
+        logoUrlMap.set(doc.id, teamData.logo_url);
+      }
+    });
+    
+    // For teams without logos, fallback to users collection
+    const teamsNeedingLogos = teamsSnapshot.docs
+      .filter(doc => !logoUrlMap.has(doc.id))
+      .map(doc => {
+        const teamData = doc.data();
+        const userId = teamData.userId || teamData.user_id || teamData.owner_id;
+        return { teamId: doc.id, userId };
+      })
+      .filter(item => item.userId);
+    
+    if (teamsNeedingLogos.length > 0) {
+      const userIdsForLogos = teamsNeedingLogos.map(item => item.userId);
+      const usersSnapshot = await adminDb
+        .collection('users')
+        .where('__name__', 'in', userIdsForLogos)
+        .get();
+      
+      const userLogoMap = new Map();
+      usersSnapshot.docs.forEach(doc => {
+        const userData = doc.data();
+        if (userData.logoUrl) {
+          userLogoMap.set(doc.id, userData.logoUrl);
+        }
+      });
+      
+      teamsNeedingLogos.forEach(({ teamId, userId }) => {
+        const userLogo = userLogoMap.get(userId);
+        if (userLogo) {
+          logoUrlMap.set(teamId, userLogo);
+        }
+      });
+    }
+    
+    console.log(`[Teams API] Found logo URLs for ${logoUrlMap.size} teams`);
 
     // Fetch aggregated stats from tournament DB for all teams
     console.log('[Teams API] Fetching stats from tournament DB...');
@@ -62,7 +120,7 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Map teams data with stats
+    // Map teams data with stats and logo URLs
     const teams = teamsSnapshot.docs.map(doc => {
       const teamId = doc.id;
       const teamData = doc.data();
@@ -80,7 +138,7 @@ export async function GET(request: NextRequest) {
         id: teamId,
         team_id: teamId,
         team_name: teamData.team_name || teamData.name || 'Unknown Team',
-        logo_url: teamData.logoUrl || teamData.logoURL || teamData.logo_url || null,
+        logo_url: logoUrlMap.get(teamId) || null,
         balance: teamData.balance || 0,
         created_at: teamData.created_at,
         ...stats

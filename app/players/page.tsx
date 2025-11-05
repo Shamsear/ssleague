@@ -106,8 +106,6 @@ export default function AllPlayersPage() {
       switch (sortBy) {
         case 'name':
           return a.name.localeCompare(b.name);
-        case 'points':
-          return b.stats.points - a.stats.points;
         case 'goals':
           return b.stats.goals_scored - a.stats.goals_scored;
         case 'matches':
@@ -205,7 +203,6 @@ export default function AllPlayersPage() {
               className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="name">Name (A-Z)</option>
-              <option value="points">Points</option>
               <option value="goals">Goals</option>
               <option value="matches">Matches Played</option>
             </select>
@@ -284,10 +281,6 @@ export default function AllPlayersPage() {
                   )}
                   {/* Stats Pills */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-blue-50 to-blue-100 rounded-full border border-blue-200">
-                      <span className="text-xs font-bold text-[#0066FF]">{player.stats.points}</span>
-                      <span className="text-xs text-gray-600">pts</span>
-                    </div>
                     <div className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-green-50 to-green-100 rounded-full border border-green-200">
                       <span className="text-xs">⚽</span>
                       <span className="text-xs font-semibold text-green-700">{player.stats.goals_scored}</span>
@@ -295,6 +288,10 @@ export default function AllPlayersPage() {
                     <div className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-purple-50 to-purple-100 rounded-full border border-purple-200">
                       <span className="text-xs font-semibold text-purple-700">{player.stats.matches_played}</span>
                       <span className="text-xs text-gray-600">games</span>
+                    </div>
+                    <div className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-blue-50 to-blue-100 rounded-full border border-blue-200">
+                      <span className="text-xs font-semibold text-blue-700">{player.stats.clean_sheets}</span>
+                      <span className="text-xs text-gray-600">CS</span>
                     </div>
                   </div>
                 </div>
@@ -375,10 +372,6 @@ export default function AllPlayersPage() {
 
                   {/* Stats */}
                   <div className="flex items-center gap-4">
-                    <div className="text-center px-4 py-2 rounded-lg bg-blue-50 border border-blue-200">
-                      <div className="text-xl font-bold text-[#0066FF]">{player.stats.points}</div>
-                      <div className="text-xs text-gray-600">Points</div>
-                    </div>
                     <div className="text-center px-4 py-2 rounded-lg bg-green-50 border border-green-200">
                       <div className="text-xl font-bold text-green-600">{player.stats.goals_scored}</div>
                       <div className="text-xs text-gray-600">Goals</div>

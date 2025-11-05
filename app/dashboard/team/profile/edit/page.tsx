@@ -204,12 +204,32 @@ export default function EditTeamProfilePage() {
       const { db } = await import('@/lib/firebase/config');
       const { collection, query, where, getDocs, doc, updateDoc } = await import('firebase/firestore');
 
+      // Update users collection
       const userDocRef = doc(db, 'users', user!.uid);
       await updateDoc(userDocRef, {
         username: username.trim(),
         teamName: teamName.trim(),
         logoUrl: logoUrl,
       });
+
+      // Update teams collection (need to find team ID first)
+      try {
+        // Get team ID from users document
+        const userDocData = await getDoc(doc(db, 'users', user!.uid));
+        const teamId = userDocData.data()?.teamId;
+        
+        if (teamId) {
+          const teamDocRef = doc(db, 'teams', teamId);
+          await updateDoc(teamDocRef, {
+            team_name: teamName.trim(),
+            logo_url: logoUrl,
+          });
+        } else {
+          console.log('No team ID found in user document');
+        }
+      } catch (teamError) {
+        console.log('Team document may not exist yet, will be created on season registration');
+      }
 
       const teamSeasonsQuery = query(
         collection(db, 'team_seasons'),
@@ -565,7 +585,7 @@ export default function EditTeamProfilePage() {
                       <img 
                         src={currentLogoUrl} 
                         alt="Current team logo" 
-                        className="w-24 h-24 rounded-xl object-cover border-2 border-gray-200"
+                        className="w-24 h-24 rounded-xl object-contain bg-white p-2 border-2 border-gray-200"
                       />
                     ) : (
                       <div className="w-24 h-24 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center">
@@ -578,7 +598,7 @@ export default function EditTeamProfilePage() {
                     {newLogoPreview && (
                       <div>
                         <p className="text-sm text-gray-600 mb-2">New Logo:</p>
-                        <img src={newLogoPreview} alt="New logo preview" className="w-24 h-24 rounded-xl object-cover border-2 border-primary" />
+                        <img src={newLogoPreview} alt="New logo preview" className="w-24 h-24 rounded-xl object-contain bg-white p-2 border-2 border-primary" />
                       </div>
                     )}
                   </div>

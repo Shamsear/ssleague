@@ -285,12 +285,12 @@ export default function TeamDetailPage() {
               {/* Team Card */}
               <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
                 {/* Team Logo */}
-                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl overflow-hidden shadow-md">
+                <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl overflow-hidden shadow-md bg-white">
                   {team.logo_url ? (
                     <img
                       src={team.logo_url}
                       alt={team.team_name}
-                      className="object-cover w-full h-full"
+                      className="object-contain w-full h-full p-2"
                     />
                   ) : (
                     <div className="bg-primary/10 w-full h-full flex items-center justify-center">
@@ -373,10 +373,6 @@ export default function TeamDetailPage() {
                     <span className={`text-sm font-bold ${stats.goal_difference > 0 ? 'text-green-600' : stats.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                       {stats.goal_difference > 0 ? '+' : ''}{stats.goal_difference}
                     </span>
-                  </div>
-                  <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
-                    <span className="text-sm text-gray-600">Points:</span>
-                    <span className="text-sm font-bold text-indigo-600">{stats.points}</span>
                   </div>
                   <div className="flex justify-between items-center px-3 py-2 bg-white/50 rounded-lg">
                     <span className="text-sm text-gray-600">Clean Sheets:</span>
@@ -468,22 +464,6 @@ export default function TeamDetailPage() {
                     </svg>
                     {selectedView === 'overall' ? 'Overall Statistics' : `Statistics - ${currentSeasonData.season_name}`}
                   </h3>
-
-                  {/* Points display */}
-                  <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
-                        <p className="text-3xl font-bold text-blue-800">{stats.points}</p>
-                      </div>
-                      {selectedView === 'season' && currentSeasonData.stats.position && (
-                        <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
-                          <p className="text-xs text-gray-500">Position</p>
-                          <p className="text-2xl font-bold text-primary">#{currentSeasonData.stats.position}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
 
                   {/* Main Stats Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">

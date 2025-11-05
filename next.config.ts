@@ -32,7 +32,7 @@ const nextConfig: NextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     // Image sizes for different use cases
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-    // Allow images from Firebase Storage and other domains
+    // Allow images from Firebase Storage, ImageKit and other domains
     remotePatterns: [
       {
         protocol: 'https',
@@ -45,6 +45,10 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: '**.googleusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'ik.imagekit.io',
       },
     ],
   },

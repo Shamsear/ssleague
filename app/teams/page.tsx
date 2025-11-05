@@ -70,8 +70,6 @@ export default function AllTeamsPage() {
           return a.team_name.localeCompare(b.team_name);
         case 'balance':
           return (b.balance || 0) - (a.balance || 0);
-        case 'points':
-          return (b.points || 0) - (a.points || 0);
         case 'wins':
           return (b.wins || 0) - (a.wins || 0);
         case 'goals':
@@ -127,7 +125,6 @@ export default function AllTeamsPage() {
               className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="name">Name (A-Z)</option>
-              <option value="points">Points (High to Low)</option>
               <option value="balance">Balance (High to Low)</option>
               <option value="wins">Wins (High to Low)</option>
               <option value="goals">Goals (High to Low)</option>
@@ -187,10 +184,6 @@ export default function AllTeamsPage() {
 
               {/* Stats */}
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Points</span>
-                  <span className="font-bold text-blue-600">{team.points || 0}</span>
-                </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Matches</span>
                   <span className="font-semibold text-gray-900">{team.matches_played || 0}</span>

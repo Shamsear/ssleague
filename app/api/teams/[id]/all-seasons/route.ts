@@ -23,7 +23,20 @@ export async function GET(
     try {
       const teamDoc = await adminDb.collection('teams').doc(teamId).get();
       if (teamDoc.exists) {
-        logoUrl = teamDoc.data()?.logo_url || null;
+        const teamData = teamDoc.data();
+        logoUrl = teamData?.logo_url || null;
+        
+        // Fallback to users collection if no logo in teams
+        if (!logoUrl && teamData?.user_id) {
+          try {
+            const userDoc = await adminDb.collection('users').doc(teamData.user_id).get();
+            if (userDoc.exists) {
+              logoUrl = userDoc.data()?.logoUrl || null;
+            }
+          } catch (userError) {
+            console.error('Error fetching user for logo fallback:', userError);
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching team from Firebase:', error);
