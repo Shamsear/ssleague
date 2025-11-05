@@ -141,8 +141,22 @@ export function getOptimizedImageUrl(
   if (transformations.length === 0) return url;
   
   // Insert transformations into ImageKit URL
+  // Format: https://ik.imagekit.io/endpoint/tr:w-100,h-100/path/to/image.jpg
   const transformStr = `tr:${transformations.join(',')}`;
-  return url.replace(/\/tr:[^/]*\//, `/${transformStr}/`).replace(/(\.[^.]+)$/, `/${transformStr}$1`);
+  
+  // Check if URL already has transformations
+  if (url.includes('/tr:')) {
+    // Replace existing transformations
+    return url.replace(/\/tr:[^/]*\//, `/${transformStr}/`);
+  }
+  
+  // Add transformations before the file path
+  // Split URL into base and file path
+  const urlParts = url.split('/');
+  const filename = urlParts.pop(); // Get filename
+  const baseUrl = urlParts.join('/'); // Get everything before filename
+  
+  return `${baseUrl}/${transformStr}/${filename}`;
 }
 
 /**

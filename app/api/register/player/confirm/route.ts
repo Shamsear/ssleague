@@ -269,6 +269,8 @@ export async function POST(request: NextRequest) {
         if (player_data.date_of_birth) updateData.date_of_birth = player_data.date_of_birth;
         if (player_data.email) updateData.email = player_data.email;
         if (player_data.phone) updateData.phone = player_data.phone;
+        if (player_data.photo_url) updateData.photo_url = player_data.photo_url;
+        if (player_data.photo_file_id) updateData.photo_file_id = player_data.photo_file_id;
       }
 
       await playerDoc.ref.update(updateData);
@@ -294,6 +296,8 @@ export async function POST(request: NextRequest) {
         date_of_birth: player_data.date_of_birth || null,
         email: player_data.email || null,
         phone: player_data.phone || null,
+        photo_url: player_data.photo_url || null,
+        photo_file_id: player_data.photo_file_id || null,
         is_registered: true,
         season_id,
         registered_email: user_email,
