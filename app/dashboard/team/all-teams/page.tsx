@@ -270,14 +270,14 @@ export default function AllTeamsPage() {
                 <div className="p-6">
                   {/* Team Header */}
                   <div className="flex items-center mb-4">
-                    <div className="h-12 w-12 flex-shrink-0 bg-[#0066FF]/10 rounded-lg flex items-center justify-center mr-3 overflow-hidden">
+                    <div className="h-14 w-14 flex-shrink-0 bg-[#0066FF]/10 rounded-lg flex items-center justify-center mr-3 p-1.5">
                       {teamData.team.logoUrl ? (
                         <Image 
                           src={teamData.team.logoUrl} 
                           alt={teamData.team.name} 
-                          width={48}
-                          height={48}
-                          className="object-contain"
+                          width={56}
+                          height={56}
+                          className="object-contain w-full h-full"
                         />
                       ) : (
                         <svg className="w-6 h-6 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">

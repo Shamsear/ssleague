@@ -271,14 +271,14 @@ export default function CommitteeTeamsPage() {
                   {/* Team Header */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="h-14 w-14 flex-shrink-0 bg-gradient-to-br from-[#0066FF]/10 to-blue-500/10 rounded-xl flex items-center justify-center overflow-hidden shadow-md">
+                      <div className="h-14 w-14 flex-shrink-0 bg-gradient-to-br from-[#0066FF]/10 to-blue-500/10 rounded-xl flex items-center justify-center p-1.5 shadow-md">
                         {teamData.team.logoUrl ? (
                           <Image 
                             src={teamData.team.logoUrl} 
                             alt={teamData.team.name} 
                             width={56} 
                             height={56} 
-                            className="object-contain" 
+                            className="object-contain w-full h-full" 
                           />
                         ) : (
                           <svg className="w-7 h-7 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -276,14 +276,14 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
 
           {/* Team Header */}
           <div className="flex items-center gap-4">
-            <div className="h-20 w-20 flex-shrink-0 bg-[#0066FF]/10 rounded-xl flex items-center justify-center overflow-hidden">
+            <div className="h-20 w-20 flex-shrink-0 bg-[#0066FF]/10 rounded-xl flex items-center justify-center p-2">
               {teamProfile.logoUrl ? (
                 <Image 
                   src={teamProfile.logoUrl} 
                   alt={teamProfile.name} 
                   width={80}
                   height={80}
-                  className="object-contain"
+                  className="object-contain w-full h-full"
                 />
               ) : (
                 <svg className="w-10 h-10 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
