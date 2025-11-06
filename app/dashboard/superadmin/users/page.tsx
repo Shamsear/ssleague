@@ -77,7 +77,7 @@ function UsersManagementContent() {
   };
 
   const handleApproveUser = async (uid: string) => {
-    if (!user) return;
+    if (!user || !uid) return;
     if (!confirm('Are you sure you want to approve this user? They will be able to log in.')) return;
     
     try {
@@ -90,7 +90,11 @@ function UsersManagementContent() {
   };
 
   const handleRejectUser = async (uid: string, username: string) => {
-    if (!confirm(`Are you sure you want to reject and delete user "${username}"? This action cannot be undone.`)) return;
+    if (!uid) {
+      alert('Invalid user ID');
+      return;
+    }
+    if (!confirm(`Are you sure you want to reject and delete user "${username || 'Unknown User'}"? This action cannot be undone.`)) return;
     
     try {
       await rejectUser(uid);
@@ -102,6 +106,7 @@ function UsersManagementContent() {
   };
 
   const handlePromoteUser = async (uid: string) => {
+    if (!uid) return;
     try {
       await updateUserRole(uid, 'committee_admin');
       await fetchUsers();
@@ -111,6 +116,7 @@ function UsersManagementContent() {
   };
 
   const handleDemoteUser = async (uid: string) => {
+    if (!uid) return;
     try {
       await updateUserRole(uid, 'team');
       await fetchUsers();
@@ -120,8 +126,12 @@ function UsersManagementContent() {
   };
 
   const handleDeleteUser = async (uid: string, username: string) => {
+    if (!uid) {
+      alert('Invalid user ID');
+      return;
+    }
     const confirmed = confirm(
-      `⚠️ PERMANENT DELETION WARNING\n\nThis will permanently delete:\n• User account: ${username}\n• Associated team and all data\n• All bids and auction history\n• Player acquisitions\n\nThis action CANNOT be undone!\n\nAre you absolutely sure you want to proceed?`
+      `⚠️ PERMANENT DELETION WARNING\n\nThis will permanently delete:\n• User account: ${username || 'Unknown User'}\n• Associated team and all data\n• All bids and auction history\n• Player acquisitions\n\nThis action CANNOT be undone!\n\nAre you absolutely sure you want to proceed?`
     );
     
     if (!confirmed) return;
@@ -267,8 +277,8 @@ function UsersManagementContent() {
 
           {filteredUsers.length > 0 ? (
             <div className="divide-y divide-gray-200/50">
-              {filteredUsers.map((u) => (
-                <div key={u.uid} className="px-6 py-5 hover:bg-white/30 transition-all duration-200 group">
+              {filteredUsers.map((u, index) => (
+                <div key={u.uid || `user-${index}`} className="px-6 py-5 hover:bg-white/30 transition-all duration-200 group">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center mb-3">
@@ -276,17 +286,17 @@ function UsersManagementContent() {
                           {/* User Avatar */}
                           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#9580FF]/20 to-[#9580FF]/10 flex items-center justify-center">
                             <span className="text-[#9580FF] font-bold text-lg">
-                              {u.username[0].toUpperCase()}
+                              {u.username?.[0]?.toUpperCase() || '?'}
                             </span>
                           </div>
 
                           <div>
                             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-[#9580FF] transition-colors">
-                              {u.username}
+                              {u.username || 'Unknown User'}
                             </h3>
                             <span className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${getRoleBadgeClasses(u.role)}`}>
                               {getRoleIcon(u.role)}
-                              {u.role.replace('_', ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                              {u.role?.replace('_', ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') || 'Unknown Role'}
                             </span>
                           </div>
                         </div>
