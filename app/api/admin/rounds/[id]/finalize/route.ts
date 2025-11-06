@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
+import { sendNotificationToSeason, sendNotification } from '@/lib/notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -134,6 +135,71 @@ export async function POST(
         { success: false, error: applyResult.error },
         { status: 500 }
       );
+    }
+
+    // Send notifications to winners and losers
+    try {
+      // Get round and season details for notifications
+      const roundDetails = await sql`
+        SELECT r.*, s.id as season_id, s.name as season_name
+        FROM rounds r
+        JOIN seasons s ON r.season_id = s.id
+        WHERE r.id = ${roundId}
+        LIMIT 1
+      `;
+
+      if (roundDetails.length > 0) {
+        const roundInfo = roundDetails[0];
+
+        // Notify each team about their result
+        for (const allocation of finalizationResult.allocations) {
+          const teamId = allocation.team_id;
+          const playerName = allocation.player_name;
+          const amount = allocation.amount;
+          const won = allocation.won;
+
+          if (won) {
+            // Winner notification
+            await sendNotification(
+              {
+                title: '🎉 Player Won!',
+                body: `Congratulations! You won ${playerName} for $${amount.toLocaleString()}`,
+                url: `/dashboard/team/round/${roundId}`,
+                icon: '/logo.png',
+                data: {
+                  type: 'round_result',
+                  roundId,
+                  playerId: allocation.player_id || '',
+                  result: 'won'
+                }
+              },
+              { teamId }
+            );
+          } else {
+            // Loser notification
+            await sendNotification(
+              {
+                title: '❌ Bid Lost',
+                body: `You lost the bid for ${playerName}. Better luck next time!`,
+                url: `/dashboard/team/round/${roundId}`,
+                icon: '/logo.png',
+                data: {
+                  type: 'round_result',
+                  roundId,
+                  playerId: allocation.player_id || '',
+                  result: 'lost'
+                }
+              },
+              { teamId }
+            );
+          }
+        }
+
+        console.log(`✅ Sent ${finalizationResult.allocations.length} round result notifications`);
+      }
+    } catch (notifError) {
+      console.error('Error sending round finalization notifications:', notifError);
+      // Don't fail the entire operation if notifications fail
     }
 
     // Return success with allocations

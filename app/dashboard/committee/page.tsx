@@ -833,6 +833,24 @@ export default function CommitteeDashboard() {
                     <p className="text-xs text-gray-600">View AI-generated news</p>
                   </div>
                 </Link>
+
+                <Link href="/admin/notifications" className="group glass rounded-2xl p-4 border border-white/20 hover:border-red-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-red-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-red-500 to-pink-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-red-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-red-600 transition-colors mb-1">📬 Send Notifications</h4>
+                    <p className="text-xs text-gray-600">Manual notifications to teams</p>
+                  </div>
+                </Link>
               </div>
             )}
           </div>
