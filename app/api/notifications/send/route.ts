@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebase/admin';
 import { getAuthToken } from '@/lib/auth/token-helper';
 import admin from 'firebase-admin';
+import { neon } from '@neondatabase/serverless';
+
+const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
 
 /**
  * Send push notification to a user via FCM
@@ -51,29 +54,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get target user's FCM token
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
+    // Get all active FCM tokens for this user from Neon
+    const tokensResult = await sql`
+      SELECT id, token, device_name
+      FROM fcm_tokens
+      WHERE user_id = ${userId}
+        AND is_active = true
+      ORDER BY last_used_at DESC
+    `;
 
-    const userData = userDoc.data();
-    const fcmToken = userData?.fcmToken;
-
-    if (!fcmToken) {
+    if (tokensResult.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'User has not enabled notifications' },
+        { success: false, error: 'User has not enabled notifications on any device' },
         { status: 400 }
       );
     }
 
-    // Prepare notification message
-    const message: admin.messaging.Message = {
-      token: fcmToken,
+    const tokens = tokensResult.map(t => t.token);
+
+    // Prepare notification message for multiple devices
+    const message: admin.messaging.MulticastMessage = {
+      tokens,
       notification: {
         title,
         body,
@@ -94,10 +95,38 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // Send notification via FCM
-    const response = await admin.messaging().send(message);
+    // Send notification to all user's devices
+    const response = await admin.messaging().sendEachForMulticast(message);
     
-    console.log(`📬 Notification sent to user ${userId}:`, response);
+    console.log(`📬 Notification sent to user ${userId} on ${response.successCount} device(s)`);
+
+    // Update last_used_at for successful tokens
+    if (response.successCount > 0) {
+      await sql`
+        UPDATE fcm_tokens
+        SET last_used_at = NOW()
+        WHERE user_id = ${userId} AND is_active = true
+      `;
+    }
+
+    // Mark failed tokens as inactive
+    if (response.failureCount > 0) {
+      const failedTokens: string[] = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          failedTokens.push(tokens[idx]);
+        }
+      });
+
+      if (failedTokens.length > 0) {
+        await sql`
+          UPDATE fcm_tokens
+          SET is_active = false, updated_at = NOW()
+          WHERE token = ANY(${failedTokens})
+        `;
+        console.log(`❌ Marked ${failedTokens.length} invalid tokens as inactive`);
+      }
+    }
 
     // Save notification to database for history
     await adminDb.collection('notifications').add({
@@ -109,14 +138,15 @@ export async function POST(request: NextRequest) {
       data,
       sentAt: new Date(),
       sentBy: decodedToken.uid,
-      messageId: response,
-      status: 'sent'
+      deviceCount: response.successCount,
+      status: response.successCount > 0 ? 'sent' : 'failed'
     });
 
     return NextResponse.json({
       success: true,
-      messageId: response,
-      message: 'Notification sent successfully'
+      sentToDevices: response.successCount,
+      failedDevices: response.failureCount,
+      message: `Notification sent to ${response.successCount} device(s)`
     });
 
   } catch (error: any) {

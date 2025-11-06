@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebase/admin';
 import { getAuthToken } from '@/lib/auth/token-helper';
+import { neon } from '@neondatabase/serverless';
+import { getDeviceInfoFromRequest } from '@/lib/device-detector';
+
+const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
 
 /**
  * Save FCM token to user's Firestore document
@@ -31,18 +35,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save FCM token to user document
+    // Detect device information
+    const deviceInfo = getDeviceInfoFromRequest(request);
+
+    // Save FCM token to Neon database (supports multiple devices)
+    await sql`
+      INSERT INTO fcm_tokens (user_id, token, device_name, device_type, browser, os, last_used_at)
+      VALUES (
+        ${userId},
+        ${fcmToken},
+        ${deviceInfo.deviceName},
+        ${deviceInfo.deviceType},
+        ${deviceInfo.browser},
+        ${deviceInfo.os},
+        NOW()
+      )
+      ON CONFLICT (token) 
+      DO UPDATE SET 
+        last_used_at = NOW(),
+        is_active = true,
+        updated_at = NOW()
+    `;
+
+    // Also keep Firestore updated for backward compatibility
     await adminDb.collection('users').doc(userId).update({
-      fcmToken,
+      fcmToken, // Keep last token for legacy support
       fcmTokenUpdatedAt: new Date(),
       notificationsEnabled: true
     });
 
-    console.log(`✅ FCM token saved for user ${userId}`);
+    console.log(`✅ FCM token saved for user ${userId} on ${deviceInfo.deviceName}`);
 
     return NextResponse.json({
       success: true,
-      message: 'Notification token saved successfully'
+      message: 'Notification token saved successfully',
+      device: deviceInfo
     });
 
   } catch (error: any) {
