@@ -40,7 +40,31 @@ export async function POST(request: NextRequest) {
       
       try {
         const auth = getAuth();
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        
+        // Check user document for approval status
+        const { doc, getDoc } = await import('firebase/firestore');
+        const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          
+          // Check if account is active
+          if (userData.isActive === false) {
+            return NextResponse.json(
+              { success: false, error: 'Account is deactivated. Please contact support.' },
+              { status: 403 }
+            );
+          }
+          
+          // Check if team is approved (teams require super admin approval)
+          if (userData.role === 'team' && userData.isApproved === false) {
+            return NextResponse.json(
+              { success: false, error: 'Your account is pending approval from the super admin. Please wait for approval before logging in.' },
+              { status: 403 }
+            );
+          }
+        }
         
         authenticatedTeam = {
           id: teamData.id,
