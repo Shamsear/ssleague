@@ -18,11 +18,11 @@ export async function GET(
       );
     }
 
-    const db = getTournamentDb();
+    const sql = getTournamentDb();
 
-    // Fetch players assigned to this team for the given season
-    const result = await db.query(
-      `SELECT 
+    // Fetch players assigned to this team for the given season from player_seasons
+    const players = await sql`
+      SELECT 
         rp.id,
         rp.player_id,
         rp.name,
@@ -34,17 +34,21 @@ export async function GET(
         rp.place,
         rp.nationality,
         rp.is_active,
-        rp.is_available
-      FROM real_players rp
-      INNER JOIN auction_results ar ON rp.player_id = ar.player_id
-      WHERE ar.team_id = $1 AND ar.season_id = $2 AND rp.is_active = true
-      ORDER BY rp.name ASC`,
-      [teamId, seasonId]
-    );
+        rp.is_available,
+        ps.jersey_number,
+        ps.status as player_status
+      FROM realplayers rp
+      INNER JOIN player_seasons ps ON rp.player_id = ps.player_id
+      WHERE ps.team_id = ${teamId} 
+        AND ps.season_id = ${seasonId} 
+        AND ps.status = 'active'
+        AND rp.is_active = true
+      ORDER BY rp.name ASC
+    `;
 
     return NextResponse.json({
       success: true,
-      data: result.rows,
+      data: players,
     });
   } catch (error: any) {
     console.error('Error fetching team players:', error);
