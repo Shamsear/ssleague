@@ -175,6 +175,46 @@ export const signUp = async (
       additionalData
     );
 
+    // If registering a team, also create a document in the teams collection
+    if (role === 'team') {
+      try {
+        // Generate team ID from PostgreSQL database
+        const teamIdResponse = await fetch('/api/teams/generate-id', {
+          method: 'POST',
+        });
+        
+        if (teamIdResponse.ok) {
+          const { teamId } = await teamIdResponse.json();
+          
+          // Create team document in Firestore
+          const teamRef = doc(db, 'teams', teamId);
+          await setDoc(teamRef, {
+            id: teamId,
+            team_name: additionalData?.teamName || username,
+            owner_name: username,
+            owner_uid: userCredential.user.uid,
+            username: username,
+            userEmail: email,
+            role: 'team',
+            is_active: true,
+            is_approved: false, // Pending super admin approval
+            seasons: [],
+            current_season_id: '',
+            performance_history: {},
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          
+          console.log(`✅ Team document created with ID: ${teamId}`);
+        } else {
+          console.error('❌ Failed to generate team ID');
+        }
+      } catch (teamError) {
+        console.error('❌ Error creating team document:', teamError);
+        // Don't throw - user account is already created, just log the error
+      }
+    }
+
     return {
       user,
       firebaseUser: userCredential.user,
