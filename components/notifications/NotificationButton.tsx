@@ -162,6 +162,7 @@ export default function NotificationButton() {
     // Check if it's iOS (but not Safari)
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
     
     if (isIOS && !isSafari) {
       return (
@@ -173,6 +174,25 @@ export default function NotificationButton() {
         </div>
       );
     }
+    
+    // Show debug info for Android if not supported
+    if (isAndroid) {
+      return (
+        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm">
+          <p className="font-medium mb-1">🔴 Notifications Not Available</p>
+          <p className="text-xs mb-2">
+            Notifications should work on Android Chrome but something is missing:
+          </p>
+          <ul className="text-xs space-y-1 ml-4 list-disc">
+            <li>Notification API: {typeof window !== 'undefined' && 'Notification' in window ? '✅' : '❌'}</li>
+            <li>Service Worker: {'serviceWorker' in navigator ? '✅' : '❌'}</li>
+            <li>Push Manager: {'PushManager' in window ? '✅' : '❌'}</li>
+          </ul>
+          <p className="text-xs mt-2">Try refreshing the page or check if you're on HTTPS.</p>
+        </div>
+      );
+    }
+    
     return null;
   }
 
