@@ -68,51 +68,15 @@ export async function POST(
       // Use existing team ID
       teamDocId = existingTeamQuery.docs[0].id;
       console.log(`✅ Found existing team: ${teamDocId} for user ${userId}`);
+      console.log(`📋 Will create team_season document: ${teamDocId}_${seasonId}`);
     } else {
-      // No team document exists - generate proper team ID
-      // This should not happen if registration flow is working correctly
-      console.warn(`⚠️ No team document found for user ${userId}, creating one...`);
-      
-      // Generate team ID by checking latest team
-      const teamsQuery = await adminDb.collection('teams')
-        .orderBy('createdAt', 'desc')
-        .limit(1)
-        .get();
-      
-      let nextCounter = 1;
-      if (!teamsQuery.empty) {
-        const lastId = teamsQuery.docs[0].id;
-        const numericPart = lastId.replace(/\D/g, '');
-        if (numericPart) {
-          const lastCounter = parseInt(numericPart, 10);
-          if (!isNaN(lastCounter)) {
-            nextCounter = lastCounter + 1;
-          }
-        }
-      }
-      
-      teamDocId = `SSPSLT${nextCounter.toString().padStart(4, '0')}`;
-      console.log(`🆕 Generated new team ID: ${teamDocId}`);
-      
-      // Create the team document now
-      await adminDb.collection('teams').doc(teamDocId).set({
-        id: teamDocId,
-        team_name: teamName,
-        teamName: teamName,
-        owner_name: userData.username || '',
-        owner_uid: userId,
-        username: userData.username || '',
-        userEmail: userData.email || '',
-        role: 'team',
-        is_active: true,
-        is_approved: userData.isApproved || false,
-        seasons: [],
-        current_season_id: '',
-        performance_history: {},
-        players: [],
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      // No team document exists - this should NOT happen during season registration
+      // Teams must be created during initial signup, not during season registration
+      console.error(`❌ No team document found for user ${userId}`);
+      return NextResponse.json({
+        success: false,
+        message: 'Team not found. Please complete team registration first.',
+      }, { status: 404 });
     }
     
     // Check if team has already made a decision for this season
@@ -213,169 +177,69 @@ export async function POST(
       
       const batch = adminDb.batch();
       
-      if (!existingTeamQuery.empty) {
-        // Team exists, update it with BOTH seasons (teamDocId already set above)
-        const existingTeamDoc = existingTeamQuery.docs[0];
-        const existingData = existingTeamDoc.data();
-        const updatedSeasons = existingData.seasons 
-          ? [...existingData.seasons, seasonId, nextSeasonId] 
-          : [seasonId, nextSeasonId];
-        
-        const teamRef = adminDb.collection('teams').doc(teamDocId);
-        batch.update(teamRef, {
-          seasons: updatedSeasons,
-          current_season_id: seasonId,
-          total_seasons_participated: updatedSeasons.length,
-          logo_url: userData.logoUrl || null,
-          teamLogo: userData.logoUrl || null, // Update both fields
-          email: userData.email || existingData.email || '',
-          updated_at: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(), // Update both fields
-          // Phase 1: Add manager name if provided
-          ...(managerName && { manager_name: managerName }),
-          // Phase 1: Update fantasy participation if opted in
-          ...(joinFantasy && {
-            fantasy_participating: true,
-            fantasy_joined_at: FieldValue.serverTimestamp()
-          })
-        });
-        
-        // Create teamstats records in NEON for both seasons
-        const sql = getTournamentDb();
-        
-        // Insert current season stats to Neon (tournament_id will be added when tournament is created)
-        await sql`
-          INSERT INTO teamstats (
-            id, team_id, season_id, team_name,
-            position, points, matches_played, wins, draws, losses,
-            goals_for, goals_against, goal_difference, 
-            created_at, updated_at
-          )
-          VALUES (
-            ${teamDocId + '_' + seasonId}, ${teamDocId}, ${seasonId}, ${teamName},
-            0, 0, 0, 0, 0, 0,
-            0, 0, 0, 
-            NOW(), NOW()
-          )
-          ON CONFLICT (team_id, season_id) DO NOTHING
-        `;
-        
-        // Insert next season stats to Neon (tournament_id will be added when tournament is created)
-        await sql`
-          INSERT INTO teamstats (
-            id, team_id, season_id, team_name,
-            position, points, matches_played, wins, draws, losses,
-            goals_for, goals_against, goal_difference,
-            created_at, updated_at
-          )
-          VALUES (
-            ${teamDocId + '_' + nextSeasonId}, ${teamDocId}, ${nextSeasonId}, ${teamName},
-            0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-            NOW(), NOW()
-          )
-          ON CONFLICT (team_id, season_id) DO NOTHING
-        `;
-      } else {
-        // Team doesn't exist, create new team with BOTH seasons (teamDocId already set to userId above)
-        
-        const teamDoc = {
-          id: teamDocId,
-          team_name: teamName,
-          teamName: teamName, // Add this field for consistency
-          owner_name: userData.username || '',
-          logo_url: userData.logoUrl || null,
-          teamLogo: userData.logoUrl || null, // Add this field for consistency
-          
-          // Login credentials (link to user account)
-          username: userData.username || '',
-          user_id: userId,
-          uid: userId, // Add this field for consistency
-          role: 'team',
-          
-          // Email and contact info
-          email: userData.email || '',
-          
-          // Season relationship - include BOTH seasons
-          seasons: [seasonId, nextSeasonId],
-          current_season_id: seasonId,
-          
-          // Team metadata
-          is_active: true,
-          isActive: true, // Add this field for consistency
-          is_historical: false,
-          
-          // Approval fields (auto-approved for new registrations)
-          is_approved: true,
-          isApproved: true, // Add this field for consistency
-          approvedAt: FieldValue.serverTimestamp(),
-          approvedBy: 'system', // Auto-approved through registration
-          
-          // Committee association
-          committeeId: '', // Empty for now, can be set later
-          
-          // Players array (empty initially)
-          players: [],
-          
-          // Timestamps
-          created_at: FieldValue.serverTimestamp(),
-          createdAt: FieldValue.serverTimestamp(), // Add this field for consistency
-          updated_at: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(), // Add this field for consistency
-          
-          // Total seasons participated
-          total_seasons_participated: 2,
-          
-          // Phase 1: Manager name (stored but not displayed)
-          manager_name: managerName || '',
-          
-          // Phase 1: Fantasy league participation
-          fantasy_participating: joinFantasy || false,
-          fantasy_joined_at: joinFantasy ? FieldValue.serverTimestamp() : null,
-          fantasy_league_id: null,
-          fantasy_player_points: 0,
-          fantasy_team_bonus_points: 0,
-          fantasy_total_points: 0
-        };
-        
-        const teamRef = adminDb.collection('teams').doc(teamDocId);
-        batch.set(teamRef, teamDoc);
-        
-        // Create teamstats records in NEON for both seasons
-        const sql2 = getTournamentDb();
-        
-        await sql2`
-          INSERT INTO teamstats (
-            id, team_id, season_id, team_name,
-            position, points, matches_played, wins, draws, losses,
-            goals_for, goals_against, goal_difference,
-            created_at, updated_at
-          )
-          VALUES (
-            ${teamDocId + '_' + seasonId}, ${teamDocId}, ${seasonId}, ${teamName},
-            0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-            NOW(), NOW()
-          )
-          ON CONFLICT (team_id, season_id) DO NOTHING
-        `;
-        
-        await sql2`
-          INSERT INTO teamstats (
-            id, team_id, season_id, team_name,
-            position, points, matches_played, wins, draws, losses,
-            goals_for, goals_against, goal_difference,
-            created_at, updated_at
-          )
-          VALUES (
-            ${teamDocId + '_' + nextSeasonId}, ${teamDocId}, ${nextSeasonId}, ${teamName},
-            0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-            NOW(), NOW()  
-          )
-          ON CONFLICT (team_id, season_id) DO NOTHING
-        `;
-      }
+      // Team must exist at this point (we returned error above if not)
+      // Update team with BOTH seasons
+      const existingTeamDoc = existingTeamQuery.docs[0];
+      const existingData = existingTeamDoc.data();
+      const updatedSeasons = existingData.seasons 
+        ? [...existingData.seasons, seasonId, nextSeasonId] 
+        : [seasonId, nextSeasonId];
+      
+      const teamRef = adminDb.collection('teams').doc(teamDocId);
+      batch.update(teamRef, {
+        seasons: updatedSeasons,
+        current_season_id: seasonId,
+        total_seasons_participated: updatedSeasons.length,
+        logo_url: userData.logoUrl || null,
+        teamLogo: userData.logoUrl || null, // Update both fields
+        email: userData.email || existingData.email || '',
+        updated_at: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(), // Update both fields
+        // Phase 1: Add manager name if provided
+        ...(managerName && { manager_name: managerName }),
+        // Phase 1: Update fantasy participation if opted in
+        ...(joinFantasy && {
+          fantasy_participating: true,
+          fantasy_joined_at: FieldValue.serverTimestamp()
+        })
+      });
+      
+      // Create teamstats records in NEON for both seasons
+      const sql = getTournamentDb();
+      
+      // Insert current season stats to Neon (tournament_id will be added when tournament is created)
+      await sql`
+        INSERT INTO teamstats (
+          id, team_id, season_id, team_name,
+          position, points, matches_played, wins, draws, losses,
+          goals_for, goals_against, goal_difference, 
+          created_at, updated_at
+        )
+        VALUES (
+          ${teamDocId + '_' + seasonId}, ${teamDocId}, ${seasonId}, ${teamName},
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0, 
+          NOW(), NOW()
+        )
+        ON CONFLICT (team_id, season_id) DO NOTHING
+      `;
+      
+      // Insert next season stats to Neon (tournament_id will be added when tournament is created)
+      await sql`
+        INSERT INTO teamstats (
+          id, team_id, season_id, team_name,
+          position, points, matches_played, wins, draws, losses,
+          goals_for, goals_against, goal_difference,
+          created_at, updated_at
+        )
+        VALUES (
+          ${teamDocId + '_' + nextSeasonId}, ${teamDocId}, ${nextSeasonId}, ${teamName},
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0,
+          NOW(), NOW()
+        )
+        ON CONFLICT (team_id, season_id) DO NOTHING
+      `;
       
       // Recalculate teamSeasonId in case teamDocId was updated
       teamSeasonId = `${teamDocId}_${seasonId}`;
