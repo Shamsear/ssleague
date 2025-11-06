@@ -481,12 +481,29 @@ export const getPendingUsers = async (): Promise<User[]> => {
 // Approve user (Super Admin only)
 export const approveUser = async (uid: string, approvedBy: string): Promise<void> => {
   try {
+    // Update user document
     await updateDoc(doc(db, 'users', uid), {
       isApproved: true,
       approvedBy,
       approvedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    
+    // Also update team document if it exists (teams use snake_case is_approved)
+    const teamsRef = collection(db, 'teams');
+    const q = query(teamsRef, where('owner_uid', '==', uid));
+    const teamSnapshot = await getDocs(q);
+    
+    if (!teamSnapshot.empty) {
+      const teamDoc = teamSnapshot.docs[0];
+      await updateDoc(teamDoc.ref, {
+        is_approved: true,
+        approvedBy,
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      console.log(`✅ Also updated team document approval status for uid: ${uid}`);
+    }
   } catch (error: any) {
     console.error('Error approving user:', error);
     throw new Error(error.message || 'Failed to approve user');

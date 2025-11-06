@@ -43,21 +43,32 @@ export async function POST(request: NextRequest) {
     console.log(`✅ Generated team ID: ${teamId} for ${username}`);
 
     // Create team document using Admin SDK
+    const { FieldValue } = await import('firebase-admin/firestore');
+    
     await adminDb.collection('teams').doc(teamId).set({
       id: teamId,
       team_name: teamName || username,
       owner_name: username,
+      uid: uid,
+      userId: uid,
       owner_uid: uid,
-      username: username,
       userEmail: email,
+      email: email,
       role: 'team',
       is_active: true,
-      is_approved: false,
       seasons: [],
       current_season_id: '',
       performance_history: {},
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      hasUserAccount: true,
+      is_historical: false,
+      total_seasons_participated: 0,
+      fantasy_participating: false,
+      fantasy_joined_at: null,
+      manager_name: '',
+      created_at: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     console.log(`✅ Team document created: ${teamId}`);

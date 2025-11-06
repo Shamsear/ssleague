@@ -63,10 +63,21 @@ export default function TeamDashboard() {
         const { db } = await import('@/lib/firebase/config');
         const { doc, getDoc, collection, query, where, getDocs } = await import('firebase/firestore');
         
-        // First, try to find the team document by userId
+        // Try to find the team document by userId, uid, or owner_uid
         const teamsRef = collection(db, 'teams');
-        const q = query(teamsRef, where('userId', '==', user.uid));
-        const querySnapshot = await getDocs(q);
+        
+        // Try userId first (primary field)
+        let querySnapshot = await getDocs(query(teamsRef, where('userId', '==', user.uid)));
+        
+        // Fallback to uid if userId query returned empty
+        if (querySnapshot.empty) {
+          querySnapshot = await getDocs(query(teamsRef, where('uid', '==', user.uid)));
+        }
+        
+        // Final fallback to owner_uid
+        if (querySnapshot.empty) {
+          querySnapshot = await getDocs(query(teamsRef, where('owner_uid', '==', user.uid)));
+        }
         
         if (!querySnapshot.empty) {
           // Found team document
