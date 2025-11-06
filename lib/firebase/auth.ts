@@ -178,7 +178,7 @@ export const signUp = async (
     // If registering a team, also create a document in the teams collection
     if (role === 'team') {
       try {
-        // Generate team ID from PostgreSQL database
+        // Generate team ID from Firestore teams collection (to avoid duplicates)
         const teamIdResponse = await fetch('/api/teams/generate-id', {
           method: 'POST',
         });
@@ -186,7 +186,8 @@ export const signUp = async (
         if (teamIdResponse.ok) {
           const { teamId } = await teamIdResponse.json();
           
-          // Create team document in Firestore
+          // Create team document in Firestore with teamId as document ID
+          // This ensures the document ID matches the team ID and prevents duplicates
           const teamRef = doc(db, 'teams', teamId);
           await setDoc(teamRef, {
             id: teamId,
