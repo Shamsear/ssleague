@@ -1,8 +1,8 @@
 'use client';
 
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRoundData, usePlaceBid, useCancelBid, useRoundStatus } from '@/hooks/useTeamDashboard';
 import { useModal } from '@/hooks/useModal';
@@ -606,30 +606,32 @@ export default function TeamRoundPage() {
             </h4>
 
             {myBids.length > 0 ? (
-              <div className="glass-card rounded-xl overflow-hidden backdrop-blur-sm shadow-sm border border-white/10">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50/70">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Player
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                          Position
-                        </th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Bid Amount
-                        </th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white/50">
-                      {myBids.map((bid: Bid) => (
-                        <>
-                          <tr key={bid.id} className={`hover:bg-white/80 ${editingBidId === bid.id ? 'bg-blue-50/50' : ''}`}>
-                            <td className="px-4 py-3 whitespace-nowrap">
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden md:block glass-card rounded-xl overflow-hidden backdrop-blur-sm shadow-sm border border-white/10">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50/70">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Player
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Position
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Bid Amount
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white/50">
+                        {myBids.map((bid: Bid) => (
+                          <React.Fragment key={bid.id}>
+                            <tr className={`hover:bg-white/80 ${editingBidId === bid.id ? 'bg-blue-50/50' : ''}`}>
+                              <td className="px-4 py-3 whitespace-nowrap">
                               <div className="flex items-center">
                                 <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
                                   {bid.player.position[0]}
@@ -643,11 +645,10 @@ export default function TeamRoundPage() {
                                       </svg>
                                     )}
                                   </div>
-                                  <div className="text-xs text-gray-500 sm:hidden">{bid.player.position}</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap hidden sm:table-cell">
+                            <td className="px-4 py-3 whitespace-nowrap">
                               <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">
                                 {bid.player.position}
                               </span>
@@ -684,9 +685,9 @@ export default function TeamRoundPage() {
                               )}
                             </td>
                           </tr>
-                          {/* Inline Edit Form */}
-                          {editingBidId === bid.id && (
-                            <tr key={`edit-${bid.id}`} className="bg-blue-50/50 border-t-0">
+                            {/* Inline Edit Form */}
+                            {editingBidId === bid.id && (
+                              <tr className="bg-blue-50/50 border-t-0">
                               <td colSpan={4} className="px-4 py-4">
                                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white/60 p-4 rounded-lg border border-blue-200">
                                   <div className="flex-shrink-0">
@@ -742,14 +743,127 @@ export default function TeamRoundPage() {
                                   </div>
                                 </div>
                               </td>
-                            </tr>
-                          )}
-                        </>
-                      ))}
-                    </tbody>
-                  </table>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-3">
+                  {myBids.map((bid: Bid) => (
+                    <div key={bid.id} className="glass-card rounded-xl backdrop-blur-sm shadow-sm border border-white/10 overflow-hidden">
+                      <div className="p-4 bg-white/50">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-start gap-3 flex-1">
+                            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                              {bid.player.position[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <h3 className="text-sm font-semibold text-gray-800 truncate">{bid.player.name}</h3>
+                                {bid.player.is_starred && (
+                                  <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-500">{bid.player.position}</p>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0 ml-2">
+                            <p className="text-lg font-bold text-primary">£{bid.amount.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        
+                        {!isLocked && editingBidId !== bid.id && (
+                          <div className="flex gap-2 pt-3 border-t border-gray-200">
+                            <button
+                              onClick={() => handleTableEdit(bid)}
+                              disabled={editingBidId !== null}
+                              className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleCancelBid(bid.id)}
+                              disabled={editingBidId !== null}
+                              className="flex-1 px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Delete
+                            </button>
+                          </div>
+                        )}
+
+                        {isLocked && (
+                          <div className="pt-3 border-t border-gray-200 text-center">
+                            <span className="text-xs text-gray-400 italic">🔒 Locked</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Mobile Edit Form */}
+                      {editingBidId === bid.id && (
+                        <div className="p-4 bg-blue-50/50 border-t border-blue-200">
+                          <p className="text-sm font-medium text-gray-700 mb-3">Edit bid for {bid.player.name}</p>
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 text-sm">
+                                £
+                              </span>
+                              <input
+                                type="number"
+                                value={editAmount}
+                                onChange={(e) => setEditAmount(e.target.value)}
+                                className="block w-full pl-7 pr-3 py-2.5 text-sm rounded-lg border-blue-200 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+                                placeholder="New bid amount"
+                                min="10"
+                                max={teamBalance + bid.amount}
+                                autoFocus
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleTableEditSubmit(bid)}
+                                disabled={cancelBidMutation.isPending || placeBidMutation.isPending}
+                                className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {cancelBidMutation.isPending || placeBidMutation.isPending ? (
+                                  <span className="flex items-center justify-center gap-1.5">
+                                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Saving...
+                                  </span>
+                                ) : (
+                                  'Save'
+                                )}
+                              </button>
+                              <button
+                                onClick={handleTableEditCancel}
+                                disabled={cancelBidMutation.isPending || placeBidMutation.isPending}
+                                className="flex-1 px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="glass-card p-4 rounded-xl backdrop-blur-sm bg-white/30 border border-white/10 text-center">
                 <span className="text-sm text-gray-500">You haven't placed any bids in this round yet</span>
