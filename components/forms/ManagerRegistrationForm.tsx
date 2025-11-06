@@ -28,6 +28,13 @@ interface ManagerFormData {
   jerseyNumber: string;
 }
 
+// Kerala districts
+const keralaDistricts = [
+  'Alappuzha', 'Ernakulam', 'Idukki', 'Kannur', 'Kasaragod',
+  'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Palakkad',
+  'Pathanamthitta', 'Thiruvananthapuram', 'Thrissur', 'Wayanad'
+];
+
 export default function ManagerRegistrationForm({
   teamId,
   seasonId,
@@ -45,7 +52,7 @@ export default function ManagerRegistrationForm({
     phone: '',
     dateOfBirth: '',
     place: '',
-    nationality: '',
+    nationality: 'India',
     jerseyNumber: '',
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -77,7 +84,7 @@ export default function ManagerRegistrationForm({
   }, [mode, teamId, seasonId]);
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -488,7 +495,7 @@ export default function ManagerRegistrationForm({
         </div>
       </div>
 
-      {/* Date of Birth, Place, Nationality */}
+      {/* Date of Birth, District, Nationality */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label htmlFor="dateOfBirth" className="block text-sm font-semibold text-gray-700 mb-2">
@@ -505,17 +512,20 @@ export default function ManagerRegistrationForm({
         </div>
         <div>
           <label htmlFor="place" className="block text-sm font-semibold text-gray-700 mb-2">
-            Place
+            District
           </label>
-          <input
-            type="text"
+          <select
             id="place"
             name="place"
             value={formData.place}
             onChange={handleInputChange}
             className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            placeholder="City/Town"
-          />
+          >
+            <option value="">Select District</option>
+            {keralaDistricts.map(district => (
+              <option key={district} value={district}>{district}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label htmlFor="nationality" className="block text-sm font-semibold text-gray-700 mb-2">
@@ -527,8 +537,8 @@ export default function ManagerRegistrationForm({
             name="nationality"
             value={formData.nationality}
             onChange={handleInputChange}
-            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            placeholder="Nationality"
+            readOnly
+            className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed"
           />
         </div>
       </div>

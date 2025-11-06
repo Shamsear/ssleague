@@ -5,7 +5,6 @@ import { uploadImage } from '@/lib/imagekit/upload';
 
 interface OwnerRegistrationFormProps {
   teamId: string;
-  seasonId?: string;
   userId: string;
   userName?: string;
   userEmail?: string;
@@ -27,7 +26,6 @@ interface OwnerFormData {
 
 export default function OwnerRegistrationForm({
   teamId,
-  seasonId,
   userId,
   userName,
   userEmail,
@@ -40,20 +38,54 @@ export default function OwnerRegistrationForm({
     phone: '',
     dateOfBirth: '',
     place: '',
-    nationality: '',
+    nationality: 'India',
     bio: '',
     instagramHandle: '',
     twitterHandle: '',
   });
   const [initialName, setInitialName] = useState(userName || '');
   const [nameChanged, setNameChanged] = useState(false);
+
+  // Kerala districts
+  const keralaDistricts = [
+    'Alappuzha', 'Ernakulam', 'Idukki', 'Kannur', 'Kasaragod',
+    'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Palakkad',
+    'Pathanamthitta', 'Thiruvananthapuram', 'Thrissur', 'Wayanad'
+  ];
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Update initial values when userName/userEmail props change
+    // Fetch owner_name from Firebase teams collection
+    const fetchOwnerName = async () => {
+      if (!teamId) return;
+      
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase/config');
+        
+        // Get team document by teamId
+        const teamDoc = await getDoc(doc(db, 'teams', teamId));
+        
+        if (teamDoc.exists()) {
+          const teamData = teamDoc.data();
+          const ownerName = teamData.owner_name;
+          
+          if (ownerName && !formData.name) {
+            setFormData(prev => ({ ...prev, name: ownerName }));
+            setInitialName(ownerName);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching owner name from teams:', error);
+      }
+    };
+
+    fetchOwnerName();
+    
+    // Update initial values when userName/userEmail props change (fallback)
     if (userName && !formData.name) {
       setFormData(prev => ({ ...prev, name: userName }));
       setInitialName(userName);
@@ -61,10 +93,10 @@ export default function OwnerRegistrationForm({
     if (userEmail && !formData.email) {
       setFormData(prev => ({ ...prev, email: userEmail }));
     }
-  }, [userName, userEmail]);
+  }, [userName, userEmail, teamId]);
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -132,7 +164,7 @@ export default function OwnerRegistrationForm({
         file: photoFile,
         fileName,
         folder: '/owner-photos',
-        tags: ['owner', teamId, seasonId || 'all-seasons'],
+        tags: ['owner', teamId],
         useUniqueFileName: true,
       });
 
@@ -144,7 +176,6 @@ export default function OwnerRegistrationForm({
         },
         body: JSON.stringify({
           teamId,
-          seasonId: seasonId || null,
           name: formData.name,
           email: formData.email,
           registeredEmail: formData.email,
@@ -294,8 +325,8 @@ export default function OwnerRegistrationForm({
         </div>
       </div>
 
-      {/* Date of Birth and Place */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Date of Birth, District, Nationality */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label htmlFor="dateOfBirth" className="block text-sm font-semibold text-gray-700 mb-2">
             Date of Birth
@@ -311,34 +342,35 @@ export default function OwnerRegistrationForm({
         </div>
         <div>
           <label htmlFor="place" className="block text-sm font-semibold text-gray-700 mb-2">
-            Place
+            District
           </label>
-          <input
-            type="text"
+          <select
             id="place"
             name="place"
             value={formData.place}
             onChange={handleInputChange}
             className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            placeholder="City/Town"
+          >
+            <option value="">Select District</option>
+            {keralaDistricts.map(district => (
+              <option key={district} value={district}>{district}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="nationality" className="block text-sm font-semibold text-gray-700 mb-2">
+            Nationality
+          </label>
+          <input
+            type="text"
+            id="nationality"
+            name="nationality"
+            value={formData.nationality}
+            onChange={handleInputChange}
+            readOnly
+            className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed"
           />
         </div>
-      </div>
-
-      {/* Nationality */}
-      <div>
-        <label htmlFor="nationality" className="block text-sm font-semibold text-gray-700 mb-2">
-          Nationality
-        </label>
-        <input
-          type="text"
-          id="nationality"
-          name="nationality"
-          value={formData.nationality}
-          onChange={handleInputChange}
-          className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-          placeholder="Enter nationality"
-        />
       </div>
 
       {/* Bio */}

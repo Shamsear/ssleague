@@ -10,7 +10,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       teamId,
-      seasonId,
       name,
       email,
       registeredEmail,
@@ -43,17 +42,16 @@ export async function POST(request: NextRequest) {
 
     const sql = getTournamentDb();
 
-    // Check if owner already exists for this team and season
+    // Check if owner already exists for this team
     const existingOwner = await sql`
       SELECT owner_id FROM owners
       WHERE team_id = ${teamId}
-      AND (season_id = ${seasonId || null} OR (season_id IS NULL AND ${seasonId} IS NULL))
       LIMIT 1
     `;
 
     if (existingOwner.length > 0) {
       return NextResponse.json(
-        { success: false, message: 'Owner already registered for this team/season' },
+        { success: false, message: 'Owner already registered for this team' },
         { status: 400 }
       );
     }
@@ -79,12 +77,20 @@ export async function POST(request: NextRequest) {
 
     const ownerId = formatId(ID_PREFIXES.OWNER, nextCounter, ID_PADDING.OWNER);
 
-    // Insert owner
+    // Insert owner - handle null values properly
+    const dobValue = dateOfBirth || null;
+    const placeValue = place || null;
+    const nationalityValue = nationality || null;
+    const bioValue = bio || null;
+    const instagramValue = instagramHandle || null;
+    const twitterValue = twitterHandle || null;
+    const photoFileIdValue = photoFileId || null;
+    const registeredUserIdValue = registeredUserId || null;
+
     const result = await sql`
       INSERT INTO owners (
         owner_id,
         team_id,
-        season_id,
         name,
         email,
         registered_email,
@@ -103,22 +109,21 @@ export async function POST(request: NextRequest) {
       ) VALUES (
         ${ownerId},
         ${teamId},
-        ${seasonId || null},
         ${name},
         ${email},
         ${registeredEmail || email},
         ${phone},
-        ${dateOfBirth || null},
-        ${place || null},
-        ${nationality || null},
-        ${bio || null},
-        ${instagramHandle || null},
-        ${twitterHandle || null},
+        ${dobValue},
+        ${placeValue},
+        ${nationalityValue},
+        ${bioValue},
+        ${instagramValue},
+        ${twitterValue},
         ${photoUrl},
-        ${photoFileId || null},
+        ${photoFileIdValue},
         true,
-        ${registeredUserId || null},
-        ${registeredUserId || null}
+        ${registeredUserIdValue},
+        ${registeredUserIdValue}
       )
       RETURNING *
     `;
@@ -138,13 +143,12 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/owners?teamId=xxx&seasonId=xxx - Get owners for a team
+ * GET /api/owners?teamId=xxx - Get owner for a team
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const teamId = searchParams.get('teamId');
-    const seasonId = searchParams.get('seasonId');
 
     if (!teamId) {
       return NextResponse.json(
@@ -155,28 +159,17 @@ export async function GET(request: NextRequest) {
 
     const sql = getTournamentDb();
 
-    let owners;
-    if (seasonId) {
-      // Get owner for specific season or team-wide owner
-      owners = await sql`
-        SELECT * FROM owners
-        WHERE team_id = ${teamId}
-        AND (season_id = ${seasonId} OR season_id IS NULL)
-        ORDER BY season_id DESC NULLS LAST, created_at DESC
-        LIMIT 1
-      `;
-    } else {
-      // Get all owners for team
-      owners = await sql`
-        SELECT * FROM owners
-        WHERE team_id = ${teamId}
-        ORDER BY created_at DESC
-      `;
-    }
+    // Get owner for team
+    const owners = await sql`
+      SELECT * FROM owners
+      WHERE team_id = ${teamId}
+      AND is_active = true
+      LIMIT 1
+    `;
 
     return NextResponse.json({
       success: true,
-      data: owners.length > 0 ? (seasonId ? owners[0] : owners) : null,
+      data: owners.length > 0 ? owners[0] : null,
     });
   } catch (error: any) {
     console.error('Error fetching owners:', error);

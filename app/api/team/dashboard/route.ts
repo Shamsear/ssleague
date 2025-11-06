@@ -555,7 +555,6 @@ export async function GET(request: NextRequest) {
       const ownerResult = await tournamentSql`
         SELECT * FROM owners 
         WHERE team_id = ${dbTeamId} 
-        AND season_id = ${seasonId} 
         AND is_active = true 
         LIMIT 1
       `;
