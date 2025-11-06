@@ -625,7 +625,15 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900 mb-1">Push Notifications</h3>
                 <p className="text-xs text-gray-600">Get real-time updates about auctions, matches, and results</p>
               </div>
-              <NotificationButton />
+              <div className="flex items-center gap-3 flex-wrap">
+                <NotificationButton />
+                <Link
+                  href="/ios-test"
+                  className="px-3 py-2 text-xs font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors border border-purple-200"
+                >
+                  📱 iOS Test
+                </Link>
+              </div>
             </div>
           </div>
 

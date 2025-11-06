@@ -4,6 +4,15 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
+interface NotificationUser {
+  userId: string;
+  deviceCount: number;
+  devices: Array<{
+    deviceName: string;
+    deviceType: string;
+  }>;
+}
+
 export default function TestNotificationsPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -11,6 +20,29 @@ export default function TestNotificationsPage() {
   const [customUserId, setCustomUserId] = useState('');
   const [title, setTitle] = useState('Test Notification 🔔');
   const [body, setBody] = useState('This is a test push notification!');
+  const [notificationUsers, setNotificationUsers] = useState<NotificationUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  const loadNotificationUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const response = await fetchWithTokenRefresh('/api/notifications/users');
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Loaded notification users:', data);
+        setNotificationUsers(data.users || []);
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to load notification users:', response.status, errorData);
+        setResult(`❌ Failed to load users: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error: any) {
+      console.error('Error loading notification users:', error);
+      setResult(`❌ Error: ${error.message}`);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
 
   const sendTestNotification = async (targetUserId?: string) => {
     if (!user) {
@@ -124,10 +156,54 @@ export default function TestNotificationsPage() {
               </button>
             </div>
 
+            {/* Users with Notifications Enabled */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Send to Users with Notifications
+                </label>
+                <button
+                  onClick={loadNotificationUsers}
+                  disabled={loadingUsers}
+                  className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition-colors"
+                >
+                  {loadingUsers ? 'Loading...' : 'Refresh List'}
+                </button>
+              </div>
+              
+              {notificationUsers.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  {notificationUsers.map((notifUser) => (
+                    <div key={notifUser.userId} className="flex items-center justify-between p-3 bg-white rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {notifUser.userId}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {notifUser.deviceCount} device(s): {notifUser.devices.map(d => d.deviceName).join(', ')}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => sendTestNotification(notifUser.userId)}
+                        disabled={loading}
+                        className="ml-3 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg disabled:opacity-50 transition-colors flex-shrink-0"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500 text-sm border border-gray-200 rounded-lg bg-gray-50">
+                  {loadingUsers ? 'Loading users...' : 'Click "Refresh List" to load users with notifications enabled'}
+                </div>
+              )}
+            </div>
+
             {/* Custom User ID */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Or Send to Another User (Optional)
+                Or Enter User ID Manually (Optional)
               </label>
               <div className="flex gap-2">
                 <input

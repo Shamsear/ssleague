@@ -33,11 +33,23 @@ export async function POST(request: NextRequest) {
     }
 
     const decodedToken = await adminAuth.verifyIdToken(token);
-    const senderRole = decodedToken.role;
+    const senderId = decodedToken.uid;
+
+    // Get user role from Firestore
+    const userDoc = await adminDb.collection('users').doc(senderId).get();
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
+    }
+
+    const userData = userDoc.data();
+    const senderRole = userData?.role;
 
     // Only committee or admin can send notifications
     // Remove this check if you want teams to send notifications too
-    if (senderRole !== 'committee' && senderRole !== 'admin') {
+    if (senderRole !== 'committee' && senderRole !== 'admin' && senderRole !== 'committee_admin') {
       return NextResponse.json(
         { success: false, error: 'Only committee/admin can send notifications' },
         { status: 403 }
@@ -73,12 +85,14 @@ export async function POST(request: NextRequest) {
     const tokens = tokensResult.map(t => t.token);
 
     // Prepare notification message for multiple devices
+    // Note: imageUrl must be a full URL (not relative path), or omitted
     const message: admin.messaging.MulticastMessage = {
       tokens,
       notification: {
         title,
         body,
-        imageUrl: icon || undefined
+        // Only include imageUrl if it's a valid full URL
+        ...(icon && (icon.startsWith('http://') || icon.startsWith('https://')) ? { imageUrl: icon } : {})
       },
       data: {
         url: url || '/',
@@ -89,6 +103,7 @@ export async function POST(request: NextRequest) {
           link: url || '/'
         },
         notification: {
+          // webpush.notification.icon can be a relative path
           icon: icon || '/logo.png',
           badge: '/badge.png'
         }
@@ -114,6 +129,9 @@ export async function POST(request: NextRequest) {
       const failedTokens: string[] = [];
       response.responses.forEach((resp, idx) => {
         if (!resp.success) {
+          console.error(`❌ FCM Error for token ${tokens[idx].substring(0, 20)}...`);
+          console.error('Error code:', resp.error?.code);
+          console.error('Error message:', resp.error?.message);
           failedTokens.push(tokens[idx]);
         }
       });
@@ -193,9 +211,21 @@ export async function PUT(request: NextRequest) {
     }
 
     const decodedToken = await adminAuth.verifyIdToken(token);
-    const senderRole = decodedToken.role;
+    const senderId = decodedToken.uid;
 
-    if (senderRole !== 'committee' && senderRole !== 'admin') {
+    // Get user role from Firestore
+    const userDoc = await adminDb.collection('users').doc(senderId).get();
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
+    }
+
+    const userData = userDoc.data();
+    const senderRole = userData?.role;
+
+    if (senderRole !== 'committee' && senderRole !== 'admin' && senderRole !== 'committee_admin') {
       return NextResponse.json(
         { success: false, error: 'Only committee/admin can send notifications' },
         { status: 403 }
