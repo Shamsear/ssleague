@@ -10,6 +10,7 @@ import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import ContractInfo from '@/components/ContractInfo';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import NotificationButton from '@/components/notifications/NotificationButton';
+import ManagerRegistrationForm from '@/components/forms/ManagerRegistrationForm';
 
 // Position constants
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -146,8 +147,44 @@ interface SeasonParticipation {
   joined_at?: Date;
 }
 
+interface Owner {
+  id: number;
+  owner_id: string;
+  team_id: string;
+  season_id: string;
+  name: string;
+  photo_url?: string;
+  email?: string;
+  phone?: string;
+  date_of_birth?: string;
+  place?: string;
+  nationality?: string;
+  bio?: string;
+  instagram_handle?: string;
+  twitter_handle?: string;
+}
+
+interface Manager {
+  id: number;
+  manager_id: string;
+  team_id: string;
+  season_id: string;
+  name: string;
+  photo_url?: string;
+  player_id?: string;
+  is_player: boolean;
+  email?: string;
+  phone?: string;
+  date_of_birth?: string;
+  place?: string;
+  nationality?: string;
+  jersey_number?: number;
+}
+
 interface DashboardData {
   team: TeamData;
+  owner?: Owner | null;
+  manager?: Manager | null;
   activeRounds: Round[];
   activeBids: Bid[];
   players: Player[];
@@ -205,6 +242,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   const bulkTimerRefs = useRef<{ [key: number]: NodeJS.Timeout }>({});
   const previousDataRef = useRef<string>('');
   const fetchDashboardRef = useRef<(showLoader?: boolean) => Promise<void>>();
+  const [showManagerForm, setShowManagerForm] = useState(false);
 
   // Fetch dashboard data
   const fetchDashboard = useCallback(async (showLoader = true) => {
@@ -644,6 +682,48 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             </div>
           )}
         </div>
+
+        {/* Mandatory Manager Registration Prompt */}
+        {players.length > 0 && !dashboardData?.manager && (
+          <div className="glass rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border-2 border-green-400 bg-green-50/50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-full bg-green-100">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">Register Your Team Manager</h3>
+                  <p className="text-sm text-gray-700">A manager is required for your team this season. Select a playing manager from your squad or register a non-playing manager.</p>
+                </div>
+              </div>
+              <div className="flex-shrink-0">
+                <button
+                  onClick={() => setShowManagerForm(true)}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold hover:from-green-700 hover:to-emerald-700 transition-all"
+                >
+                  Add Manager
+                </button>
+              </div>
+            </div>
+
+            {showManagerForm && (
+              <div className="mt-4 p-4 sm:p-5 rounded-xl border border-green-200 bg-white">
+                <ManagerRegistrationForm
+                  teamId={team.id}
+                  seasonId={seasonStatus.seasonId!}
+                  userId={user?.uid || ''}
+                  onCancel={() => setShowManagerForm(false)}
+                  onSuccess={() => {
+                    setShowManagerForm(false);
+                    fetchDashboardRef.current?.(true);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quick Actions Grid - Fully Responsive */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 lg:mb-8">
@@ -1316,6 +1396,72 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <div className="space-y-4 sm:space-y-6">
               <h3 className="text-lg sm:text-xl font-bold text-gray-900">Team Overview</h3>
               
+              {/* Owner and Manager Section */}
+              {(dashboardData?.owner || dashboardData?.manager) && (
+                <div>
+                  <h4 className="text-base font-bold text-gray-800 mb-3">Team Management</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Owner Card */}
+                    {dashboardData?.owner && (
+                      <div className="glass-card p-4 rounded-xl border-l-4 border-blue-500">
+                        <div className="flex items-center gap-4">
+                          {dashboardData.owner.photo_url ? (
+                            <img
+                              src={dashboardData.owner.photo_url}
+                              alt={dashboardData.owner.name}
+                              className="w-16 h-16 rounded-full object-cover border-2 border-blue-200"
+                            />
+                          ) : (
+                            <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center border-2 border-blue-200">
+                              <span className="text-2xl font-bold text-blue-600">
+                                {dashboardData.owner.name[0]?.toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <div className="text-xs text-gray-500 mb-1">Team Owner</div>
+                            <div className="font-bold text-gray-900">{dashboardData.owner.name}</div>
+                            {dashboardData.owner.place && (
+                              <div className="text-xs text-gray-600 mt-1">{dashboardData.owner.place}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Manager Card */}
+                    {dashboardData?.manager && (
+                      <div className="glass-card p-4 rounded-xl border-l-4 border-green-500">
+                        <div className="flex items-center gap-4">
+                          {dashboardData.manager.photo_url ? (
+                            <img
+                              src={dashboardData.manager.photo_url}
+                              alt={dashboardData.manager.name}
+                              className="w-16 h-16 rounded-full object-cover border-2 border-green-200"
+                            />
+                          ) : (
+                            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center border-2 border-green-200">
+                              <span className="text-2xl font-bold text-green-600">
+                                {dashboardData.manager.name[0]?.toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <div className="text-xs text-gray-500 mb-1">
+                              Team Manager {dashboardData.manager.is_player && '(Playing)'}
+                            </div>
+                            <div className="font-bold text-gray-900">{dashboardData.manager.name}</div>
+                            {dashboardData.manager.place && (
+                              <div className="text-xs text-gray-600 mt-1">{dashboardData.manager.place}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Position Breakdown */}
               <div>
                 <h4 className="text-base font-bold text-gray-800 mb-3">Position Breakdown</h4>

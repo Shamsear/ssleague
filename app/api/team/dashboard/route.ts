@@ -6,6 +6,7 @@ import { getCached, setCached } from '@/lib/firebase/cache';
 import { checkAndFinalizeExpiredRound } from '@/lib/lazy-finalize-round';
 import { batchGetFirebaseFields } from '@/lib/firebase/batch';
 import { decryptBidData } from '@/lib/encryption';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -544,6 +545,30 @@ export async function GET(request: NextRequest) {
       .get();
     const hasFantasyTeam = !fantasyTeamsSnapshot.empty;
 
+    // Fetch owner and manager data from tournament database
+    const tournamentDb = getTournamentDb();
+    let ownerData = null;
+    let managerData = null;
+
+    try {
+      // Fetch owner
+      const ownerResult = await tournamentDb.query(
+        `SELECT * FROM owners WHERE team_id = $1 AND season_id = $2 AND is_active = true LIMIT 1`,
+        [dbTeamId, seasonId]
+      );
+      ownerData = ownerResult.rows[0] || null;
+
+      // Fetch manager
+      const managerResult = await tournamentDb.query(
+        `SELECT * FROM managers WHERE team_id = $1 AND season_id = $2 AND is_active = true LIMIT 1`,
+        [dbTeamId, seasonId]
+      );
+      managerData = managerResult.rows[0] || null;
+    } catch (error) {
+      console.error('Error fetching owner/manager data:', error);
+      // Don't fail the entire request if owner/manager fetch fails
+    }
+
     // Fetch round results
     const resultsSnapshot = await adminDb
       .collection('round_results')
@@ -565,6 +590,8 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         team: teamData,
+        owner: ownerData,
+        manager: managerData,
         activeRounds,
         activeBids,
         players,
