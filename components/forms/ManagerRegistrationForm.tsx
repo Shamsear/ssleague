@@ -68,11 +68,14 @@ export default function ManagerRegistrationForm({
         const response = await fetch(`/api/team/${teamId}/players?seasonId=${seasonId}`);
         const result = await response.json();
         
-        if (result.success && result.data) {
+        if (result.success && Array.isArray(result.data)) {
           setPlayers(result.data);
+        } else {
+          setPlayers([]);
         }
       } catch (err) {
         console.error('Error fetching players:', err);
+        setPlayers([]);
       } finally {
         setLoadingPlayers(false);
       }
@@ -127,7 +130,7 @@ export default function ManagerRegistrationForm({
         body: JSON.stringify({
           teamId,
           seasonId,
-          playerId: selectedPlayer.id,
+          playerId: selectedPlayer.player_id,
           isPlayer: true,
           name: selectedPlayer.name,
           photoUrl: selectedPlayer.photo_url || null,
