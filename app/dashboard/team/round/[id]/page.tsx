@@ -747,6 +747,8 @@ function PlayerCard({
   onCancelBid,
 }: PlayerCardProps) {
   const [bidAmount, setBidAmount] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editAmount, setEditAmount] = useState('');
 
   // Modal system
   const {
@@ -760,6 +762,67 @@ function PlayerCard({
   } = useModal();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+
+  // Initialize edit amount when entering edit mode
+  const handleEdit = () => {
+    if (bid) {
+      setEditAmount(bid.amount.toString());
+      setIsEditing(true);
+    }
+  };
+
+  // Handle edit submission
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseInt(editAmount);
+
+    if (!amount || isNaN(amount) || amount < 10) {
+      showAlert({
+        type: 'warning',
+        title: 'Invalid Amount',
+        message: 'Bid amount must be at least £10'
+      });
+      return;
+    }
+
+    if (bid && amount === bid.amount) {
+      setIsEditing(false);
+      return; // No change
+    }
+
+    // Calculate balance if editing (add back old bid amount)
+    const availableBalance = bid ? teamBalance + bid.amount : teamBalance;
+    
+    if (amount > availableBalance) {
+      showAlert({
+        type: 'error',
+        title: 'Insufficient Balance',
+        message: 'Bid amount exceeds your available balance'
+      });
+      return;
+    }
+
+    // Check for duplicate bid amounts (excluding current bid)
+    const otherBidAmounts = existingBidAmounts.filter(a => bid ? a !== bid.amount : true);
+    if (otherBidAmounts.includes(amount)) {
+      showAlert({
+        type: 'error',
+        title: 'Duplicate Bid Amount',
+        message: 'You already have a bid with this amount. Each bid must have a unique amount.'
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    // Delete old bid and place new one
+    if (bid) {
+      await onCancelBid(bid.id);
+    }
+    await onPlaceBid(player.id, amount);
+    setIsEditing(false);
+    setEditAmount('');
+    setIsSubmitting(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -852,7 +915,7 @@ function PlayerCard({
           </div>
         </div>
 
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-end gap-2">
           {hasBid && bid && (
             <>
               <div className="inline-flex items-center px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
@@ -866,41 +929,90 @@ function PlayerCard({
                 </svg>
                 £{bid.amount.toLocaleString()}
               </div>
-              <button
-                onClick={async () => {
-                  setIsCanceling(true);
-                  await onCancelBid(bid.id);
-                  setIsCanceling(false);
-                }}
-                disabled={isCanceling}
-                className="mt-2 text-xs text-red-500 hover:text-red-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-              >
-                {isCanceling ? (
-                  <>
-                    <svg className="animate-spin w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Canceling...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                    Cancel
-                  </>
-                )}
-              </button>
+              <div className="flex gap-1">
+                <button
+                  onClick={handleEdit}
+                  disabled={isSubmitting || isCanceling}
+                  className="text-xs text-blue-500 hover:text-blue-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                >
+                  <svg className="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsCanceling(true);
+                    await onCancelBid(bid.id);
+                    setIsCanceling(false);
+                  }}
+                  disabled={isCanceling || isSubmitting}
+                  className="text-xs text-red-500 hover:text-red-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                >
+                  {isCanceling ? (
+                    <>
+                      <svg className="animate-spin w-3 h-3 mr-0.5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      ...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
+                    </>
+                  )}
+                </button>
+              </div>
             </>
           )}
         </div>
       </div>
+
+      {/* Edit Mode Form */}
+      {hasBid && bid && isEditing && (
+        <div className="mt-4 pt-3 border-t border-gray-200 bg-blue-50/30 p-3 rounded-lg">
+          <form onSubmit={handleEditSubmit}>
+            <div className="flex items-center gap-2">
+              <div className="relative rounded-lg flex-grow">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                  £
+                </span>
+                <input
+                  type="number"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="block w-full pl-7 pr-12 py-2.5 text-sm rounded-lg border-blue-200 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+                  placeholder="New bid amount"
+                  required
+                  min="10"
+                  max={teamBalance + bid.amount}
+                  disabled={isSubmitting}
+                  autoFocus
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow-sm disabled:opacity-50"
+              >
+                {isSubmitting ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                disabled={isSubmitting}
+                className="px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 shadow-sm disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {!hasBid && bidCount < maxBids && (
         <div className="mt-4 pt-3 border-t border-gray-200">

@@ -228,10 +228,39 @@ export function useCancelBid(roundId: string) {
         throw new Error(data.error || 'Failed to cancel bid');
       }
 
-      return data;
+      return { ...data, bidId };
     },
-    onSuccess: () => {
-      // Invalidate and refetch
+    onMutate: async (bidId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['round', roundId] });
+
+      // Snapshot the previous value
+      const previousRoundData = queryClient.getQueryData(['round', roundId]);
+
+      // Optimistically remove the bid
+      queryClient.setQueryData(['round', roundId], (old: any) => {
+        if (!old) return old;
+
+        const bidToRemove = old.myBids?.find((b: any) => b.id === bidId);
+        if (!bidToRemove) return old;
+
+        return {
+          ...old,
+          myBids: old.myBids.filter((b: any) => b.id !== bidId),
+          teamBalance: old.teamBalance + bidToRemove.amount,
+        };
+      });
+
+      return { previousRoundData };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousRoundData) {
+        queryClient.setQueryData(['round', roundId], context.previousRoundData);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure consistency
       queryClient.invalidateQueries({ queryKey: ['round', roundId] });
       queryClient.invalidateQueries({ queryKey: ['teamDashboard'] });
     },
