@@ -77,21 +77,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // IMPORTANT: Wait for token to be set before proceeding
           const idToken = await firebaseUser.getIdToken(true);
           
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-          
           try {
-            await fetch('/api/auth/set-token', {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+            
+            const response = await fetch('/api/auth/set-token', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ token: idToken }),
               signal: controller.signal
             });
             clearTimeout(timeoutId);
-            console.log('✅ Auth token cookie set successfully');
-          } catch (err) {
-            clearTimeout(timeoutId);
-            console.warn('Failed to set token cookie:', err);
+            
+            if (response.ok) {
+              console.log('✅ Auth token cookie set successfully');
+            } else {
+              console.warn('Failed to set token cookie: HTTP', response.status);
+            }
+          } catch (err: any) {
+            // Only log if it's not an abort error during cleanup
+            if (err.name !== 'AbortError') {
+              console.warn('Failed to set token cookie:', err.message);
+            }
           }
 
           // Wait a moment for Firebase Auth state to fully propagate

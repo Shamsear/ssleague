@@ -30,6 +30,12 @@ export const metadata: Metadata = {
     icon: '/logo.png',
     apple: '/logo.png',
   },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'SS League',
+  },
   openGraph: {
     title: "SS League - Football Auction Platform",
     description: "Experience the thrill of building your dream football team through strategic bidding and competitive auctions",

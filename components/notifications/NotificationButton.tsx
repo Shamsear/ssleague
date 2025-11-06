@@ -28,11 +28,15 @@ export default function NotificationButton() {
     
     // Get current permission status
     if (isNotificationSupported()) {
-      setPermission(getNotificationPermission());
+      const currentPermission = getNotificationPermission();
+      setPermission(currentPermission);
       
       // Load devices if permission granted
-      if (getNotificationPermission() === 'granted') {
-        loadDevices();
+      if (currentPermission === 'granted') {
+        // Small delay to ensure service worker and token are ready
+        setTimeout(() => {
+          loadDevices();
+        }, 100);
       }
     }
     
@@ -77,10 +81,14 @@ export default function NotificationButton() {
   const handleEnableNotifications = async () => {
     setLoading(true);
     try {
+      console.log('🔔 Starting notification setup...');
+      
       // Request permission and get FCM token
       const token = await requestNotificationPermission();
 
       if (token) {
+        console.log('✅ Token received, saving to database...');
+        
         // Save token to database
         const response = await fetchWithTokenRefresh('/api/notifications/subscribe', {
           method: 'POST',
@@ -89,19 +97,29 @@ export default function NotificationButton() {
         });
 
         if (response.ok) {
+          console.log('✅ Token saved successfully!');
+          
+          // Load devices to confirm save worked
+          await loadDevices();
+          
+          // Update permission state AFTER devices are loaded
+          // Use a small delay to ensure React state updates properly
+          await new Promise(resolve => setTimeout(resolve, 100));
           setPermission('granted');
-          await loadDevices(); // Reload device list
+          
           alert(`✅ Notifications enabled on ${currentDevice}! You\'ll now receive updates about auctions, matches, and more.`);
         } else {
           const error = await response.json();
+          console.error('❌ Failed to save token:', error);
           throw new Error(error.error || 'Failed to save notification token');
         }
       } else {
-        alert('❌ Notification permission denied. Please enable notifications in your browser settings.');
+        console.error('❌ No token received - check browser console for details');
+        alert('❌ Failed to enable notifications. Check the browser console (F12) for details. Common issues:\n\n1. Service worker not loaded - try refreshing the page\n2. VAPID key not configured\n3. Browser blocked notifications');
       }
     } catch (error: any) {
-      console.error('Error enabling notifications:', error);
-      alert('Failed to enable notifications: ' + error.message);
+      console.error('❌ Error enabling notifications:', error);
+      alert('Failed to enable notifications: ' + error.message + '\n\nCheck browser console (F12) for more details.');
     } finally {
       setLoading(false);
     }
@@ -128,8 +146,33 @@ export default function NotificationButton() {
     }
   };
 
+  const handleResetNotifications = () => {
+    if (!confirm('Reset notification settings? You will need to enable notifications again.')) return;
+    
+    // Clear local state
+    setPermission(null);
+    setDevices([]);
+    setShowDevices(false);
+    
+    alert('✅ Notification settings reset. Click "Enable Notifications" to set up again.');
+  };
+
   // Don't show button if notifications are not supported
   if (!supported) {
+    // Check if it's iOS (but not Safari)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    
+    if (isIOS && !isSafari) {
+      return (
+        <div className="px-4 py-3 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+          <p className="font-medium mb-1">📱 iOS Notifications</p>
+          <p className="text-xs">
+            Web notifications are only supported in Safari on iOS. Please open this site in Safari to enable notifications.
+          </p>
+        </div>
+      );
+    }
     return null;
   }
 
@@ -150,38 +193,60 @@ export default function NotificationButton() {
           </svg>
         </button>
         
-        {showDevices && devices.length > 0 && (
+        {showDevices && (
           <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 z-50">
-            <h4 className="text-sm font-bold text-gray-900 mb-3">Your Devices</h4>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {devices.map((device) => (
-                <div key={device.id} className="flex items-start justify-between gap-2 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium text-gray-900">{device.deviceName}</span>
-                      {!device.isActive && (
-                        <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded">Inactive</span>
-                      )}
+            {devices.length > 0 ? (
+              <>
+                <h4 className="text-sm font-bold text-gray-900 mb-3">Your Devices</h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {devices.map((device) => (
+                    <div key={device.id} className="flex items-start justify-between gap-2 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-gray-900">{device.deviceName}</span>
+                          {!device.isActive && (
+                            <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded">Inactive</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          {device.browser} • {device.os}
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">
+                          Last used: {new Date(device.lastUsedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveDevice(device.id)}
+                        className="flex-shrink-0 p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                        title="Remove device"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
-                    <div className="text-[11px] text-gray-500">
-                      {device.browser} • {device.os}
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">
-                      Last used: {new Date(device.lastUsedAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveDevice(device.id)}
-                    className="flex-shrink-0 p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                    title="Remove device"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <>
+                <h4 className="text-sm font-bold text-gray-900 mb-2">No Devices Found</h4>
+                <p className="text-xs text-gray-600 mb-3">
+                  Notifications are enabled but no devices are registered. This might be due to:
+                </p>
+                <ul className="text-xs text-gray-600 mb-3 ml-4 list-disc space-y-1">
+                  <li>Database migration not run</li>
+                  <li>Token registration failed</li>
+                  <li>Permission granted but setup incomplete</li>
+                </ul>
+                <button
+                  onClick={handleResetNotifications}
+                  className="w-full px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  Reset & Try Again
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

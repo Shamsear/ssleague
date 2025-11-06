@@ -18,43 +18,62 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
  */
 export async function requestNotificationPermission(): Promise<string | null> {
   if (!messaging) {
-    console.warn('Firebase Messaging not available');
+    console.error('❌ Firebase Messaging not initialized');
     return null;
   }
 
   try {
     // Check if notifications are supported
     if (!('Notification' in window)) {
-      console.warn('This browser does not support notifications');
+      console.error('❌ This browser does not support notifications');
       return null;
     }
+
+    // Check if service worker is registered
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+      console.error('❌ Service worker not registered. Please refresh the page.');
+      return null;
+    }
+    console.log('✅ Service worker registered');
 
     // Request permission
+    console.log('📢 Requesting notification permission...');
     const permission = await Notification.requestPermission();
+    console.log('Permission result:', permission);
     
     if (permission !== 'granted') {
-      console.log('Notification permission denied');
+      console.log('❌ Notification permission denied by user');
       return null;
     }
 
-    console.log('Notification permission granted');
+    console.log('✅ Notification permission granted');
+
+    // Check VAPID key
+    const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+    if (!vapidKey) {
+      console.error('❌ VAPID key not configured in environment variables');
+      throw new Error('VAPID key missing');
+    }
+    console.log('✅ VAPID key found:', vapidKey.substring(0, 20) + '...');
 
     // Get registration token
-    // NOTE: You need to add your VAPID key in Firebase Console
-    // Go to: Project Settings > Cloud Messaging > Web Push certificates
+    console.log('🔑 Requesting FCM token...');
     const token = await getToken(messaging, {
-      vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
+      vapidKey: vapidKey,
+      serviceWorkerRegistration: registration
     });
 
     if (token) {
-      console.log('FCM Token obtained:', token);
+      console.log('✅ FCM Token obtained:', token.substring(0, 20) + '...');
       return token;
     } else {
-      console.log('No registration token available');
+      console.error('❌ No registration token available. Check Firebase config.');
       return null;
     }
-  } catch (error) {
-    console.error('Error getting notification permission:', error);
+  } catch (error: any) {
+    console.error('❌ Error getting notification permission:', error);
+    console.error('Error details:', error.message, error.code);
     return null;
   }
 }
