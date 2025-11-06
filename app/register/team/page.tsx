@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
+import OwnerRegistrationForm from '@/components/forms/OwnerRegistrationForm';
 
 interface Season {
   id: string;
@@ -33,6 +34,8 @@ function SeasonRegistrationContent() {
   // Phase 1: New state for registration form
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
   const [joinFantasy, setJoinFantasy] = useState(false);
+  const [registerOwnerNow, setRegisterOwnerNow] = useState(false);
+  const [showOwnerForm, setShowOwnerForm] = useState(false);
   
   const {
     alertState,
@@ -473,8 +476,39 @@ function SeasonRegistrationContent() {
                     Back to Dashboard
                   </Link>
                 </div>
+              ) : showOwnerForm ? (
+                // Owner Registration Form
+                <div className="max-w-2xl mx-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowOwnerForm(false)}
+                    className="mb-6 text-gray-600 hover:text-gray-900 flex items-center transition-colors"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back
+                  </button>
+
+                  <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">Register Team Owner</h3>
+                  
+                  <OwnerRegistrationForm
+                    teamId={user.uid}
+                    seasonId={seasonId || undefined}
+                    userId={user.uid}
+                    onSuccess={() => {
+                      // After owner registration, complete season registration
+                      handleRegistrationSubmit();
+                    }}
+                    onCancel={() => {
+                      // Skip owner registration and just complete season registration
+                      setShowOwnerForm(false);
+                      handleRegistrationSubmit();
+                    }}
+                  />
+                </div>
               ) : showRegistrationForm ? (
-                // Registration form with manager name and fantasy opt-in
+                // Registration form with fantasy opt-in
                 <div className="max-w-2xl mx-auto">
                   <button
                     type="button"
@@ -490,6 +524,27 @@ function SeasonRegistrationContent() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">Complete Your Registration</h3>
                   
                   <div className="space-y-6">
+                    {/* Owner Registration Option */}
+                    <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 border border-blue-200">
+                      <div className="flex items-start">
+                        <input
+                          type="checkbox"
+                          id="registerOwnerNow"
+                          checked={registerOwnerNow}
+                          onChange={(e) => setRegisterOwnerNow(e.target.checked)}
+                          className="mt-1 h-5 w-5 text-[#0066FF] rounded focus:ring-[#0066FF] border-gray-300 cursor-pointer"
+                        />
+                        <label htmlFor="registerOwnerNow" className="ml-3 cursor-pointer">
+                          <span className="block text-base font-semibold text-blue-900 mb-1">
+                            👤 Register Team Owner Now (Optional)
+                          </span>
+                          <span className="block text-sm text-blue-700">
+                            Add owner information now, or you can do this later from your dashboard.
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
                     {/* Fantasy League Opt-in */}
                     <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-6 border border-purple-200">
                       <div className="flex items-start">
@@ -528,14 +583,20 @@ function SeasonRegistrationContent() {
                     <div className="flex gap-4">
                       <button
                         type="button"
-                        onClick={handleRegistrationSubmit}
+                        onClick={() => {
+                          if (registerOwnerNow) {
+                            setShowOwnerForm(true);
+                          } else {
+                            handleRegistrationSubmit();
+                          }
+                        }}
                         disabled={isSubmitting}
                         className="flex-1 group relative px-10 py-4 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-lg shadow-green-600/20 hover:shadow-xl hover:shadow-green-600/30 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span>{isSubmitting ? 'Processing...' : 'Confirm Registration'}</span>
+                        <span>{isSubmitting ? 'Processing...' : (registerOwnerNow ? 'Continue to Owner Registration' : 'Confirm Registration')}</span>
                       </button>
                     </div>
                   </div>
