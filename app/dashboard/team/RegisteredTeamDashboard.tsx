@@ -714,7 +714,6 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <div className="mt-4 p-4 sm:p-5 rounded-xl border border-blue-200 bg-white">
                 <OwnerRegistrationForm
                   teamId={team.id}
-                  seasonId={seasonStatus.seasonId!}
                   userId={user?.uid || ''}
                   userName={user?.displayName || ''}
                   userEmail={user?.email || ''}
