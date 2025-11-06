@@ -363,12 +363,15 @@ export async function DELETE(
       `;
 
       for (const bid of wonBids) {
+        const { amount } = decryptBidData(bid.encrypted_bid_data);
+        
         // 1. Remove player from team (team_players)
         await sql`
           DELETE FROM team_players
           WHERE player_id = ${bid.player_id}
           AND team_id = ${bid.team_id}
         `;
+        console.log(`✅ Removed ${bid.player_id} from team_players`);
 
         // 2. Reset player status
         await sql`
@@ -387,17 +390,18 @@ export async function DELETE(
             updated_at = NOW()
           WHERE id = ${bid.player_id}
         `;
+        console.log(`✅ Reset player ${bid.player_id} status`);
 
-        // 3. Refund team budget (Firebase)
+        // 3. Refund team budget (Firebase team_seasons)
         try {
-          const { amount } = decryptBidData(bid.encrypted_bid_data);
           const teamSeasonId = `${bid.team_id}_${round.season_id}`;
           const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
           const teamSeasonDoc = await teamSeasonRef.get();
           
           if (teamSeasonDoc.exists) {
             const teamSeasonData = teamSeasonDoc.data();
-            const currentBudget = teamSeasonData?.budget || 0;
+            const curr = teamSeasonData?.currency_system || 'single';
+            const currentBudget = curr === 'dual' ? (teamSeasonData?.football_budget || 0) : (teamSeasonData?.budget || 0);
             const totalSpent = Math.max(0, (teamSeasonData?.total_spent || 0) - amount);
             const playersCount = Math.max(0, (teamSeasonData?.players_count || 0) - 1);
             
@@ -410,22 +414,72 @@ export async function DELETE(
               positionCounts[playerPosition] = Math.max(0, (positionCounts[playerPosition] || 0) - 1);
             }
             
-            await teamSeasonRef.update({
-              budget: currentBudget + amount,
+            const upd: any = {
               total_spent: totalSpent,
               players_count: playersCount,
               position_counts: positionCounts,
               updated_at: new Date()
-            });
+            };
             
-            console.log(`✅ Refunded team ${bid.team_id}: £${amount}`);
+            if (curr === 'dual') {
+              upd.football_budget = currentBudget + amount;
+              upd.football_spent = Math.max(0, (teamSeasonData?.football_spent || 0) - amount);
+            } else {
+              upd.budget = currentBudget + amount;
+            }
+            
+            await teamSeasonRef.update(upd);
+            console.log(`✅ Refunded team_seasons ${bid.team_id}: £${amount}`);
           }
         } catch (error) {
-          console.error(`Error refunding team ${bid.team_id}:`, error);
+          console.error(`❌ Error refunding team_seasons ${bid.team_id}:`, error);
+        }
+
+        // 4. Refund team budget (SQL teams table)
+        try {
+          await sql`UPDATE teams SET 
+            football_spent = GREATEST(0, football_spent - ${amount}), 
+            football_budget = football_budget + ${amount},
+            football_players_count = GREATEST(0, football_players_count - 1),
+            updated_at = NOW() 
+          WHERE id = ${bid.team_id}
+          AND season_id = ${round.season_id}`;
+          console.log(`✅ Refunded SQL teams table ${bid.team_id}: £${amount}`);
+        } catch (teamUpdateError) {
+          console.error(`❌ Failed to refund SQL teams ${bid.team_id}:`, teamUpdateError);
+        }
+
+        // 5. Delete transaction logs (Firestore)
+        try {
+          const transactionsSnapshot = await adminDb.collection('transactions')
+            .where('metadata.round_id', '==', roundId)
+            .where('metadata.player_id', '==', bid.player_id)
+            .where('team_id', '==', bid.team_id)
+            .where('transaction_type', '==', 'auction_win')
+            .get();
+          
+          const deletePromises = transactionsSnapshot.docs.map(doc => doc.ref.delete());
+          await Promise.all(deletePromises);
+          console.log(`✅ Deleted ${transactionsSnapshot.size} transaction(s) for player ${bid.player_id}`);
+        } catch (error) {
+          console.error(`❌ Error deleting transactions for player ${bid.player_id}:`, error);
         }
       }
 
-      console.log(`✅ Finalization reversed for round ${roundId}`);
+      // 6. Delete news articles related to this round
+      try {
+        const newsSnapshot = await adminDb.collection('news')
+          .where('metadata.round_id', '==', roundId)
+          .get();
+        
+        const deleteNewsPromises = newsSnapshot.docs.map(doc => doc.ref.delete());
+        await Promise.all(deleteNewsPromises);
+        console.log(`✅ Deleted ${newsSnapshot.size} news article(s) for round ${roundId}`);
+      } catch (error) {
+        console.error(`❌ Error deleting news for round ${roundId}:`, error);
+      }
+
+      console.log(`✅ Finalization fully reversed for round ${roundId}`);
     }
 
     // Delete the round (cascade will delete related bids)

@@ -165,6 +165,15 @@ export class WSClient {
       }
     }
     
+    // For bid_submitted messages: data should contain round_id
+    if (type === 'bid_submitted' && data?.round_id) {
+      const seasonChannel = `season:${data.season_id}`;
+      const seasonHandlers = this.handlers.get(seasonChannel);
+      if (seasonHandlers) {
+        seasonHandlers.forEach(handler => handler({ ...message, data: { ...data, round_id: data.round_id } }));
+      }
+    }
+    
     // Generic channel handling if data has a channel property
     if (data?.channel) {
       const channelHandlers = this.handlers.get(data.channel);

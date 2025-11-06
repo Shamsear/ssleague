@@ -11,47 +11,60 @@ const sql = neon(process.env.NEON_DATABASE_URL!);
  */
 async function getNextCounter(tableName: string, idColumn: string = 'id'): Promise<number> {
   try {
-    // Get the max counter from existing IDs
-    // Using unsafe query since we need dynamic table names
-    // This is safe because tableName is hardcoded in our calls
-    const query = `SELECT ${idColumn} FROM ${tableName} ORDER BY created_at DESC LIMIT 1`;
-    const result = await sql.unsafe(query);
+    // For rounds table, use direct SQL query
+    let result;
+    if (tableName === 'rounds') {
+      result = await sql`SELECT id FROM rounds ORDER BY created_at DESC`;
+    } else if (tableName === 'teams') {
+      result = await sql`SELECT id FROM teams ORDER BY created_at DESC`;
+    } else if (tableName === 'bulk_tiebreakers') {
+      result = await sql`SELECT id FROM bulk_tiebreakers ORDER BY created_at DESC`;
+    } else {
+      // Fallback for other tables
+      result = await sql.unsafe(`SELECT ${idColumn} FROM ${tableName} ORDER BY created_at DESC`);
+    }
     
     if (!result || result.length === 0) {
       console.log(`🆕 No existing ${tableName} found, starting from 1`);
       return 1; // First ID
     }
     
-    // Check if result has the expected column
-    const row = result[0];
-    if (!row || typeof row !== 'object') {
-      console.log(`⚠️ Invalid result structure for ${tableName}, starting from 1`);
+    console.log(`🔍 Found ${result.length} ${tableName} records`);
+    
+    // Find the maximum counter from all IDs
+    let maxCounter = 0;
+    
+    for (const row of result) {
+      if (!row || typeof row !== 'object') {
+        continue;
+      }
+      
+      const lastId = row[idColumn] as string;
+      
+      if (!lastId || typeof lastId !== 'string') {
+        continue;
+      }
+      
+      // Extract numeric part from the ID
+      const numericPart = lastId.replace(/\D/g, '');
+      if (!numericPart) {
+        continue;
+      }
+      
+      const counter = parseInt(numericPart, 10);
+      
+      if (!isNaN(counter) && counter > maxCounter) {
+        maxCounter = counter;
+      }
+    }
+    
+    if (maxCounter === 0) {
+      console.log(`⚠️ No valid counters found in ${tableName}, starting from 1`);
       return 1;
     }
     
-    const lastId = row[idColumn] as string;
-    
-    if (!lastId || typeof lastId !== 'string') {
-      console.log(`⚠️ No valid ID found in ${tableName}, starting from 1`);
-      return 1;
-    }
-    
-    // Extract numeric part from the ID
-    const numericPart = lastId.replace(/\D/g, '');
-    if (!numericPart) {
-      console.log(`⚠️ No numeric part in ID ${lastId}, starting from 1`);
-      return 1;
-    }
-    
-    const lastCounter = parseInt(numericPart, 10);
-    
-    if (isNaN(lastCounter)) {
-      console.log(`⚠️ Could not parse counter from ${lastId}, starting from 1`);
-      return 1;
-    }
-    
-    console.log(`✅ Found last ${tableName} ID: ${lastId}, next counter: ${lastCounter + 1}`);
-    return lastCounter + 1;
+    console.log(`✅ Max counter for ${tableName}: ${maxCounter}, next: ${maxCounter + 1}`);
+    return maxCounter + 1;
   } catch (error) {
     // If table doesn't exist or is empty, start from 1
     console.error(`❌ Error getting counter for ${tableName}:`, error);

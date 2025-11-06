@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { getAuctionDb } from '@/lib/neon/auction-config';
 import { verifyAuth } from '@/lib/auth-helper';
 
 export async function GET(
@@ -17,7 +17,9 @@ export async function GET(
     }
 
     const { id: roundId } = await params;
-    const sql = getTournamentDb();
+    const sql = getAuctionDb();
+
+    console.log('🔍 [Submissions API] Fetching submissions for round:', roundId);
 
     // Get round details
     const roundResult = await sql`
@@ -25,6 +27,8 @@ export async function GET(
       FROM rounds
       WHERE id = ${roundId}
     `;
+
+    console.log('🔍 [Submissions API] Round result:', roundResult);
 
     if (roundResult.length === 0) {
       return NextResponse.json(
@@ -46,6 +50,9 @@ export async function GET(
       ORDER BY t.name ASC
     `;
 
+    console.log('🔍 [Submissions API] Teams found:', teamsResult.length);
+    console.log('🔍 [Submissions API] Teams:', teamsResult);
+
     // Get submissions for this round
     const submissionsResult = await sql`
       SELECT 
@@ -56,6 +63,9 @@ export async function GET(
       FROM bid_submissions
       WHERE round_id = ${roundId}
     `;
+
+    console.log('🔍 [Submissions API] Submissions found:', submissionsResult.length);
+    console.log('🔍 [Submissions API] Submissions:', submissionsResult);
 
     // Create a map of submissions by team_id
     const submissionsMap = new Map();
@@ -80,6 +90,9 @@ export async function GET(
     const totalTeams = teamsResult.length;
     const submittedTeams = teamSubmissions.filter(t => t.has_submitted).length;
     const pendingTeams = totalTeams - submittedTeams;
+
+    console.log('📊 [Submissions API] Stats:', { totalTeams, submittedTeams, pendingTeams });
+    console.log('📊 [Submissions API] Team submissions:', teamSubmissions);
 
     return NextResponse.json({
       success: true,

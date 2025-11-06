@@ -348,7 +348,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
         (dashboardData?.activeBulkRounds?.length || 0) > 0 ||
         (dashboardData?.tiebreakers?.length || 0) > 0;
       
-      const pollInterval = hasActiveContent ? 3000 : 10000;
+      // CRITICAL: Reduced from 3s to 30s to prevent hitting Firebase read quota (50K/day)
+      // With 3s polling, we were using 37K reads in partial day
+      const pollInterval = hasActiveContent ? 30000 : 60000;
       clearInterval(interval);
       interval = setInterval(() => fetchDashboard(false), pollInterval);
     };
@@ -363,21 +365,15 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     };
   }, [seasonStatus?.seasonId]);
 
-  // Timer effect for active rounds
+  // Timer effect for active rounds - runs every second
   useEffect(() => {
     if (!dashboardData?.activeRounds) return;
 
+    // Start timers for any rounds that don't have one yet
     dashboardData.activeRounds.forEach(round => {
       if (round.end_time && !timerRefs.current[round.id]) {
-        // Calculate and set initial time immediately
-        const now = new Date().getTime();
-        const end = new Date(round.end_time!).getTime();
-        const remaining = Math.max(0, Math.floor((end - now) / 1000));
-        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
-        
-        // Then start the interval
         timerRefs.current[round.id] = setInterval(() => {
-          const now = new Date().getTime();
+          const now = Date.now();
           const end = new Date(round.end_time!).getTime();
           const remaining = Math.max(0, Math.floor((end - now) / 1000));
           setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
@@ -387,9 +383,16 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             delete timerRefs.current[round.id];
           }
         }, 1000);
+        
+        // Set initial time immediately
+        const now = Date.now();
+        const end = new Date(round.end_time!).getTime();
+        const remaining = Math.max(0, Math.floor((end - now) / 1000));
+        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
       }
     });
 
+    // Clean up timers for rounds that no longer exist
     Object.keys(timerRefs.current).forEach(id => {
       if (!dashboardData.activeRounds.find(r => r.id === id)) {
         clearInterval(timerRefs.current[id]);
@@ -402,14 +405,15 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     };
   }, [dashboardData?.activeRounds]);
 
-  // Timer effect for bulk rounds
+  // Timer effect for bulk rounds - runs every second
   useEffect(() => {
     if (!dashboardData?.activeBulkRounds) return;
 
+    // Start timers for any bulk rounds that don't have one yet
     dashboardData.activeBulkRounds.forEach(bulkRound => {
       if (bulkRound.end_time && !bulkTimerRefs.current[bulkRound.id]) {
         bulkTimerRefs.current[bulkRound.id] = setInterval(() => {
-          const now = new Date().getTime();
+          const now = Date.now();
           const end = new Date(bulkRound.end_time!).getTime();
           const remaining = Math.max(0, Math.floor((end - now) / 1000));
           setBulkTimeRemaining(prev => ({ ...prev, [bulkRound.id]: remaining }));
@@ -419,9 +423,16 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             delete bulkTimerRefs.current[bulkRound.id];
           }
         }, 1000);
+        
+        // Set initial time immediately
+        const now = Date.now();
+        const end = new Date(bulkRound.end_time!).getTime();
+        const remaining = Math.max(0, Math.floor((end - now) / 1000));
+        setBulkTimeRemaining(prev => ({ ...prev, [bulkRound.id]: remaining }));
       }
     });
 
+    // Clean up timers for bulk rounds that no longer exist
     Object.keys(bulkTimerRefs.current).forEach(id => {
       const bulkId = parseInt(id);
       if (!dashboardData.activeBulkRounds.find(br => br.id === bulkId)) {
@@ -873,6 +884,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   📊 View Results
                 </button>
               )}
+              
+              <Link href="/dashboard/team/auction-results" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 transition-all text-xs sm:text-sm font-medium text-center">
+                🎯 Auction Results
+              </Link>
             </div>
           </div>
 

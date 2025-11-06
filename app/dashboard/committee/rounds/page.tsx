@@ -61,6 +61,7 @@ export default function RoundsManagementPage() {
   const [expandedPlayers, setExpandedPlayers] = useState<Set<string>>(new Set());
   const [roundDetails, setRoundDetails] = useState<{[key: string]: any}>({});
   const [roundSubmissions, setRoundSubmissions] = useState<{[key: string]: any}>({});
+  const [loadingSubmissions, setLoadingSubmissions] = useState<{[key: string]: boolean}>({});
   const timerRefs = useRef<{[key: string]: NodeJS.Timeout}>({});
   const previousRoundsRef = useRef<string>('');
 
@@ -140,18 +141,51 @@ export default function RoundsManagementPage() {
             setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
           });
 
-          // Fetch submission status for active rounds
-          activeRounds.forEach(async (r: Round) => {
-            try {
-              const subResponse = await fetchWithTokenRefresh(`/api/admin/rounds/${r.id}/submissions`);
-              const subData = await subResponse.json();
-              if (subData.success) {
-                setRoundSubmissions(prev => ({ ...prev, [r.id]: subData.stats }));
-              }
-            } catch (err) {
-              console.error(`Error fetching submissions for round ${r.id}:`, err);
+        // Fetch submission status for active rounds
+        console.log('🔍 [fetchRounds] Found active rounds:', activeRounds.length);
+        
+        // Set loading state for each active round
+        const loadingMap: {[key: string]: boolean} = {};
+        activeRounds.forEach(r => { loadingMap[r.id] = true; });
+        setLoadingSubmissions(prev => ({ ...prev, ...loadingMap }));
+        
+        // Use Promise.all to wait for all submissions to be fetched
+        const submissionPromises = activeRounds.map(async (r: Round) => {
+          try {
+            console.log(`🔍 [fetchRounds] Fetching submissions for round ${r.id}`);
+            const subResponse = await fetchWithTokenRefresh(`/api/admin/rounds/${r.id}/submissions`);
+            const subData = await subResponse.json();
+            console.log(`🔍 [fetchRounds] Submissions response for round ${r.id}:`, subData);
+            if (subData.success) {
+              console.log(`✅ [fetchRounds] Setting submissions for round ${r.id}:`, subData);
+              return { roundId: r.id, data: subData };
+            } else {
+              console.error(`❌ [fetchRounds] Failed to fetch submissions for round ${r.id}:`, subData.error);
+              return null;
             }
-          });
+          } catch (err) {
+            console.error(`❌ [fetchRounds] Error fetching submissions for round ${r.id}:`, err);
+            return null;
+          }
+        });
+        
+        const submissionResults = await Promise.all(submissionPromises);
+        const submissionsMap: {[key: string]: any} = {};
+        submissionResults.forEach(result => {
+          if (result) {
+            submissionsMap[result.roundId] = {
+              ...result.data.stats,
+              teams: result.data.teams
+            };
+          }
+        });
+        console.log('📦 [fetchRounds] All submissions fetched:', submissionsMap);
+        setRoundSubmissions(prev => ({ ...prev, ...submissionsMap }));
+        
+        // Clear loading state
+        const clearedLoadingMap: {[key: string]: boolean} = {};
+        activeRounds.forEach(r => { clearedLoadingMap[r.id] = false; });
+        setLoadingSubmissions(prev => ({ ...prev, ...clearedLoadingMap }));
         }
       }
 
@@ -225,17 +259,50 @@ export default function RoundsManagementPage() {
 
         // Fetch submission status for active rounds
         const activeRounds = data.filter((r: Round) => r.status === 'active');
-        activeRounds.forEach(async (r: Round) => {
+        console.log('🔍 [fetchAllData] Found active rounds:', activeRounds.length);
+        
+        // Set loading state for each active round
+        const loadingMap: {[key: string]: boolean} = {};
+        activeRounds.forEach(r => { loadingMap[r.id] = true; });
+        setLoadingSubmissions(loadingMap);
+        
+        // Use Promise.all to wait for all submissions to be fetched
+        const submissionPromises = activeRounds.map(async (r: Round) => {
           try {
+            console.log(`🔍 [fetchAllData] Fetching submissions for round ${r.id}`);
             const subResponse = await fetchWithTokenRefresh(`/api/admin/rounds/${r.id}/submissions`);
             const subData = await subResponse.json();
+            console.log(`🔍 [fetchAllData] Submissions response for round ${r.id}:`, subData);
             if (subData.success) {
-              setRoundSubmissions(prev => ({ ...prev, [r.id]: subData.stats }));
+              console.log(`✅ [fetchAllData] Setting submissions for round ${r.id}:`, subData);
+              return { roundId: r.id, data: subData };
+            } else {
+              console.error(`❌ [fetchAllData] Failed to fetch submissions for round ${r.id}:`, subData.error);
+              return null;
             }
           } catch (err) {
-            console.error(`Error fetching submissions for round ${r.id}:`, err);
+            console.error(`❌ [fetchAllData] Error fetching submissions for round ${r.id}:`, err);
+            return null;
           }
         });
+        
+        const submissionResults = await Promise.all(submissionPromises);
+        const submissionsMap: {[key: string]: any} = {};
+        submissionResults.forEach(result => {
+          if (result) {
+            submissionsMap[result.roundId] = {
+              ...result.data.stats,
+              teams: result.data.teams
+            };
+          }
+        });
+        console.log('📦 [fetchAllData] All submissions fetched:', submissionsMap);
+        setRoundSubmissions(submissionsMap);
+        
+        // Clear loading state
+        const clearedLoadingMap: {[key: string]: boolean} = {};
+        activeRounds.forEach(r => { clearedLoadingMap[r.id] = false; });
+        setLoadingSubmissions(clearedLoadingMap);
       }
       
       // Process tiebreakers
@@ -273,6 +340,11 @@ export default function RoundsManagementPage() {
     fetchAllData();
   }, [fetchAllData]);
 
+  // Debug: Monitor roundSubmissions state changes
+  useEffect(() => {
+    console.log('📦 [State] roundSubmissions updated:', roundSubmissions);
+  }, [roundSubmissions]);
+
   // WebSocket for real-time updates
   useWebSocket({
     channel: `season:${currentSeasonId}`,
@@ -280,27 +352,52 @@ export default function RoundsManagementPage() {
     onMessage: useCallback((message: any) => {
       console.log('🔴 Rounds WebSocket message:', message);
       
-      if (
-        message.type === 'bid_placed' ||
-        message.type === 'bid_cancelled' ||
-        message.type === 'bid_submitted' ||
+      if (message.type === 'bid_submitted') {
+        // When a team submits bids, only refetch submissions for that specific round
+        console.log('🔍 [WebSocket] Bid submitted for round:', message.data?.round_id);
+        if (message.data?.round_id) {
+          const roundId = message.data.round_id;
+          setLoadingSubmissions(prev => ({ ...prev, [roundId]: true }));
+          
+          fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/submissions`)
+            .then(res => res.json())
+            .then(subData => {
+              if (subData.success) {
+                console.log('✅ [WebSocket] Updated submissions for round:', roundId);
+                setRoundSubmissions(prev => ({
+                  ...prev,
+                  [roundId]: {
+                    ...subData.stats,
+                    teams: subData.teams
+                  }
+                }));
+              }
+              setLoadingSubmissions(prev => ({ ...prev, [roundId]: false }));
+            })
+            .catch(err => {
+              console.error('❌ [WebSocket] Error fetching submissions:', err);
+              setLoadingSubmissions(prev => ({ ...prev, [roundId]: false }));
+            });
+        }
+      } else if (
         message.type === 'round_finalized' ||
         message.type === 'round_updated' ||
         message.type === 'round_status_changed'
       ) {
-        // Refetch rounds when there's an update
+        // For round status changes, refetch all rounds data
         fetchRounds(false);
       }
     }, [fetchRounds]),
   });
 
-  // Polling interval as fallback (every 3 seconds)
+  // Polling interval as fallback (every 30 seconds - reduced from 3)
   useEffect(() => {
     if (!currentSeasonId) return;
 
     const interval = setInterval(() => {
+      console.log('⏰ [Polling] Fetching rounds update...');
       fetchRounds(false);
-    }, 3000);
+    }, 30000); // Changed from 3000ms to 30000ms
 
     return () => clearInterval(interval);
   }, [currentSeasonId, fetchRounds]);
@@ -926,40 +1023,126 @@ export default function RoundsManagementPage() {
                       </div>
                       
                       {/* Submission Status */}
-                      {roundSubmissions[round.id] && (
+                      {console.log(`🔍 [Render] Round ${round.id} submission data:`, roundSubmissions[round.id])}
+                      {loadingSubmissions[round.id] ? (
                         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <div>
-                                <h4 className="font-semibold text-blue-800">Bid Submissions</h4>
-                                <p className="text-sm text-blue-600">
-                                  {roundSubmissions[round.id].submitted} of {roundSubmissions[round.id].total_teams} teams submitted ({roundSubmissions[round.id].submission_rate}%)
-                                </p>
-                              </div>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-5 h-5 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                            <div>
+                              <h4 className="font-semibold text-blue-800">Loading Team Submissions...</h4>
+                              <p className="text-sm text-blue-600">Fetching submission status</p>
                             </div>
-                            <Link
-                              href={`/dashboard/committee/rounds/${round.id}`}
-                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center"
-                            >
-                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                              View Details
-                            </Link>
                           </div>
-                          <div className="mt-3 flex gap-2">
-                            <div className="flex-1 bg-white p-3 rounded-lg border border-blue-200">
-                              <div className="text-xs text-blue-600 mb-1">Submitted</div>
-                              <div className="text-2xl font-bold text-green-600">{roundSubmissions[round.id].submitted}</div>
+                          <div className="space-y-2">
+                            {[1, 2, 3].map((i) => (
+                              <div key={i} className="h-12 bg-white/60 rounded-lg animate-pulse" />
+                            ))}
+                          </div>
+                        </div>
+                      ) : roundSubmissions[round.id] && (
+                        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                          <div className="flex items-center gap-3 mb-4">
+                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div>
+                              <h4 className="font-semibold text-blue-800">Team Submissions</h4>
+                              <p className="text-sm text-blue-600">
+                                {roundSubmissions[round.id].submitted} of {roundSubmissions[round.id].total_teams} teams submitted ({roundSubmissions[round.id].submission_rate}%)
+                              </p>
                             </div>
-                            <div className="flex-1 bg-white p-3 rounded-lg border border-blue-200">
-                              <div className="text-xs text-blue-600 mb-1">Pending</div>
-                              <div className="text-2xl font-bold text-orange-600">{roundSubmissions[round.id].pending}</div>
-                            </div>
+                          </div>
+
+                          {/* Mobile-optimized: Card view for small screens */}
+                          <div className="block lg:hidden space-y-2">
+                            {roundSubmissions[round.id].teams?.map((team: any, idx: number) => (
+                              <div
+                                key={team.team_id || idx}
+                                className={`flex items-center justify-between p-3 rounded-lg border ${
+                                  team.has_submitted
+                                    ? 'bg-green-50 border-green-200'
+                                    : 'bg-orange-50 border-orange-200'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                    team.has_submitted ? 'bg-green-500' : 'bg-orange-500'
+                                  }`} />
+                                  <span className="font-medium text-gray-900 truncate">{team.team_name}</span>
+                                </div>
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold flex-shrink-0 ${
+                                  team.has_submitted
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-orange-100 text-orange-800'
+                                }`}>
+                                  {team.has_submitted ? '✓ Submitted' : 'Pending'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Desktop-optimized: Table view for large screens */}
+                          <div className="hidden lg:block overflow-hidden rounded-lg border border-blue-200">
+                            <table className="min-w-full divide-y divide-blue-200">
+                              <thead className="bg-blue-100">
+                                <tr>
+                                  <th className="px-4 py-3 text-left text-xs font-semibold text-blue-900 uppercase tracking-wider">
+                                    Team Name
+                                  </th>
+                                  <th className="px-4 py-3 text-center text-xs font-semibold text-blue-900 uppercase tracking-wider">
+                                    Status
+                                  </th>
+                                  <th className="px-4 py-3 text-center text-xs font-semibold text-blue-900 uppercase tracking-wider">
+                                    Bids
+                                  </th>
+                                  <th className="px-4 py-3 text-center text-xs font-semibold text-blue-900 uppercase tracking-wider">
+                                    Submitted At
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-blue-100">
+                                {roundSubmissions[round.id].teams?.map((team: any, idx: number) => (
+                                  <tr
+                                    key={team.team_id || idx}
+                                    className={`hover:bg-blue-50 transition-colors ${
+                                      team.has_submitted ? 'bg-green-50/30' : 'bg-orange-50/30'
+                                    }`}
+                                  >
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full ${
+                                          team.has_submitted ? 'bg-green-500' : 'bg-orange-500'
+                                        }`} />
+                                        <span className="font-medium text-gray-900">{team.team_name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                                        team.has_submitted
+                                          ? 'bg-green-100 text-green-800'
+                                          : 'bg-orange-100 text-orange-800'
+                                      }`}>
+                                        {team.has_submitted ? '✓ Submitted' : 'Pending'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-700">
+                                      {team.has_submitted ? team.bid_count : '-'}
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-500">
+                                      {team.has_submitted && team.submitted_at
+                                        ? new Date(team.submitted_at).toLocaleString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })
+                                        : '-'
+                                      }
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       )}
