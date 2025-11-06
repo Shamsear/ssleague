@@ -1,12 +1,14 @@
 {
-  "name": "Tournament Management System",
-  "short_name": "TMS",
+  "name": "SS League - Tournament Management",
+  "short_name": "SS League",
   "description": "Manage tournaments, teams, and matches",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4F46E5",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
+  "categories": ["sports", "games"],
   "icons": [
     {
       "src": "/logo.png",

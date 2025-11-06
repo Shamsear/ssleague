@@ -29,13 +29,26 @@ export async function requestNotificationPermission(): Promise<string | null> {
       return null;
     }
 
+    // Detect iOS Safari
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = ('standalone' in (window as any).navigator) && ((window as any).navigator.standalone);
+    
+    if (isIOS) {
+      console.log('📱 iOS device detected');
+      if (isStandalone) {
+        console.log('✅ Running as PWA (home screen app)');
+      } else {
+        console.log('⚠️ Running in Safari browser (not PWA)');
+      }
+    }
+
     // Check if service worker is registered
     const registration = await navigator.serviceWorker.getRegistration();
     if (!registration) {
       console.error('❌ Service worker not registered. Please refresh the page.');
       return null;
     }
-    console.log('✅ Service worker registered');
+    console.log('✅ Service worker registered:', registration.scope);
 
     // Request permission
     console.log('📢 Requesting notification permission...');
@@ -59,6 +72,13 @@ export async function requestNotificationPermission(): Promise<string | null> {
 
     // Get registration token
     console.log('🔑 Requesting FCM token...');
+    
+    // For iOS, we might need to wait a bit for service worker to be fully ready
+    if (isIOS) {
+      console.log('⏳ Waiting for iOS service worker to be ready...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     const token = await getToken(messaging, {
       vapidKey: vapidKey,
       serviceWorkerRegistration: registration
@@ -74,6 +94,16 @@ export async function requestNotificationPermission(): Promise<string | null> {
   } catch (error: any) {
     console.error('❌ Error getting notification permission:', error);
     console.error('Error details:', error.message, error.code);
+    
+    // iOS-specific error handling
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+      console.error('📱 iOS Error - Common issues:');
+      console.error('1. Make sure you added the app to home screen');
+      console.error('2. iOS 16.4+ is required for web push');
+      console.error('3. Service worker scope might be incorrect');
+      console.error('4. Try closing and reopening the PWA');
+    }
+    
     return null;
   }
 }
