@@ -14,6 +14,12 @@ interface Team {
   name: string;
   logoUrl?: string;
   balance: number;
+  // Dual currency fields
+  currencySystem?: string;
+  footballBudget?: number;
+  realPlayerBudget?: number;
+  footballSpent?: number;
+  realPlayerSpent?: number;
   // Contract fields
   skipped_seasons?: number;
   penalty_amount?: number;
@@ -41,6 +47,7 @@ export default function AllTeamsPage() {
   const [seasonName, setSeasonName] = useState('');
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [maxPlayers, setMaxPlayers] = useState(25); // Default to 25
+  const [seasonType, setSeasonType] = useState<'single' | 'multi'>('single');
   const [error, setError] = useState('');
 
   // Fetch all team seasons for the season (cached, only after we have seasonId)
@@ -84,6 +91,12 @@ export default function AllTeamsPage() {
             nonCompletedSeasonIds.push(doc.id);
           }
         });
+        
+        // Store the season type for the target season
+        const getSeasonType = (sid: string): 'single' | 'multi' => {
+          const season = seasonsSnapshot.docs.find(doc => doc.id === sid);
+          return (season?.data() as Season)?.type || 'single';
+        };
 
         // Get active season
         let targetSeasonId = null;
@@ -92,6 +105,7 @@ export default function AllTeamsPage() {
           const seasonData = seasonsMap.get(targetSeasonId);
           setSeasonName(seasonData?.name || 'Current Season');
           setMaxPlayers(seasonData?.maxPlayers || 25);
+          setSeasonType(getSeasonType(targetSeasonId));
         } else if (seasonsSnapshot.size > 0) {
           // Fallback: use the first active season
           const firstActiveSeason = seasonsSnapshot.docs.find(doc => doc.data().isActive === true);
@@ -100,12 +114,14 @@ export default function AllTeamsPage() {
             const seasonData = seasonsMap.get(targetSeasonId);
             setSeasonName(seasonData?.name || 'Current Season');
             setMaxPlayers(seasonData?.maxPlayers || 25);
+            setSeasonType(getSeasonType(targetSeasonId));
           } else {
             const firstSeason = seasonsSnapshot.docs[0];
             targetSeasonId = firstSeason.id;
             const seasonData = seasonsMap.get(targetSeasonId);
             setSeasonName(seasonData?.name || 'Season');
             setMaxPlayers(seasonData?.maxPlayers || 25);
+            setSeasonType(getSeasonType(targetSeasonId));
           }
         }
 
@@ -144,6 +160,12 @@ export default function AllTeamsPage() {
               name: teamSeasonData.team_name || 'Unknown Team',
               logoUrl: teamSeasonData.team_logo || undefined,
               balance: teamSeasonData.budget || 0,
+              // Dual currency fields
+              currencySystem: teamSeasonData.currency_system || 'single',
+              footballBudget: teamSeasonData.football_budget || 0,
+              realPlayerBudget: teamSeasonData.real_player_budget || 0,
+              footballSpent: teamSeasonData.football_spent || 0,
+              realPlayerSpent: teamSeasonData.real_player_spent || 0,
               // Contract fields
               skipped_seasons: teamSeasonData.skipped_seasons,
               penalty_amount: teamSeasonData.penalty_amount,
@@ -296,18 +318,54 @@ export default function AllTeamsPage() {
                       </svg>
                       {teamData.totalPlayers}/{maxPlayers}
                     </span>
-                    <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
-                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      £{teamData.totalValue.toLocaleString()}
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
-                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                      £{teamData.team.balance.toLocaleString()} left
-                    </span>
+                    
+                    {seasonType === 'multi' || teamData.team.currencySystem === 'dual' ? (
+                      <>
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          €{(teamData.team.footballSpent || 0).toLocaleString()}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          ${(teamData.team.realPlayerSpent || 0).toLocaleString()}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        £{teamData.totalValue.toLocaleString()}
+                      </span>
+                    )}
+                    
+                    {seasonType === 'multi' || teamData.team.currencySystem === 'dual' ? (
+                      <>
+                        <span className="inline-flex items-center rounded-full bg-indigo-100 px-3 py-1 text-sm font-medium text-indigo-800">
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                          €{(teamData.team.footballBudget || 0).toLocaleString()}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                          ${(teamData.team.realPlayerBudget || 0).toLocaleString()}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        £{teamData.team.balance.toLocaleString()} left
+                      </span>
+                    )}
                   </div>
 
                   {/* Average Rating */}
