@@ -17,6 +17,8 @@ export const ID_PREFIXES = {
   TIEBREAKER: 'SSPSLTR',
   BULK_ROUND: 'SSPSLFBR',
   BULK_TIEBREAKER: 'SSPSLBT',
+  OWNER: 'SSPSO',
+  MANAGER: 'SSPSM',
 } as const;
 
 export const ID_PADDING = {
@@ -25,6 +27,8 @@ export const ID_PADDING = {
   TIEBREAKER: 5,
   BULK_ROUND: 5,
   BULK_TIEBREAKER: 5,
+  OWNER: 4,
+  MANAGER: 4,
 } as const;
 
 /**
