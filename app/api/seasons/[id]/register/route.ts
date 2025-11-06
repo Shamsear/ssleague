@@ -56,14 +56,64 @@ export async function POST(
     // Get team name to check for existing team
     const teamName = userData.teamName || userData.username || 'Team';
     
-    // First check if team already exists to get correct team ID
+    // Check if team already exists by owner_uid
     const existingTeamQuery = await adminDb.collection('teams')
-      .where('team_name', '==', teamName)
+      .where('owner_uid', '==', userId)
       .limit(1)
       .get();
     
-    // Use existing team ID or userId as fallback
-    let teamDocId = !existingTeamQuery.empty ? existingTeamQuery.docs[0].id : userId;
+    let teamDocId: string;
+    
+    if (!existingTeamQuery.empty) {
+      // Use existing team ID
+      teamDocId = existingTeamQuery.docs[0].id;
+      console.log(`✅ Found existing team: ${teamDocId} for user ${userId}`);
+    } else {
+      // No team document exists - generate proper team ID
+      // This should not happen if registration flow is working correctly
+      console.warn(`⚠️ No team document found for user ${userId}, creating one...`);
+      
+      // Generate team ID by checking latest team
+      const teamsQuery = await adminDb.collection('teams')
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get();
+      
+      let nextCounter = 1;
+      if (!teamsQuery.empty) {
+        const lastId = teamsQuery.docs[0].id;
+        const numericPart = lastId.replace(/\D/g, '');
+        if (numericPart) {
+          const lastCounter = parseInt(numericPart, 10);
+          if (!isNaN(lastCounter)) {
+            nextCounter = lastCounter + 1;
+          }
+        }
+      }
+      
+      teamDocId = `SSPSLT${nextCounter.toString().padStart(4, '0')}`;
+      console.log(`🆕 Generated new team ID: ${teamDocId}`);
+      
+      // Create the team document now
+      await adminDb.collection('teams').doc(teamDocId).set({
+        id: teamDocId,
+        team_name: teamName,
+        teamName: teamName,
+        owner_name: userData.username || '',
+        owner_uid: userId,
+        username: userData.username || '',
+        userEmail: userData.email || '',
+        role: 'team',
+        is_active: true,
+        is_approved: userData.isApproved || false,
+        seasons: [],
+        current_season_id: '',
+        performance_history: {},
+        players: [],
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
     
     // Check if team has already made a decision for this season
     let teamSeasonId = `${teamDocId}_${seasonId}`;
