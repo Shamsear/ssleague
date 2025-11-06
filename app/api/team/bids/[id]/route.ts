@@ -35,7 +35,19 @@ export async function DELETE(
 
     const { id: bidId } = await params;
 
-    const teamId = userId;
+    // Get team_id from teams table using Firebase UID
+    const teamResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1
+    `;
+
+    if (teamResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found' },
+        { status: 404 }
+      );
+    }
+
+    const teamId = teamResult[0].id;
 
     // Handle temporary/optimistic IDs from client-side
     if (bidId.startsWith('temp-')) {
