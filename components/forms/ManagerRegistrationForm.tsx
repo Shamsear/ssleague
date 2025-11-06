@@ -60,6 +60,15 @@ export default function ManagerRegistrationForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cleanup blob URL on unmount or when photo changes
+  useEffect(() => {
+    return () => {
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
+
   // Fetch team players when component mounts
   useEffect(() => {
     const fetchPlayers = async () => {
@@ -105,6 +114,11 @@ export default function ManagerRegistrationForm({
     if (file.size > 5 * 1024 * 1024) {
       setError('File size must be less than 5MB');
       return;
+    }
+
+    // Revoke old preview URL before creating new one
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview);
     }
 
     setPhotoFile(file);

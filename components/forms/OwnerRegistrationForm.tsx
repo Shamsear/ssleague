@@ -57,6 +57,15 @@ export default function OwnerRegistrationForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cleanup blob URL on unmount or when photo changes
+  useEffect(() => {
+    return () => {
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
+
   useEffect(() => {
     // Fetch owner_name from Firebase teams collection
     const fetchOwnerName = async () => {
@@ -121,6 +130,11 @@ export default function OwnerRegistrationForm({
     if (file.size > 5 * 1024 * 1024) {
       setError('File size must be less than 5MB');
       return;
+    }
+
+    // Revoke old preview URL before creating new one
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview);
     }
 
     setPhotoFile(file);
