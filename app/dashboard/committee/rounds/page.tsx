@@ -222,6 +222,20 @@ export default function RoundsManagementPage() {
             setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
           });
         }
+
+        // Fetch submission status for active rounds
+        const activeRounds = data.filter((r: Round) => r.status === 'active');
+        activeRounds.forEach(async (r: Round) => {
+          try {
+            const subResponse = await fetchWithTokenRefresh(`/api/admin/rounds/${r.id}/submissions`);
+            const subData = await subResponse.json();
+            if (subData.success) {
+              setRoundSubmissions(prev => ({ ...prev, [r.id]: subData.stats }));
+            }
+          } catch (err) {
+            console.error(`Error fetching submissions for round ${r.id}:`, err);
+          }
+        });
       }
       
       // Process tiebreakers
@@ -269,6 +283,7 @@ export default function RoundsManagementPage() {
       if (
         message.type === 'bid_placed' ||
         message.type === 'bid_cancelled' ||
+        message.type === 'bid_submitted' ||
         message.type === 'round_finalized' ||
         message.type === 'round_updated' ||
         message.type === 'round_status_changed'
