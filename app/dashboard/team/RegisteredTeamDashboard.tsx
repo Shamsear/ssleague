@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import ContractInfo from '@/components/ContractInfo';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import NotificationButton from '@/components/notifications/NotificationButton';
 
 // Position constants
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -155,6 +156,7 @@ interface DashboardData {
   activeBulkRounds: BulkRound[];
   roundResults: RoundResult[];
   seasonParticipation?: SeasonParticipation;
+  hasFantasyTeam?: boolean;
   stats: {
     playerCount: number;
     balance: number;
@@ -182,7 +184,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<{ [key: string]: number }>({});
   const [bulkTimeRemaining, setBulkTimeRemaining] = useState<{ [key: number]: number }>({});
-  const [activeTab, setActiveTab] = useState<'auctions' | 'squad' | 'results' | 'overview'>('auctions');
+  const [activeTab, setActiveTab] = useState<'auctions' | 'squad' | 'results' | 'overview' | 'fantasy'>('auctions');
   const [selectedPosition, setSelectedPosition] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [bidSearchTerm, setBidSearchTerm] = useState('');
@@ -616,6 +618,17 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             )}
           </div>
 
+          {/* Notification Button */}
+          <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-white/20">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">Push Notifications</h3>
+                <p className="text-xs text-gray-600">Get real-time updates about auctions, matches, and results</p>
+              </div>
+              <NotificationButton />
+            </div>
+          </div>
+
           {/* Contract Info Banner */}
           {team.contract_id && (
             <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-white/20">
@@ -918,6 +931,18 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             >
               <span className="whitespace-nowrap">📈 Overview</span>
             </button>
+            {dashboardData?.hasFantasyTeam && (
+              <button
+                onClick={() => setActiveTab('fantasy')}
+                className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${
+                  activeTab === 'fantasy'
+                    ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
+                    : 'text-gray-600 hover:bg-white/50'
+                } rounded-t-2xl sm:rounded-t-3xl`}
+              >
+                <span className="whitespace-nowrap">⭐ Fantasy</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1389,6 +1414,100 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                     <div className="text-2xl mb-2">📅</div>
                     <div className="font-medium text-gray-900">Match Schedule</div>
                   </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Fantasy Tab */}
+          {activeTab === 'fantasy' && dashboardData?.hasFantasyTeam && (
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">Fantasy League</h3>
+                <Link
+                  href="/dashboard/team/fantasy/my-team"
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium rounded-xl hover:from-indigo-600 hover:to-purple-600 transition-all text-sm"
+                >
+                  View Full Stats →
+                </Link>
+              </div>
+
+              <p className="text-gray-600 text-sm sm:text-base">
+                You're registered for the fantasy league! Manage your fantasy team, view leaderboards, and compete with other teams.
+              </p>
+
+              {/* Quick Fantasy Links */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                <Link
+                  href="/dashboard/team/fantasy/my-team"
+                  className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-purple-500"
+                >
+                  <div className="text-3xl mb-2">⚽</div>
+                  <div className="font-bold text-gray-900 mb-1">My Fantasy Team</div>
+                  <div className="text-xs sm:text-sm text-gray-600">View your squad and stats</div>
+                </Link>
+
+                <Link
+                  href="/dashboard/team/fantasy/leaderboard"
+                  className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-yellow-500"
+                >
+                  <div className="text-3xl mb-2">🏆</div>
+                  <div className="font-bold text-gray-900 mb-1">Leaderboard</div>
+                  <div className="text-xs sm:text-sm text-gray-600">Check your ranking</div>
+                </Link>
+
+                <Link
+                  href="/dashboard/team/fantasy/draft"
+                  className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-green-500"
+                >
+                  <div className="text-3xl mb-2">➕</div>
+                  <div className="font-bold text-gray-900 mb-1">Draft Players</div>
+                  <div className="text-xs sm:text-sm text-gray-600">Add players to your team</div>
+                </Link>
+
+                <Link
+                  href="/dashboard/team/fantasy/transfers"
+                  className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-blue-500"
+                >
+                  <div className="text-3xl mb-2">🔄</div>
+                  <div className="font-bold text-gray-900 mb-1">Transfers</div>
+                  <div className="text-xs sm:text-sm text-gray-600">Manage your transfers</div>
+                </Link>
+
+                <Link
+                  href="/dashboard/team/fantasy/players"
+                  className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-emerald-500"
+                >
+                  <div className="text-3xl mb-2">🎯</div>
+                  <div className="font-bold text-gray-900 mb-1">Player Performance</div>
+                  <div className="text-xs sm:text-sm text-gray-600">View all player stats</div>
+                </Link>
+
+                <Link
+                  href="/dashboard/team/fantasy/all-teams"
+                  className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-pink-500"
+                >
+                  <div className="text-3xl mb-2">👥</div>
+                  <div className="font-bold text-gray-900 mb-1">All Teams</div>
+                  <div className="text-xs sm:text-sm text-gray-600">View all fantasy teams</div>
+                </Link>
+              </div>
+
+              {/* Info Banner */}
+              <div className="glass-card p-4 sm:p-6 rounded-xl border-l-4 border-indigo-500">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-indigo-100 rounded-lg">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-gray-900 mb-1">About Fantasy League</h4>
+                    <p className="text-sm text-gray-600">
+                      Draft real players from registered teams to build your fantasy squad. Earn points based on their match performance,
+                      including goals, clean sheets, and man of the match awards. Compete with other managers to top the leaderboard!
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

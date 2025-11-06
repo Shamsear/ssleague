@@ -536,6 +536,14 @@ export async function GET(request: NextRequest) {
       ...doc.data(),
     }));
 
+    // Check if team has a fantasy team registered
+    const fantasyTeamsSnapshot = await adminDb
+      .collection('fantasy_teams')
+      .where('user_id', '==', userId)
+      .limit(1)
+      .get();
+    const hasFantasyTeam = !fantasyTeamsSnapshot.empty;
+
     // Fetch round results
     const resultsSnapshot = await adminDb
       .collection('round_results')
@@ -565,6 +573,7 @@ export async function GET(request: NextRequest) {
         activeBulkRounds,
         roundResults,
         seasonParticipation: teamSeasonData,
+        hasFantasyTeam,
         seasonSettings: {
           euro_budget: seasonData?.euro_budget || 10000,
           dollar_budget: seasonData?.dollar_budget || 5000,

@@ -10,6 +10,7 @@ import { QueryProvider } from "@/contexts/QueryProvider";
 import { TournamentProvider } from "@/contexts/TournamentContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { Analytics } from "@vercel/analytics/next";
+import RegisterServiceWorker from "./register-sw";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,6 +58,7 @@ export default function RootLayout({
             <TeamRegistrationProvider>
               <TournamentProvider>
                 <LanguageProvider>
+                  <RegisterServiceWorker />
                   <Navbar />
                   <main className="flex-grow">
                     {children}
