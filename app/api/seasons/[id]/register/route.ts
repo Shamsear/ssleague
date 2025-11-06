@@ -53,30 +53,46 @@ export async function POST(
 
     const userData = userDoc.data()!;
 
-    // Get team name to check for existing team
+    // Get team name and team ID from user data
     const teamName = userData.teamName || userData.username || 'Team';
+    const teamId = userData.teamId; // User document should have teamId field
     
-    // Check if team already exists by owner_uid
-    const existingTeamQuery = await adminDb.collection('teams')
-      .where('owner_uid', '==', userId)
-      .limit(1)
-      .get();
-    
+    // Check if team document exists
     let teamDocId: string;
+    let existingTeamQuery: any = { empty: true };
     
-    if (!existingTeamQuery.empty) {
-      // Use existing team ID
-      teamDocId = existingTeamQuery.docs[0].id;
-      console.log(`✅ Found existing team: ${teamDocId} for user ${userId}`);
-      console.log(`📋 Will create team_season document: ${teamDocId}_${seasonId}`);
-    } else {
-      // No team document exists - this should NOT happen during season registration
-      // Teams must be created during initial signup, not during season registration
-      console.error(`❌ No team document found for user ${userId}`);
-      return NextResponse.json({
-        success: false,
-        message: 'Team not found. Please complete team registration first.',
-      }, { status: 404 });
+    if (teamId) {
+      // Try to get team document by teamId from user data
+      const teamDoc = await adminDb.collection('teams').doc(teamId).get();
+      if (teamDoc.exists) {
+        teamDocId = teamId;
+        existingTeamQuery = { empty: false, docs: [teamDoc] };
+        console.log(`✅ Found existing team: ${teamDocId} for user ${userId}`);
+        console.log(`📋 Will create team_season document: ${teamDocId}_${seasonId}`);
+      }
+    }
+    
+    if (!teamId || existingTeamQuery.empty) {
+      // Fallback: Try to find team by owner_uid
+      const teamQuery = await adminDb.collection('teams')
+        .where('owner_uid', '==', userId)
+        .limit(1)
+        .get();
+      
+      if (!teamQuery.empty) {
+        teamDocId = teamQuery.docs[0].id;
+        existingTeamQuery = teamQuery;
+        console.log(`✅ Found existing team by owner_uid: ${teamDocId} for user ${userId}`);
+        console.log(`📋 Will create team_season document: ${teamDocId}_${seasonId}`);
+      } else {
+        // No team document exists - this should NOT happen during season registration
+        // Teams must be created during initial signup, not during season registration
+        console.error(`❌ No team document found for user ${userId}`);
+        return NextResponse.json({
+          success: false,
+          message: 'Team not found. Please complete team registration first.',
+        }, { status: 404 });
+      }
     }
     
     // Check if team has already made a decision for this season
