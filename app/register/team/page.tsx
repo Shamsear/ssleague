@@ -494,7 +494,6 @@ function SeasonRegistrationContent() {
                   
                   <OwnerRegistrationForm
                     teamId={user.uid}
-                    seasonId={seasonId || undefined}
                     userId={user.uid}
                     userName={user.displayName || user.teamName || ''}
                     userEmail={user.email || ''}
