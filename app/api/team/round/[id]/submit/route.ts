@@ -1,0 +1,207 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminAuth } from '@/lib/firebase/admin';
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const token = await getAuthToken(request);
+
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Verify Firebase ID token
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(token);
+    } catch (error) {
+      console.error('Token verification error:', error);
+      return NextResponse.json(
+        { success: false, error: 'Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const userId = decodedToken.uid;
+    const { id: roundId } = await params;
+
+    const sql = getTournamentDb();
+
+    // Get team_id from teams table
+    const teamResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1
+    `;
+
+    if (teamResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found' },
+        { status: 404 }
+      );
+    }
+
+    const teamId = teamResult[0].id;
+
+    // Check if round exists and is active
+    const roundResult = await sql`
+      SELECT id, position, max_bids_per_team, status, end_time
+      FROM rounds
+      WHERE id = ${roundId}
+    `;
+
+    if (roundResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Round not found' },
+        { status: 404 }
+      );
+    }
+
+    const round = roundResult[0];
+
+    if (round.status !== 'active') {
+      return NextResponse.json(
+        { success: false, error: 'Round is not active' },
+        { status: 400 }
+      );
+    }
+
+    // Check if round has ended
+    const now = new Date();
+    const endTime = new Date(round.end_time);
+    if (now > endTime) {
+      return NextResponse.json(
+        { success: false, error: 'Round has ended' },
+        { status: 400 }
+      );
+    }
+
+    // Get team's bids for this round
+    const bidsResult = await sql`
+      SELECT id FROM bids
+      WHERE team_id = ${teamId}
+      AND round_id = ${roundId}
+      AND status = 'active'
+    `;
+
+    const bidCount = bidsResult.length;
+
+    // Validate bid count matches required amount
+    if (bidCount !== round.max_bids_per_team) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `You must place exactly ${round.max_bids_per_team} bids. You currently have ${bidCount} bid(s).` 
+        },
+        { status: 400 }
+      );
+    }
+
+    // Insert or update submission
+    const submissionResult = await sql`
+      INSERT INTO bid_submissions (
+        team_id,
+        round_id,
+        bid_count,
+        is_locked,
+        submitted_at,
+        updated_at
+      ) VALUES (
+        ${teamId},
+        ${roundId},
+        ${bidCount},
+        true,
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (team_id, round_id)
+      DO UPDATE SET
+        bid_count = ${bidCount},
+        is_locked = true,
+        submitted_at = NOW(),
+        updated_at = NOW()
+      RETURNING *
+    `;
+
+    return NextResponse.json({
+      success: true,
+      message: 'Bids submitted successfully',
+      data: submissionResult[0],
+    });
+  } catch (error: any) {
+    console.error('Error submitting bids:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Unlock submission (allow modifications)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const token = await getAuthToken(request);
+
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(token);
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const userId = decodedToken.uid;
+    const { id: roundId } = await params;
+
+    const sql = getTournamentDb();
+
+    // Get team_id
+    const teamResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1
+    `;
+
+    if (teamResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found' },
+        { status: 404 }
+      );
+    }
+
+    const teamId = teamResult[0].id;
+
+    // Delete submission (unlock bids)
+    await sql`
+      DELETE FROM bid_submissions
+      WHERE team_id = ${teamId}
+      AND round_id = ${roundId}
+    `;
+
+    return NextResponse.json({
+      success: true,
+      message: 'Submission unlocked - you can now modify your bids',
+    });
+  } catch (error: any) {
+    console.error('Error unlocking submission:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

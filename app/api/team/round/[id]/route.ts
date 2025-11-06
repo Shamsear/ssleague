@@ -315,6 +315,18 @@ export async function GET(
     const completedRounds = parseInt(roundsProgressResult[0]?.completed_rounds || '0');
     const totalRounds = parseInt(roundsProgressResult[0]?.total_rounds || '0');
 
+    // Check if team has submitted bids for this round
+    const submissionResult = await sql`
+      SELECT submitted_at, is_locked, bid_count
+      FROM bid_submissions
+      WHERE team_id = ${teamId}
+      AND round_id = ${roundId}
+      LIMIT 1
+    `;
+
+    const hasSubmitted = submissionResult.length > 0;
+    const submissionData = hasSubmitted ? submissionResult[0] : null;
+
     return NextResponse.json({
       success: true,
       round: {
@@ -330,6 +342,11 @@ export async function GET(
       teamBalance,
       completedRounds,
       totalRounds,
+      submission: submissionData ? {
+        submitted_at: submissionData.submitted_at,
+        is_locked: submissionData.is_locked,
+        bid_count: submissionData.bid_count,
+      } : null,
     });
   } catch (error) {
     console.error('Error fetching round data:', error);
