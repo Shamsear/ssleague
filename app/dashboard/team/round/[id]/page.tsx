@@ -76,6 +76,8 @@ export default function TeamRoundPage() {
   // UI State
   const [searchTerm, setSearchTerm] = useState('');
   const [timeRemaining, setTimeRemaining] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   // Extract data from React Query result
   const round = roundData?.round;
@@ -86,6 +88,9 @@ export default function TeamRoundPage() {
   const teamBalance = roundData?.teamBalance || 0;
   const completedRounds = roundData?.completedRounds || 0;
   const totalRounds = roundData?.totalRounds || 0;
+  const submission = roundData?.submission || null;
+  const hasSubmitted = !!submission;
+  const isLocked = submission?.is_locked || false;
 
   // Auth guard
   useEffect(() => {
@@ -225,6 +230,92 @@ export default function TeamRoundPage() {
         title: 'Cancel Failed',
         message: error.message || 'Failed to cancel bid'
       });
+    }
+  };
+
+  // Submit bids
+  const handleSubmitBids = async () => {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Submit Bids',
+      message: `Are you sure you want to submit your ${myBids.length} bid(s)? After submission, you won't be able to modify them unless you unlock.`,
+      confirmText: 'Yes, Submit',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/team/round/${roundId}/submit`, {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to submit bids');
+      }
+
+      showAlert({
+        type: 'success',
+        title: 'Bids Submitted',
+        message: 'Your bids have been submitted successfully!'
+      });
+
+      // Refetch round data to update submission status
+      refetchRoundData();
+    } catch (error: any) {
+      showAlert({
+        type: 'error',
+        title: 'Submission Failed',
+        message: error.message || 'Failed to submit bids'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Unlock bids for modification
+  const handleUnlockBids = async () => {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Unlock Bids',
+      message: 'Are you sure you want to unlock your bids? You will need to submit them again.',
+      confirmText: 'Yes, Unlock',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) return;
+
+    setIsUnlocking(true);
+    try {
+      const response = await fetch(`/api/team/round/${roundId}/submit`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to unlock bids');
+      }
+
+      showAlert({
+        type: 'success',
+        title: 'Bids Unlocked',
+        message: 'You can now modify your bids. Remember to submit again!'
+      });
+
+      // Refetch round data to update submission status
+      refetchRoundData();
+    } catch (error: any) {
+      showAlert({
+        type: 'error',
+        title: 'Unlock Failed',
+        message: error.message || 'Failed to unlock bids'
+      });
+    } finally {
+      setIsUnlocking(false);
     }
   };
 
@@ -393,6 +484,32 @@ export default function TeamRoundPage() {
             </div>
           </div>
 
+          {/* Submission Status Banner */}
+          {hasSubmitted && isLocked && (
+            <div className="mb-4 p-4 bg-green-50 border-2 border-green-200 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-green-100 p-2 rounded-full">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-green-800">Bids Submitted</p>
+                    <p className="text-sm text-green-600">Your bids are locked and submitted</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleUnlockBids}
+                  disabled={isUnlocking}
+                  className="px-4 py-2 bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  {isUnlocking ? 'Unlocking...' : 'Unlock to Modify'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Your Selected Players */}
           <div className="mb-6">
             <h4 className="font-medium text-dark mb-3 flex items-center">
@@ -400,6 +517,11 @@ export default function TeamRoundPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Your Selected Players
+              {hasSubmitted && (
+                <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full font-medium">
+                  Submitted
+                </span>
+              )}
             </h4>
 
             {myBids.length > 0 ? (
@@ -471,6 +593,42 @@ export default function TeamRoundPage() {
             ) : (
               <div className="glass-card p-4 rounded-xl backdrop-blur-sm bg-white/30 border border-white/10 text-center">
                 <span className="text-sm text-gray-500">You haven't placed any bids in this round yet</span>
+              </div>
+            )}
+
+            {/* Submit Bids Button */}
+            {!hasSubmitted && bidCount === round.max_bids_per_team && (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-100 p-2 rounded-full">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-blue-800">Ready to Submit</p>
+                      <p className="text-sm text-blue-600">You've placed all {round.max_bids_per_team} required bids</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSubmitBids}
+                    disabled={isSubmitting}
+                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg"
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Submitting...
+                      </span>
+                    ) : (
+                      'Submit Bids'
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>

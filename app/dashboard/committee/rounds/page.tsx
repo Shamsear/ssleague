@@ -60,6 +60,7 @@ export default function RoundsManagementPage() {
   const [expandedRounds, setExpandedRounds] = useState<Set<string>>(new Set());
   const [expandedPlayers, setExpandedPlayers] = useState<Set<string>>(new Set());
   const [roundDetails, setRoundDetails] = useState<{[key: string]: any}>({});
+  const [roundSubmissions, setRoundSubmissions] = useState<{[key: string]: any}>({});
   const timerRefs = useRef<{[key: string]: NodeJS.Timeout}>({});
   const previousRoundsRef = useRef<string>('');
 
@@ -134,8 +135,22 @@ export default function RoundsManagementPage() {
           setRounds(roundsData);
           
           // Initialize add time inputs for active rounds
-          roundsData.filter((r: Round) => r.status === 'active').forEach((r: Round) => {
+          const activeRounds = roundsData.filter((r: Round) => r.status === 'active');
+          activeRounds.forEach((r: Round) => {
             setAddTimeInputs(prev => ({ ...prev, [r.id]: prev[r.id] || '10' }));
+          });
+
+          // Fetch submission status for active rounds
+          activeRounds.forEach(async (r: Round) => {
+            try {
+              const subResponse = await fetchWithTokenRefresh(`/api/admin/rounds/${r.id}/submissions`);
+              const subData = await subResponse.json();
+              if (subData.success) {
+                setRoundSubmissions(prev => ({ ...prev, [r.id]: subData.stats }));
+              }
+            } catch (err) {
+              console.error(`Error fetching submissions for round ${r.id}:`, err);
+            }
           });
         }
       }
@@ -895,6 +910,45 @@ export default function RoundsManagementPage() {
                         </button>
                       </div>
                       
+                      {/* Submission Status */}
+                      {roundSubmissions[round.id] && (
+                        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div>
+                                <h4 className="font-semibold text-blue-800">Bid Submissions</h4>
+                                <p className="text-sm text-blue-600">
+                                  {roundSubmissions[round.id].submitted} of {roundSubmissions[round.id].total_teams} teams submitted ({roundSubmissions[round.id].submission_rate}%)
+                                </p>
+                              </div>
+                            </div>
+                            <Link
+                              href={`/dashboard/committee/rounds/${round.id}`}
+                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              View Details
+                            </Link>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <div className="flex-1 bg-white p-3 rounded-lg border border-blue-200">
+                              <div className="text-xs text-blue-600 mb-1">Submitted</div>
+                              <div className="text-2xl font-bold text-green-600">{roundSubmissions[round.id].submitted}</div>
+                            </div>
+                            <div className="flex-1 bg-white p-3 rounded-lg border border-blue-200">
+                              <div className="text-xs text-blue-600 mb-1">Pending</div>
+                              <div className="text-2xl font-bold text-orange-600">{roundSubmissions[round.id].pending}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Tiebreakers Section - Show when round has tiebreakers */}
                       {roundTiebreakers[round.id] && roundTiebreakers[round.id].length > 0 && (
                         <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
