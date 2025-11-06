@@ -196,24 +196,30 @@ export const signIn = async (
   rememberMe: boolean = false
 ): Promise<{ user: User; firebaseUser: FirebaseUser }> => {
   try {
-    // Always use local persistence to keep users logged in across tabs
-    // The rememberMe parameter is kept for backwards compatibility but doesn't affect persistence
+    // Set persistence before signing in
     const { setPersistence, browserLocalPersistence } = await import('firebase/auth');
     await setPersistence(auth, browserLocalPersistence);
     
+    // Sign in to Firebase
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    
+    // Get user document
     const user = await getUserDocument(userCredential.user.uid);
 
     if (!user) {
+      await firebaseSignOut(auth);
       throw new Error('User document not found');
     }
 
     if (!user.isActive) {
+      await firebaseSignOut(auth);
       throw new Error('Account is deactivated. Please contact support.');
     }
 
-    // Check approval status (only teams need approval, admins are auto-approved)
+    // Check approval status (only teams need approval)
+    // Note: AuthContext will also check this and sign out if needed
     if (user.role === 'team' && !user.isApproved) {
+      await firebaseSignOut(auth);
       throw new Error('Your account is pending approval from the super admin. Please wait for approval before logging in.');
     }
 

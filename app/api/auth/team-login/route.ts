@@ -59,6 +59,10 @@ export async function POST(request: NextRequest) {
           
           // Check if team is approved (teams require super admin approval)
           if (userData.role === 'team' && userData.isApproved === false) {
+            // Sign out the user immediately
+            const auth = getAuth();
+            await auth.signOut();
+            
             return NextResponse.json(
               { success: false, error: 'Your account is pending approval from the super admin. Please wait for approval before logging in.' },
               { status: 403 }

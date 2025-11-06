@@ -99,14 +99,33 @@ function RegisterContent() {
         additionalData
       );
       
-      // For teams, they need approval before they can log in
-      // Log them out and redirect to pending approval page
-      if (role === 'team') {
-        // Log out immediately after registration
+      // For teams, create team document BEFORE signing out
+      if (role === 'team' && firebaseUser) {
+        // Create team document
+        await fetch('/api/teams/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: firebaseUser.uid,
+            email,
+            username,
+            teamName: teamName || username,
+          }),
+        }).catch((teamError) => {
+          console.error('Failed to create team document:', teamError);
+        });
+        
+        // Upload team logo if provided
+        if (teamLogo) {
+          await uploadTeamLogo(firebaseUser.uid, teamLogo).catch((logoError) => {
+            console.error('Logo upload failed:', logoError);
+          });
+        }
+        
+        // Now log out and redirect to pending approval page
         const { signOut } = await import('@/lib/firebase/auth');
         await signOut();
         
-        // Redirect to pending approval page
         router.push('/register/pending-approval');
         return;
       }

@@ -106,6 +106,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await new Promise(resolve => setTimeout(resolve, 100));
           
           const userData = await getUserDocument(firebaseUser.uid);
+          
+          // Check if user is approved (only teams need approval)
+          if (userData && userData.role === 'team' && !userData.isApproved) {
+            console.warn('User is not approved, signing out...');
+            setUser(null);
+            setFirebaseUser(null);
+            setLoading(false);
+            // Import signOut dynamically to avoid circular dependency
+            const { signOut } = await import('@/lib/firebase/auth');
+            await signOut();
+            return;
+          }
+          
           setUser(userData);
         } catch (err: any) {
           console.error('Error fetching user data:', err);
