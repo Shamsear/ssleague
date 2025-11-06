@@ -30,7 +30,6 @@ export async function GET(
         category,
         star_rating,
         points,
-        jersey_number,
         registration_status
       FROM player_seasons
       WHERE team_id = ${teamId} 
@@ -74,7 +73,6 @@ export async function GET(
         nationality: details.nationality,
         is_active: details.is_active !== false,
         is_available: details.is_available !== false,
-        jersey_number: ps.jersey_number,
         category: ps.category,
         star_rating: ps.star_rating,
         points: ps.points,
