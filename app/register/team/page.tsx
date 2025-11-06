@@ -32,7 +32,6 @@ function SeasonRegistrationContent() {
   
   // Phase 1: New state for registration form
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
-  const [managerName, setManagerName] = useState('');
   const [joinFantasy, setJoinFantasy] = useState(false);
   
   const {
@@ -198,9 +197,6 @@ function SeasonRegistrationContent() {
   const handleRegistrationSubmit = async () => {
     if (!season || isSubmitting || !user) return;
 
-    // Validation: Manager name is optional, but let's trim it
-    const trimmedManagerName = managerName.trim();
-
     setIsSubmitting(true);
 
     try {
@@ -212,7 +208,6 @@ function SeasonRegistrationContent() {
         body: JSON.stringify({
           action: 'join',
           userId: user.uid,
-          managerName: trimmedManagerName || undefined,
           joinFantasy: joinFantasy,
         }),
       });
@@ -495,22 +490,6 @@ function SeasonRegistrationContent() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">Complete Your Registration</h3>
                   
                   <div className="space-y-6">
-                    {/* Manager Name Input */}
-                    <div>
-                      <label htmlFor="managerName" className="block text-sm font-semibold text-gray-700 mb-2">
-                        Manager Name (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        id="managerName"
-                        value={managerName}
-                        onChange={(e) => setManagerName(e.target.value)}
-                        placeholder="Enter your name"
-                        className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all"
-                      />
-                      <p className="text-xs text-gray-500 mt-2">This is for your personal reference and won't be publicly displayed</p>
-                    </div>
-
                     {/* Fantasy League Opt-in */}
                     <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-6 border border-purple-200">
                       <div className="flex items-start">
