@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { uploadImage } from '@/lib/imagekit/upload';
 
 interface OwnerRegistrationFormProps {
   teamId: string;
   seasonId?: string;
   userId: string;
+  userName?: string;
+  userEmail?: string;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -27,12 +29,14 @@ export default function OwnerRegistrationForm({
   teamId,
   seasonId,
   userId,
+  userName,
+  userEmail,
   onSuccess,
   onCancel,
 }: OwnerRegistrationFormProps) {
   const [formData, setFormData] = useState<OwnerFormData>({
-    name: '',
-    email: '',
+    name: userName || '',
+    email: userEmail || '',
     phone: '',
     dateOfBirth: '',
     place: '',
@@ -41,16 +45,34 @@ export default function OwnerRegistrationForm({
     instagramHandle: '',
     twitterHandle: '',
   });
+  const [initialName, setInitialName] = useState(userName || '');
+  const [nameChanged, setNameChanged] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Update initial values when userName/userEmail props change
+    if (userName && !formData.name) {
+      setFormData(prev => ({ ...prev, name: userName }));
+      setInitialName(userName);
+    }
+    if (userEmail && !formData.email) {
+      setFormData(prev => ({ ...prev, email: userEmail }));
+    }
+  }, [userName, userEmail]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    
+    // Track if name was changed from initial value
+    if (name === 'name' && value !== initialName) {
+      setNameChanged(true);
+    }
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,6 +165,28 @@ export default function OwnerRegistrationForm({
 
       if (!result.success) {
         throw new Error(result.message || 'Failed to register owner');
+      }
+
+      // Update Firebase displayName if name was changed
+      if (nameChanged && formData.name !== initialName) {
+        try {
+          const updateResponse = await fetch('/api/user/update-profile', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              displayName: formData.name,
+            }),
+          });
+          
+          if (!updateResponse.ok) {
+            console.error('Failed to update Firebase displayName');
+          }
+        } catch (updateError) {
+          console.error('Error updating Firebase displayName:', updateError);
+          // Don't fail the whole operation if this fails
+        }
       }
 
       if (onSuccess) {

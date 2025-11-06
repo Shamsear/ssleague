@@ -496,6 +496,8 @@ function SeasonRegistrationContent() {
                     teamId={user.uid}
                     seasonId={seasonId || undefined}
                     userId={user.uid}
+                    userName={user.displayName || user.teamName || ''}
+                    userEmail={user.email || ''}
                     onSuccess={() => {
                       // After owner registration, complete season registration
                       handleRegistrationSubmit();

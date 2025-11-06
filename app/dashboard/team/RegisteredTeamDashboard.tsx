@@ -716,6 +716,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   teamId={team.id}
                   seasonId={seasonStatus.seasonId!}
                   userId={user?.uid || ''}
+                  userName={user?.displayName || ''}
+                  userEmail={user?.email || ''}
                   onCancel={() => setShowOwnerForm(false)}
                   onSuccess={() => {
                     setShowOwnerForm(false);
