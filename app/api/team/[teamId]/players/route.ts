@@ -4,10 +4,10 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 // GET - Fetch players for a specific team and season
 export async function GET(
   request: NextRequest,
-  { params }: { params: { teamId: string } }
+  { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const { teamId } = params;
+    const { teamId } = await params;
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('seasonId');
 
@@ -37,7 +37,7 @@ export async function GET(
         rp.is_available,
         ps.jersey_number,
         ps.status as player_status
-      FROM realplayers rp
+      FROM real_players rp
       INNER JOIN player_seasons ps ON rp.player_id = ps.player_id
       WHERE ps.team_id = ${teamId} 
         AND ps.season_id = ${seasonId} 
