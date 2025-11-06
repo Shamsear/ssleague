@@ -9,16 +9,7 @@ import { triggerNews } from '@/lib/news/trigger';
 export async function POST(request: NextRequest) {
   try {
     // Get Firebase ID token from cookie or Authorization header
-    const cookieStore = await cookies();
-    let token = cookieStore.get('token')?.value;
-    
-    // Fallback to Authorization header
-    if (!token) {
-      const authHeader = request.headers.get('authorization');
-      if (authHeader?.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-      }
-    }
+    const token = await getAuthToken(request);
 
     if (!token) {
       return NextResponse.json(
