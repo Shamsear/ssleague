@@ -28,6 +28,21 @@ export async function requestNotificationPermission(): Promise<string | null> {
       console.error('❌ This browser does not support notifications');
       return null;
     }
+    
+    // Android Chrome specific checks
+    if (/Android/.test(navigator.userAgent)) {
+      console.log('🤖 Android device detected');
+      console.log('Current URL:', window.location.href);
+      console.log('Protocol:', window.location.protocol);
+      
+      // Check if on HTTPS (required for notifications)
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        console.error('❌ Notifications require HTTPS. Current protocol:', window.location.protocol);
+        throw new Error('Notifications require HTTPS connection');
+      }
+      
+      console.log('✅ HTTPS check passed');
+    }
 
     // Detect iOS Safari
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -94,6 +109,8 @@ export async function requestNotificationPermission(): Promise<string | null> {
   } catch (error: any) {
     console.error('❌ Error getting notification permission:', error);
     console.error('Error details:', error.message, error.code);
+    console.error('Error name:', error.name);
+    console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     
     // iOS-specific error handling
     if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
@@ -104,7 +121,17 @@ export async function requestNotificationPermission(): Promise<string | null> {
       console.error('4. Try closing and reopening the PWA');
     }
     
-    return null;
+    // Android-specific error handling
+    if (/Android/.test(navigator.userAgent)) {
+      console.error('🤖 Android Error - Common issues:');
+      console.error('1. Check if site is on HTTPS (required for notifications)');
+      console.error('2. Check if Firebase config is correct');
+      console.error('3. Check if VAPID key matches Firebase console');
+      console.error('4. Try clearing site data and refreshing');
+      console.error('5. Make sure service worker is active:', await navigator.serviceWorker.getRegistration());
+    }
+    
+    throw error; // Re-throw so the UI can catch and display it
   }
 }
 

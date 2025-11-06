@@ -119,7 +119,25 @@ export default function NotificationButton() {
       }
     } catch (error: any) {
       console.error('❌ Error enabling notifications:', error);
-      alert('Failed to enable notifications: ' + error.message + '\n\nCheck browser console (F12) for more details.');
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to enable notifications: ';
+      
+      if (error.code === 'messaging/permission-blocked') {
+        errorMessage += 'Permission was blocked. Please reset site permissions in Chrome settings.';
+      } else if (error.code === 'messaging/token-subscribe-failed') {
+        errorMessage += 'Failed to subscribe to push notifications. Check your internet connection.';
+      } else if (error.code === 'messaging/token-subscribe-no-token') {
+        errorMessage += 'Could not get notification token. Service worker might not be ready.';
+      } else if (error.message) {
+        errorMessage += error.message;
+      } else {
+        errorMessage += 'Unknown error occurred.';
+      }
+      
+      errorMessage += '\n\nDetails in browser console (3 dots menu → More tools → Developer tools → Console tab)';
+      
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
