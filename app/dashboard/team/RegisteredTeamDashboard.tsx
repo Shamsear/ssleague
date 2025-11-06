@@ -11,6 +11,7 @@ import ContractInfo from '@/components/ContractInfo';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import NotificationButton from '@/components/notifications/NotificationButton';
 import ManagerRegistrationForm from '@/components/forms/ManagerRegistrationForm';
+import OwnerRegistrationForm from '@/components/forms/OwnerRegistrationForm';
 
 // Position constants
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
@@ -243,6 +244,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   const previousDataRef = useRef<string>('');
   const fetchDashboardRef = useRef<(showLoader?: boolean) => Promise<void>>();
   const [showManagerForm, setShowManagerForm] = useState(false);
+  const [showOwnerForm, setShowOwnerForm] = useState(false);
 
   // Fetch dashboard data
   const fetchDashboard = useCallback(async (showLoader = true) => {
@@ -682,6 +684,48 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             </div>
           )}
         </div>
+
+        {/* Owner Registration Prompt */}
+        {!dashboardData?.owner && (
+          <div className="glass rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border-2 border-blue-400 bg-blue-50/50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-full bg-blue-100">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">Register Your Team Owner</h3>
+                  <p className="text-sm text-gray-700">Add your team owner information to complete your team profile.</p>
+                </div>
+              </div>
+              <div className="flex-shrink-0">
+                <button
+                  onClick={() => setShowOwnerForm(true)}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all"
+                >
+                  Add Owner
+                </button>
+              </div>
+            </div>
+
+            {showOwnerForm && (
+              <div className="mt-4 p-4 sm:p-5 rounded-xl border border-blue-200 bg-white">
+                <OwnerRegistrationForm
+                  teamId={team.id}
+                  seasonId={seasonStatus.seasonId!}
+                  userId={user?.uid || ''}
+                  onCancel={() => setShowOwnerForm(false)}
+                  onSuccess={() => {
+                    setShowOwnerForm(false);
+                    fetchDashboardRef.current?.(true);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mandatory Manager Registration Prompt */}
         {players.length > 0 && !dashboardData?.manager && (
