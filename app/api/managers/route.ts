@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
-import { generateId, ID_PREFIXES } from '@/lib/id-utils';
+import { formatId, ID_PREFIXES, ID_PADDING } from '@/lib/id-utils';
 
 // POST - Create new manager
 export async function POST(request: NextRequest) {
@@ -31,15 +31,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = getTournamentDb();
+    const sql = getTournamentDb();
 
     // Check if team already has a manager for this season
-    const existingManager = await db.query(
-      'SELECT * FROM managers WHERE team_id = $1 AND season_id = $2',
-      [teamId, seasonId]
-    );
+    const existingManager = await sql`
+      SELECT * FROM managers 
+      WHERE team_id = ${teamId} 
+      AND season_id = ${seasonId}
+    `;
 
-    if (existingManager.rows.length > 0) {
+    if (existingManager.length > 0) {
       return NextResponse.json(
         {
           success: false,
@@ -50,7 +51,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate unique manager ID
-    const managerId = await generateId(ID_PREFIXES.MANAGER, db, 'managers', 'manager_id');
+    const latestManager = await sql`
+      SELECT manager_id FROM managers
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+
+    let nextCounter = 1;
+    if (latestManager.length > 0) {
+      const lastId = latestManager[0].manager_id;
+      const numericPart = lastId.replace(/\D/g, '');
+      if (numericPart) {
+        const lastCounter = parseInt(numericPart, 10);
+        if (!isNaN(lastCounter)) {
+          nextCounter = lastCounter + 1;
+        }
+      }
+    }
+
+    const managerId = formatId(ID_PREFIXES.MANAGER, nextCounter, ID_PADDING.MANAGER);
 
     // Get player details if playing manager
     let managerData: any = {
@@ -65,26 +84,9 @@ export async function POST(request: NextRequest) {
       created_by: createdBy || null,
     };
 
-    // If playing manager, fetch additional details from real players
-    if (isPlayer && playerId) {
-      const playerResult = await db.query(
-        `SELECT email, phone, date_of_birth, place, photo_url, photo_file_id 
-         FROM real_players 
-         WHERE player_id = $1`,
-        [playerId]
-      );
-
-      if (playerResult.rows.length > 0) {
-        const player = playerResult.rows[0];
-        managerData.email = player.email;
-        managerData.phone = player.phone;
-        managerData.date_of_birth = player.date_of_birth;
-        managerData.place = player.place;
-        managerData.photo_url = player.photo_url;
-        managerData.photo_file_id = player.photo_file_id;
-      }
-    } else {
-      // Non-playing manager details
+    // If playing manager, details are already provided from form
+    // Otherwise, set non-playing manager details
+    if (!isPlayer) {
       managerData.email = email || null;
       managerData.phone = phone || null;
       managerData.date_of_birth = dateOfBirth || null;
@@ -94,36 +96,35 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert manager
-    const result = await db.query(
-      `INSERT INTO managers (
+    const result = await sql`
+      INSERT INTO managers (
         manager_id, team_id, season_id, name, photo_url, photo_file_id,
         player_id, is_player, email, phone, date_of_birth, place,
         nationality, jersey_number, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      RETURNING *`,
-      [
-        managerData.manager_id,
-        managerData.team_id,
-        managerData.season_id,
-        managerData.name,
-        managerData.photo_url,
-        managerData.photo_file_id,
-        managerData.player_id,
-        managerData.is_player,
-        managerData.email,
-        managerData.phone,
-        managerData.date_of_birth,
-        managerData.place,
-        managerData.nationality,
-        managerData.jersey_number,
-        managerData.created_by,
-      ]
-    );
+      ) VALUES (
+        ${managerData.manager_id},
+        ${managerData.team_id},
+        ${managerData.season_id},
+        ${managerData.name},
+        ${managerData.photo_url},
+        ${managerData.photo_file_id},
+        ${managerData.player_id},
+        ${managerData.is_player},
+        ${managerData.email},
+        ${managerData.phone},
+        ${managerData.date_of_birth},
+        ${managerData.place},
+        ${managerData.nationality},
+        ${managerData.jersey_number},
+        ${managerData.created_by}
+      )
+      RETURNING *
+    `;
 
     return NextResponse.json({
       success: true,
       message: 'Manager registered successfully',
-      data: result.rows[0],
+      data: result[0],
     });
   } catch (error: any) {
     console.error('Error creating manager:', error);
@@ -141,28 +142,42 @@ export async function GET(request: NextRequest) {
     const teamId = searchParams.get('teamId');
     const seasonId = searchParams.get('seasonId');
 
-    const db = getTournamentDb();
+    const sql = getTournamentDb();
 
-    let query = 'SELECT * FROM managers WHERE is_active = true';
-    const params: string[] = [];
-
-    if (teamId) {
-      params.push(teamId);
-      query += ` AND team_id = $${params.length}`;
+    let managers;
+    if (teamId && seasonId) {
+      managers = await sql`
+        SELECT * FROM managers 
+        WHERE is_active = true 
+        AND team_id = ${teamId} 
+        AND season_id = ${seasonId}
+        ORDER BY created_at DESC
+      `;
+    } else if (teamId) {
+      managers = await sql`
+        SELECT * FROM managers 
+        WHERE is_active = true 
+        AND team_id = ${teamId}
+        ORDER BY created_at DESC
+      `;
+    } else if (seasonId) {
+      managers = await sql`
+        SELECT * FROM managers 
+        WHERE is_active = true 
+        AND season_id = ${seasonId}
+        ORDER BY created_at DESC
+      `;
+    } else {
+      managers = await sql`
+        SELECT * FROM managers 
+        WHERE is_active = true
+        ORDER BY created_at DESC
+      `;
     }
-
-    if (seasonId) {
-      params.push(seasonId);
-      query += ` AND season_id = $${params.length}`;
-    }
-
-    query += ' ORDER BY created_at DESC';
-
-    const result = await db.query(query, params);
 
     return NextResponse.json({
       success: true,
-      data: result.rows,
+      data: managers,
     });
   } catch (error: any) {
     console.error('Error fetching managers:', error);
