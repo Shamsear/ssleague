@@ -546,24 +546,30 @@ export async function GET(request: NextRequest) {
     const hasFantasyTeam = !fantasyTeamsSnapshot.empty;
 
     // Fetch owner and manager data from tournament database
-    const tournamentDb = getTournamentDb();
+    const tournamentSql = getTournamentDb();
     let ownerData = null;
     let managerData = null;
 
     try {
       // Fetch owner
-      const ownerResult = await tournamentDb.query(
-        `SELECT * FROM owners WHERE team_id = $1 AND season_id = $2 AND is_active = true LIMIT 1`,
-        [dbTeamId, seasonId]
-      );
-      ownerData = ownerResult.rows[0] || null;
+      const ownerResult = await tournamentSql`
+        SELECT * FROM owners 
+        WHERE team_id = ${dbTeamId} 
+        AND season_id = ${seasonId} 
+        AND is_active = true 
+        LIMIT 1
+      `;
+      ownerData = ownerResult[0] || null;
 
       // Fetch manager
-      const managerResult = await tournamentDb.query(
-        `SELECT * FROM managers WHERE team_id = $1 AND season_id = $2 AND is_active = true LIMIT 1`,
-        [dbTeamId, seasonId]
-      );
-      managerData = managerResult.rows[0] || null;
+      const managerResult = await tournamentSql`
+        SELECT * FROM managers 
+        WHERE team_id = ${dbTeamId} 
+        AND season_id = ${seasonId} 
+        AND is_active = true 
+        LIMIT 1
+      `;
+      managerData = managerResult[0] || null;
     } catch (error) {
       console.error('Error fetching owner/manager data:', error);
       // Don't fail the entire request if owner/manager fetch fails
