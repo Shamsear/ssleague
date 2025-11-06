@@ -610,13 +610,36 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <div className="flex-1 min-w-0">
                 <h1 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 mb-1 truncate">{team.name}</h1>
                 {seasonStatus && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                  <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm mb-2">
                     <span className="px-2 sm:px-3 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">{seasonStatus.seasonName}</span>
                     {seasonParticipation && (
                       <span className="px-2 sm:px-3 py-1 rounded-full bg-green-100 text-green-700 font-medium capitalize">{seasonParticipation.status}</span>
                     )}
                   </div>
                 )}
+                {/* Owner and Manager Names */}
+                <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
+                  {dashboardData?.owner && (
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                      </svg>
+                      <span className="text-gray-700">
+                        <span className="font-semibold">Owner:</span> {dashboardData.owner.name}
+                      </span>
+                    </div>
+                  )}
+                  {dashboardData?.manager && (
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span className="text-gray-700">
+                        <span className="font-semibold">Manager:</span> {dashboardData.manager.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -729,7 +752,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
         )}
 
         {/* Mandatory Manager Registration Prompt */}
-        {players.length > 0 && !dashboardData?.manager && (
+        {!dashboardData?.manager && (
           <div className="glass rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border-2 border-green-400 bg-green-50/50">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-start gap-3">
