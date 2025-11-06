@@ -78,6 +78,85 @@ export default function NotificationButton() {
     }
   };
 
+  const handleAddCurrentDevice = async () => {
+    setLoading(true);
+    try {
+      console.log('🔔 Adding current device to notifications...');
+      
+      // Check if notifications are already enabled on this browser
+      const currentPermission = getNotificationPermission();
+      console.log('Current notification permission:', currentPermission);
+      
+      let token: string | null = null;
+      
+      if (currentPermission === 'granted') {
+        // Permission already granted, just get the token
+        console.log('✅ Notification permission already granted, getting token...');
+        token = await requestNotificationPermission();
+      } else if (currentPermission === 'denied') {
+        // Permission denied, user needs to reset in browser settings
+        alert('❌ Notifications are blocked on this browser.\n\nTo enable:\n1. Click the lock icon in address bar\n2. Find "Notifications" setting\n3. Change to "Allow"\n4. Refresh the page and try again');
+        return;
+      } else {
+        // Permission not requested yet (default state)
+        console.log('💬 Requesting notification permission...');
+        token = await requestNotificationPermission();
+      }
+
+      if (token) {
+        console.log('✅ Token received, saving to database...');
+        
+        // Save token to database
+        const response = await fetchWithTokenRefresh('/api/notifications/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fcmToken: token })
+        });
+
+        if (response.ok) {
+          console.log('✅ Token saved successfully!');
+          
+          // Reload devices to show the new one
+          await loadDevices();
+          
+          alert(`✅ ${currentDevice} added successfully! This device will now receive notifications.`);
+        } else {
+          const error = await response.json();
+          console.error('❌ Failed to save token:', error);
+          throw new Error(error.error || 'Failed to save notification token');
+        }
+      } else {
+        console.error('❌ No token received - check browser console for details');
+        alert('❌ Failed to get notification token. Common issues:\n\n1. Service worker not loaded - try refreshing the page\n2. VAPID key not configured\n3. Network firewall blocking Firebase (common on government/corporate networks)\n4. Browser blocked notifications');
+      }
+    } catch (error: any) {
+      console.error('❌ Error adding device:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to add this device: ';
+      
+      if (error.code === 'messaging/permission-blocked') {
+        errorMessage += 'Permission was blocked. Please reset site permissions in browser settings.';
+      } else if (error.code === 'messaging/token-subscribe-failed') {
+        errorMessage += 'Failed to subscribe to push notifications. Check your internet connection.';
+      } else if (error.code === 'messaging/token-subscribe-no-token') {
+        errorMessage += 'Could not get notification token. Service worker might not be ready.';
+      } else if (error.name === 'AbortError' || error.message?.includes('AbortError')) {
+        errorMessage += 'Push service registration failed. This often happens on:\n• Government/corporate networks that block Firebase\n• VPNs or firewalls blocking fcm.googleapis.com\n• VAPID key mismatch\n\nTry from a different network (home WiFi/mobile data).';
+      } else if (error.message) {
+        errorMessage += error.message;
+      } else {
+        errorMessage += 'Unknown error occurred.';
+      }
+      
+      errorMessage += '\n\nCheck browser console (F12) for detailed error information.';
+      
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEnableNotifications = async () => {
     setLoading(true);
     try {
@@ -129,6 +208,8 @@ export default function NotificationButton() {
         errorMessage += 'Failed to subscribe to push notifications. Check your internet connection.';
       } else if (error.code === 'messaging/token-subscribe-no-token') {
         errorMessage += 'Could not get notification token. Service worker might not be ready.';
+      } else if (error.name === 'AbortError' || error.message?.includes('AbortError') || error.message?.includes('push service error')) {
+        errorMessage += 'Push service registration failed. This often happens on:\n• Government/corporate networks that block Firebase\n• VPNs or firewalls blocking fcm.googleapis.com\n• VAPID key mismatch with Firebase Console\n• Internet service provider restrictions\n\nTry from a different network (home WiFi/mobile data) or contact your network administrator.';
       } else if (error.message) {
         errorMessage += error.message;
       } else {
@@ -236,7 +317,7 @@ export default function NotificationButton() {
             {devices.length > 0 ? (
               <>
                 <h4 className="text-sm font-bold text-gray-900 mb-3">Your Devices</h4>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
                   {devices.map((device) => (
                     <div key={device.id} className="flex items-start justify-between gap-2 p-3 bg-gray-50 rounded-lg">
                       <div className="flex-1 min-w-0">
@@ -264,6 +345,29 @@ export default function NotificationButton() {
                       </button>
                     </div>
                   ))}
+                </div>
+                
+                {/* Add This Device Button */}
+                <div className="pt-3 border-t border-gray-200">
+                  <button
+                    onClick={handleAddCurrentDevice}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add This Device ({currentDevice})
+                      </>
+                    )}
+                  </button>
                 </div>
               </>
             ) : (

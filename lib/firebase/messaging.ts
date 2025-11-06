@@ -1,5 +1,6 @@
 import { getMessaging, getToken, onMessage, Messaging } from 'firebase/messaging';
 import { app } from './config';
+import { logDetailedConnectivityInfo } from './connectivity-test';
 
 let messaging: Messaging | null = null;
 
@@ -111,6 +112,18 @@ export async function requestNotificationPermission(): Promise<string | null> {
     console.error('Error details:', error.message, error.code);
     console.error('Error name:', error.name);
     console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    
+    // If it's an AbortError or push service error, run connectivity test
+    if (error.name === 'AbortError' || error.message?.includes('push service') || error.message?.includes('registration failed')) {
+      console.error('❌❌❌ PUSH SERVICE ERROR DETECTED - Running connectivity diagnostics...');
+      console.error('');
+      
+      try {
+        await logDetailedConnectivityInfo();
+      } catch (testError) {
+        console.error('Failed to run connectivity test:', testError);
+      }
+    }
     
     // iOS-specific error handling
     if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
