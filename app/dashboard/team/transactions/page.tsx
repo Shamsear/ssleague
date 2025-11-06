@@ -180,6 +180,9 @@ export default function TransactionsPage() {
     a.href = url;
     a.download = `${currency}_transactions.csv`;
     a.click();
+    
+    // Cleanup blob URL
+    window.URL.revokeObjectURL(url);
   };
 
   const renderCurrencySection = (data: CurrencyData | null, currencyName: string, currencyType: 'football' | 'real_player') => {
