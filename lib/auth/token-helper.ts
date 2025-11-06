@@ -18,5 +18,5 @@ export async function getAuthToken(request: NextRequest): Promise<string | undef
   
   // Fallback to cookie (for server-side pages)
   const cookieStore = await cookies();
-  return cookieStore.get('auth-token')?.value;
+  return cookieStore.get('token')?.value;
 }

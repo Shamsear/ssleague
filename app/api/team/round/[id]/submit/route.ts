@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { getAuctionDb } from '@/lib/neon/auction-config';
 import { getAuthToken } from '@/lib/auth/token-helper';
 import { adminAuth } from '@/lib/firebase/admin';
 
@@ -32,7 +32,7 @@ export async function POST(
     const userId = decodedToken.uid;
     const { id: roundId } = await params;
 
-    const sql = getTournamentDb();
+    const sql = getAuctionDb();
 
     // Get team_id from teams table
     const teamResult = await sql`
@@ -170,7 +170,7 @@ export async function DELETE(
     const userId = decodedToken.uid;
     const { id: roundId } = await params;
 
-    const sql = getTournamentDb();
+    const sql = getAuctionDb();
 
     // Get team_id
     const teamResult = await sql`
