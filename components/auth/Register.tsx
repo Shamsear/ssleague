@@ -99,7 +99,19 @@ function RegisterContent() {
         additionalData
       );
       
-      // Redirect immediately to role-specific dashboard for better UX
+      // For teams, they need approval before they can log in
+      // Log them out and redirect to pending approval page
+      if (role === 'team') {
+        // Log out immediately after registration
+        const { signOut } = await import('@/lib/firebase/auth');
+        await signOut();
+        
+        // Redirect to pending approval page
+        router.push('/register/pending-approval');
+        return;
+      }
+      
+      // For admins, redirect to dashboard immediately (auto-approved)
       switch (role as string) {
         case 'super_admin':
           router.push('/dashboard/superadmin');
@@ -107,15 +119,28 @@ function RegisterContent() {
         case 'committee_admin':
           router.push('/dashboard/committee');
           break;
-        case 'team':
-          router.push('/dashboard/team');
-          break;
         default:
           router.push('/dashboard');
       }
       
       // Do background tasks asynchronously (don't block redirect)
       if (firebaseUser) {
+        // Create team document for team registrations (non-blocking)
+        if (role === 'team') {
+          fetch('/api/teams/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: firebaseUser.uid,
+              email,
+              username,
+              teamName: teamName || username,
+            }),
+          }).catch((teamError) => {
+            console.error('Failed to create team document:', teamError);
+          });
+        }
+        
         // Mark invite as used (non-blocking)
         if (isAdminInvite && inviteCode) {
           markInviteAsUsed(inviteCode, firebaseUser.uid, username, email).catch((inviteError) => {
