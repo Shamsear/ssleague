@@ -198,24 +198,19 @@ export default function OwnerRegistrationForm({
         throw new Error(result.message || 'Failed to register owner');
       }
 
-      // Update Firebase displayName if name was changed
+      // Update Firebase teams owner_name if name was changed
       if (nameChanged && formData.name !== initialName) {
         try {
-          const updateResponse = await fetch('/api/user/update-profile', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              displayName: formData.name,
-            }),
-          });
+          const { doc, updateDoc } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase/config');
           
-          if (!updateResponse.ok) {
-            console.error('Failed to update Firebase displayName');
-          }
+          // Update owner_name in teams collection
+          const teamRef = doc(db, 'teams', teamId);
+          await updateDoc(teamRef, {
+            owner_name: formData.name
+          });
         } catch (updateError) {
-          console.error('Error updating Firebase displayName:', updateError);
+          console.error('Error updating Firebase teams owner_name:', updateError);
           // Don't fail the whole operation if this fails
         }
       }
