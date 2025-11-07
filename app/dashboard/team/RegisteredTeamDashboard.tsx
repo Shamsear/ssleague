@@ -242,17 +242,20 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   const timerRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
   const bulkTimerRefs = useRef<{ [key: number]: NodeJS.Timeout }>({});
   const previousDataRef = useRef<string>('');
-  const fetchDashboardRef = useRef<(showLoader?: boolean) => Promise<void>>();
+  const fetchDashboardRef = useRef<(showLoader?: boolean, bustCache?: boolean) => Promise<void>>();
   const [showManagerForm, setShowManagerForm] = useState(false);
   const [showOwnerForm, setShowOwnerForm] = useState(false);
 
   // Fetch dashboard data
-  const fetchDashboard = useCallback(async (showLoader = true) => {
+  const fetchDashboard = useCallback(async (showLoader = true, bustCache = false) => {
       if (!seasonStatus?.seasonId) return;
       if (showLoader) setIsLoading(true);
 
       try {
-        const params = new URLSearchParams({ season_id: seasonStatus.seasonId });
+        const params = new URLSearchParams({ 
+          season_id: seasonStatus.seasonId,
+          ...(bustCache && { bust_cache: 'true' }) // ⚡ Bust cache on live updates
+        });
         const response = await fetchWithTokenRefresh(`/api/team/dashboard?${params}`, {
           headers: { 'Cache-Control': 'no-cache' },
         });
@@ -305,7 +308,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
       
       // Handle different update types
       if (message.type === 'wallet_update' && message.data) {
-        // ⚡ Instant wallet update
+        // ⚡ Instant wallet update (optimistic, no refetch needed)
         setDashboardData(prev => {
           if (!prev) return prev;
           return {
@@ -322,14 +325,17 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
           };
         });
       } else if (message.type === 'squad_update') {
-        // Refetch for squad changes
-        fetchDashboardRef.current?.(false);
+        // ⚡ Squad changed - bust cache and refetch
+        console.log('[Dashboard] Squad update - busting cache');
+        fetchDashboardRef.current?.(false, true);
       } else if (message.type === 'new_round' || message.type === 'tiebreaker_created') {
-        // Refetch for new rounds/tiebreakers
-        fetchDashboardRef.current?.(false);
+        // ⚡ New round/tiebreaker - bust cache and refetch
+        console.log('[Dashboard] New round/tiebreaker - busting cache');
+        fetchDashboardRef.current?.(false, true);
       } else if (message.type !== 'subscribed' && message.type !== 'connected') {
-        // For other updates, do a background refetch
-        fetchDashboardRef.current?.(false);
+        // ⚡ Other updates - use cache (no need to bust)
+        console.log('[Dashboard] Background update - using cache');
+        fetchDashboardRef.current?.(false, false);
       }
     }, []),
   });

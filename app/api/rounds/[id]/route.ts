@@ -80,6 +80,7 @@ export async function GET(
     }
 
     // Fetch bids for this round with player information
+    // ✅ ZERO FIREBASE READS - team_name is denormalized in bids table
     const bidsRaw = await sql`
       SELECT 
         b.*,
@@ -92,27 +93,7 @@ export async function GET(
       ORDER BY b.created_at DESC;
     `;
 
-    // STEP 1: Get all unique team IDs
-    const uniqueTeamIds = [...new Set(bidsRaw.map((b: any) => b.team_id))];
-    
-    // STEP 2: Batch fetch ALL team names at once from Firebase
-    const teamNamesMap = new Map<string, string>();
-    const teamSeasonPromises = uniqueTeamIds.map(async (teamId) => {
-      try {
-        const teamSeasonId = `${teamId}_${round.season_id}`;
-        const doc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
-        if (doc.exists) {
-          return { teamId, name: doc.data()?.team_name || teamId };
-        }
-        const userDoc = await adminDb.collection('users').doc(teamId).get();
-        return { teamId, name: userDoc.exists ? userDoc.data()?.teamName || teamId : teamId };
-      } catch (error) {
-        return { teamId, name: teamId };
-      }
-    });
-    
-    const teamNames = await Promise.all(teamSeasonPromises);
-    teamNames.forEach(({ teamId, name }) => teamNamesMap.set(teamId, name));
+    // OPTIMIZATION: team_name is now stored directly in bids table
     
     // STEP 3: Get won bid purchase prices (batch query)
     const wonBidPlayerIds = bidsRaw.filter((b: any) => b.status === 'won').map((b: any) => b.player_id);
@@ -134,7 +115,7 @@ export async function GET(
       });
     }
     
-    // STEP 4: Process all bids (now with pre-fetched data)
+    // Process all bids
     const bids = [];
     for (const bid of bidsRaw) {
       try {
@@ -149,7 +130,8 @@ export async function GET(
         bids.push({
           ...bid,
           amount: finalAmount,
-          team_name: teamNamesMap.get(bid.team_id) || bid.team_id,
+          // Use denormalized team_name from bids table (zero Firebase reads)
+          team_name: bid.team_name || bid.team_id,
         });
       } catch (error) {
         console.error(`Error processing bid ${bid.id}:`, error);

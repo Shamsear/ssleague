@@ -27,10 +27,6 @@ export async function GET(
 
     const userId = auth.userId!;
 
-    // Get user data from Firebase (still needed for team data)
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    const userData = userDoc.exists ? userDoc.data() : null;
-
     const { id: roundId } = await params;
     
     console.log(`🔍 Fetching bulk round with ID: ${roundId} (type: ${typeof roundId})`);
@@ -142,16 +138,16 @@ export async function GET(
         balance = parseInt(teamData[0].football_budget) || 1000;
         currentSquadSize = parseInt(teamData[0].football_players_count) || 0;
       } else {
-        // Team doesn't exist in Neon yet - create it
-        console.log(`⚠️ Team not found in Neon for user ${userId}, creating...`);
+        // Team doesn't exist in Neon yet - create it from Firebase team_seasons
+        console.log(`⚠️ Team not found in Neon for user ${userId}, creating from Firebase...`);
         
-        // Get team data from Firebase
+        // Get team data from Firebase team_seasons (one-time read for migration)
         const teamSeasonId = `${userId}_${round.season_id}`;
         const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
         
         if (teamSeasonDoc.exists) {
           const teamSeasonData = teamSeasonDoc.data();
-          const teamName = teamSeasonData?.team_name || userData.teamName || 'Team';
+          const teamName = teamSeasonData?.team_name || 'Team';
           const teamId = teamSeasonData?.team_id || userId;
           balance = teamSeasonData?.football_budget || 1000;
           
@@ -199,6 +195,10 @@ export async function GET(
               console.error('Error creating team:', insertError);
             }
           }
+        } else {
+          console.warn(`⚠️ No team_seasons document found for ${teamSeasonId}`);
+          // Use defaults
+          balance = 1000;
         }
       }
 

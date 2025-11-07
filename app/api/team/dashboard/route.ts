@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('season_id');
+    const bustCache = searchParams.get('bust_cache') === 'true'; // Allow cache busting
 
     if (!seasonId) {
       return NextResponse.json({
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch season settings for slot limits
-    let seasonData = getCached<any>('seasons', seasonId, 30 * 60 * 1000); // 30 min TTL
+    // ⚡ Smart caching: Use cache unless explicitly busted by WebSocket update
+    let seasonData = bustCache ? null : getCached<any>('seasons', seasonId, 30 * 60 * 1000);
     if (!seasonData) {
       const seasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
       if (seasonDoc.exists) {
@@ -49,7 +51,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user data from Firebase (still needed for team name/logo)
-    let userData = getCached<any>('users', userId, 30 * 60 * 1000); // 30 min TTL
+    // ⚡ Smart caching: Use cache unless explicitly busted
+    let userData = bustCache ? null : getCached<any>('users', userId, 30 * 60 * 1000);
     if (!userData) {
       const userDoc = await adminDb.collection('users').doc(userId).get();
       if (!userDoc.exists) {
@@ -67,8 +70,8 @@ export async function GET(request: NextRequest) {
     let teamSeasonData = null;
     let teamSeasonId = `${userId}_${seasonId}`;
     
-    // First try with userId_seasonId (direct lookup)
-    teamSeasonData = getCached<any>('team_seasons', teamSeasonId, 15 * 60 * 1000);
+    // ⚡ Smart caching: Shorter TTL for team_seasons (updates more frequently)
+    teamSeasonData = bustCache ? null : getCached<any>('team_seasons', teamSeasonId, 5 * 60 * 1000); // 5 min TTL
     
     if (!teamSeasonData) {
       const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
