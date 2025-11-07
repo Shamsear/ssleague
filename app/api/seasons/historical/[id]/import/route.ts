@@ -98,27 +98,11 @@ export async function POST(
     console.log(`Importing Excel data for historical season ID: ${seasonId}`);
 
     // Verify authentication
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    
-    // Check user role from Firestore user document
-    console.log(`Checking user role for UID: ${decodedToken.uid}`);
-    const userDoc = await adminDb.collection('users').doc(decodedToken.uid).get();
-    if (!userDoc.exists) {
-      console.log('User document not found in Firestore');
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-    
-    const userData = userDoc.data();
-    console.log(`User role: ${userData?.role}`);
-    if (userData?.role !== 'super_admin') {
-      console.log(`Access denied. Required: super_admin, Current: ${userData?.role}`);
-      return NextResponse.json({ error: 'Forbidden: Super admin access required' }, { status: 403 });
+    const { verifyAuth } = await import('@/lib/auth-helper');
+    const auth = await verifyAuth(['super_admin'], request);
+    if (!auth.authenticated) {
+      console.log(`Access denied: ${auth.error}`);
+      return NextResponse.json({ error: auth.error || 'Forbidden: Super admin access required' }, { status: 401 });
     }
     
     console.log('Super admin access confirmed');

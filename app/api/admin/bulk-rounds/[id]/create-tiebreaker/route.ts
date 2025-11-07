@@ -126,6 +126,7 @@ export async function POST(
     }));
 
     // Create tiebreaker (active status so teams can bid immediately)
+    // Set 1 hour deadline (60 minutes) just like normal rounds
     await sql`
       INSERT INTO tiebreakers (
         id,
@@ -136,6 +137,7 @@ export async function POST(
         tied_teams,
         status,
         season_id,
+        duration_minutes,
         created_at
       ) VALUES (
         ${tiebreakerId},
@@ -146,6 +148,7 @@ export async function POST(
         ${JSON.stringify(tiedTeams)}::jsonb,
         'active',
         ${round.season_id},
+        60,
         NOW()
       )
     `;

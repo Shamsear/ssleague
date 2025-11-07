@@ -1,4 +1,6 @@
+import { NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
+import { adminAuth } from '@/lib/firebase/admin';
 
 export interface AuthResult {
   authenticated: boolean;
@@ -8,13 +10,32 @@ export interface AuthResult {
 }
 
 /**
- * Simple auth check - validates token exists
- * For production, implement proper Firebase Admin token verification
+ * Verify Firebase JWT token and extract user role from custom claims
+ * ✅ ZERO DATABASE READS - Uses JWT token claims only
+ * 
+ * @param requiredRoles - Optional array of roles that are allowed (e.g., ['admin', 'committee_admin'])
+ * @param request - Optional NextRequest object to extract token from header
  */
-export async function verifyAuth(requiredRoles?: string[]): Promise<AuthResult> {
+export async function verifyAuth(
+  requiredRoles?: string[],
+  request?: NextRequest
+): Promise<AuthResult> {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
+    // Get token from request header (if provided) or cookie
+    let token: string | undefined;
+    
+    if (request) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+    
+    // Fallback to cookie if no header token
+    if (!token) {
+      const cookieStore = await cookies();
+      token = cookieStore.get('token')?.value;
+    }
 
     if (!token) {
       return {
@@ -23,22 +44,42 @@ export async function verifyAuth(requiredRoles?: string[]): Promise<AuthResult> 
       };
     }
 
-    // For now, we trust the token exists means user is authenticated
-    // In production, you should verify the Firebase token properly
-    // This requires Firebase Admin SDK with proper service account credentials
-    
-    // TODO: Implement proper token verification when service account is set up
-    // const decodedToken = await adminAuth.verifyIdToken(token);
-    // const userId = decodedToken.uid;
+    // ✅ Verify Firebase token (validates signature, expiry, etc.)
+    // This does NOT read from database - only validates the JWT
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(token);
+    } catch (error: any) {
+      console.error('Token verification error:', error);
+      return {
+        authenticated: false,
+        error: 'Invalid or expired token',
+      };
+    }
 
-    // Since we can't verify the token server-side without Admin SDK,
-    // we'll allow the request to proceed if a token exists
-    // The user role check will happen on the client side
+    const userId = decodedToken.uid;
     
+    // ✅ Get role from custom claims (already in the JWT token - zero DB reads!)
+    // Note: Custom claims must be set when user is created/updated
+    // See: adminAuth.setCustomUserClaims(uid, { role: 'committee_admin' })
+    const role = decodedToken.role as string | undefined;
+
+    // Check if user has required role (if specified)
+    if (requiredRoles && requiredRoles.length > 0) {
+      if (!role || !requiredRoles.includes(role)) {
+        return {
+          authenticated: false,
+          userId,
+          role,
+          error: `Access denied. Required roles: ${requiredRoles.join(', ')}`,
+        };
+      }
+    }
+
     return {
       authenticated: true,
-      userId: 'temp-user-id', // Placeholder
-      role: 'committee_admin', // Assume committee admin for now
+      userId,
+      role,
     };
   } catch (error: any) {
     console.error('Auth verification error:', error);

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { getAuthToken } from '@/lib/auth/token-helper';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { batchGetFirebaseFields } from '@/lib/firebase/batch';
+import { verifyAuth } from '@/lib/auth-helper';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -12,43 +10,12 @@ const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth(['admin', 'committee_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
-      );
-    }
-
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
-
-    // Check if user is committee admin
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const userData = userDoc.data();
-    if (userData?.role !== 'admin' && userData?.role !== 'committee_admin') {
-      return NextResponse.json(
-        { success: false, error: 'Access denied. Committee admin only.' },
-        { status: 403 }
       );
     }
     // Get query params for filtering
@@ -123,16 +90,20 @@ export async function GET(request: NextRequest) {
     // Step 2: Collect all unique team IDs
     const allTeamIds = Array.from(new Set(allTeamsData.map(t => t.team_id)));
     
-    console.time('⚡ Batch fetch team names from Firebase');
+    console.time('⚡ Batch fetch team names from Neon');
     
-    // Step 3: Batch fetch team names from Firebase
-    const teamNamesMap = await batchGetFirebaseFields<{ name: string }>(
-      'teams',
-      allTeamIds,
-      ['name']
-    );
+    // Step 3: Batch fetch team names from Neon teams table
+    const teamNamesMap = new Map<string, string>();
+    if (allTeamIds.length > 0) {
+      const teamsResult = await sql`
+        SELECT id, name FROM teams WHERE id = ANY(${allTeamIds})
+      `;
+      teamsResult.forEach(team => {
+        teamNamesMap.set(team.id, team.name);
+      });
+    }
     
-    console.timeEnd('⚡ Batch fetch team names from Firebase');
+    console.timeEnd('⚡ Batch fetch team names from Neon');
     
     // Step 4: Group teams by tiebreaker_id
     const teamsByTiebreaker = new Map<number, any[]>();
@@ -141,7 +112,7 @@ export async function GET(request: NextRequest) {
         teamsByTiebreaker.set(teamData.tiebreaker_id, []);
       }
       
-      const teamName = teamNamesMap.get(teamData.team_id)?.name || teamData.team_id;
+      const teamName = teamNamesMap.get(teamData.team_id) || teamData.team_name || teamData.team_id;
       
       teamsByTiebreaker.get(teamData.tiebreaker_id)!.push({
         team_id: teamData.team_id,

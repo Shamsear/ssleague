@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 interface RouteContext {
@@ -22,35 +23,12 @@ export async function POST(
       );
     }
 
-    // Verify authentication
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Verify authentication (super admin only)
+    const auth = await verifyAuth(['super_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: auth.error || 'Forbidden: Super admin access required' },
         { status: 401 }
-      );
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    let decodedToken;
-    
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is super admin
-    const userDoc = await adminDb.collection('users').doc(decodedToken.uid).get();
-    const userData = userDoc.data();
-    
-    if (!userData || userData.role !== 'super_admin') {
-      return NextResponse.json(
-        { error: 'Forbidden: Super admin access required' },
-        { status: 403 }
       );
     }
 

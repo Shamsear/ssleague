@@ -1,40 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { isContractExpired, getContractEndSeason } from '@/lib/contracts';
 
 export async function POST(request: NextRequest) {
   try {
-    // Get Firebase ID token from cookie
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth(['committee_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { error: 'Unauthorized - No token' },
+        { error: auth.error || 'Unauthorized' },
         { status: 401 }
-      );
-    }
-
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (err) {
-      console.error('Token verification error:', err);
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is committee admin
-    const userDoc = await adminDb.collection('users').doc(decodedToken.uid).get();
-    const userData = userDoc.data();
-    
-    if (!userData || userData.role !== 'committee_admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized - Committee admin access required' },
-        { status: 403 }
       );
     }
 

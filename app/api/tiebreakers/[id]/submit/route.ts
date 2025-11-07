@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { getAuthToken } from '@/lib/auth/token-helper';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
+import { adminDb } from '@/lib/firebase/admin';
 import { isTiebreakerExpired, allTeamsSubmitted, resolveTiebreaker } from '@/lib/tiebreaker';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
 
@@ -16,28 +16,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
     const { id: tiebreakerId } = await params;
     const body = await request.json();
     const { newBidAmount } = body;
@@ -48,17 +36,6 @@ export async function POST(
         { status: 400 }
       );
     }
-
-    // Get user data
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const userData = userDoc.data();
     
     // Get user's team ID from teams table
     let teamId: string | null = null;

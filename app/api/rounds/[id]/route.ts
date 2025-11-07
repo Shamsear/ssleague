@@ -363,7 +363,23 @@ export async function DELETE(
       `;
 
       for (const bid of wonBids) {
-        const { amount } = decryptBidData(bid.encrypted_bid_data);
+        // Get the purchase price from team_players (this is what they actually paid)
+        const purchasePriceResult = await sql`
+          SELECT purchase_price FROM team_players 
+          WHERE player_id = ${bid.player_id} AND team_id = ${bid.team_id}
+        `;
+        
+        // Use purchase_price if available, otherwise decrypt from bid
+        let amount;
+        if (purchasePriceResult.length > 0 && purchasePriceResult[0].purchase_price) {
+          amount = purchasePriceResult[0].purchase_price;
+        } else {
+          const decrypted = decryptBidData(bid.encrypted_bid_data);
+          amount = decrypted.amount;
+        }
+        
+        console.log(`💰 Refunding £${amount} for player ${bid.player_id} to team ${bid.team_id}`);
+        
         
         // 1. Remove player from team (team_players)
         await sql`

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import admin from 'firebase-admin';
 import { neon } from '@neondatabase/serverless';
 
@@ -22,39 +22,16 @@ const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get and verify auth token (only committee/admin can send notifications)
-    const token = await getAuthToken(request);
-    
-    if (!token) {
+    // Verify authentication (only committee/admin can send notifications)
+    const auth = await verifyAuth(['admin', 'committee', 'committee_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const senderId = decodedToken.uid;
-
-    // Get user role from Firestore
-    const userDoc = await adminDb.collection('users').doc(senderId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const userData = userDoc.data();
-    const senderRole = userData?.role;
-
-    // Only committee or admin can send notifications
-    // Remove this check if you want teams to send notifications too
-    if (senderRole !== 'committee' && senderRole !== 'admin' && senderRole !== 'committee_admin') {
-      return NextResponse.json(
-        { success: false, error: 'Only committee/admin can send notifications' },
-        { status: 403 }
-      );
-    }
+    const senderId = auth.userId!;
 
     // Get notification details from request
     const { userId, title, body, icon, url, data } = await request.json();
@@ -155,7 +132,7 @@ export async function POST(request: NextRequest) {
       url,
       data,
       sentAt: new Date(),
-      sentBy: decodedToken.uid,
+      sentBy: senderId,
       deviceCount: response.successCount,
       status: response.successCount > 0 ? 'sent' : 'failed'
     });

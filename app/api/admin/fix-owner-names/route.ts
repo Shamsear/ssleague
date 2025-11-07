@@ -1,8 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
 import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // ✅ ZERO FIREBASE READS - Uses JWT claims only
+  const auth = await verifyAuth(['admin', 'committee_admin'], request);
+  if (!auth.authenticated) {
+    return NextResponse.json(
+      { success: false, error: auth.error || 'Unauthorized' },
+      { status: 401 }
+    );
+  }
   try {
     console.log('🔧 Fixing fantasy team owner names...\n');
     

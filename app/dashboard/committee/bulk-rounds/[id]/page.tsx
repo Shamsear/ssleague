@@ -67,9 +67,11 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const [round, setRound] = useState<Round | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddPlayers, setShowAddPlayers] = useState(false);
-  const [availablePlayers, setAvailablePlayers] = useState<any[]>([]);
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [availablePlayers, setAvailablePlayers] = useState<any[]>([]);
+  const [showAddTime, setShowAddTime] = useState(false);
+  const [minutesToAdd, setMinutesToAdd] = useState('5');
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
   const [expandedTiebreakers, setExpandedTiebreakers] = useState<Set<string>>(new Set());
@@ -472,6 +474,42 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     }
   };
 
+  const handleAddTime = async () => {
+    if (!round) return;
+
+    const minutes = parseInt(minutesToAdd);
+    if (!minutes || minutes <= 0) {
+      alert('Please enter a valid number of minutes');
+      return;
+    }
+
+    if (!confirm(`Add ${minutes} minute(s) to the round?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetchWithTokenRefresh(`/api/rounds/${round.id}/add-time`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes }),
+      });
+
+      const { success, data, error } = await response.json();
+
+      if (success) {
+        alert(`Successfully added ${minutes} minute(s) to the round!`);
+        setShowAddTime(false);
+        setMinutesToAdd('5');
+        // WebSocket will update automatically
+      } else {
+        alert(`Error: ${error}`);
+      }
+    } catch (err) {
+      console.error('Error adding time to round:', err);
+      alert('Failed to add time to round');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-700 border-gray-300';
@@ -631,15 +669,66 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 </>
               )}
               {round.status === 'active' && (
-                <button
-                  onClick={() => handleUpdateStatus('completed')}
-                  className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-lg hover:from-purple-600 hover:to-violet-700 transition-all font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm sm:text-base"
-                >
-                  ✅ Complete Round
-                </button>
+                <>
+                  <button
+                    onClick={() => setShowAddTime(!showAddTime)}
+                    className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg hover:from-blue-600 hover:to-cyan-700 transition-all font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm sm:text-base"
+                  >
+                    ⏱️ Add Time
+                  </button>
+                  <button
+                    onClick={() => handleUpdateStatus('completed')}
+                    className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-lg hover:from-purple-600 hover:to-violet-700 transition-all font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm sm:text-base"
+                  >
+                    ✅ Complete Round
+                  </button>
+                </>
               )}
             </div>
           </div>
+
+          {/* Add Time Interface */}
+          {showAddTime && round.status === 'active' && (
+            <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Add Time to Round
+              </h3>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Minutes to Add</label>
+                  <input
+                    type="number"
+                    value={minutesToAdd}
+                    onChange={(e) => setMinutesToAdd(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="1"
+                    max="120"
+                    placeholder="Enter minutes"
+                  />
+                </div>
+                <div className="flex items-end gap-2">
+                  <button
+                    onClick={handleAddTime}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+                  >
+                    Add Time
+                  </button>
+                  <button
+                    onClick={() => setShowAddTime(false)}
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-gray-600">
+                This will extend the round deadline by {minutesToAdd} minute(s)
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Statistics Grid */}
