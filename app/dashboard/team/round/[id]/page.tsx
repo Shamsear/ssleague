@@ -205,8 +205,14 @@ export default function TeamRoundPage() {
     try {
       await placeBidMutation.mutateAsync({ playerId, amount });
     } catch (error: any) {
-      // Silent fail - optimistic UI will rollback automatically
+      // Show error to user
       console.error('Bid placement failed:', error.message);
+      showAlert({
+        type: 'error',
+        title: 'Bid Failed',
+        message: error.message || 'Failed to place bid'
+      });
+      throw error; // Re-throw to be handled by caller if needed
     }
   };
 
@@ -1220,9 +1226,14 @@ function PlayerCard({
     }
 
     setIsSubmitting(true);
-    await onPlaceBid(player.id, amount);
-    setBidAmount('');
-    setIsSubmitting(false);
+    try {
+      await onPlaceBid(player.id, amount);
+      setBidAmount('');
+    } catch (error: any) {
+      // Error already shown by handlePlaceBid
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getRatingColor = (rating: number) => {

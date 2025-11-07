@@ -48,12 +48,11 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Auction settings validated for season:', season_id);
 
-    // Get next round number for this season
+    // Get next round number for this season (includes ALL round types)
     const existingRounds = await sql`
       SELECT MAX(round_number) as max_round
       FROM rounds
       WHERE season_id = ${season_id}
-      AND round_type = 'bulk'
     `;
     
     const nextRoundNumber = (existingRounds[0]?.max_round || 0) + 1;

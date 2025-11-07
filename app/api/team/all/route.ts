@@ -7,7 +7,7 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await verifyAuth(['team'], request);
+    const auth = await verifyAuth(['team', 'admin', 'committee_admin'], request);
     if (!auth.authenticated) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },

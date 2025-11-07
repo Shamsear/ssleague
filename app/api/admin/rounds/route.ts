@@ -247,6 +247,12 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const endTime = new Date(now.getTime() + (parseFloat(duration_hours) * 3600 * 1000));
     
+    // Calculate round_number (count existing rounds + 1)
+    const roundCountResult = await sql`
+      SELECT COUNT(*) as count FROM rounds WHERE season_id = ${season_id}
+    `;
+    const roundNumber = parseInt(roundCountResult[0]?.count || '0') + 1;
+    
     // Create the round - timestamptz columns handle UTC automatically
     const newRound = await sql`
       INSERT INTO rounds (
@@ -254,6 +260,7 @@ export async function POST(request: NextRequest) {
         season_id,
         position,
         max_bids_per_team,
+        round_number,
         end_time,
         status,
         created_at,
@@ -263,6 +270,7 @@ export async function POST(request: NextRequest) {
         ${season_id},
         ${position},
         ${max_bids_per_team},
+        ${roundNumber},
         ${endTime.toISOString()},
         'active',
         ${now.toISOString()},
