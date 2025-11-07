@@ -406,6 +406,145 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
 
+          {/* Bid Submission */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+              <svg className="w-5 h-5 text-[#0066FF] mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Submit New Bid
+            </h3>
+
+            {tiebreaker.submitted ? (
+              <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-r-xl">
+                <div className="flex items-start">
+                  <svg className="h-5 w-5 text-green-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <div className="ml-3">
+                    <p className="text-sm text-green-700">
+                      You have submitted a new bid of <strong>£{tiebreaker.new_amount?.toLocaleString()}</strong>.
+                      Waiting for other teams to submit their bids...
+                    </p>
+                    <div className="mt-3 flex items-center">
+                      <svg className="animate-spin h-4 w-4 text-green-600 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span className="text-xs text-green-600">Auto-refreshing...</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="bg-white/60 p-5 rounded-2xl shadow-sm">
+                <div className="mb-4">
+                  <label htmlFor="bidAmount" className="block text-sm font-medium text-gray-700 mb-2">
+                    New Bid Amount
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500">£</span>
+                    </div>
+                    <input
+                      type="number"
+                      id="bidAmount"
+                      value={bidAmount}
+                      onChange={(e) => {
+                        setHasUserModifiedBid(true);
+                        const value = e.target.value;
+                        const parsedValue = value === '' ? 0 : Math.floor(parseFloat(value));
+                        console.log('🔤 Input changed:', { rawValue: value, parsedValue, currentBidAmount: bidAmount });
+                        setBidAmount(parsedValue);
+                      }}
+                      min={Math.floor(tiebreaker.original_amount)}
+                      step="1"
+                      disabled={tiebreaker.submitted}
+                      className="block w-full pl-8 pr-20 py-3 border-gray-300 rounded-xl focus:ring-[#0066FF] focus:border-[#0066FF] text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center mr-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHasUserModifiedBid(true);
+                          const current = typeof bidAmount === 'number' && bidAmount > 0 ? bidAmount : Math.floor(tiebreaker.original_amount);
+                          setBidAmount(Math.max(Math.floor(tiebreaker.original_amount), current - 1));
+                        }}
+                        disabled={tiebreaker.submitted}
+                        className="p-1 text-gray-500 hover:text-[#0066FF] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHasUserModifiedBid(true);
+                          const current = typeof bidAmount === 'number' && bidAmount > 0 ? bidAmount : Math.floor(tiebreaker.original_amount);
+                          setBidAmount(current + 1);
+                        }}
+                        disabled={tiebreaker.submitted}
+                        className="p-1 text-gray-500 hover:text-[#0066FF] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between mt-2 text-sm">
+                    <p className="text-gray-500">Minimum: £{Math.floor(tiebreaker.original_amount).toLocaleString()}</p>
+                    <p className="text-gray-500">
+                      Your balance: <span className="font-medium text-[#0066FF]">£{Math.floor(teamBalance).toLocaleString()}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-3 rounded-r-xl text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex gap-3 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHasUserModifiedBid(true);
+                      setBidAmount(Math.floor(tiebreaker.original_amount) + 10);
+                    }}
+                    className="px-4 py-2 bg-blue-100 text-blue-700 font-medium rounded-xl hover:bg-blue-200 transition-colors"
+                  >
+                    Quick Bid: £{(Math.floor(tiebreaker.original_amount) + 10).toLocaleString()}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-4 py-2 bg-[#0066FF] text-white font-medium rounded-xl hover:bg-[#0052CC] transition-colors disabled:opacity-50 flex items-center"
+                  >
+                    {submitting ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Submit New Bid
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
           {/* Tied Teams */}
           {tiedTeams.length > 0 && (
             <div className="mb-8">
@@ -589,145 +728,6 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
           )}
-
-          {/* Bid Submission */}
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
-              <svg className="w-5 h-5 text-[#0066FF] mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Submit New Bid
-            </h3>
-
-            {tiebreaker.submitted ? (
-              <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-r-xl">
-                <div className="flex items-start">
-                  <svg className="h-5 w-5 text-green-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <div className="ml-3">
-                    <p className="text-sm text-green-700">
-                      You have submitted a new bid of <strong>£{tiebreaker.new_amount?.toLocaleString()}</strong>.
-                      Waiting for other teams to submit their bids...
-                    </p>
-                    <div className="mt-3 flex items-center">
-                      <svg className="animate-spin h-4 w-4 text-green-600 mr-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span className="text-xs text-green-600">Auto-refreshing...</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="bg-white/60 p-5 rounded-2xl shadow-sm">
-                <div className="mb-4">
-                  <label htmlFor="bidAmount" className="block text-sm font-medium text-gray-700 mb-2">
-                    New Bid Amount
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500">£</span>
-                    </div>
-                    <input
-                      type="number"
-                      id="bidAmount"
-                      value={bidAmount}
-                      onChange={(e) => {
-                        setHasUserModifiedBid(true);
-                        const value = e.target.value;
-                        const parsedValue = value === '' ? 0 : Math.floor(parseFloat(value));
-                        console.log('🔤 Input changed:', { rawValue: value, parsedValue, currentBidAmount: bidAmount });
-                        setBidAmount(parsedValue);
-                      }}
-                      min={Math.floor(tiebreaker.original_amount)}
-                      step="1"
-                      disabled={tiebreaker.submitted}
-                      className="block w-full pl-8 pr-20 py-3 border-gray-300 rounded-xl focus:ring-[#0066FF] focus:border-[#0066FF] text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <div className="absolute inset-y-0 right-0 flex items-center mr-2 gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHasUserModifiedBid(true);
-                          const current = typeof bidAmount === 'number' && bidAmount > 0 ? bidAmount : Math.floor(tiebreaker.original_amount);
-                          setBidAmount(Math.max(Math.floor(tiebreaker.original_amount), current - 1));
-                        }}
-                        disabled={tiebreaker.submitted}
-                        className="p-1 text-gray-500 hover:text-[#0066FF] disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHasUserModifiedBid(true);
-                          const current = typeof bidAmount === 'number' && bidAmount > 0 ? bidAmount : Math.floor(tiebreaker.original_amount);
-                          setBidAmount(current + 1);
-                        }}
-                        disabled={tiebreaker.submitted}
-                        className="p-1 text-gray-500 hover:text-[#0066FF] disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex justify-between mt-2 text-sm">
-                    <p className="text-gray-500">Minimum: £{Math.floor(tiebreaker.original_amount).toLocaleString()}</p>
-                    <p className="text-gray-500">
-                      Your balance: <span className="font-medium text-[#0066FF]">£{Math.floor(teamBalance).toLocaleString()}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-3 rounded-r-xl text-sm text-red-700">
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex gap-3 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHasUserModifiedBid(true);
-                      setBidAmount(Math.floor(tiebreaker.original_amount) + 10);
-                    }}
-                    className="px-4 py-2 bg-blue-100 text-blue-700 font-medium rounded-xl hover:bg-blue-200 transition-colors"
-                  >
-                    Quick Bid: £{(Math.floor(tiebreaker.original_amount) + 10).toLocaleString()}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="px-4 py-2 bg-[#0066FF] text-white font-medium rounded-xl hover:bg-[#0052CC] transition-colors disabled:opacity-50 flex items-center"
-                  >
-                    {submitting ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Submitting...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Submit New Bid
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
 
           {/* Footer */}
           <div className="flex justify-between items-center">
