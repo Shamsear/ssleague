@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
+import { adminDb } from '@/lib/firebase/admin';
 import { batchGetFirebaseFields } from '@/lib/firebase/batch';
 import { logAuctionWin } from '@/lib/transaction-logger';
 import { triggerNews } from '@/lib/news/trigger';
 import { generateTiebreakerId } from '@/lib/id-generator';
+import { broadcastTeamUpdatePusher as broadcastTeamUpdate } from '@/lib/websocket/pusher-broadcast';
 
 // WebSocket broadcast function (set by WebSocket server)
 declare global {
@@ -345,6 +347,20 @@ export async function POST(
           );
           
           console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${firebaseUid}`);
+          
+          // Broadcast squad and wallet updates to team
+          await broadcastTeamUpdate(bid.team_id, 'squad', {
+            player_id: playerId,
+            player_name: playerInfo?.player_name,
+            action: 'acquired',
+            price: round.base_price,
+          });
+          
+          await broadcastTeamUpdate(bid.team_id, 'wallet', {
+            new_balance: isDualCurrency ? updateData.football_budget : updateData.budget,
+            amount_spent: round.base_price,
+            currency_type: isDualCurrency ? 'football' : 'single',
+          });
         } else {
           console.warn(`⚠️ Team season ${teamSeasonId} not found in Firebase`);
         }

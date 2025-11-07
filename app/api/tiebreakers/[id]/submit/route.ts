@@ -4,6 +4,7 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { adminDb } from '@/lib/firebase/admin';
 import { isTiebreakerExpired, allTeamsSubmitted, resolveTiebreaker } from '@/lib/tiebreaker';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
+import { broadcastTiebreakerBidPusher as broadcastTiebreakerBid } from '@/lib/websocket/pusher-broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -241,6 +242,13 @@ export async function POST(
     
     console.log('✅ Database updated:', updateResult[0]);
     console.log(`✅ Team ${teamId} submitted tiebreaker bid: £${newBidAmount}`);
+    
+    // Broadcast tiebreaker bid update
+    await broadcastTiebreakerBid(tiebreakerId, {
+      team_id: teamId,
+      team_name: updateResult[0].team_name || 'Team',
+      bid_amount: newBidAmount,
+    });
 
     // Check if all teams have now submitted - if so, auto-resolve
     const allSubmitted = await allTeamsSubmitted(tiebreakerId);

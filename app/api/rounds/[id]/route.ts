@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { adminDb } from '@/lib/firebase/admin';
 import { decryptBidData } from '@/lib/encryption';
+import { broadcastTeamUpdatePusher as broadcastTeamUpdate } from '@/lib/websocket/pusher-broadcast';
 
 const sql = neon(process.env.NEON_DATABASE_URL!);
 
@@ -428,6 +429,19 @@ export async function DELETE(
             
             await teamSeasonRef.update(upd);
             console.log(`✅ Refunded team_seasons ${bid.team_id}: £${amount}`);
+            
+            // Broadcast squad and wallet updates
+            await broadcastTeamUpdate(bid.team_id, 'squad', {
+              player_id: bid.player_id,
+              action: 'removed',
+              refund: amount,
+            });
+            
+            await broadcastTeamUpdate(bid.team_id, 'wallet', {
+              new_balance: curr === 'dual' ? upd.football_budget : upd.budget,
+              amount_refunded: amount,
+              currency_type: curr === 'dual' ? 'football' : 'single',
+            });
           }
         } catch (error) {
           console.error(`❌ Error refunding team_seasons ${bid.team_id}:`, error);
