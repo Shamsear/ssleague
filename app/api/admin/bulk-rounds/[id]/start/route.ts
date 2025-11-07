@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
-
-// WebSocket broadcast function (set by WebSocket server)
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
 
 /**
  * POST /api/admin/bulk-rounds/:id/start
@@ -75,19 +72,40 @@ export async function POST(
     console.log(`⏰ End (UTC): ${endTime.toISOString()}`);
     console.log(`⏰ Duration: ${round.duration_seconds} seconds (${Math.floor(round.duration_seconds / 60)} minutes)`);
 
-    // Broadcast round update via WebSocket
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`round:${roundId}`, {
-        type: 'round_updated',
-        data: {
-          round_id: roundId,
-          status: 'active',
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          duration_seconds: round.duration_seconds,
-        },
+    // Broadcast round update via Firebase Realtime DB
+    // Need to get season_id for the round
+    const seasonResult = await sql`SELECT season_id FROM rounds WHERE id = ${roundId}`;
+    const seasonId = seasonResult[0]?.season_id;
+    
+    if (seasonId) {
+      await broadcastRoundUpdate(seasonId, roundId, {
+        status: 'active',
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        duration_seconds: round.duration_seconds,
       });
-      console.log(`📢 [WebSocket] Broadcast round start to round:${roundId}`);
+
+      // Send FCM notification
+      try {
+        const durationMinutes = Math.floor(round.duration_seconds / 60);
+        await sendNotificationToSeason(
+          {
+            title: '⚡ Bulk Auction Round Started!',
+            body: `Round ${round.round_number} is now active. Duration: ${durationMinutes} min. Bid on multiple players!`,
+            url: `/dashboard/committee/bulk-rounds/${roundId}`,
+            icon: '/logo.png',
+            data: {
+              type: 'bulk_round_started',
+              roundId,
+              roundNumber: round.round_number.toString(),
+              endTime: endTime.toISOString()
+            }
+          },
+          seasonId
+        );
+      } catch (notifError) {
+        console.error('Failed to send bulk round start notification:', notifError);
+      }
     }
 
     return NextResponse.json({

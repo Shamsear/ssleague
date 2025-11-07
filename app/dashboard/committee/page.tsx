@@ -166,11 +166,31 @@ export default function CommitteeDashboard() {
       }
     }, [userSeasonId, user]);
 
+  // Initial fetch
   useEffect(() => {
     fetchActiveRounds();
-    const interval = setInterval(fetchActiveRounds, 5000);
-    return () => clearInterval(interval);
   }, [fetchActiveRounds]);
+
+  // Firebase Realtime DB listener for live round updates
+  useEffect(() => {
+    if (!userSeasonId) return;
+
+    const { listenToSeasonRoundUpdates } = require('@/lib/realtime/listeners');
+    
+    const unsubscribe = listenToSeasonRoundUpdates(userSeasonId, (message: any) => {
+      console.log('📊 [Committee Dashboard] Round update:', message.type);
+      
+      // Refetch active rounds when any round event occurs
+      if (message.type === 'round_started' ||
+          message.type === 'round_finalized' ||
+          message.type === 'round_updated' ||
+          message.type === 'bid_submitted') {
+        fetchActiveRounds();
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userSeasonId, fetchActiveRounds]);
 
   if (loading || loadingStats) {
     return (

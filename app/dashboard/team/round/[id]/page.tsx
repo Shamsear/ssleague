@@ -489,6 +489,16 @@ export default function TeamRoundPage() {
           </div>
         </div>
 
+        {/* Mobile Selected Count Notch */}
+        <div className="md:hidden sticky top-0 z-30 -mt-2 mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary text-white text-xs font-semibold shadow-md">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Selected {bidCount} / {round.max_bids_per_team}</span>
+          </div>
+        </div>
+
         {/* Timer Card */}
         <div className="glass-card mb-6 p-5 sm:p-6 rounded-2xl backdrop-blur-md shadow-lg border border-white/10 hover:shadow-xl transition-all">
           <div className="flex flex-col md:flex-row md:justify-between md:items-center">

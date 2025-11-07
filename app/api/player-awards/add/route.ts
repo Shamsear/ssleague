@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { addFantasyPointsForAward } from '@/lib/fantasy-award-points';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 // POST - Manually add a player award
 export async function POST(request: NextRequest) {
@@ -99,6 +100,30 @@ export async function POST(request: NextRequest) {
     );
 
     console.log('Fantasy points result:', fantasyResult);
+
+    // Send FCM notification to all teams in the season
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '🏆 Player Award!',
+          body: `${player_name} has been awarded: ${award_type}${award_position ? ` - ${award_position}` : ''}`,
+          url: `/players/${player_id}`,
+          icon: '/logo.png',
+          data: {
+            type: 'player_award',
+            player_id,
+            player_name,
+            award_type,
+            award_category,
+            award_position: award_position || '',
+          }
+        },
+        season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send player award notification:', notifError);
+      // Don't fail the request
+    }
 
     return NextResponse.json({
       success: true,

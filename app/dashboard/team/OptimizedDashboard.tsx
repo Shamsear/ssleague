@@ -33,8 +33,8 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
   
   // WebSocket for real-time updates (squad, wallet, rounds, tiebreakers)
   const { isConnected: wsConnected } = useDashboardWebSocket(
-    dashboardData?.team?.id,
-    !!dashboardData?.team?.id
+    seasonStatus?.seasonId || null,
+    dashboardData?.team?.id || null
   );
 
   // UI state

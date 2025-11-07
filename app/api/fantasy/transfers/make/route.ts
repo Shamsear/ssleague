@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/fantasy/transfers/make
@@ -172,6 +173,28 @@ export async function POST(request: NextRequest) {
     `;
 
     console.log(`✅ Transfer completed: ${playerOut[0].player_name} → ${playerIn[0].player_name}`);
+
+    // Send FCM notification to the team
+    try {
+      await sendNotification(
+        {
+          title: '✅ Transfer Complete!',
+          body: `Sold ${playerOut[0].player_name}, bought ${playerIn[0].player_name}. Budget: £${newBudget.toFixed(2)}`,
+          url: `/fantasy/squad`,
+          icon: '/logo.png',
+          data: {
+            type: 'fantasy_transfer',
+            player_out: playerOut[0].player_name,
+            player_in: playerIn[0].player_name,
+            budget_remaining: newBudget.toString(),
+          }
+        },
+        teamId
+      );
+    } catch (notifError) {
+      console.error('Failed to send transfer notification:', notifError);
+      // Don't fail the request
+    }
 
     return NextResponse.json({
       success: true,

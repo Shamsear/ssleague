@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateKnockoutOnly } from '@/lib/firebase/knockoutBracket';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 // POST - Generate knockout-only tournament bracket
 export async function POST(request: NextRequest) {
@@ -28,6 +29,27 @@ export async function POST(request: NextRequest) {
         { success: false, error: result.error },
         { status: 400 }
       );
+    }
+
+    // Send notification
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '🏆 Knockout Bracket Generated',
+          body: `The knockout stage is ready with ${result.matches?.length || 0} matches. Good luck!`,
+          url: `/dashboard/tournaments/${tournament_id}`,
+          icon: '/logo.png',
+          data: {
+            type: 'knockout_generated',
+            tournament_id,
+            matches_count: result.matches?.length || 0,
+            stage: result.matches && result.matches.length > 0 ? result.matches[0].stage : null
+          }
+        },
+        season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send notification:', notifError);
     }
 
     return NextResponse.json({ 

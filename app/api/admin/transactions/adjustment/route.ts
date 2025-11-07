@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { logAdjustment } from '@/lib/transaction-logger';
 import type { CurrencyType } from '@/lib/transaction-logger';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,6 +74,33 @@ export async function POST(request: NextRequest) {
       reason,
       adjustedBy
     );
+
+    // Send FCM notification to the team
+    try {
+      const currencySymbol = currencyType === 'football' ? '€' : '$';
+      const adjustmentType = amount > 0 ? 'credit' : 'debit';
+      await sendNotification(
+        {
+          title: '💰 Balance Adjusted',
+          body: `Your ${currencyType === 'football' ? 'Euro' : 'Dollar'} balance was adjusted: ${amount > 0 ? '+' : ''}${currencySymbol}${Math.abs(amount)}. Reason: ${reason}`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'adjustment',
+            team_id: teamId,
+            amount: amount.toString(),
+            currency_type: currencyType,
+            adjustment_type: adjustmentType,
+            reason,
+            new_balance: newBalance.toString(),
+          }
+        },
+        teamId
+      );
+    } catch (notifError) {
+      console.error('Failed to send adjustment notification:', notifError);
+      // Don't fail the request
+    }
 
     return NextResponse.json({
       success: true,

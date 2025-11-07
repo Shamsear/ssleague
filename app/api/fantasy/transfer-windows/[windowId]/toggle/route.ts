@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/fantasy/transfer-windows/[windowId]/toggle
@@ -46,6 +47,40 @@ export async function POST(
     `;
 
     console.log(`✅ Transfer window ${windowId} ${newStatus ? 'opened' : 'closed'}`);
+
+    // Send FCM notification if opening the window
+    if (newStatus) {
+      try {
+        // Get season_id from league
+        const leagues = await fantasySql`
+          SELECT fl.season_id, fl.league_name
+          FROM fantasy_leagues fl
+          WHERE fl.league_id = ${window.league_id}
+          LIMIT 1
+        `;
+        
+        if (leagues.length > 0) {
+          const league = leagues[0];
+          await sendNotificationToSeason(
+            {
+              title: '🔄 Fantasy Transfer Window Open!',
+              body: `Transfer window is now open for ${league.league_name}. Make your transfers now!`,
+              url: `/fantasy/transfers`,
+              icon: '/logo.png',
+              data: {
+                type: 'transfer_window_open',
+                window_id: windowId,
+                league_id: window.league_id,
+              }
+            },
+            league.season_id
+          );
+        }
+      } catch (notifError) {
+        console.error('Failed to send transfer window notification:', notifError);
+        // Don't fail the request
+      }
+    }
 
     return NextResponse.json({
       success: true,

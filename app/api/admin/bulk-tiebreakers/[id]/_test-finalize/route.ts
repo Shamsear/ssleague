@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
-import { broadcastWebSocket, BroadcastType } from '@/lib/websocket/broadcast';
+// Firebase Realtime DB broadcasting is handled by finalizeBulkTiebreaker
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -61,26 +61,13 @@ export async function POST(
       );
     }
 
-    // Broadcast
+    // Broadcasting is handled by finalizeBulkTiebreaker function
     const winnerTeamResult = await sql`
       SELECT team_name FROM bulk_tiebreaker_teams
       WHERE tiebreaker_id = ${tiebreakerId} 
       AND team_id = ${tiebreaker.current_highest_team_id}
     `;
     const winnerTeamName = winnerTeamResult[0]?.team_name || 'Unknown';
-
-    await broadcastWebSocket(`tiebreaker:${tiebreakerId}`, {
-      type: BroadcastType.TIEBREAKER_FINALIZED,
-      data: {
-        tiebreaker_id: tiebreakerId,
-        player_name: tiebreaker.player_name,
-        position: tiebreaker.player_position,
-        winner_team_id: tiebreaker.current_highest_team_id,
-        winner_team_name: winnerTeamName,
-        final_bid: tiebreaker.current_highest_bid,
-        status: 'resolved',
-      },
-    });
 
     return NextResponse.json({
       success: true,

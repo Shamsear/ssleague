@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
-
-// WebSocket broadcast function
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
+import { broadcastFantasyDraftUpdate } from '@/lib/realtime/broadcast';
 
 /**
  * POST /api/fantasy/draft/auto-close
@@ -71,18 +67,12 @@ export async function POST(request: NextRequest) {
 
         console.log(`✅ Draft auto-opened for league ${league_id} at ${now.toISOString()}`);
 
-        // Broadcast to WebSocket clients
-        if (global.wsBroadcast) {
-          global.wsBroadcast(`league:${league_id}:draft`, {
-            type: 'draft_status_update',
-            data: {
-              league_id,
-              draft_status: 'active',
-              auto_opened: true,
-            },
-          });
-          console.log(`📢 Broadcast auto-open to league:${league_id}:draft`);
-        }
+        // Broadcast to Firebase Realtime DB
+        await broadcastFantasyDraftUpdate(league_id, {
+          draft_status: 'active',
+          auto_opened: true,
+        });
+        console.log(`📢 Broadcast auto-open to league:${league_id}:draft`);
 
         return NextResponse.json({
           success: true,
@@ -115,18 +105,12 @@ export async function POST(request: NextRequest) {
 
         console.log(`✅ Draft auto-closed for league ${league_id} at ${now.toISOString()}`);
 
-        // Broadcast to WebSocket clients
-        if (global.wsBroadcast) {
-          global.wsBroadcast(`league:${league_id}:draft`, {
-            type: 'draft_status_update',
-            data: {
-              league_id,
-              draft_status: 'closed',
-              auto_closed: true,
-            },
-          });
-          console.log(`📢 Broadcast auto-close to league:${league_id}:draft`);
-        }
+        // Broadcast to Firebase Realtime DB
+        await broadcastFantasyDraftUpdate(league_id, {
+          draft_status: 'closed',
+          auto_closed: true,
+        });
+        console.log(`📢 Broadcast auto-close to league:${league_id}:draft`);
 
         return NextResponse.json({
           success: true,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * PATCH - Declare Walkover (WO) when one team is absent
@@ -89,6 +90,32 @@ export async function PATCH(
         })}
       )
     `;
+
+    // Send FCM notification
+    const winnerTeam = absent_team === 'home' ? fixture.away_team_name : fixture.home_team_name;
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '🚨 Walkover Declared',
+          body: `${fixture.home_team_name} vs ${fixture.away_team_name}: ${winnerTeam} wins by WO (${homeScore}-${awayScore})`,
+          url: `/fixtures/${fixtureId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'walkover',
+            fixture_id: fixtureId,
+            home_team: fixture.home_team_name,
+            away_team: fixture.away_team_name,
+            absent_team,
+            winner: winnerTeam,
+            score: `${homeScore}-${awayScore}`,
+          }
+        },
+        fixture.season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send walkover notification:', notifError);
+      // Don't fail the request
+    }
 
     return NextResponse.json({
       success: true,

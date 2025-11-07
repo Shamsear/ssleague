@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { logBonus } from '@/lib/transaction-logger';
 import type { CurrencyType } from '@/lib/transaction-logger';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,6 +65,31 @@ export async function POST(request: NextRequest) {
       currencyType as CurrencyType,
       reason
     );
+
+    // Send FCM notification to the team
+    try {
+      const currencySymbol = currencyType === 'football' ? '€' : '$';
+      await sendNotification(
+        {
+          title: '🎉 Bonus Awarded!',
+          body: `You received a ${currencySymbol}${amount} bonus! Reason: ${reason}`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'bonus',
+            team_id: teamId,
+            amount: amount.toString(),
+            currency_type: currencyType,
+            reason,
+            new_balance: newBalance.toString(),
+          }
+        },
+        teamId
+      );
+    } catch (notifError) {
+      console.error('Failed to send bonus notification:', notifError);
+      // Don't fail the request
+    }
 
     return NextResponse.json({
       success: true,

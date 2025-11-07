@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
+import { broadcastBulkTiebreakerUpdate } from '@/lib/realtime/broadcast';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -102,9 +104,54 @@ export async function POST(
       ORDER BY team_name
     `;
 
-    // TODO: Send notifications via WebSocket and email
-    // - Notify all participating teams
-    // - Broadcast tiebreaker started event
+    // Get season ID for the tiebreaker
+    const seasonResult = await sql`
+      SELECT bt.round_id, br.season_id
+      FROM bulk_tiebreakers bt
+      JOIN bulk_rounds br ON bt.round_id = br.id
+      WHERE bt.id = ${tiebreakerId}
+    `;
+    
+    const seasonId = seasonResult[0]?.season_id;
+
+    // Broadcast tiebreaker started event via Firebase Realtime DB
+    if (seasonId) {
+      await broadcastBulkTiebreakerUpdate(seasonId, tiebreakerId, {
+        type: 'tiebreaker_started',
+        tiebreaker_id: tiebreakerId,
+        player_name: tiebreaker.player_name,
+        position: tiebreaker.position,
+        status: 'active',
+        start_time: startTime.toISOString(),
+        max_end_time: maxEndTime.toISOString(),
+        teams_count: teamsCount,
+        base_price: tiebreaker.base_price,
+      });
+
+      // Send FCM notification to all teams in the season
+      try {
+        await sendNotificationToSeason(
+          {
+            title: '🎯 Tiebreaker Started!',
+            body: `${tiebreaker.player_name} (${tiebreaker.position}) tiebreaker is now ACTIVE! ${teamsCount} teams competing. Last person standing wins!`,
+            url: `/tiebreakers/${tiebreakerId}`,
+            icon: '/logo.png',
+            data: {
+              type: 'tiebreaker_started',
+              tiebreaker_id: tiebreakerId,
+              player_name: tiebreaker.player_name,
+              position: tiebreaker.position,
+              teams_count: teamsCount.toString(),
+              base_price: tiebreaker.base_price?.toString() || '0',
+            }
+          },
+          seasonId
+        );
+      } catch (notifError) {
+        console.error('Failed to send tiebreaker start notification:', notifError);
+        // Don't fail the request
+      }
+    }
 
     return NextResponse.json({
       success: true,

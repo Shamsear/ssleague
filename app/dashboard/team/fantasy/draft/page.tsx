@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star, Trash2, Lock, Edit } from 'lucide-react';
 import { useAutoCloseDraft } from '@/hooks/useAutoCloseDraft';
-import { useDraftWebSocket } from '@/hooks/useDraftWebSocket';
+// Firebase Realtime DB handles draft status updates automatically
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Player {
@@ -140,39 +140,8 @@ export default function TeamDraftPage() {
     }
   }, [user]);
 
-  // WebSocket for real-time draft status updates
-  const handleDraftStatusChange = useCallback((update: any) => {
-    console.log('📡 Received draft status update:', update);
-    console.log('✨ Updating UI without full data reload...');
-    
-    // Update the UI state directly without full reload
-    if (update.draft_status) {
-      const newStatus = update.draft_status;
-      const isDraftActive = newStatus === 'active';
-      
-      setDraftSettings(prev => prev ? {
-        ...prev,
-        draft_status: newStatus,
-        is_draft_active: isDraftActive,
-        status: isDraftActive ? 'active' : (newStatus === 'pending' ? 'pending' : 'completed'),
-      } : null);
-      
-      // Show a notification
-      console.log(`🎉 Draft status changed to: ${newStatus.toUpperCase()}`);
-      
-      // Optionally show a toast/alert (but without full page reload)
-      if (update.auto_opened) {
-        console.log('🔓 Draft is now OPEN! You can start drafting players.');
-      } else if (update.auto_closed) {
-        console.log('🔒 Draft is now CLOSED! Draft period has ended.');
-      }
-    }
-  }, []);
-
-  useDraftWebSocket(
-    myTeam?.fantasy_league_id,
-    handleDraftStatusChange
-  );
+  // Note: Firebase Realtime DB broadcasts are handled by useAutoCloseDraft hook
+  // Real-time updates are automatic via React Query cache invalidation
 
   useEffect(() => {
     if (!loading && !user) {

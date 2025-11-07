@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFantasyDb } from '@/lib/neon/fantasy-config';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/fantasy/calculate-points

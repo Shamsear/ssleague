@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { getAuthToken } from '@/lib/auth/token-helper';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyTeamAuth } from '@/lib/team-auth-helper';
+import { encryptBidData } from '@/lib/encryption';
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 import { encryptBidData } from '@/lib/encryption';
 import { generateBidId, generateTeamId } from '@/lib/id-generator';
 
@@ -324,6 +325,15 @@ export async function POST(request: NextRequest) {
     `;
 
     const newBid = bidResult[0];
+
+    // Broadcast bid submitted via Firebase Realtime DB
+    await broadcastRoundUpdate(round.season_id, round_id, {
+      type: 'bid_submitted',
+      team_id: teamId,
+      team_name: teamName,
+      round_id,
+      player_id,
+    });
 
     return NextResponse.json({
       success: true,

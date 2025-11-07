@@ -6,12 +6,8 @@ import { batchGetFirebaseFields } from '@/lib/firebase/batch';
 import { logAuctionWin } from '@/lib/transaction-logger';
 import { triggerNews } from '@/lib/news/trigger';
 import { generateTiebreakerId } from '@/lib/id-generator';
-import { broadcastSquadUpdate, broadcastWalletUpdate } from '@/lib/realtime/broadcast';
-
-// WebSocket broadcast function (set by WebSocket server)
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
+import { broadcastSquadUpdate, broadcastWalletUpdate, broadcastRoundUpdate } from '@/lib/realtime/broadcast';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -417,19 +413,14 @@ export async function POST(
     console.log(`   Tiebreakers created: ${tiebreakerCreated}`);
     console.log(`   New status: ${newStatus}`);
 
-    // Broadcast round completion via WebSocket
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`round:${roundId}`, {
-        type: 'round_updated',
-        data: {
-          round_id: roundId,
-          status: newStatus,
-          immediately_assigned: immediatelyAssigned,
-          tiebreakers_created: tiebreakerCreated,
-        },
-      });
-      console.log(`📢 [WebSocket] Broadcast round completion to round:${roundId}`);
-    }
+    // Broadcast round completion via Firebase Realtime DB
+    await broadcastRoundUpdate(round.season_id, roundId, {
+      status: newStatus,
+      immediately_assigned: immediatelyAssigned,
+      tiebreakers_created: tiebreakerCreated,
+      finalized: true,
+    });
+    console.log(`📢 [Firebase] Broadcast round completion to round:${roundId}`);
 
     // Generate news for bulk round completion
     if (immediatelyAssigned > 0) {
@@ -468,6 +459,28 @@ export async function POST(
         console.error('Failed to generate news:', newsError);
         // Don't fail the finalization if news generation fails
       }
+    }
+
+    // Send FCM notification about round results
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '✅ Bulk Round Results!',
+          body: `Round ${round.round_number} finalized! ${immediatelyAssigned} players assigned${tiebreakerCreated > 0 ? `, ${tiebreakerCreated} tiebreakers created` : ''}.`,
+          url: `/dashboard/committee/bulk-rounds/${roundId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'bulk_round_finalized',
+            roundId,
+            roundNumber: round.round_number.toString(),
+            assignedCount: immediatelyAssigned.toString(),
+            tiebreakersCount: tiebreakerCreated.toString()
+          }
+        },
+        round.season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send bulk round finalize notification:', notifError);
     }
 
     return NextResponse.json({

@@ -6,11 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuctionDb } from '@/lib/neon/auction-config';
-
-// WebSocket broadcast function (set by WebSocket server)
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
+import { broadcastAuctionBid } from '@/lib/realtime/broadcast';
 
 export async function GET(request: NextRequest) {
   try {
@@ -101,18 +97,17 @@ export async function POST(request: NextRequest) {
     
     const newBid = result[0];
     
-    // ✅ Broadcast to WebSocket clients for real-time updates
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`round:${round_id}`, {
-        type: 'bid',
-        data: {
-          bid: newBid,
-          player_id,
-          team_id,
-          amount,
-        },
+    // ✅ Broadcast to Firebase Realtime DB for real-time updates
+    // Get season_id from the round
+    const seasonResult = await sql`SELECT season_id FROM rounds WHERE id = ${round_id}`;
+    const seasonId = seasonResult[0]?.season_id;
+    
+    if (seasonId) {
+      await broadcastAuctionBid(seasonId, round_id, {
+        player_id,
+        team_id,
+        amount,
       });
-      console.log(`📢 [WebSocket] Broadcast bid to round:${round_id}`);
     }
     
     return NextResponse.json({

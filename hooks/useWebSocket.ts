@@ -3,7 +3,7 @@
  * Provides easy-to-use hooks for real-time updates
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   listenToSquadUpdates,
@@ -49,6 +49,10 @@ export function useDashboardWebSocket(seasonId: string | null, teamId: string | 
       unsubWallets();
     };
   }, [seasonId, queryClient]);
+
+  return {
+    isConnected: !!seasonId,
+  };
 }
 
 /**
@@ -80,5 +84,100 @@ export function useTiebreakerWebSocket(
       unsubscribe();
     };
   }, [seasonId, tiebreakerRound, queryClient]);
+}
+
+/**
+ * Hook for auction/round updates
+ * Uses Firebase Realtime Database for instant round updates
+ */
+export function useAuctionWebSocket(roundId: string | null, enabled: boolean = true) {
+  const queryClient = useQueryClient();
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || !roundId) return;
+
+    console.log('🔌 [Realtime DB] Connecting to round:', roundId);
+    setIsConnected(true);
+
+    // Listen to round status updates
+    const { ref, onValue } = require('firebase/database');
+    const { realtimeDb } = require('@/lib/firebase/config');
+    
+    const roundRef = ref(realtimeDb, `rounds/${roundId}`);
+    
+    const unsubscribe = onValue(roundRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        console.log('📊 [Round Update] Received:', data);
+        
+        // Invalidate round-related caches
+        queryClient.invalidateQueries({ queryKey: ['round-data', roundId] });
+        queryClient.invalidateQueries({ queryKey: ['round-status', roundId] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      }
+    });
+
+    return () => {
+      console.log('🔌 [Realtime DB] Disconnecting from round:', roundId);
+      unsubscribe();
+      setIsConnected(false);
+    };
+  }, [roundId, enabled, queryClient]);
+
+  return {
+    isConnected,
+    lastMessage: null,
+  };
+}
+
+/**
+ * Generic WebSocket hook for custom channels
+ * Uses Firebase Realtime Database
+ */
+export function useWebSocket(options: {
+  channel: string;
+  enabled?: boolean;
+  onMessage?: (message: any) => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+}) {
+  const [isConnected, setIsConnected] = useState(false);
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!options.enabled) return;
+
+    console.log('🔌 [Realtime DB] Connecting to channel:', options.channel);
+    setIsConnected(true);
+    options.onConnect?.();
+
+    // Listen to the channel path in Firebase Realtime DB
+    const { ref, onValue } = require('firebase/database');
+    const { realtimeDb } = require('@/lib/firebase/config');
+    
+    const channelRef = ref(realtimeDb, options.channel.replace(/:/g, '/'));
+    
+    const unsubscribe = onValue(channelRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        console.log('📨 [Channel Update] Received:', data);
+        setLastMessage(JSON.stringify(data));
+        options.onMessage?.(data);
+      }
+    });
+
+    return () => {
+      console.log('🔌 [Realtime DB] Disconnecting from channel:', options.channel);
+      unsubscribe();
+      setIsConnected(false);
+      options.onDisconnect?.();
+    };
+  }, [options.channel, options.enabled]);
+
+  return {
+    isConnected,
+    lastMessage,
+  };
 }
 

@@ -4,10 +4,8 @@ import { cookies } from 'next/headers';
 import { adminAuth } from '@/lib/firebase/admin';
 import { generateTiebreakerId } from '@/lib/id-generator';
 
-// WebSocket broadcast function
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -277,17 +275,37 @@ export async function POST(
     console.log(`✅ Created tiebreaker ${tiebreakerId} for ${playerName} with ${bidsResult.length} teams`);
     console.log(`✅ Created bulk tiebreaker infrastructure for Last Person Standing auction`);
 
-    // Broadcast tiebreaker creation via WebSocket
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`round:${roundId}`, {
-        type: 'tiebreaker_created',
-        data: {
-          tiebreaker_id: tiebreakerId,
-          player_id,
-          player_name: playerName,
-          team_count: bidsResult.length,
+    // Broadcast tiebreaker creation via Firebase Realtime DB
+    await broadcastRoundUpdate(round.season_id, roundId, {
+      type: 'tiebreaker_created',
+      tiebreaker_id: tiebreakerId,
+      player_id,
+      player_name: playerName,
+      team_count: bidsResult.length,
+    });
+
+    // Send FCM notification to all teams in the season
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '⚔️ Tiebreaker Created!',
+          body: `${playerName} is now in a tiebreaker with ${bidsResult.length} teams competing. Submit your bid!`,
+          url: `/tiebreakers/${tiebreakerId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'tiebreaker_created',
+            tiebreaker_id: tiebreakerId,
+            player_id,
+            player_name: playerName,
+            round_id: roundId,
+            team_count: bidsResult.length.toString(),
+          }
         },
-      });
+        round.season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send tiebreaker creation notification:', notifError);
+      // Don't fail the request
     }
 
     return NextResponse.json({

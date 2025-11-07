@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { generatePollResultsNews, shouldGenerateNewsForPoll } from '@/lib/polls/results-news';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/polls/close
@@ -255,6 +256,39 @@ async function calculatePollResults(pollId: string): Promise<void> {
       `;
 
       console.log(`📊 Results calculated for poll ${pollId}: Winner option ${winner.option_id} with ${winner.votes} votes (${winner.percentage}%)`);
+      
+      // Send FCM notification for poll closure
+      try {
+        const [poll] = await sql`
+          SELECT poll_type, question_en, season_id FROM polls WHERE id = ${pollId}
+        `;
+        
+        if (poll && poll.season_id) {
+          // Get winner option text
+          const [winnerOption] = await sql`
+            SELECT text_en FROM poll_options WHERE id = ${winner.option_id}
+          `;
+          
+          await sendNotificationToSeason(
+            {
+              title: '📊 Poll Closed!',
+              body: `"${poll.question_en}" - Winner: ${winnerOption?.text_en || 'See results'} (${winner.percentage}%)`,
+              url: `/polls/${pollId}`,
+              icon: '/logo.png',
+              data: {
+                type: 'poll_closed',
+                poll_id: pollId,
+                poll_type: poll.poll_type,
+                winner_votes: winner.votes.toString(),
+                winner_percentage: winner.percentage.toString(),
+              }
+            },
+            poll.season_id
+          );
+        }
+      } catch (notifError) {
+        console.error('Failed to send poll closure notification:', notifError);
+      }
       
       // Generate news for major polls (async, non-blocking)
       const [poll] = await sql`

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { adminDb } from '@/lib/firebase/admin';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 // POST - Generate fixtures for a tournament
 export async function POST(
@@ -155,6 +156,26 @@ export async function POST(
 
     // Teams are already assigned via the Teams tab, so no need to update here
     console.log(`✅ Generated fixtures for ${team_ids.length} teams in tournament ${tournamentId}`);
+
+    // Send notification
+    try {
+      await sendNotificationToSeason(
+        {
+          title: `📅 ${tournamentData.name || 'Tournament'} Fixtures Generated`,
+          body: `${fixtures.length} fixtures have been created. Check the schedule!`,
+          url: `/dashboard/tournaments/${tournamentId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'tournament_fixtures_generated',
+            tournament_id: tournamentId,
+            fixtures_count: fixtures.length
+          }
+        },
+        tournamentData.season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send notification:', notifError);
+    }
 
     return NextResponse.json({
       success: true,

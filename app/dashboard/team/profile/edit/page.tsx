@@ -4,38 +4,73 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useModal } from '@/hooks/useModal';
-import AlertModal from '@/components/modals/AlertModal';
+import { uploadImage } from '@/lib/imagekit/upload';
+import { useCachedSeasons } from '@/hooks/useCachedFirebase';
+
+interface RealPlayer {
+  id: string | number;
+  player_id: string;
+  name: string;
+  position?: string | null;
+  jersey_number?: number | null;
+  overall_rating?: number;
+  photo_url?: string | null;
+}
 
 export default function EditTeamProfilePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   
-  // Form state
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  // Form state - Team
   const [teamName, setTeamName] = useState('');
   const [currentLogoUrl, setCurrentLogoUrl] = useState('');
   const [newLogoFile, setNewLogoFile] = useState<File | null>(null);
   const [newLogoPreview, setNewLogoPreview] = useState('');
-  const [fileName, setFileName] = useState('');
+  
+  // Form state - Owner
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPhone, setOwnerPhone] = useState('');
+  const [ownerDOB, setOwnerDOB] = useState('');
+  const [ownerPlace, setOwnerPlace] = useState('');
+  const [ownerNationality, setOwnerNationality] = useState('India');
+  const [ownerBio, setOwnerBio] = useState('');
+  const [ownerInstagram, setOwnerInstagram] = useState('');
+  const [ownerTwitter, setOwnerTwitter] = useState('');
+  const [ownerPhoto, setOwnerPhoto] = useState<File | null>(null);
+  const [ownerPhotoPreview, setOwnerPhotoPreview] = useState('');
+  const [currentOwnerPhoto, setCurrentOwnerPhoto] = useState('');
+  
+  // Form state - Manager
+  const [managerMode, setManagerMode] = useState<'player' | 'non-player'>('player');
+  const [selectedPlayer, setSelectedPlayer] = useState<RealPlayer | null>(null);
+  const [managerName, setManagerName] = useState('');
+  const [managerEmail, setManagerEmail] = useState('');
+  const [managerPhone, setManagerPhone] = useState('');
+  const [managerDOB, setManagerDOB] = useState('');
+  const [managerPlace, setManagerPlace] = useState('');
+  const [managerNationality, setManagerNationality] = useState('India');
+  const [managerJerseyNumber, setManagerJerseyNumber] = useState('');
+  const [managerPhoto, setManagerPhoto] = useState<File | null>(null);
+  const [managerPhotoPreview, setManagerPhotoPreview] = useState('');
+  const [currentManagerPhoto, setCurrentManagerPhoto] = useState('');
+  
+  // Data
+  const [realPlayers, setRealPlayers] = useState<RealPlayer[]>([]);
+  const [seasonId, setSeasonId] = useState('');
+  const [teamId, setTeamId] = useState('');
   
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Modal system
-  const { alertState, showAlert, closeAlert } = useModal();
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeSection, setActiveSection] = useState<'team' | 'owner' | 'manager'>('team');
   
-  // Password validation state
-  const [passwordLengthValid, setPasswordLengthValid] = useState(false);
-  const [passwordsMatch, setPasswordsMatch] = useState(true);
+  const keralaDistricts = [
+    'Alappuzha', 'Ernakulam', 'Idukki', 'Kannur', 'Kasaragod',
+    'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Palakkad',
+    'Pathanamthitta', 'Thiruvananthapuram', 'Thrissur', 'Wayanad'
+  ];
 
   useEffect(() => {
     if (!loading && !user) {
@@ -46,88 +81,155 @@ export default function EditTeamProfilePage() {
     }
   }, [user, loading, router]);
 
+  // Fetch active season using the same hook as profile page
+  const { data: activeSeasons, isLoading: seasonsLoading } = useCachedSeasons(
+    user?.role === 'team' ? { isActive: 'true' } : undefined
+  );
+
   useEffect(() => {
-    const fetchTeamData = async () => {
-      if (!user) return;
+    console.log('🔄 useEffect triggered, user:', user?.uid, 'seasons:', activeSeasons?.length);
+    const fetchData = async () => {
+      if (!user) {
+        console.log('⚠️ No user, skipping fetch');
+        return;
+      }
 
+      if (!activeSeasons || activeSeasons.length === 0) {
+        console.log('⚠️ No active seasons found yet');
+        return;
+      }
+
+      console.log('✅ User found, fetching data...');
       try {
-        const { db } = await import('@/lib/firebase/config');
-        const { collection, query, where, getDocs, limit } = await import('firebase/firestore');
+        const activeSeasonId = activeSeasons[0].id;
+        console.log('📅 Active season ID:', activeSeasonId);
+        setSeasonId(activeSeasonId);
 
-        setUsername(user.username || '');
-        
-        const teamSeasonsQuery = query(
-          collection(db, 'team_seasons'),
-          where('team_id', '==', user.uid),
-          where('status', '==', 'registered'),
-          limit(1)
-        );
-        const teamSeasonsSnapshot = await getDocs(teamSeasonsQuery);
+        // Fetch dashboard data
+        console.log('🔍 Fetching dashboard data...');
+        const response = await fetch(`/api/team/dashboard?season_id=${activeSeasonId}`);
+        const result = await response.json();
+        console.log('📦 Full API response:', result);
+        const { success, data } = result;
 
-        if (!teamSeasonsSnapshot.empty) {
-          const teamSeasonData = teamSeasonsSnapshot.docs[0].data();
-          setTeamName(teamSeasonData.team_name || (user as any).teamName || '');
-          setCurrentLogoUrl(teamSeasonData.team_logo || (user as any).logoUrl || '');
+        if (success && data) {
+          console.log('✅ Data received successfully');
+          console.log('👤 Team data:', data.team);
+          console.log('🏆 Owner data:', data.owner);
+          console.log('⚽ Manager data:', data.manager);
+          console.log('👥 Real players data:', data.realPlayers);
+          // Team data
+          setTeamId(data.team.id);
+          setTeamName(data.team.name);
+          setCurrentLogoUrl(data.team.logo_url || '');
+          console.log('✅ Team state updated:', { teamId: data.team.id, teamName: data.team.name });
+          
+          // Owner data
+          console.log('🔄 Setting owner data...');
+          if (data.owner) {
+            console.log('✅ Owner data exists:', data.owner);
+            setOwnerName(data.owner.name || '');
+            setOwnerEmail(data.owner.email || '');
+            setOwnerPhone(data.owner.phone || '');
+            setOwnerDOB(data.owner.date_of_birth || '');
+            setOwnerPlace(data.owner.place || '');
+            setOwnerNationality(data.owner.nationality || 'India');
+            setOwnerBio(data.owner.bio || '');
+            setOwnerInstagram(data.owner.instagram_handle || '');
+            setOwnerTwitter(data.owner.twitter_handle || '');
+            setCurrentOwnerPhoto(data.owner.photo_url || '');
+            console.log('✅ Owner state updated');
+          } else {
+            console.log('⚠️ No owner data in response');
+          }
+          
+          // Manager data
+          console.log('🔄 Setting manager data...');
+          if (data.manager) {
+            console.log('✅ Manager data exists:', data.manager);
+            if (data.manager.is_player) {
+              console.log('👤 Manager is a player, searching for player_id:', data.manager.player_id);
+              setManagerMode('player');
+              // Find the real player in the squad
+              const managerPlayer = data.realPlayers?.find((p: any) => p.player_id === data.manager.player_id);
+              console.log('🔍 Manager player found:', managerPlayer);
+              if (managerPlayer) {
+                setSelectedPlayer(managerPlayer);
+                console.log('✅ Selected player set:', managerPlayer.name);
+              } else {
+                console.log('⚠️ Manager player not found in real players squad');
+              }
+            } else {
+              console.log('👔 Manager is non-playing');
+              setManagerMode('non-player');
+              setManagerName(data.manager.name || '');
+              setManagerEmail(data.manager.email || '');
+              setManagerPhone(data.manager.phone || '');
+              setManagerDOB(data.manager.date_of_birth || '');
+              setManagerPlace(data.manager.place || '');
+              setManagerNationality(data.manager.nationality || 'India');
+              setManagerJerseyNumber(data.manager.jersey_number?.toString() || '');
+              setCurrentManagerPhoto(data.manager.photo_url || '');
+              console.log('✅ Non-playing manager state updated');
+            }
+          } else {
+            console.log('⚠️ No manager data in response');
+          }
+          
+          // Real Players list
+          console.log('🔄 Setting real players list...');
+          console.log('👥 Real players count:', data.realPlayers?.length || 0);
+          console.log('👥 Real players data:', data.realPlayers);
+          setRealPlayers(data.realPlayers || []);
+          console.log('✅ Real players state updated');
         } else {
-          setTeamName((user as any).teamName || '');
-          setCurrentLogoUrl((user as any).logoUrl || '');
+          console.log('❌ API returned error:', result.error);
         }
       } catch (error) {
-        console.error('Error fetching team data:', error);
-        setUsername(user.username || '');
-        setTeamName((user as any).teamName || '');
-        setCurrentLogoUrl((user as any).logoUrl || '');
+        console.error('❌ Error fetching data:', error);
       }
     };
 
-    fetchTeamData();
-  }, [user]);
-
-  // Password validation
-  useEffect(() => {
-    if (newPassword) {
-      setPasswordLengthValid(newPassword.length >= 6);
-    } else {
-      setPasswordLengthValid(false);
-    }
-  }, [newPassword]);
-
-  useEffect(() => {
-    if (newPassword || confirmPassword) {
-      setPasswordsMatch(newPassword === confirmPassword);
-    } else {
-      setPasswordsMatch(true);
-    }
-  }, [newPassword, confirmPassword]);
+    fetchData();
+  }, [user, activeSeasons]);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) {
-      setFileName('');
-      setNewLogoPreview('');
-      return;
-    }
+    if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      showAlert({
-        type: 'warning',
-        title: 'File Too Large',
-        message: 'File size must be less than 5MB'
-      });
-      e.target.value = '';
+      setError('File size must be less than 5MB');
       return;
     }
 
-    setFileName(file.name);
     setNewLogoFile(file);
+    setNewLogoPreview(URL.createObjectURL(file));
+  };
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setNewLogoPreview(event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+  const handleOwnerPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size must be less than 5MB');
+      return;
+    }
+
+    setOwnerPhoto(file);
+    setOwnerPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleManagerPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size must be less than 5MB');
+      return;
+    }
+
+    setManagerPhoto(file);
+    setManagerPhotoPreview(URL.createObjectURL(file));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -136,160 +238,139 @@ export default function EditTeamProfilePage() {
     setSuccess('');
 
     // Validation
-    if (!currentPassword) {
-      setError('Current password is required to make changes');
+    if (!teamName.trim()) {
+      setError('Team name is required');
       return;
     }
 
-    if (username.length < 3) {
-      setError('Username must be at least 3 characters long');
+    if (!ownerName.trim()) {
+      setError('Owner name is required');
       return;
     }
 
-    if (teamName.length < 3) {
-      setError('Team name must be at least 3 characters long');
+    if (managerMode === 'non-player' && !managerName.trim()) {
+      setError('Manager name is required');
       return;
     }
 
-    if (newPassword) {
-      if (newPassword.length < 6) {
-        setError('New password must be at least 6 characters long');
-        return;
-      }
-
-      if (newPassword !== confirmPassword) {
-        setError('Passwords do not match');
-        return;
-      }
+    if (managerMode === 'player' && !selectedPlayer) {
+      setError('Please select a player as manager');
+      return;
     }
 
     try {
       setIsSubmitting(true);
 
-      // Reauthenticate user
-      const { auth } = await import('@/lib/firebase/config');
-      const { EmailAuthProvider, reauthenticateWithCredential, updatePassword: firebaseUpdatePassword } = await import('firebase/auth');
-      
-      const credential = EmailAuthProvider.credential(
-        user!.email!,
-        currentPassword
-      );
-      
-      await reauthenticateWithCredential(auth.currentUser!, credential);
-
-      // Upload logo if changed
+      // Upload team logo if changed
       let logoUrl = currentLogoUrl;
-      let logoFileId = '';
-      
       if (newLogoFile) {
-        // Upload to ImageKit
-        const { uploadImage } = await import('@/lib/imagekit/upload');
-        
-        const timestamp = Date.now();
-        const fileName = `${user?.uid}_${timestamp}_${newLogoFile.name}`;
-        
         const result = await uploadImage({
           file: newLogoFile,
-          fileName,
+          fileName: `team_${teamId}_${Date.now()}_${newLogoFile.name}`,
           folder: '/team-logos',
-          tags: ['team', 'logo', user?.uid || ''],
+          tags: ['team', teamId],
           useUniqueFileName: true,
         });
-        
         logoUrl = result.url;
-        logoFileId = result.fileId;
       }
 
-      // Update Firestore
-      const { db } = await import('@/lib/firebase/config');
-      const { collection, query, where, getDocs, doc, updateDoc } = await import('firebase/firestore');
-
-      // Update users collection
-      const userDocRef = doc(db, 'users', user!.uid);
-      await updateDoc(userDocRef, {
-        username: username.trim(),
-        teamName: teamName.trim(),
-        logoUrl: logoUrl,
-      });
-
-      // Update teams collection (need to find team ID first)
-      try {
-        // Get team ID from users document
-        const userDocData = await getDoc(doc(db, 'users', user!.uid));
-        const teamId = userDocData.data()?.teamId;
-        
-        if (teamId) {
-          const teamDocRef = doc(db, 'teams', teamId);
-          await updateDoc(teamDocRef, {
-            team_name: teamName.trim(),
-            logo_url: logoUrl,
-          });
-        } else {
-          console.log('No team ID found in user document');
-        }
-      } catch (teamError) {
-        console.log('Team document may not exist yet, will be created on season registration');
+      // Upload owner photo if changed
+      let ownerPhotoUrl = currentOwnerPhoto;
+      if (ownerPhoto) {
+        const result = await uploadImage({
+          file: ownerPhoto,
+          fileName: `owner_${teamId}_${Date.now()}_${ownerPhoto.name}`,
+          folder: '/owner-photos',
+          tags: ['owner', teamId],
+          useUniqueFileName: true,
+        });
+        ownerPhotoUrl = result.url;
       }
 
-      const teamSeasonsQuery = query(
-        collection(db, 'team_seasons'),
-        where('team_id', '==', user!.uid)
-      );
-      const teamSeasonsSnapshot = await getDocs(teamSeasonsQuery);
+      // Upload manager photo if changed (non-player only)
+      let managerPhotoUrl = currentManagerPhoto;
+      if (managerMode === 'non-player' && managerPhoto) {
+        const result = await uploadImage({
+          file: managerPhoto,
+          fileName: `manager_${teamId}_${Date.now()}_${managerPhoto.name}`,
+          folder: '/manager-photos',
+          tags: ['manager', teamId],
+          useUniqueFileName: true,
+        });
+        managerPhotoUrl = result.url;
+      }
 
-      const updatePromises = teamSeasonsSnapshot.docs.map(async (teamSeasonDoc) => {
-        const teamSeasonRef = doc(db, 'team_seasons', teamSeasonDoc.id);
-        const updateData: any = {
-          team_name: teamName.trim(),
-          team_logo: logoUrl,
+      // Prepare manager data
+      let managerData;
+      if (managerMode === 'player' && selectedPlayer) {
+        managerData = {
+          name: selectedPlayer.name,
+          is_player: true,
+          player_id: selectedPlayer.player_id,
+          photo_url: null, // Use player's photo
         };
-        
-        // Add fileId if new logo was uploaded
-        if (logoFileId) {
-          updateData.team_logo_file_id = logoFileId;
-        }
-        
-        return updateDoc(teamSeasonRef, updateData);
+      } else {
+        managerData = {
+          name: managerName,
+          email: managerEmail,
+          phone: managerPhone,
+          date_of_birth: managerDOB || null,
+          place: managerPlace || null,
+          nationality: managerNationality,
+          jersey_number: managerJerseyNumber ? parseInt(managerJerseyNumber) : null,
+          is_player: false,
+          player_id: null,
+          photo_url: managerPhotoUrl,
+        };
+      }
+
+      // Call API
+      const response = await fetch('/api/team/profile/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamName: teamName.trim(),
+          logoUrl,
+          seasonId,
+          owner: {
+            name: ownerName,
+            email: ownerEmail,
+            phone: ownerPhone,
+            date_of_birth: ownerDOB || null,
+            place: ownerPlace || null,
+            nationality: ownerNationality,
+            bio: ownerBio || null,
+            instagram_handle: ownerInstagram || null,
+            twitter_handle: ownerTwitter || null,
+            photo_url: ownerPhotoUrl,
+          },
+          manager: managerData,
+        }),
       });
 
-      await Promise.all(updatePromises);
+      const result = await response.json();
 
-      // Update password if provided
-      if (newPassword) {
-        await firebaseUpdatePassword(auth.currentUser!, newPassword);
-        setSuccess('Profile updated successfully! You will be logged out to sign in with your new password.');
-        
-        // Sign out user after password change
-        setTimeout(async () => {
-          const { signOut } = await import('firebase/auth');
-          await signOut(auth);
-          router.push('/login');
-        }, 3000);
-      } else {
-        setSuccess('Profile updated successfully!');
-        setTimeout(() => {
-          router.push('/dashboard/team/profile');
-        }, 2000);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update profile');
       }
-    } catch (error: any) {
-      console.error('Error updating profile:', error);
-      if (error.code === 'auth/wrong-password') {
-        setError('Current password is incorrect');
-      } else if (error.code === 'auth/weak-password') {
-        setError('New password is too weak');
-      } else {
-        setError('Failed to update profile. Please try again.');
-      }
+
+      setSuccess('Profile updated successfully!');
+      setTimeout(() => {
+        router.push('/dashboard/team/profile');
+      }, 2000);
+    } catch (err: any) {
+      console.error('Error updating profile:', err);
+      setError(err.message || 'Failed to update profile');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (loading) {
+  if (loading || seasonsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -301,399 +382,472 @@ export default function EditTeamProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-6 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-6 px-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header Section */}
-        <div className="text-center mb-8 hidden sm:block">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-primary to-primary-dark rounded-full mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-dark mb-2">Edit Profile</h1>
-          <p className="text-gray-600 max-w-2xl mx-auto">Manage your account information and team settings. All changes require your current password for security.</p>
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Edit Team Profile</h1>
+          <p className="text-gray-600">Update your team information, owner, and manager details</p>
         </div>
 
         {/* Flash Messages */}
         {error && (
-          <div className="mb-6 glass rounded-2xl p-4 border-l-4 border-red-500 bg-red-50/80 backdrop-blur-sm">
+          <div className="mb-6 glass rounded-2xl p-4 border-l-4 border-red-500 bg-red-50">
             <div className="flex items-center">
-              <svg className="w-5 h-5 text-red-500 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-5 h-5 text-red-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"></path>
               </svg>
-              <div className="text-red-800">
-                <p className="font-medium">Error</p>
-                <p className="text-sm">{error}</p>
-              </div>
+              <p className="text-red-800">{error}</p>
             </div>
           </div>
         )}
 
         {success && (
-          <div className="mb-6 glass rounded-2xl p-4 border-l-4 border-green-500 bg-green-50/80 backdrop-blur-sm">
+          <div className="mb-6 glass rounded-2xl p-4 border-l-4 border-green-500 bg-green-50">
             <div className="flex items-center">
-              <svg className="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-5 h-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
               </svg>
-              <div className="text-green-800">
-                <p className="font-medium">Success</p>
-                <p className="text-sm">{success}</p>
-              </div>
+              <p className="text-green-800">{success}</p>
             </div>
           </div>
         )}
 
-        {/* Main Form */}
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Security Verification */}
-          <div className="glass rounded-3xl p-6 sm:p-8">
-            <div className="flex items-center mb-6">
-              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mr-4">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-dark">Security Verification</h2>
-                <p className="text-gray-600 text-sm">Confirm your identity to make changes</p>
-              </div>
-            </div>
-            
-            <div className="relative">
-              <label htmlFor="current_password" className="block text-sm font-medium text-gray-700 mb-2">
-                Current Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </div>
-                <input 
-                  type={showCurrentPassword ? "text" : "password"}
-                  id="current_password" 
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 hover:border-gray-400"
-                  placeholder="Enter your current password"
-                />
-                <button 
-                  type="button" 
-                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                >
-                  <svg className="h-5 w-5 text-gray-400 hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {showCurrentPassword ? (
-                      <>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.464 8.464M9.878 9.878l-1.414-1.414m4.242 4.242L16.95 16.95M16.95 16.95l1.414 1.414M16.95 16.95l-1.414 1.414" />
-                      </>
-                    ) : (
-                      <>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </>
-                    )}
-                  </svg>
-                </button>
-              </div>
-              <p className="text-sm text-gray-500 mt-2">Required to authenticate any profile changes</p>
-            </div>
-          </div>
+        {/* Section Navigation */}
+        <div className="glass rounded-2xl p-2 mb-6 flex gap-2">
+          <button
+            onClick={() => setActiveSection('team')}
+            className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+              activeSection === 'team'
+                ? 'bg-blue-600 text-white shadow-lg'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Team Info
+          </button>
+          <button
+            onClick={() => setActiveSection('owner')}
+            className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+              activeSection === 'owner'
+                ? 'bg-blue-600 text-white shadow-lg'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Owner
+          </button>
+          <button
+            onClick={() => setActiveSection('manager')}
+            className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+              activeSection === 'manager'
+                ? 'bg-blue-600 text-white shadow-lg'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Manager
+          </button>
+        </div>
 
-          {/* Main Content Grid */}
-          <div className="grid lg:grid-cols-2 gap-8">
-            {/* Account Information */}
-            <div className="glass rounded-3xl p-6 sm:p-8">
-              <div className="flex items-center mb-6">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
+        <form onSubmit={handleSubmit}>
+          {/* Team Info Section */}
+          {activeSection === 'team' && (
+            <div className="glass rounded-3xl p-8 mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Team Information</h2>
+              
+              <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl font-bold text-dark">Account Information</h2>
-                  <p className="text-gray-600 text-sm">Update your account details</p>
-                </div>
-              </div>
-
-              {/* Username */}
-              <div className="mb-6">
-                <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">Username</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <input 
-                    type="text" 
-                    id="username" 
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 hover:border-gray-400"
-                    placeholder={user.username || 'Enter username'}
-                  />
-                </div>
-                <p className="text-sm text-gray-500 mt-1">Leave unchanged to keep your current username</p>
-              </div>
-
-              {/* Password Section */}
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
-                  <svg className="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                  </svg>
-                  Change Password
-                </h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <label htmlFor="new_password" className="block text-sm font-medium text-gray-700 mb-2">New Password</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                      </div>
-                      <input 
-                        type={showNewPassword ? "text" : "password"}
-                        id="new_password" 
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 hover:border-gray-400"
-                        placeholder="Enter new password (optional)"
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                      >
-                        <svg className="h-5 w-5 text-gray-400 hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          {showNewPassword ? (
-                            <>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.464 8.464M9.878 9.878l-1.414-1.414m4.242 4.242L16.95 16.95M16.95 16.95l1.414 1.414M16.95 16.95l-1.414 1.414" />
-                            </>
-                          ) : (
-                            <>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </>
-                          )}
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="mt-2">
-                      <div className="flex items-center text-xs text-gray-500 space-x-4">
-                        <span className={`flex items-center ${newPassword ? (passwordLengthValid ? 'text-green-600' : 'text-red-600') : ''}`}>
-                          <svg className={`w-3 h-3 mr-1 ${newPassword ? (passwordLengthValid ? 'text-green-500' : 'text-red-500') : 'text-gray-400'}`} fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
-                          </svg>
-                          At least 6 characters
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="confirm_password" className="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <input 
-                        type={showConfirmPassword ? "text" : "password"}
-                        id="confirm_password" 
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 hover:border-gray-400"
-                        placeholder="Confirm new password"
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                      >
-                        <svg className="h-5 w-5 text-gray-400 hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          {showConfirmPassword ? (
-                            <>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.464 8.464M9.878 9.878l-1.414-1.414m4.242 4.242L16.95 16.95M16.95 16.95l1.414 1.414M16.95 16.95l-1.414 1.414" />
-                            </>
-                          ) : (
-                            <>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </>
-                          )}
-                        </svg>
-                      </button>
-                    </div>
-                    <p className={`text-xs mt-1 ${(newPassword || confirmPassword) ? (passwordsMatch ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>
-                      {(newPassword || confirmPassword) ? (passwordsMatch ? '✓ Passwords match' : '✗ Passwords do not match') : 'Passwords must match'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Team Information */}
-            <div className="glass rounded-3xl p-6 sm:p-8">
-              <div className="flex items-center mb-6">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-dark">Team Information</h2>
-                  <p className="text-gray-600 text-sm">Manage your team settings</p>
-                </div>
-              </div>
-
-              {/* Team Name */}
-              <div className="mb-6">
-                <label htmlFor="team_name" className="block text-sm font-medium text-gray-700 mb-2">Team Name</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                  </div>
-                  <input 
-                    type="text" 
-                    id="team_name" 
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Team Name *</label>
+                  <input
+                    type="text"
                     value={teamName}
                     onChange={(e) => setTeamName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 hover:border-gray-400"
-                    placeholder={user.teamName || 'Enter team name'}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
                   />
                 </div>
-                <p className="text-sm text-gray-500 mt-1">Leave unchanged to keep your current team name</p>
-              </div>
 
-              {/* Team Logo */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Team Logo</label>
-                
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600 mb-2">Current Logo:</p>
-                  <div className="flex items-center gap-4">
-                    {currentLogoUrl ? (
-                      <img 
-                        src={currentLogoUrl} 
-                        alt="Current team logo" 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Team Logo</label>
+                  <div className="flex items-center gap-4 mb-4">
+                    {(newLogoPreview || currentLogoUrl) && (
+                      <img
+                        src={newLogoPreview || currentLogoUrl}
+                        alt="Team logo"
                         className="w-24 h-24 rounded-xl object-contain bg-white p-2 border-2 border-gray-200"
                       />
-                    ) : (
-                      <div className="w-24 h-24 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center">
-                        <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                      </div>
-                    )}
-                    
-                    {newLogoPreview && (
-                      <div>
-                        <p className="text-sm text-gray-600 mb-2">New Logo:</p>
-                        <img src={newLogoPreview} alt="New logo preview" className="w-24 h-24 rounded-xl object-contain bg-white p-2 border-2 border-primary" />
-                      </div>
                     )}
                   </div>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      id="logo-upload"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="logo-upload"
+                      className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    >
+                      <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-sm font-medium text-gray-700">Choose Logo</span>
+                    </label>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">Max size: 5MB</p>
                 </div>
-
-                <div className="relative">
-                  <input 
-                    type="file" 
-                    id="team_logo" 
-                    accept="image/png,image/jpg,image/jpeg,image/gif,image/webp"
-                    className="hidden"
-                    onChange={handleLogoChange}
-                  />
-                  <label 
-                    htmlFor="team_logo" 
-                    className="cursor-pointer inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    Choose New Logo
-                  </label>
-                  <span className="ml-3 text-sm text-gray-600">{fileName}</span>
-                </div>
-                <p className="mt-2 text-sm text-gray-500">Accepted formats: PNG, JPG, JPEG, GIF, WEBP. Max size: 5MB</p>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Owner Section */}
+          {activeSection === 'owner' && (
+            <div className="glass rounded-3xl p-8 mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Owner Information</h2>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+                  <input
+                    type="text"
+                    value={ownerName}
+                    onChange={(e) => setOwnerName(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                  <input
+                    type="email"
+                    value={ownerEmail}
+                    onChange={(e) => setOwnerEmail(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone *</label>
+                  <input
+                    type="tel"
+                    value={ownerPhone}
+                    onChange={(e) => setOwnerPhone(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={ownerDOB}
+                    onChange={(e) => setOwnerDOB(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Place</label>
+                  <select
+                    value={ownerPlace}
+                    onChange={(e) => setOwnerPlace(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select District</option>
+                    {keralaDistricts.map(district => (
+                      <option key={district} value={district}>{district}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nationality</label>
+                  <input
+                    type="text"
+                    value={ownerNationality}
+                    onChange={(e) => setOwnerNationality(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Bio</label>
+                  <textarea
+                    value={ownerBio}
+                    onChange={(e) => setOwnerBio(e.target.value)}
+                    rows={3}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Instagram Handle</label>
+                  <input
+                    type="text"
+                    value={ownerInstagram}
+                    onChange={(e) => setOwnerInstagram(e.target.value)}
+                    placeholder="@username"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Twitter Handle</label>
+                  <input
+                    type="text"
+                    value={ownerTwitter}
+                    onChange={(e) => setOwnerTwitter(e.target.value)}
+                    placeholder="@username"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Photo</label>
+                  <div className="flex items-center gap-4 mb-4">
+                    {(ownerPhotoPreview || currentOwnerPhoto) && (
+                      <img
+                        src={ownerPhotoPreview || currentOwnerPhoto}
+                        alt="Owner"
+                        className="w-24 h-24 rounded-xl object-cover border-2 border-gray-200"
+                      />
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      id="owner-photo-upload"
+                      accept="image/*"
+                      onChange={handleOwnerPhotoChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="owner-photo-upload"
+                      className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    >
+                      <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-sm font-medium text-gray-700">Choose Photo</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Manager Section */}
+          {activeSection === 'manager' && (
+            <div className="glass rounded-3xl p-8 mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Manager Information</h2>
+              
+              {/* Manager Type Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-3">Manager Type</label>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setManagerMode('player')}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                      managerMode === 'player'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Playing Manager
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManagerMode('non-player')}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                      managerMode === 'non-player'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Non-Playing Manager
+                  </button>
+                </div>
+              </div>
+
+              {managerMode === 'player' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Select Player *</label>
+                  
+                  {selectedPlayer && (
+                    <div className="mb-4 p-4 bg-blue-50 rounded-xl border-2 border-blue-600">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-blue-600 font-medium mb-1">Current Manager</p>
+                          <p className="font-bold text-gray-900">{selectedPlayer.name}</p>
+                          <p className="text-sm text-gray-600">{selectedPlayer.position} • {selectedPlayer.overall_rating} OVR</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPlayer(null)}
+                          className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-sm"
+                        >
+                          Change Manager
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {!selectedPlayer && (
+                    <div>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {realPlayers.map(player => (
+                          <button
+                            key={player.id}
+                            type="button"
+                            onClick={() => setSelectedPlayer(player)}
+                            className="p-4 rounded-xl border-2 text-left transition-all border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                          >
+                            <div className="font-bold text-gray-900">{player.name}</div>
+                            <div className="text-sm text-gray-600">{player.position || 'Player'}</div>
+                          </button>
+                        ))}
+                      </div>
+                      {realPlayers.length === 0 && (
+                        <p className="text-gray-500 text-center py-8">No real players in squad yet. Add real players first before selecting a playing manager.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+                    <input
+                      type="text"
+                      value={managerName}
+                      onChange={(e) => setManagerName(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                      required={managerMode === 'non-player'}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input
+                      type="email"
+                      value={managerEmail}
+                      onChange={(e) => setManagerEmail(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                    <input
+                      type="tel"
+                      value={managerPhone}
+                      onChange={(e) => setManagerPhone(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                    <input
+                      type="date"
+                      value={managerDOB}
+                      onChange={(e) => setManagerDOB(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Place</label>
+                    <select
+                      value={managerPlace}
+                      onChange={(e) => setManagerPlace(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select District</option>
+                      {keralaDistricts.map(district => (
+                        <option key={district} value={district}>{district}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nationality</label>
+                    <input
+                      type="text"
+                      value={managerNationality}
+                      onChange={(e) => setManagerNationality(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Jersey Number</label>
+                    <input
+                      type="number"
+                      value={managerJerseyNumber}
+                      onChange={(e) => setManagerJerseyNumber(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Photo</label>
+                    <div className="flex items-center gap-4 mb-4">
+                      {(managerPhotoPreview || currentManagerPhoto) && (
+                        <img
+                          src={managerPhotoPreview || currentManagerPhoto}
+                          alt="Manager"
+                          className="w-24 h-24 rounded-xl object-cover border-2 border-gray-200"
+                        />
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        id="manager-photo-upload"
+                        accept="image/*"
+                        onChange={handleManagerPhotoChange}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="manager-photo-upload"
+                        className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                      >
+                        <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm font-medium text-gray-700">Choose Photo</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Action Buttons */}
-          <div className="glass rounded-3xl p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 sm:space-x-4">
-              <div className="flex items-center space-x-4">
-                <Link 
-                  href="/dashboard" 
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-200"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  Cancel
-                </Link>
-                <Link 
-                  href="/dashboard/team/profile" 
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-200"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  View Profile
-                </Link>
-              </div>
-              
-              <button 
-                type="submit" 
-                disabled={isSubmitting}
-                className="inline-flex items-center px-8 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                </svg>
-                {isSubmitting ? 'Updating...' : 'Update Profile'}
-              </button>
-            </div>
+          <div className="glass rounded-3xl p-6 flex justify-between items-center">
+            <Link
+              href="/dashboard/team/profile"
+              className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium"
+            >
+              Cancel
+            </Link>
+            
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-8 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? 'Updating...' : 'Update Profile'}
+            </button>
           </div>
         </form>
-
-        {/* Security Notice */}
-        <div className="glass rounded-3xl p-6 sm:p-8 border-l-4 border-blue-500">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <svg className="h-6 w-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <h3 className="text-lg font-semibold text-blue-900 mb-2">Security & Privacy</h3>
-              <div className="text-blue-800 space-y-2 text-sm">
-                <p><strong>🔒 Password Security:</strong> If you change your password, you'll be automatically logged out and need to sign in again with your new password.</p>
-                <p><strong>🛡️ Authentication:</strong> Your current password is required to make any profile changes for security.</p>
-                <p><strong>📸 Logo Storage:</strong> Team logos are stored securely in Firebase Storage and optimized for performance.</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
-
-      {/* Modal Component */}
-      <AlertModal
-        isOpen={alertState.isOpen}
-        onClose={closeAlert}
-        title={alertState.title}
-        message={alertState.message}
-        type={alertState.type}
-      />
     </div>
   );
 }

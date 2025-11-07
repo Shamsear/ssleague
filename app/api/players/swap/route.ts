@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { swapPlayersNeon, NeonPlayerData, PlayerType } from '@/lib/player-transfers-neon';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { getAuctionDb } from '@/lib/neon/auction-config';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/players/swap
@@ -172,6 +173,59 @@ export async function POST(request: NextRequest) {
         { success: false, error: result.error || result.message },
         { status: 500 }
       );
+    }
+
+    // Send FCM notifications to both teams
+    const currencySymbol = player_type === 'football' ? '€' : '$';
+    const feeText = fee_amount === 0 ? 'No fee' : 
+                    fee_amount > 0 ? `You paid ${currencySymbol}${Math.abs(fee_amount)}` :
+                    `You received ${currencySymbol}${Math.abs(fee_amount)}`;
+    
+    // Notify Team A (swapping Player A for Player B)
+    try {
+      await sendNotification(
+        {
+          title: '🔄 Player Swap Complete',
+          body: `Swapped ${playerAInfo.player_name} for ${playerBInfo.player_name}. ${feeText}`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'player_swap',
+            player_out: playerAInfo.player_name,
+            player_in: playerBInfo.player_name,
+            fee_amount: fee_amount.toString(),
+            player_type,
+          }
+        },
+        playerAInfo.team_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send swap notification to Team A:', notifError);
+    }
+    
+    // Notify Team B (swapping Player B for Player A)
+    const feeTextB = fee_amount === 0 ? 'No fee' : 
+                     fee_amount > 0 ? `You received ${currencySymbol}${Math.abs(fee_amount)}` :
+                     `You paid ${currencySymbol}${Math.abs(fee_amount)}`;
+    try {
+      await sendNotification(
+        {
+          title: '🔄 Player Swap Complete',
+          body: `Swapped ${playerBInfo.player_name} for ${playerAInfo.player_name}. ${feeTextB}`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'player_swap',
+            player_out: playerBInfo.player_name,
+            player_in: playerAInfo.player_name,
+            fee_amount: (-fee_amount).toString(),
+            player_type,
+          }
+        },
+        playerBInfo.team_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send swap notification to Team B:', notifError);
     }
 
     return NextResponse.json({

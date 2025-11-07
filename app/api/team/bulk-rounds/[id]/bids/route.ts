@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
 import { getAuctionSettings } from '@/lib/auction-settings';
-import { broadcastWebSocket } from '@/lib/websocket/broadcast';
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -30,9 +30,9 @@ export async function POST(
     const { id: roundId } = await params;
     const { player_id } = await request.json();
 
-    // Get team_id from teams table using firebase_uid
+    // Get team_id and team_name from teams table using firebase_uid
     const teamResult = await sql`
-      SELECT id FROM teams
+      SELECT id, team_name FROM teams
       WHERE firebase_uid = ${firebaseUid}
     `;
 
@@ -44,6 +44,7 @@ export async function POST(
     }
 
     const teamId = teamResult[0].id;
+    const teamName = teamResult[0].team_name || 'Unknown Team';
 
     // Validate input
     if (!player_id) {
@@ -217,8 +218,6 @@ export async function POST(
     // ALL VALIDATIONS PASSED - Insert bid
     console.log('✅ All validations passed. Inserting bid...');
 
-    const teamName = userData.teamName || 'Unknown Team';
-
     await sql`
       INSERT INTO round_bids (
         round_id,
@@ -250,16 +249,14 @@ export async function POST(
     `;
     const bidCount = parseInt(bidCountResult[0].count) || 0;
 
-    // ⚡ Broadcast to WebSocket - Committee sees this INSTANTLY!
-    await broadcastWebSocket(`round:${roundId}`, {
+    // Broadcast bid added via Firebase Realtime DB
+    await broadcastRoundUpdate(round.season_id, roundId, {
       type: 'bid_added',
-      data: {
-        team_id: teamId,
-        team_name: teamName,
-        player_id,
-        bid_amount: round.base_price,
-        bid_count: bidCount,
-      },
+      team_id: teamId,
+      team_name: teamName,
+      player_id,
+      bid_amount: round.base_price,
+      bid_count: bidCount,
     });
 
     // NOTE: Balance is NOT deducted yet - only reserved
@@ -457,15 +454,18 @@ export async function DELETE(
     `;
     const bidCount = parseInt(bidCountResult[0].count) || 0;
 
-    // ⚡ Broadcast to WebSocket - Committee sees this INSTANTLY!
-    await broadcastWebSocket(`round:${roundId}`, {
-      type: 'bid_removed',
-      data: {
+    // Broadcast bid removed via Firebase Realtime DB
+    const roundData = await sql`SELECT season_id FROM rounds WHERE id = ${roundId}`;
+    const seasonId = roundData[0]?.season_id;
+    
+    if (seasonId) {
+      await broadcastRoundUpdate(seasonId, roundId, {
+        type: 'bid_removed',
         team_id: teamId,
         player_id,
         bid_count: bidCount,
-      },
-    });
+      });
+    }
 
     return NextResponse.json({
       success: true,

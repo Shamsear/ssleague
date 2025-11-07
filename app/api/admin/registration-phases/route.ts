@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { triggerNewsGeneration } from '@/lib/news/trigger';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/admin/registration-phases
@@ -119,6 +120,26 @@ export async function POST(request: NextRequest) {
           },
         }).catch(err => console.error('News generation failed:', err));
 
+        // Send FCM notification to all teams
+        try {
+          await sendNotificationToSeason(
+            {
+              title: '📢 Phase 2 Registration Open!',
+              body: `Unconfirmed registration is now open for ${seasonData?.name || season_id}. Register now!`,
+              url: `/seasons/${season_id}/register`,
+              icon: '/logo.png',
+              data: {
+                type: 'registration_phase_2',
+                season_id,
+                phase: 'unconfirmed',
+              }
+            },
+            season_id
+          );
+        } catch (notifError) {
+          console.error('Failed to send phase 2 notification:', notifError);
+        }
+
         return NextResponse.json({
           success: true,
           message: 'Phase 2 (Unconfirmed Registration) enabled successfully',
@@ -159,6 +180,26 @@ export async function POST(request: NextRequest) {
             phase_to: 'closed',
           },
         }).catch(err => console.error('News generation failed:', err));
+
+        // Send FCM notification to all teams
+        try {
+          await sendNotificationToSeason(
+            {
+              title: '🚫 Registration Closed',
+              body: `Registration for ${seasonData?.name || season_id} is now closed. Get ready for the season!`,
+              url: `/dashboard/team`,
+              icon: '/logo.png',
+              data: {
+                type: 'registration_closed',
+                season_id,
+                phase: 'closed',
+              }
+            },
+            season_id
+          );
+        } catch (notifError) {
+          console.error('Failed to send registration closed notification:', notifError);
+        }
 
         return NextResponse.json({
           success: true,

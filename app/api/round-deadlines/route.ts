@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 // GET - Fetch round_deadlines by tournament_id, round_number, and leg
 export async function GET(request: NextRequest) {
@@ -223,6 +224,36 @@ export async function POST(request: NextRequest) {
     `;
     
     console.log('Round deadline inserted successfully');
+
+    // Send notification if round became active
+    if (status === 'active' && season_id && tournament_id) {
+      try {
+        // Get tournament name
+        const tournamentResult = await sql`
+          SELECT name FROM tournaments WHERE id = ${tournament_id} LIMIT 1
+        `;
+        const tournamentName = tournamentResult[0]?.name || 'Tournament';
+
+        await sendNotificationToSeason(
+          {
+            title: `⚽ ${tournamentName} - Round ${round_number} Active!`,
+            body: `Round ${round_number} (${leg}) is now open. Submit your lineups!`,
+            url: `/dashboard/tournaments/${tournament_id}`,
+            icon: '/logo.png',
+            data: {
+              type: 'round_active',
+              tournament_id,
+              round_number,
+              leg,
+              status: 'active'
+            }
+          },
+          season_id
+        );
+      } catch (notifError) {
+        console.error('Failed to send round active notification:', notifError);
+      }
+    }
 
     return NextResponse.json({ 
       success: true,

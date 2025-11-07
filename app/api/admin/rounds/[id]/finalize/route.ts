@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
 import { sendNotificationToSeason, sendNotification } from '@/lib/notifications/send-notification';
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -93,6 +94,20 @@ export async function POST(
         { success: false, error: applyResult.error },
         { status: 500 }
       );
+    }
+
+    // Broadcast round finalized via Firebase Realtime DB
+    const seasonResult = await sql`
+      SELECT season_id FROM rounds WHERE id = ${roundId}
+    `;
+    if (seasonResult.length > 0) {
+      const seasonId = seasonResult[0].season_id;
+      await broadcastRoundUpdate(seasonId, roundId, {
+        type: 'round_finalized',
+        status: 'completed',
+        round_id: roundId,
+        allocations_count: finalizationResult.allocations.length,
+      });
     }
 
     // Send notifications to winners and losers

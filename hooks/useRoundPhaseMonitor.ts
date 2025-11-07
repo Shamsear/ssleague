@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { useWebSocket } from './useWebSocket';
+import { listenToSeasonRoundUpdates } from '@/lib/realtime/listeners';
 import { getISTNow } from '@/lib/utils/timezone';
 
 type Phase = 'home_fixture' | 'fixture_entry' | 'result_entry' | 'closed';
@@ -32,18 +32,20 @@ export function useRoundPhaseMonitor({
   onPhaseChange,
 }: UseRoundPhaseMonitorOptions) {
   const [lastCheck, setLastCheck] = useState(Date.now());
+  const [isConnected, setIsConnected] = useState(false);
 
-  // Subscribe to season-level phase updates
-  const { isConnected } = useWebSocket({
-    channel: `season:${seasonId}:phases`,
-    enabled: enabled && !!seasonId,
-    onMessage: useCallback((message: any) => {
+  // Subscribe to season-level phase updates via Firebase Realtime DB
+  useEffect(() => {
+    if (!enabled || !seasonId) return;
+
+    setIsConnected(true);
+    const unsubscribe = listenToSeasonRoundUpdates(seasonId, (message: any) => {
       console.log('[Phase Monitor] Received update:', message);
 
       switch (message.type) {
         case 'phase_change':
           // Admin manually changed phase or automatic phase transition
-          const { round_number, new_phase, tournament_id } = message.data;
+          const { round_number, new_phase, tournament_id } = message;
           console.log(`📅 Phase changed for Round ${round_number}: ${new_phase}`);
           onPhaseChange?.(round_number, new_phase);
           
@@ -59,13 +61,19 @@ export function useRoundPhaseMonitor({
 
         case 'round_started':
         case 'round_completed':
+        case 'round_finalized':
           // Round status changed
           console.log(`📢 Round status changed: ${message.type}`);
           setLastCheck(Date.now());
           break;
       }
-    }, [onPhaseChange]),
-  });
+    });
+
+    return () => {
+      unsubscribe();
+      setIsConnected(false);
+    };
+  }, [seasonId, enabled, onPhaseChange]);
 
   // Check phases every minute for deadline transitions
   useEffect(() => {

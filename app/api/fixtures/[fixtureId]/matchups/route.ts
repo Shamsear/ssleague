@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 export async function GET(
   request: NextRequest,
@@ -101,11 +102,43 @@ export async function POST(
           ${matchup.match_duration || 6},
           ${created_by},
           NOW()
-        )
-      `;
-    }
+      )
+    `;
+  }
 
-    return NextResponse.json({ success: true, message: 'Matchups created successfully' });
+  // Get fixture details for notification
+  const fixtureDetails = await sql`
+    SELECT home_team_name, away_team_name FROM fixtures WHERE id = ${fixtureId}
+  `;
+
+  if (fixtureDetails.length > 0) {
+    const { home_team_name, away_team_name } = fixtureDetails[0];
+    
+    // Send FCM notification
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '⚔️ Matchups Created',
+          body: `Matchups for ${home_team_name} vs ${away_team_name} have been created (${matchups.length} matches).`,
+          url: `/fixtures/${fixtureId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'matchups_created',
+            fixture_id: fixtureId,
+            home_team: home_team_name,
+            away_team: away_team_name,
+            matchup_count: matchups.length.toString(),
+          }
+        },
+        seasonId
+      );
+    } catch (notifError) {
+      console.error('Failed to send matchups creation notification:', notifError);
+      // Don't fail the request
+    }
+  }
+
+  return NextResponse.json({ success: true, message: 'Matchups created successfully' });
   } catch (error: any) {
     console.error('Error creating matchups:', error);
     console.error('Error details:', error.message, error.stack);

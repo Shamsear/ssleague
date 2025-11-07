@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -57,15 +58,15 @@ export async function POST(
       RETURNING *
     `;
 
-    // Broadcast WebSocket event if available
-    if (typeof global.wsBroadcast === 'function') {
-      global.wsBroadcast(`round:${id}`, {
-        type: 'round_time_extended',
-        data: { 
-          roundId: id, 
-          minutesAdded: minutes,
-          newEndTime: updatedRound[0].end_time 
-        }
+    // Broadcast via Firebase Realtime DB
+    const seasonResult = await sql`SELECT season_id FROM rounds WHERE id = ${id}`;
+    const seasonId = seasonResult[0]?.season_id;
+    
+    if (seasonId) {
+      await broadcastRoundUpdate(seasonId, id, {
+        end_time: updatedRound[0].end_time,
+        time_extended: true,
+        minutes_added: minutes,
       });
     }
 

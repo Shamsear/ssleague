@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { autoAwardPlayerAwards } from '@/lib/award-player-awards';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 // POST - Auto-award player awards based on season statistics
 export async function POST(request: NextRequest) {
@@ -21,6 +22,29 @@ export async function POST(request: NextRequest) {
         { success: false, error: result.error },
         { status: 500 }
       );
+    }
+
+    // Send FCM notification to all teams in the season
+    if (result.awardsGiven > 0) {
+      try {
+        await sendNotificationToSeason(
+          {
+            title: '🎖️ Season Awards Announced!',
+            body: `${result.awardsGiven} player awards have been automatically awarded based on season performance!`,
+            url: `/awards`,
+            icon: '/logo.png',
+            data: {
+              type: 'season_awards_auto',
+              season_id,
+              awards_count: result.awardsGiven.toString(),
+            }
+          },
+          season_id
+        );
+      } catch (notifError) {
+        console.error('Failed to send auto-awards notification:', notifError);
+        // Don't fail the request
+      }
     }
 
     return NextResponse.json({

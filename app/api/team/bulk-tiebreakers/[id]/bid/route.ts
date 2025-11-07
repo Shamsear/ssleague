@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
-import { broadcastTiebreakerBid, broadcastWebSocket } from '@/lib/websocket/broadcast';
-
-// WebSocket broadcast function (set by WebSocket server)
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
+import { broadcastTiebreakerBid } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -43,9 +38,9 @@ export async function POST(
       );
     }
 
-    // Get team_id from teams table using firebase_uid
+    // Get team_id and team_name from teams table using firebase_uid
     const teamResult = await sql`
-      SELECT id FROM teams
+      SELECT id, team_name FROM teams
       WHERE firebase_uid = ${firebaseUid}
     `;
 
@@ -57,6 +52,7 @@ export async function POST(
     }
 
     const teamId = teamResult[0].id;
+    const teamName = teamResult[0].team_name || 'Unknown Team';
 
     console.log(`💰 Team ${teamId} (firebase: ${firebaseUid}) bidding £${bid_amount} on tiebreaker ${tiebreakerId}`);
 
@@ -172,7 +168,6 @@ export async function POST(
     console.log('✅ All validations passed. Placing bid...');
 
     const bidTime = new Date();
-    const teamName = userData.teamName || 'Unknown Team';
 
     // Insert bid into history
     await sql`
@@ -247,30 +242,16 @@ export async function POST(
     const teamsLeft = parseInt(activeTeamsCheck[0]?.teams_left) || 0;
     const isWinner = teamsLeft === 1;
 
-    // ✅ Broadcast to WebSocket clients for real-time updates
-    // Broadcast to BOTH tiebreaker channel AND round channel
-    await broadcastTiebreakerBid(tiebreakerId, {
-      team_id: teamId,
-      team_name: userData.teamName || 'Unknown Team',
-      bid_amount,
-      player_name: tiebreaker.player_name,
-      teams_remaining: teamsLeft,
-      is_winner: isWinner,
-    });
-    
-    // ⚡ ALSO broadcast to round channel so committee page gets instant updates!
-    if (tiebreaker.bulk_round_id) {
-      await broadcastWebSocket(`round:${tiebreaker.bulk_round_id}`, {
-        type: 'tiebreaker_bid',
-        data: {
-          tiebreaker_id: tiebreakerId,
-          team_id: teamId,
-          team_name: userData.teamName || 'Unknown Team',
-          bid_amount,
-          player_name: tiebreaker.player_name,
-        },
-      });
-    }
+    // ✅ Broadcast to Firebase Realtime DB for instant updates
+    await broadcastTiebreakerBid(
+      tiebreaker.season_id,
+      tiebreakerId,
+      {
+        team_id: teamId,
+        team_name: teamName,
+        bid_amount,
+      }
+    );
 
     if (isWinner) {
       console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${teamId} wins!`);

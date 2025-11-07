@@ -2,9 +2,10 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useCachedSeasons } from '@/hooks/useCachedFirebase';
 
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
 const MAX_PLAYERS_PER_TEAM = 25;
@@ -20,6 +21,11 @@ interface TeamProfile {
   totalSpent: number;
   initialBudget: number;
   positionCounts: { [key: string]: number };
+  currencySystem?: string;
+  footballBudget?: number;
+  realPlayerBudget?: number;
+  footballSpent?: number;
+  realPlayerSpent?: number;
 }
 
 interface Player {
@@ -37,6 +43,7 @@ export default function TeamProfilePage() {
   const [recentPlayers, setRecentPlayers] = useState<Player[]>([]);
   const [topPlayers, setTopPlayers] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -47,61 +54,79 @@ export default function TeamProfilePage() {
     }
   }, [user, loading, router]);
 
+  // Fetch active season using the same hook as main dashboard
+  const { data: activeSeasons, isLoading: seasonsLoading } = useCachedSeasons(
+    user?.role === 'team' ? { isActive: 'true' } : undefined
+  );
+
   useEffect(() => {
     const fetchProfileData = async () => {
-      if (!user) return;
+      if (!user || !activeSeasons || activeSeasons.length === 0) return;
 
       try {
         setIsLoading(true);
         
-        // Fetch team data from Firebase team_seasons
-        const { db } = await import('@/lib/firebase/config');
-        const { collection, query, where, getDocs, limit } = await import('firebase/firestore');
+        const seasonId = activeSeasons[0].id;
 
-        let teamName = (user as any).teamName || 'My Team';
-        let logoUrl = (user as any).logoUrl;
-
-        // Get current season and team_seasons data
-        const teamSeasonsQuery = query(
-          collection(db, 'team_seasons'),
-          where('team_id', '==', user.uid),
-          where('status', '==', 'registered'),
-          limit(1)
-        );
-        const teamSeasonsSnapshot = await getDocs(teamSeasonsQuery);
-
-        if (!teamSeasonsSnapshot.empty) {
-          const teamSeasonData = teamSeasonsSnapshot.docs[0].data();
-          teamName = teamSeasonData.team_name || teamName;
-          logoUrl = teamSeasonData.team_logo || logoUrl;
-        }
-
-        setProfileData({
-          name: teamName,
-          logoUrl: logoUrl,
-          managerName: user.username || 'Manager',
-          playerCount: 0,
-          totalBids: 0,
-          wonBids: 0,
-          remainingBalance: 15000,
-          totalSpent: 0,
-          initialBudget: 15000,
-          positionCounts: {},
+        // Fetch dashboard data from API
+        const response = await fetch(`/api/team/dashboard?season_id=${seasonId}`, {
+          headers: { 'Cache-Control': 'no-cache' },
         });
 
-        setRecentPlayers([]);
-        setTopPlayers([]);
-      } catch (error) {
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Dashboard API error:', response.status, errorText);
+          setError(`API Error: ${response.status} - ${errorText}`);
+          throw new Error('Failed to fetch dashboard data');
+        }
+
+        const { success, data } = await response.json();
+        console.log('Dashboard data received:', { success, hasData: !!data });
+
+        if (success && data) {
+          const currencySystem = data.team.currency_system || 'single';
+          const isDual = currencySystem === 'dual';
+
+          setProfileData({
+            name: data.team.name,
+            logoUrl: data.team.logo_url,
+            managerName: user.username || 'Manager',
+            playerCount: data.stats.playerCount,
+            totalBids: data.stats.activeBidsCount + data.roundResults.length,
+            wonBids: data.roundResults.length,
+            remainingBalance: isDual ? 0 : data.stats.balance,
+            totalSpent: isDual ? data.team.football_spent : data.stats.totalSpent,
+            initialBudget: isDual ? 0 : 15000,
+            positionCounts: data.stats.positionBreakdown || {},
+            currencySystem,
+            footballBudget: isDual ? data.team.football_budget : undefined,
+            realPlayerBudget: isDual ? data.team.real_player_budget : undefined,
+            footballSpent: isDual ? data.team.football_spent : undefined,
+            realPlayerSpent: isDual ? data.team.real_player_spent : undefined,
+          });
+
+          // Set recent players (last 5)
+          const recentPlayersList = data.players.slice(0, 5);
+          setRecentPlayers(recentPlayersList);
+
+          // Set top players (sorted by rating)
+          const topPlayersList = [...data.players]
+            .sort((a: Player, b: Player) => b.overall_rating - a.overall_rating)
+            .slice(0, 5);
+          setTopPlayers(topPlayersList);
+        }
+      } catch (error: any) {
         console.error('Error fetching profile:', error);
+        setError(error.message || 'Unknown error occurred');
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchProfileData();
-  }, [user]);
+  }, [user, activeSeasons]);
 
-  if (loading || isLoading) {
+  if (loading || isLoading || seasonsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -112,8 +137,32 @@ export default function TeamProfilePage() {
     );
   }
 
-  if (!user || user.role !== 'team' || !profileData) {
+  if (!user || user.role !== 'team') {
     return null;
+  }
+
+  if (!profileData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center p-4 bg-red-100 rounded-full mb-4">
+            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-gray-800 mb-2">Unable to load profile</h3>
+          <p className="text-gray-600 mb-4">Please make sure you are registered for the current season.</p>
+          {error && (
+            <div className="mb-4 p-3 bg-gray-100 rounded-lg text-sm text-gray-700 max-w-md mx-auto">
+              <strong>Error:</strong> {error}
+            </div>
+          )}
+          <Link href="/dashboard/team" className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700">
+            Go to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -195,37 +244,81 @@ export default function TeamProfilePage() {
           <h2 className="text-2xl font-bold text-dark">Financial Overview</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white">
-            <div className="flex items-center justify-between mb-3">
-              <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span className="text-3xl font-bold">£{profileData.remainingBalance.toLocaleString()}</span>
+        {profileData.currencySystem === 'dual' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
+              <div className="flex items-center justify-between mb-3">
+                <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="text-3xl font-bold">€{(profileData.footballBudget || 0).toLocaleString()}</span>
+              </div>
+              <p className="text-white/90 font-medium">€ Football Budget</p>
             </div>
-            <p className="text-white/90 font-medium">Current Balance</p>
-          </div>
 
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white">
-            <div className="flex items-center justify-between mb-3">
-              <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span className="text-3xl font-bold">£{profileData.totalSpent.toLocaleString()}</span>
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white">
+              <div className="flex items-center justify-between mb-3">
+                <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-3xl font-bold">${(profileData.realPlayerBudget || 0).toLocaleString()}</span>
+              </div>
+              <p className="text-white/90 font-medium">$ Real Player Budget</p>
             </div>
-            <p className="text-white/90 font-medium">Total Spent</p>
-          </div>
 
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white">
-            <div className="flex items-center justify-between mb-3">
-              <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              <span className="text-3xl font-bold">£{profileData.initialBudget.toLocaleString()}</span>
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white">
+              <div className="flex items-center justify-between mb-3">
+                <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="text-3xl font-bold">€{(profileData.footballSpent || 0).toLocaleString()}</span>
+              </div>
+              <p className="text-white/90 font-medium">€ Spent</p>
             </div>
-            <p className="text-white/90 font-medium">Initial Budget</p>
+
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white">
+              <div className="flex items-center justify-between mb-3">
+                <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-3xl font-bold">${(profileData.realPlayerSpent || 0).toLocaleString()}</span>
+              </div>
+              <p className="text-white/90 font-medium">$ Spent</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white">
+              <div className="flex items-center justify-between mb-3">
+                <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="text-3xl font-bold">£{profileData.remainingBalance.toLocaleString()}</span>
+              </div>
+              <p className="text-white/90 font-medium">Current Balance</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white">
+              <div className="flex items-center justify-between mb-3">
+                <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="text-3xl font-bold">£{profileData.totalSpent.toLocaleString()}</span>
+              </div>
+              <p className="text-white/90 font-medium">Total Spent</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white">
+              <div className="flex items-center justify-between mb-3">
+                <svg className="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-3xl font-bold">£{profileData.initialBudget.toLocaleString()}</span>
+              </div>
+              <p className="text-white/90 font-medium">Initial Budget</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Position Breakdown */}
@@ -275,7 +368,7 @@ export default function TeamProfilePage() {
                     <p className="font-medium text-dark">{player.name}</p>
                     <p className="text-sm text-gray-600">{player.position} • Rating: {player.overall_rating}</p>
                   </div>
-                  <p className="font-bold text-primary">£{player.acquisition_value.toLocaleString()}</p>
+                  <p className="font-bold text-primary">{profileData.currencySystem === 'dual' ? '€' : '£'}{player.acquisition_value.toLocaleString()}</p>
                 </div>
               ))}
             </div>
@@ -326,21 +419,12 @@ export default function TeamProfilePage() {
       {/* Quick Actions */}
       <div className="glass rounded-3xl p-6 hover:shadow-lg transition-all duration-300">
         <h3 className="text-xl font-bold text-dark mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          <Link href="/dashboard/team/players" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
-            View Squad
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
+          <Link href="/dashboard/team" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
+            Team Dashboard
           </Link>
-          <Link href="/dashboard/team/bids" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
-            Bid History
-          </Link>
-          <Link href="/dashboard/team/players-database" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
-            Player Database
-          </Link>
-          <Link href="/dashboard/team/leaderboard" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
-            Leaderboard
-          </Link>
-          <Link href="/dashboard" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
-            Dashboard
+          <Link href="/dashboard/team/profile/edit" className="px-4 py-3 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all text-center font-medium">
+            Edit Profile
           </Link>
         </div>
       </div>

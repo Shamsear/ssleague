@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFantasyDb, getTournamentDb } from '@/lib/neon/fantasy-config';
 import { triggerNews } from '@/lib/news/trigger';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/fantasy/round-complete
@@ -108,6 +109,30 @@ export async function POST(request: NextRequest) {
     });
 
     console.log(`📰 Fantasy round ${round_number} standings news triggered`);
+
+    // Send FCM notification to all teams in the season
+    try {
+      const topTeam = teamTable[0];
+      await sendNotificationToSeason(
+        {
+          title: '🎮 Fantasy Round Complete!',
+          body: `Round ${round_number} standings updated! Leader: ${topTeam?.team_name || 'TBD'} with ${topTeam?.points || 0} pts`,
+          url: `/fantasy/leaderboard`,
+          icon: '/logo.png',
+          data: {
+            type: 'fantasy_round_complete',
+            season_id,
+            round_number: round_number.toString(),
+            leader: topTeam?.team_name || 'TBD',
+            leader_points: topTeam?.points?.toString() || '0',
+          }
+        },
+        season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send fantasy round complete notification:', notifError);
+      // Don't fail the request
+    }
 
     return NextResponse.json({
       success: true,

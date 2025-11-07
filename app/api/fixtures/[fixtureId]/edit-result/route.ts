@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { triggerNews } from '@/lib/news/trigger';
 import { triggerPlayerOfMatchPoll } from '@/lib/polls/auto-trigger';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * PATCH - Edit fixture results (with stat reversion)
@@ -362,6 +363,31 @@ export async function PATCH(
       console.log('✅ Cache revalidated');
     } catch (cacheError) {
       console.error('Cache revalidation error (non-critical):', cacheError);
+    }
+
+    // Send FCM notification
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '✏️ Match Result Edited',
+          body: `${fixture.home_team_name} vs ${fixture.away_team_name} result updated: ${newHomeScore}-${newAwayScore}`,
+          url: `/fixtures/${fixtureId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'result_edited',
+            fixture_id: fixtureId,
+            home_team: fixture.home_team_name,
+            away_team: fixture.away_team_name,
+            home_score: newHomeScore.toString(),
+            away_score: newAwayScore.toString(),
+            result: newResult,
+          }
+        },
+        seasonId
+      );
+    } catch (notifError) {
+      console.error('Failed to send result edit notification:', notifError);
+      // Don't fail the request
     }
 
     return NextResponse.json({

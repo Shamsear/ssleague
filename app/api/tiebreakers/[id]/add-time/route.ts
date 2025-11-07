@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
+import { broadcastTiebreakerBid } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -67,15 +68,15 @@ export async function POST(
       RETURNING *
     `;
 
-    // Broadcast WebSocket event if available
-    if (typeof global.wsBroadcast === 'function') {
-      global.wsBroadcast(`tiebreaker:${id}`, {
-        type: 'tiebreaker_time_extended',
-        data: { 
-          tiebreakerId: id, 
-          minutesAdded: minutes,
-          newDurationMinutes: newDuration
-        }
+    // Broadcast via Firebase Realtime DB
+    const seasonResult = await sql`SELECT season_id FROM tiebreakers WHERE id = ${id}`;
+    const seasonId = seasonResult[0]?.season_id;
+    
+    if (seasonId) {
+      await broadcastTiebreakerBid(seasonId, id, {
+        team_id: 'system',
+        team_name: 'System',
+        bid_amount: 0, // Special value to indicate time extension
       });
     }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/polls/create
@@ -150,6 +151,28 @@ export async function POST(request: NextRequest) {
       WHERE poll_id = ${pollId}
       ORDER BY display_order
     `;
+    
+    // Send FCM notification to all teams in the season
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '🗳️ New Poll Created!',
+          body: question_en,
+          url: `/polls/${pollId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'poll_created',
+            poll_id: pollId,
+            poll_type,
+            closes_at,
+          }
+        },
+        season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send poll creation notification:', notifError);
+      // Don't fail the request
+    }
     
     return NextResponse.json({
       success: true,

@@ -49,15 +49,14 @@ export async function POST(request: NextRequest) {
       SELECT league_id FROM fantasy_teams WHERE team_id = ${teamId} LIMIT 1
     `;
     
-    // Broadcast to WebSocket subscribers
-    if (team.length > 0 && typeof global.wsBroadcast === 'function') {
-      global.wsBroadcast(`fantasy_league:${team[0].league_id}`, {
+    // Broadcast to Firebase Realtime DB
+    if (team.length > 0) {
+      const { broadcastFantasyDraftUpdate } = await import('@/lib/realtime/broadcast');
+      await broadcastFantasyDraftUpdate(team[0].league_id, {
         type: 'team_update',
-        data: {
-          team_id: teamId,
-          supported_team_id,
-          supported_team_name,
-        },
+        team_id: teamId,
+        supported_team_id,
+        supported_team_name,
       });
     }
 

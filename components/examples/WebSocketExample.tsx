@@ -1,110 +1,32 @@
 /**
- * WebSocket Integration Example
+ * Firebase Realtime Database Integration Example
  * 
- * This component demonstrates how to use WebSockets for real-time updates
- * with automatic cache invalidation and optional toast notifications.
+ * This component demonstrates how to use Firebase Realtime Database
+ * for real-time updates with automatic cache invalidation.
+ * 
+ * NOTE: Use the specialized hooks (useDashboardWebSocket, useAuctionWebSocket)
+ * instead of the generic useWebSocket hook for better type safety.
  */
 
 'use client';
 
-import { useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useWebSocket } from '@/hooks/useWebSocket';
-import { toast } from 'react-hot-toast'; // or your preferred toast library
+import { useDashboardWebSocket } from '@/hooks/useWebSocket';
 
 interface Props {
-  teamId: string;
-  enabled?: boolean;
+  seasonId: string | null;
+  teamId: string | null;
 }
 
-export default function WebSocketExample({ teamId, enabled = true }: Props) {
-  const queryClient = useQueryClient();
-
-  // Subscribe to team-specific updates
-  const { isConnected } = useWebSocket({
-    channel: `team:${teamId}`,
-    enabled,
-    onMessage: (message) => {
-      console.log('[WebSocket] Received:', message);
-
-      switch (message.type) {
-        case 'squad_update':
-          handleSquadUpdate(message.data);
-          break;
-
-        case 'wallet_update':
-          handleWalletUpdate(message.data);
-          break;
-
-        case 'new_round':
-          handleNewRound(message.data);
-          break;
-
-        case 'tiebreaker_created':
-          handleTiebreakerCreated(message.data);
-          break;
-      }
-    },
-    onConnect: () => {
-      console.log('[WebSocket] Connected to team channel');
-      toast.success('Connected to live updates');
-    },
-    onDisconnect: () => {
-      console.log('[WebSocket] Disconnected from team channel');
-      toast.error('Disconnected from live updates');
-    },
-  });
-
-  const handleSquadUpdate = (data: any) => {
-    const { player_name, action, price } = data;
-
-    if (action === 'acquired') {
-      toast.success(`✅ ${player_name} acquired for £${price?.toLocaleString()}`);
-    } else if (action === 'removed') {
-      toast.info(`🔄 ${player_name} removed from squad`);
-    }
-
-    // Invalidate squad-related caches
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['team-squad'] });
-    queryClient.invalidateQueries({ queryKey: ['team-players', teamId] });
-    queryClient.invalidateQueries({ queryKey: ['footballplayers'] });
-  };
-
-  const handleWalletUpdate = (data: any) => {
-    const { new_balance, amount_spent, amount_refunded, currency_type } = data;
-
-    if (amount_spent) {
-      toast.success(`💰 Spent £${amount_spent.toLocaleString()}`);
-    } else if (amount_refunded) {
-      toast.info(`💵 Refunded £${amount_refunded.toLocaleString()}`);
-    }
-
-    // Invalidate wallet-related caches
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['team-wallet', teamId] });
-    queryClient.invalidateQueries({ queryKey: ['team-seasons', teamId] });
-    queryClient.invalidateQueries({ queryKey: ['transactions', teamId] });
-  };
-
-  const handleNewRound = (data: any) => {
-    const { round_number, position } = data;
-    toast.success(`🎯 New round started: Round ${round_number} (${position})`);
-
-    // Invalidate round-related caches
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['rounds'] });
-    queryClient.invalidateQueries({ queryKey: ['auction-rounds'] });
-  };
-
-  const handleTiebreakerCreated = (data: any) => {
-    const { player_name } = data;
-    toast.info(`⚖️ Tiebreaker created for ${player_name || 'player'}`);
-
-    // Invalidate tiebreaker-related caches
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['tiebreakers'] });
-  };
+/**
+ * Example 1: Dashboard real-time updates
+ * Automatically listens to squad and wallet updates
+ */
+export default function FirebaseRealtimeExample({ seasonId, teamId }: Props) {
+  // This hook automatically:
+  // 1. Listens to squad updates (player acquired/refunded)
+  // 2. Listens to wallet updates (balance changes)
+  // 3. Invalidates React Query caches when updates occur
+  const { isConnected } = useDashboardWebSocket(seasonId, teamId);
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
@@ -121,20 +43,28 @@ export default function WebSocketExample({ teamId, enabled = true }: Props) {
   );
 }
 
-
 /**
- * Usage in a Page/Component:
+ * Example 2: Custom Firebase listener for specific events
+ * Use this pattern when you need custom handling of updates
  * 
+ * Usage:
  * ```tsx
- * import WebSocketExample from '@/components/examples/WebSocketExample';
+ * import { useEffect } from 'react';
+ * import { listenToRoundUpdates } from '@/lib/realtime/listeners';
  * 
- * export default function TeamDashboard({ user }) {
- *   return (
- *     <div>
- *       <WebSocketExample teamId={user.teamId} />
- *       {/* Rest of your dashboard UI *\/}
- *     </div>
- *   );
+ * export function MyComponent({ seasonId, roundId }: Props) {
+ *   useEffect(() => {
+ *     if (!seasonId || !roundId) return;
+ *     
+ *     const unsubscribe = listenToRoundUpdates(seasonId, roundId, (data) => {
+ *       console.log('Round update:', data);
+ *       // Handle the update (e.g., update state, invalidate caches)
+ *     });
+ *     
+ *     return () => unsubscribe();
+ *   }, [seasonId, roundId]);
+ *   
+ *   return <div>Your component</div>;
  * }
  * ```
  */

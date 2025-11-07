@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
-import { broadcastWebSocket, BroadcastType } from '@/lib/websocket/broadcast';
+import { broadcastTiebreakerBid } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -167,17 +167,16 @@ export async function POST(
       WHERE tiebreaker_id = ${tiebreakerId} AND team_id = ${teamId}
     `)[0]?.team_name : 'Unknown';
 
-    // Broadcast withdrawal to all watching clients
-    await broadcastWebSocket(`tiebreaker:${tiebreakerId}`, {
-      type: BroadcastType.TIEBREAKER_WITHDRAW,
-      data: {
-        tiebreaker_id: tiebreakerId,
+    // Broadcast withdrawal via Firebase Realtime DB
+    await broadcastTiebreakerBid(
+      tiebreaker.season_id,
+      tiebreakerId,
+      {
         team_id: teamId,
         team_name: withdrawnTeamName,
-        teams_remaining: teamsLeft,
-        is_winner_determined: isWinnerDetermined,
-      },
-    });
+        bid_amount: 0, // Withdrawal indicated by 0 bid
+      }
+    );
 
     if (isWinnerDetermined) {
       console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${winnerId} wins!`);
@@ -207,19 +206,7 @@ export async function POST(
         `;
         const winnerTeamName = winnerTeamResult[0]?.team_name || 'Unknown';
         
-        // Broadcast tiebreaker completion to all clients
-        await broadcastWebSocket(`tiebreaker:${tiebreakerId}`, {
-          type: BroadcastType.TIEBREAKER_FINALIZED,
-          data: {
-            tiebreaker_id: tiebreakerId,
-            player_name: tiebreaker.player_name,
-            position: tiebreaker.position,
-            winner_team_id: winnerId,
-            winner_team_name: winnerTeamName,
-            final_bid: winnerBid,
-            status: 'resolved',
-          },
-        });
+        // Broadcasting is handled by finalizeBulkTiebreaker function
       }
     }
 

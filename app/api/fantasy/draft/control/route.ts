@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
 import { triggerNews } from '@/lib/news/trigger';
-
-// WebSocket broadcast function
-declare global {
-  var wsBroadcast: ((channel: string, data: any) => void) | undefined;
-}
+import { broadcastFantasyDraftUpdate } from '@/lib/realtime/broadcast';
 
 /**
  * POST /api/fantasy/draft/control
@@ -94,19 +90,12 @@ export async function POST(request: NextRequest) {
       console.error('Error triggering fantasy news (non-critical):', newsError);
     }
 
-    // Broadcast to WebSocket clients
-    if (global.wsBroadcast) {
-      global.wsBroadcast(`league:${league_id}:draft`, {
-        type: 'draft_status_update',
-        data: {
-          league_id,
-          draft_status,
-          draft_opens_at: draft_opens_at || null,
-          draft_closes_at: draft_closes_at || null,
-        },
-      });
-      console.log(`📢 Broadcast draft status update to league:${league_id}:draft`);
-    }
+    // Broadcast to Firebase Realtime DB
+    await broadcastFantasyDraftUpdate(league_id, {
+      draft_status,
+      draft_opens_at: draft_opens_at || null,
+      draft_closes_at: draft_closes_at || null,
+    });
 
     return NextResponse.json({
       success: true,

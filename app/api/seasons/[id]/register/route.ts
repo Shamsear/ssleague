@@ -5,6 +5,7 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { triggerNews } from '@/lib/news/trigger';
 import { logInitialBalance } from '@/lib/transaction-logger';
 import { getFantasyDb } from '@/lib/neon/fantasy-config';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 export async function POST(
   request: NextRequest,
@@ -514,6 +515,31 @@ export async function POST(
         });
       } catch (newsError) {
         console.error('Failed to generate team registration news:', newsError);
+      }
+
+      // Send FCM notification to the registered team
+      try {
+        await sendNotification(
+          {
+            title: '✅ Registration Complete!',
+            body: `Welcome to ${seasonData.name}! Your 2-season contract is active. Start building your team!`,
+            url: `/dashboard/team`,
+            icon: '/logo.png',
+            data: {
+              type: 'season_registration',
+              season_id: seasonId,
+              next_season_id: nextSeasonId,
+              contract_id: contractId,
+              currency_system: isDualCurrency ? 'dual' : 'single',
+              football_budget: footballBudget.toString(),
+              real_player_budget: realPlayerBudget.toString(),
+            }
+          },
+          teamDocId
+        );
+      } catch (notifError) {
+        console.error('Failed to send registration notification:', notifError);
+        // Don't fail the request
       }
 
       return NextResponse.json({

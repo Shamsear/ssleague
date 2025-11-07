@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { getAuthToken } from '@/lib/auth/token-helper';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * Refund all salary deductions for a season
@@ -124,6 +125,29 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Deleted ${transactionsSnapshot.size} salary payment transactions`);
     console.log(`\n✅ Refund complete! All teams have been refunded their salary deductions.\n`);
+
+    // Send FCM notification to all teams in the season
+    if (refundResults.length > 0) {
+      try {
+        await sendNotificationToSeason(
+          {
+            title: '💸 Salary Refund',
+            body: `All salary deductions have been refunded! Check your updated balance.`,
+            url: `/dashboard/team`,
+            icon: '/logo.png',
+            data: {
+              type: 'salary_refund',
+              teams_count: refundResults.length.toString(),
+              transactions_deleted: transactionsSnapshot.size.toString(),
+            }
+          },
+          season_id
+        );
+      } catch (notifError) {
+        console.error('Failed to send refund notification:', notifError);
+        // Don't fail the request
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { verifyAuth } from '@/lib/auth-helper';
 import { isContractExpired, getContractEndSeason } from '@/lib/contracts';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 export async function POST(request: NextRequest) {
   try {
@@ -106,6 +107,30 @@ export async function POST(request: NextRequest) {
 
     // Commit all updates
     await batch.commit();
+
+    // Send FCM notification to all teams in the season
+    if (expiredPlayers.length > 0) {
+      try {
+        await sendNotificationToSeason(
+          {
+            title: '📜 Contracts Expired',
+            body: `${realPlayersRemoved + footballPlayersRemoved} player contracts have expired and been removed from teams`,
+            url: `/dashboard/team`,
+            icon: '/logo.png',
+            data: {
+              type: 'contracts_expired',
+              real_players: realPlayersRemoved.toString(),
+              football_players: footballPlayersRemoved.toString(),
+              total: (realPlayersRemoved + footballPlayersRemoved).toString(),
+            }
+          },
+          seasonId
+        );
+      } catch (notifError) {
+        console.error('Failed to send contract expiry notification:', notifError);
+        // Don't fail the request
+      }
+    }
 
     return NextResponse.json({
       success: true,

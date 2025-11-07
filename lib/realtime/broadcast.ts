@@ -95,3 +95,86 @@ export async function broadcastRoundStatusUpdate(
     console.error('❌ Failed to broadcast round status:', error);
   }
 }
+
+/**
+ * Broadcast round update (status, time changes, etc.)
+ */
+export async function broadcastRoundUpdate(
+  seasonId: string,
+  roundId: string,
+  data: Record<string, any>
+) {
+  try {
+    const updateRef = adminRealtimeDb.ref(`updates/${seasonId}/rounds/${roundId}`);
+    await updateRef.set({
+      ...data,
+      timestamp: Date.now(),
+    });
+    console.log('✅ Round update broadcasted via Realtime DB');
+  } catch (error) {
+    console.error('❌ Failed to broadcast round update:', error);
+  }
+}
+
+/**
+ * Broadcast fantasy draft update
+ */
+export async function broadcastFantasyDraftUpdate(
+  leagueId: string,
+  data: Record<string, any>
+) {
+  try {
+    const updateRef = adminRealtimeDb.ref(`fantasy/leagues/${leagueId}`);
+    await updateRef.set({
+      ...data,
+      timestamp: Date.now(),
+    });
+    console.log('✅ Fantasy draft update broadcasted via Realtime DB');
+  } catch (error) {
+    console.error('❌ Failed to broadcast fantasy draft update:', error);
+  }
+}
+
+/**
+ * Broadcast auction bid
+ */
+export async function broadcastAuctionBid(
+  seasonId: string,
+  roundId: string,
+  data: {
+    player_id: string;
+    team_id: string;
+    amount?: number;
+  }
+) {
+  try {
+    const updateRef = adminRealtimeDb.ref(`updates/${seasonId}/rounds/${roundId}/bids`);
+    await updateRef.push({
+      ...data,
+      timestamp: Date.now(),
+    });
+    console.log('✅ Auction bid broadcasted via Realtime DB');
+  } catch (error) {
+    console.error('❌ Failed to broadcast auction bid:', error);
+  }
+}
+
+/**
+ * Broadcast bulk tiebreaker update (start, bid, finalize, etc.)
+ */
+export async function broadcastBulkTiebreakerUpdate(
+  seasonId: string,
+  tiebreakerId: string,
+  data: Record<string, any>
+) {
+  try {
+    const updateRef = adminRealtimeDb.ref(`updates/${seasonId}/bulk_tiebreakers/${tiebreakerId}`);
+    await updateRef.set({
+      ...data,
+      timestamp: Date.now(),
+    });
+    console.log('✅ Bulk tiebreaker update broadcasted via Realtime DB');
+  } catch (error) {
+    console.error('❌ Failed to broadcast bulk tiebreaker update:', error);
+  }
+}

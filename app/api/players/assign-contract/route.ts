@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assignRealPlayerWithContract } from '@/lib/firebase/multiSeasonPlayers';
 import { getTeamBalances } from '@/lib/firebase/multiSeasonTeams';
 import { calculateRealPlayerSalary } from '@/lib/contracts';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/players/assign-contract
@@ -67,6 +68,30 @@ export async function POST(request: NextRequest) {
     
     // Get updated balances
     const updatedBalances = await getTeamBalances(teamId);
+    
+    // Send FCM notification to the team
+    try {
+      await sendNotification(
+        {
+          title: '⭐ Player Assigned',
+          body: `Real player assigned with contract! $${auctionValue} deducted. Salary: $${salaryPerMatch}/match`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'player_assigned',
+            player_id: playerId,
+            star_rating: starRating.toString(),
+            auction_value: auctionValue.toString(),
+            salary_per_match: salaryPerMatch.toString(),
+            contract_start: startSeasonId,
+          }
+        },
+        teamId
+      );
+    } catch (notifError) {
+      console.error('Failed to send player assignment notification:', notifError);
+      // Don't fail the request
+    }
     
     return NextResponse.json({
       success: true,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { releasePlayerNeon, NeonPlayerData, PlayerType } from '@/lib/player-transfers-neon';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { getAuctionDb } from '@/lib/neon/auction-config';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/players/release
@@ -118,6 +119,30 @@ export async function POST(request: NextRequest) {
         { success: false, error: result.error || result.message },
         { status: 500 }
       );
+    }
+
+    // Send FCM notification to the team
+    try {
+      const currencySymbol = player_type === 'football' ? '€' : '$';
+      await sendNotification(
+        {
+          title: '👋 Player Released',
+          body: `${playerInfo.player_name} has been released. Refund: ${currencySymbol}${result.refund_amount}`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'player_released',
+            player_id,
+            player_name: playerInfo.player_name,
+            refund_amount: result.refund_amount?.toString() || '0',
+            player_type,
+          }
+        },
+        playerInfo.team_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send release notification:', notifError);
+      // Don't fail the request
     }
 
     return NextResponse.json({

@@ -4,6 +4,7 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { calculateFootballPlayerSalary, isMidSeasonRound } from '@/lib/contracts';
 import { logSalaryPayment } from '@/lib/transaction-logger';
 import { getAuctionDb } from '@/lib/neon/auction-config';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 export async function POST(request: NextRequest) {
   try {
@@ -138,6 +139,30 @@ export async function POST(request: NextRequest) {
         );
 
         console.log(`  ✅ Transaction logged`);
+
+        // Send FCM notification to the team
+        try {
+          await sendNotification(
+            {
+              title: '💰 Mid-Season Salary',
+              body: `€${teamSalaryTotal.toFixed(2)} salary deducted for ${footballPlayers.length} football players`,
+              url: `/dashboard/team`,
+              icon: '/logo.png',
+              data: {
+                type: 'salary_deduction',
+                team_id: teamId,
+                amount: teamSalaryTotal.toString(),
+                player_count: footballPlayers.length.toString(),
+                round: roundNumber.toString(),
+                new_balance: newEuroBalance.toString(),
+              }
+            },
+            teamId
+          );
+        } catch (notifError) {
+          console.error('Failed to send salary notification:', notifError);
+          // Don't fail the request
+        }
 
         teamsProcessed++;
         totalDeducted += teamSalaryTotal;

@@ -256,12 +256,34 @@ export default function NotificationButton() {
     alert('✅ Notification settings reset. Click "Enable Notifications" to set up again.');
   };
 
+  // Check for Edge browser FIRST (before checking if supported)
+  // Edge has PushManager but its push service is incompatible with FCM
+  const isEdgeBrowser = /Edg/.test(navigator.userAgent);
+  
+  if (isEdgeBrowser) {
+    return (
+      <div className="px-4 py-3 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+        <p className="font-medium mb-1">⚠️ Microsoft Edge Not Supported</p>
+        <p className="text-xs mb-2">
+          Microsoft Edge uses a different push service that is incompatible with Firebase Cloud Messaging.
+        </p>
+        <p className="text-xs mb-2 font-medium">
+          Error: "Registration failed - push service error 20"
+        </p>
+        <p className="text-xs">
+          For notifications, please use <strong>Google Chrome</strong> or <strong>Firefox</strong>.
+        </p>
+      </div>
+    );
+  }
+  
   // Don't show button if notifications are not supported
   if (!supported) {
     // Check if it's iOS (but not Safari)
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const isAndroid = /Android/.test(navigator.userAgent);
+    const isSafariDesktop = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent) && !isIOS;
     
     if (isIOS && !isSafari) {
       return (
@@ -269,6 +291,26 @@ export default function NotificationButton() {
           <p className="font-medium mb-1">📱 iOS Notifications</p>
           <p className="text-xs">
             Web notifications are only supported in Safari on iOS. Please open this site in Safari to enable notifications.
+          </p>
+        </div>
+      );
+    }
+    
+    // Show debug info for Safari on desktop
+    if (isSafariDesktop) {
+      return (
+        <div className="px-4 py-3 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+          <p className="font-medium mb-1">⚠️ Limited Support</p>
+          <p className="text-xs mb-2">
+            Safari has limited notification support. Missing:
+          </p>
+          <ul className="text-xs space-y-1 ml-4 list-disc">
+            <li>Notification API: {typeof window !== 'undefined' && 'Notification' in window ? '✅' : '❌'}</li>
+            <li>Service Worker: {'serviceWorker' in navigator ? '✅' : '❌'}</li>
+            <li>Push Manager: {'PushManager' in window ? '✅' : '❌'}</li>
+          </ul>
+          <p className="text-xs mt-2">
+            For full notification support, please use <strong>Google Chrome</strong> or <strong>Firefox</strong>.
           </p>
         </div>
       );

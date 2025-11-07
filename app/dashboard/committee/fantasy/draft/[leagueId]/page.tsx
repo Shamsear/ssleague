@@ -44,12 +44,12 @@ export default function DraftResultsPage() {
 
   const { alertState, showAlert, closeAlert } = useModal();
 
-  // WebSocket for live updates
+  // Firebase Realtime Database listener for live updates
   const { isConnected } = useWebSocket({
-    channel: `fantasy_league:${leagueId}`,
+    channel: `fantasy/leagues/${leagueId}`,
     enabled: !!leagueId && !!user,
     onMessage: useCallback((message: any) => {
-      console.log('[Draft Results] WebSocket message:', message);
+      console.log('[Draft Results] Firebase update:', message);
       
       // Reload data when draft updates occur
       if (message.type === 'draft_update' || 

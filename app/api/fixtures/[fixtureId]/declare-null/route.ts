@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * PATCH - Declare match NULL when both teams are absent
@@ -72,6 +73,29 @@ export async function PATCH(
         })}
       )
     `;
+
+    // Send FCM notification
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '❌ Match Cancelled',
+          body: `${fixture.home_team_name} vs ${fixture.away_team_name} declared NULL - both teams absent`,
+          url: `/fixtures/${fixtureId}`,
+          icon: '/logo.png',
+          data: {
+            type: 'match_cancelled',
+            fixture_id: fixtureId,
+            home_team: fixture.home_team_name,
+            away_team: fixture.away_team_name,
+            reason: 'both_absent',
+          }
+        },
+        fixture.season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send match cancellation notification:', notifError);
+      // Don't fail the request
+    }
 
     return NextResponse.json({
       success: true,

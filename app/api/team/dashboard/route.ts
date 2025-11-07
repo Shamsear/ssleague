@@ -550,46 +550,141 @@ export async function GET(request: NextRequest) {
       .get();
     const hasFantasyTeam = !fantasyTeamsSnapshot.empty;
 
-    // Fetch owner and manager data from tournament database
+    // Fetch owner, manager, and real players from tournament database
+    // NOTE: Tournament DB uses string team IDs (e.g., SSPSLT0020), not numeric IDs
     const tournamentSql = getTournamentDb();
     let ownerData = null;
     let managerData = null;
+    let realPlayers: any[] = [];
 
-    try {
-      // Fetch owner
-      const ownerResult = await tournamentSql`
-        SELECT * FROM owners 
-        WHERE team_id = ${dbTeamId} 
-        AND is_active = true 
-        LIMIT 1
-      `;
-      ownerData = ownerResult[0] || null;
+    // Prefer Neon team ID (readable string like SSPSLT0020); fallback to Firebase team_seasons.team_id
+    const stringTeamId = dbTeamId || teamSeasonData?.team_id || null;
+    console.log(`🔍 Fetching owner/manager/players for team_id: ${stringTeamId} (Neon ID: ${dbTeamId}), season_id: ${seasonId}`);
+    
+    if (stringTeamId) {
+      try {
+        // Fetch owner (uses numeric Neon team_id)
+        const ownerResult = await tournamentSql`
+          SELECT * FROM owners 
+          WHERE team_id = ${dbTeamId} 
+          AND is_active = true 
+          LIMIT 1
+        `;
+        ownerData = ownerResult[0] || null;
+        console.log(`👤 Owner data found:`, ownerData ? `Yes (${ownerData.name})` : 'No');
 
-      // Fetch manager
-      const managerResult = await tournamentSql`
-        SELECT * FROM managers 
-        WHERE team_id = ${dbTeamId} 
-        AND season_id = ${seasonId} 
-        AND is_active = true 
-        LIMIT 1
-      `;
-      managerData = managerResult[0] || null;
-    } catch (error) {
-      console.error('Error fetching owner/manager data:', error);
-      // Don't fail the entire request if owner/manager fetch fails
+        // Fetch manager (uses numeric Neon team_id)
+        const managerResult = await tournamentSql`
+          SELECT * FROM managers 
+          WHERE team_id = ${dbTeamId} 
+          AND season_id = ${seasonId} 
+          AND is_active = true 
+          LIMIT 1
+        `;
+        managerData = managerResult[0] || null;
+        console.log(`⚽ Manager data found:`, managerData ? `Yes (${managerData.name})` : 'No');
+
+        // Fetch real players assigned to this team from player_seasons (tournament DB)
+        // Note: We avoid joining realplayers; use stored snapshot fields for reliability
+        const realPlayersResult = await tournamentSql`
+          SELECT 
+            id,
+            player_id,
+            team_id,
+            season_id,
+            player_name,
+            category,
+            star_rating,
+            points,
+            registration_status
+          FROM player_seasons
+          WHERE team_id = ${stringTeamId}
+          AND season_id = ${seasonId}
+          AND registration_status = 'active'
+          ORDER BY player_name ASC
+        `;
+        realPlayers = realPlayersResult.map(p => ({
+          id: p.id,
+          player_id: p.player_id,
+          name: p.player_name,
+          position: p.category,
+          jersey_number: null,
+          overall_rating: p.star_rating || 0,
+          photo_url: null,
+        }));
+        console.log(`👥 Real players found:`, realPlayers.length);
+      } catch (error) {
+        console.error('❌ Error fetching owner/manager/players data:', error);
+        // Don't fail the entire request if owner/manager/players fetch fails
+      }
+    } else {
+      console.log('⚠️ No string team_id found in team_seasons data');
     }
 
-    // Fetch round results
-    const resultsSnapshot = await adminDb
-      .collection('round_results')
-      .where('team_id', '==', userId)
-      .where('season_id', '==', seasonId)
-      .limit(20)
-      .get();
-    const roundResults = resultsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Fetch round results from Neon (completed bids)
+    const roundResultsQuery = dbTeamId ? await sql`
+      SELECT 
+        b.id,
+        b.team_id,
+        b.player_id,
+        b.round_id,
+        b.amount,
+        b.encrypted_bid_data,
+        b.status,
+        b.created_at,
+        b.updated_at,
+        p.name as player_name,
+        p.position as player_position,
+        p.overall_rating,
+        p.team_name as player_team,
+        r.position as round_position,
+        r.season_id
+      FROM bids b
+      INNER JOIN footballplayers p ON b.player_id = p.id
+      INNER JOIN rounds r ON b.round_id = r.id
+      WHERE b.team_id = ${dbTeamId}
+      AND r.season_id = ${seasonId}
+      AND b.status = 'won'
+      ORDER BY b.updated_at DESC
+      LIMIT 50
+    ` : [];
+    
+    const roundResults = roundResultsQuery.map(result => {
+      // Decrypt the bid amount if it's null (blind bidding)
+      let decryptedAmount = result.amount;
+      if (result.amount === null && result.encrypted_bid_data) {
+        try {
+          const decrypted = decryptBidData(result.encrypted_bid_data);
+          decryptedAmount = decrypted.amount;
+        } catch (err) {
+          console.error('Failed to decrypt bid result:', err);
+          decryptedAmount = 0; // Fallback
+        }
+      }
+      
+      return {
+        id: result.id,
+        team_id: result.team_id,
+        player_id: result.player_id,
+        round_id: result.round_id,
+        won: result.status === 'won',
+        bid_amount: decryptedAmount || 0,
+        final_amount: decryptedAmount || 0, // In sealed bid, final amount = bid amount
+        player: {
+          id: result.player_id,
+          name: result.player_name,
+          position: result.player_position,
+          overall_rating: result.overall_rating,
+          nfl_team: result.player_team,
+        },
+        round: {
+          id: result.round_id,
+          season_id: result.season_id,
+          position: result.round_position,
+          status: 'completed',
+        },
+      };
+    });
 
     // Calculate average rating from players (only stat we need to calculate)
     const avgRating = players.length > 0 
@@ -604,7 +699,8 @@ export async function GET(request: NextRequest) {
         manager: managerData,
         activeRounds,
         activeBids,
-        players,
+        players, // Football players for auction
+        realPlayers, // Real players assigned to team (for manager selection)
         tiebreakers,
         bulkTiebreakers,
         activeBulkRounds,

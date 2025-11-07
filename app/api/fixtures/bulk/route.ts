@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { triggerMatchPredictionPoll } from '@/lib/polls/auto-trigger';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 export async function POST(request: NextRequest) {
   try {
@@ -74,7 +75,30 @@ export async function POST(request: NextRequest) {
       console.error('Error creating match prediction polls:', error);
     });
 
-    return NextResponse.json({ 
+    // Send FCM notification (use first fixture's season_id)
+    if (fixtures.length > 0 && fixtures[0].season_id) {
+      try {
+        await sendNotificationToSeason(
+          {
+            title: '📅 New Fixtures Created',
+            body: `${fixtures.length} new fixtures have been scheduled for the tournament!`,
+            url: `/fixtures`,
+            icon: '/logo.png',
+            data: {
+              type: 'fixtures_created',
+              count: fixtures.length.toString(),
+              round_number: fixtures[0].round_number?.toString() || '0',
+            }
+          },
+          fixtures[0].season_id
+        );
+      } catch (notifError) {
+        console.error('Failed to send fixtures creation notification:', notifError);
+        // Don't fail the request
+      }
+    }
+
+    return NextResponse.json({
       success: true, 
       message: `${fixtures.length} fixtures saved successfully` 
     });

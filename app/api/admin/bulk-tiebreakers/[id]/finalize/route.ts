@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
-import { broadcastWebSocket, BroadcastType } from '@/lib/websocket/broadcast';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
+// Firebase Realtime DB broadcasting is handled by finalizeBulkTiebreaker
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -111,7 +112,7 @@ export async function POST(
 
     console.log(`✅ Tiebreaker ${tiebreakerId} finalized successfully!`);
 
-    // Get winner team name for broadcast
+    // Get winner team name and season ID for notifications
     const winnerTeamResult = await sql`
       SELECT team_name FROM bulk_tiebreaker_teams
       WHERE tiebreaker_id = ${tiebreakerId} 
@@ -119,19 +120,40 @@ export async function POST(
     `;
     const winnerTeamName = winnerTeamResult[0]?.team_name || 'Unknown';
 
-    // Broadcast tiebreaker completion to all clients
-    await broadcastWebSocket(`tiebreaker:${tiebreakerId}`, {
-      type: BroadcastType.TIEBREAKER_FINALIZED,
-      data: {
-        tiebreaker_id: tiebreakerId,
-        player_name: tiebreaker.player_name,
-        position: tiebreaker.player_position,
-        winner_team_id: tiebreaker.current_highest_team_id,
-        winner_team_name: winnerTeamName,
-        final_bid: tiebreaker.current_highest_bid,
-        status: 'resolved',
-      },
-    });
+    // Get season ID
+    const seasonResult = await sql`
+      SELECT season_id FROM bulk_tiebreakers
+      WHERE id = ${tiebreakerId}
+    `;
+    const seasonId = seasonResult[0]?.season_id;
+
+    // Broadcasting is handled by finalizeBulkTiebreaker function
+
+    // Send FCM notification to all teams in the season
+    if (seasonId) {
+      try {
+        await sendNotificationToSeason(
+          {
+            title: '🏆 Tiebreaker Resolved!',
+            body: `${winnerTeamName} wins ${tiebreaker.player_name} for £${finalizeResult.winning_amount}!`,
+            url: `/tiebreakers/${tiebreakerId}`,
+            icon: '/logo.png',
+            data: {
+              type: 'tiebreaker_finalized',
+              tiebreaker_id: tiebreakerId,
+              player_name: tiebreaker.player_name,
+              winner_team_id: finalizeResult.winner_team_id,
+              winner_team_name: winnerTeamName,
+              winning_amount: finalizeResult.winning_amount?.toString() || '0',
+            }
+          },
+          seasonId
+        );
+      } catch (notifError) {
+        console.error('Failed to send tiebreaker finalization notification:', notifError);
+        // Don't fail the request
+      }
+    }
 
     return NextResponse.json({
       success: true,

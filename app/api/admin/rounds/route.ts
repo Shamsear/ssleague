@@ -4,6 +4,8 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
 import { generateRoundId } from '@/lib/id-generator';
 import { validateAuctionSettings } from '@/lib/auction-settings';
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -54,11 +56,12 @@ export async function GET(request: NextRequest) {
             if (applyResult.success) {
               console.log(`✅ Auto-finalized expired round: ${round.id} (${round.position})`);
               
-              // Broadcast WebSocket event for round finalization
-              if (typeof global.wsBroadcast === 'function') {
-                global.wsBroadcast(`season:${seasonId}`, {
-                  type: 'round_finalized',
-                  data: { roundId: round.id, position: round.position }
+              // Broadcast via Firebase Realtime DB for round finalization
+              if (seasonId) {
+                const { broadcastRoundUpdate } = await import('@/lib/realtime/broadcast');
+                await broadcastRoundUpdate(seasonId, round.id, {
+                  status: 'completed',
+                  finalized: true,
                 });
               }
             } else {
@@ -267,6 +270,37 @@ export async function POST(request: NextRequest) {
       )
       RETURNING *
     `;
+
+    // Broadcast round started via Firebase Realtime DB
+    await broadcastRoundUpdate(season_id, roundId!, {
+      type: 'round_started',
+      status: 'active',
+      round_id: roundId!,
+      position,
+      end_time: endTime.toISOString(),
+    });
+
+    // Send FCM notification to all teams in season
+    try {
+      await sendNotificationToSeason(
+        {
+          title: '🎯 New Auction Round Available!',
+          body: `${position} bidding is now open. Duration: ${duration_hours} hour(s). Place your bids now!`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'round_started',
+            roundId: roundId!,
+            position,
+            endTime: endTime.toISOString()
+          }
+        },
+        season_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send round start notification:', notifError);
+      // Don't fail the request if notification fails
+    }
 
     return NextResponse.json({
       success: true,

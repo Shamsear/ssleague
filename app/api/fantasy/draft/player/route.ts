@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { fantasySql } from '@/lib/neon/fantasy-config';
 import { triggerNews } from '@/lib/news/trigger';
+import { broadcastFantasyDraftUpdate } from '@/lib/realtime/broadcast';
 
 /**
  * POST /api/fantasy/draft/player
@@ -223,18 +224,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Broadcast to WebSocket subscribers
-    if (typeof global.wsBroadcast === 'function') {
-      global.wsBroadcast(`fantasy_league:${leagueId}`, {
-        type: 'player_drafted',
-        data: {
-          team_id: teamId,
-          player_name,
-          position,
-          draft_price,
-        },
-      });
-    }
+    // Broadcast to Firebase Realtime DB
+    await broadcastFantasyDraftUpdate(leagueId, {
+      type: 'player_drafted',
+      team_id: teamId,
+      player_name,
+      position,
+      draft_price,
+    });
 
     return NextResponse.json({
       success: true,
@@ -355,17 +352,13 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`✅ Undrafted player: ${player.player_name} from team ${teamId}, refunded $${refundPrice}M`);
 
-    // Broadcast to WebSocket subscribers
-    if (typeof global.wsBroadcast === 'function') {
-      global.wsBroadcast(`fantasy_league:${leagueId}`, {
-        type: 'player_undrafted',
-        data: {
-          team_id: teamId,
-          player_name: player.player_name,
-          refunded_amount: refundPrice,
-        },
-      });
-    }
+    // Broadcast to Firebase Realtime DB
+    await broadcastFantasyDraftUpdate(leagueId, {
+      type: 'player_undrafted',
+      team_id: teamId,
+      player_name: player.player_name,
+      refunded_amount: refundPrice,
+    });
 
     return NextResponse.json({
       success: true,

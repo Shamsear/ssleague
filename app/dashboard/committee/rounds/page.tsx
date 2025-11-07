@@ -345,12 +345,14 @@ export default function RoundsManagementPage() {
     console.log('📦 [State] roundSubmissions updated:', roundSubmissions);
   }, [roundSubmissions]);
 
-  // WebSocket for real-time updates
-  useWebSocket({
-    channel: `season:${currentSeasonId}`,
-    enabled: !!currentSeasonId,
-    onMessage: useCallback((message: any) => {
-      console.log('🔴 Rounds WebSocket message:', message);
+  // Firebase Realtime Database listener for real-time round updates
+  useEffect(() => {
+    if (!currentSeasonId) return;
+
+    const { listenToSeasonRoundUpdates } = require('@/lib/realtime/listeners');
+    
+    const unsubscribe = listenToSeasonRoundUpdates(currentSeasonId, (message: any) => {
+      console.log('🔴 Rounds Firebase update:', message);
       
       if (message.type === 'bid_submitted') {
         // When a team submits bids, only refetch submissions for that specific round
@@ -381,14 +383,17 @@ export default function RoundsManagementPage() {
         }
       } else if (
         message.type === 'round_finalized' ||
+        message.type === 'round_started' ||
         message.type === 'round_updated' ||
         message.type === 'round_status_changed'
       ) {
         // For round status changes, refetch all rounds data
         fetchRounds(false);
       }
-    }, [fetchRounds]),
-  });
+    });
+
+    return () => unsubscribe();
+  }, [currentSeasonId, fetchRounds]);
 
   // Polling interval as fallback (every 30 seconds - reduced from 3)
   useEffect(() => {

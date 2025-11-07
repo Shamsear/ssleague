@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST - Lock a lineup (committee admin only)
@@ -54,6 +55,39 @@ export async function POST(
         updated_at = NOW()
       WHERE id = ${lineupId}
     `;
+
+    // Get season_id and team info for notification
+    const lineupDetails = await sql`
+      SELECT l.season_id, l.team_id, l.team_name, l.round_number
+      FROM lineups l
+      WHERE l.id = ${lineupId}
+    `;
+
+    if (lineupDetails.length > 0) {
+      const { season_id, team_name, round_number } = lineupDetails[0];
+      
+      // Send FCM notification
+      try {
+        await sendNotificationToSeason(
+          {
+            title: '🔒 Lineup Locked',
+            body: `${team_name}'s lineup for Round ${round_number} has been locked by committee.`,
+            url: `/lineups/${lineupId}`,
+            icon: '/logo.png',
+            data: {
+              type: 'lineup_locked',
+              lineup_id: lineupId,
+              team_name,
+              round_number: round_number.toString(),
+            }
+          },
+          season_id
+        );
+      } catch (notifError) {
+        console.error('Failed to send lineup lock notification:', notifError);
+        // Don't fail the request
+      }
+    }
 
     return NextResponse.json({
       success: true,

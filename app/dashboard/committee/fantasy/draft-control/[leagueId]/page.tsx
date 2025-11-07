@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useDraftWebSocket } from '@/hooks/useDraftWebSocket';
+// Firebase Realtime DB handles draft status updates automatically via React Query
 import { useAutoCloseDraft } from '@/hooks/useAutoCloseDraft';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
@@ -93,44 +93,8 @@ export default function DraftControlPage() {
     settings?.draft_closes_at || undefined
   );
 
-  // WebSocket for real-time draft status updates
-  const handleDraftStatusChange = useCallback((update: any) => {
-    console.log('📡 Received draft status update:', update);
-    console.log('✨ Updating UI without page refresh...');
-    
-    // Update the UI state directly without refetching
-    if (update.draft_status) {
-      setDraftStatus(update.draft_status);
-      
-      // Also update the settings state if it exists
-      setSettings(prev => prev ? {
-        ...prev,
-        draft_status: update.draft_status
-      } : null);
-      
-      // Show toast notification
-      const statusMessages = {
-        active: update.auto_opened ? '🔓 Draft automatically opened!' : '✅ Draft is now ACTIVE',
-        closed: update.auto_closed ? '🔒 Draft automatically closed!' : '🚫 Draft is now CLOSED',
-        pending: '⏳ Draft is now PENDING'
-      };
-      
-      setToast({
-        message: statusMessages[update.draft_status as keyof typeof statusMessages] || 'Draft status updated',
-        type: update.draft_status === 'active' ? 'success' : 'info'
-      });
-      
-      // Auto-hide toast after 5 seconds
-      setTimeout(() => setToast(null), 5000);
-      
-      console.log(`🎉 Draft status changed to: ${update.draft_status.toUpperCase()}`);
-    }
-  }, []);
-
-  useDraftWebSocket(
-    leagueId,
-    handleDraftStatusChange
-  );
+  // Note: Firebase Realtime DB broadcasts are handled by useAutoCloseDraft hook
+  // Real-time updates are automatic via React Query cache invalidation
 
   // Helper function to convert IST datetime-local format to UTC ISO string
   const convertISTToUTC = (istDatetimeLocal: string | null): string | null => {

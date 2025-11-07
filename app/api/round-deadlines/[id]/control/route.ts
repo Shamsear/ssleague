@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * PATCH - Control round (restart/pause/resume)
@@ -82,6 +83,40 @@ export async function PATCH(
 
       console.log(`✅ Round restarted with new start time: ${restartTime} IST`);
 
+      // Send notification for restart
+      try {
+        const roundInfo = await sql`
+          SELECT rd.season_id, t.name as tournament_name
+          FROM round_deadlines rd
+          JOIN tournaments t ON rd.tournament_id = t.id
+          WHERE rd.tournament_id = ${tournamentId}
+            AND rd.round_number = ${roundNumber}
+            AND rd.leg = ${leg}
+          LIMIT 1
+        `;
+
+        if (roundInfo.length > 0) {
+          await sendNotificationToSeason(
+            {
+              title: `🔄 ${roundInfo[0].tournament_name} - Round ${roundNumber} Restarted`,
+              body: `Round ${roundNumber} (${leg}) has been restarted at ${restartTime} IST. Lineup deadlines updated!`,
+              url: `/dashboard/tournaments/${tournamentId}`,
+              icon: '/logo.png',
+              data: {
+                type: 'round_restarted',
+                tournament_id: tournamentId,
+                round_number: roundNumber,
+                leg,
+                restart_time: restartTime
+              }
+            },
+            roundInfo[0].season_id
+          );
+        }
+      } catch (notifError) {
+        console.error('Failed to send restart notification:', notifError);
+      }
+
       return NextResponse.json({
         success: true,
         message: `Round ${roundNumber} (${leg}) restarted at ${restartTime} IST`,
@@ -106,6 +141,39 @@ export async function PATCH(
 
       console.log(`⏸️ Round paused (round_start_time unchanged)`);
 
+      // Send notification for pause
+      try {
+        const roundInfo = await sql`
+          SELECT rd.season_id, t.name as tournament_name
+          FROM round_deadlines rd
+          JOIN tournaments t ON rd.tournament_id = t.id
+          WHERE rd.tournament_id = ${tournamentId}
+            AND rd.round_number = ${roundNumber}
+            AND rd.leg = ${leg}
+          LIMIT 1
+        `;
+
+        if (roundInfo.length > 0) {
+          await sendNotificationToSeason(
+            {
+              title: `⏸️ ${roundInfo[0].tournament_name} - Round ${roundNumber} Paused`,
+              body: `Round ${roundNumber} (${leg}) has been paused. Wait for further updates.`,
+              url: `/dashboard/tournaments/${tournamentId}`,
+              icon: '/logo.png',
+              data: {
+                type: 'round_paused',
+                tournament_id: tournamentId,
+                round_number: roundNumber,
+                leg
+              }
+            },
+            roundInfo[0].season_id
+          );
+        }
+      } catch (notifError) {
+        console.error('Failed to send pause notification:', notifError);
+      }
+
       return NextResponse.json({
         success: true,
         message: `Round ${roundNumber} (${leg}) paused`,
@@ -127,6 +195,39 @@ export async function PATCH(
       `;
 
       console.log(`▶️ Round resumed (round_start_time unchanged)`);
+
+      // Send notification for resume
+      try {
+        const roundInfo = await sql`
+          SELECT rd.season_id, t.name as tournament_name
+          FROM round_deadlines rd
+          JOIN tournaments t ON rd.tournament_id = t.id
+          WHERE rd.tournament_id = ${tournamentId}
+            AND rd.round_number = ${roundNumber}
+            AND rd.leg = ${leg}
+          LIMIT 1
+        `;
+
+        if (roundInfo.length > 0) {
+          await sendNotificationToSeason(
+            {
+              title: `▶️ ${roundInfo[0].tournament_name} - Round ${roundNumber} Resumed`,
+              body: `Round ${roundNumber} (${leg}) has resumed. Continue submitting lineups!`,
+              url: `/dashboard/tournaments/${tournamentId}`,
+              icon: '/logo.png',
+              data: {
+                type: 'round_resumed',
+                tournament_id: tournamentId,
+                round_number: roundNumber,
+                leg
+              }
+            },
+            roundInfo[0].season_id
+          );
+        }
+      } catch (notifError) {
+        console.error('Failed to send resume notification:', notifError);
+      }
 
       return NextResponse.json({
         success: true,

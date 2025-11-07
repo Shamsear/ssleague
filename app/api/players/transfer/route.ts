@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { transferPlayerNeon, NeonPlayerData, PlayerType } from '@/lib/player-transfers-neon';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { getAuctionDb } from '@/lib/neon/auction-config';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/players/transfer
@@ -153,6 +154,55 @@ export async function POST(request: NextRequest) {
         { success: false, error: result.error || result.message },
         { status: 500 }
       );
+    }
+
+    // Send FCM notifications to both teams
+    const currencySymbol = player_type === 'football' ? '€' : '$';
+    
+    // Notify old team (losing player)
+    try {
+      await sendNotification(
+        {
+          title: '🔄 Player Transferred Out',
+          body: `${playerInfo.player_name} has been transferred to ${new_team_name} for ${currencySymbol}${new_contract_value}`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'player_transfer_out',
+            player_id,
+            player_name: playerInfo.player_name,
+            new_team_id,
+            new_team_name,
+            player_type,
+          }
+        },
+        playerInfo.team_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send transfer out notification:', notifError);
+    }
+    
+    // Notify new team (receiving player)
+    try {
+      await sendNotification(
+        {
+          title: '⭐ Player Transferred In',
+          body: `${playerInfo.player_name} has joined your team! Contract: ${currencySymbol}${new_contract_value} (${new_contract_duration} seasons)`,
+          url: `/dashboard/team`,
+          icon: '/logo.png',
+          data: {
+            type: 'player_transfer_in',
+            player_id,
+            player_name: playerInfo.player_name,
+            contract_value: new_contract_value.toString(),
+            contract_duration: new_contract_duration.toString(),
+            player_type,
+          }
+        },
+        new_team_id
+      );
+    } catch (notifError) {
+      console.error('Failed to send transfer in notification:', notifError);
     }
 
     return NextResponse.json({
