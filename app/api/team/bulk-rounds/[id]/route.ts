@@ -93,6 +93,15 @@ export async function GET(
       });
     }
 
+    // Get team_id first (needed for starred players query)
+    let teamId: string | null = null;
+    const teamIdResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${userId} AND season_id = ${round.season_id} LIMIT 1
+    `;
+    if (teamIdResult.length > 0) {
+      teamId = teamIdResult[0].id;
+    }
+
     // Get all players in this round (only for active rounds)
     const players = await sql`
       SELECT 
@@ -100,11 +109,13 @@ export async function GET(
         rp.player_name as name,
         rp.position,
         fp.overall_rating,
-        fp.club as team_name,
+        fp.team_name,
         rp.status,
-        fp.playing_style
+        fp.playing_style,
+        CASE WHEN sp.player_id IS NOT NULL THEN true ELSE false END as is_starred
       FROM round_players rp
       LEFT JOIN footballplayers fp ON rp.player_id = fp.id
+      LEFT JOIN starred_players sp ON rp.player_id = sp.player_id AND sp.team_id = ${teamId}
       WHERE rp.round_id = ${roundId}
       AND rp.status IN ('pending', 'available')
       ORDER BY fp.overall_rating DESC, rp.player_name ASC
@@ -228,6 +239,7 @@ export async function GET(
           team_name: p.team_name,
           playing_style: p.playing_style,
           status: p.status,
+          is_starred: p.is_starred || false,
         })),
         balance,
         squad: {

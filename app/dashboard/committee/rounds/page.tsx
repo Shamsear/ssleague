@@ -374,6 +374,94 @@ export default function RoundsManagementPage() {
     fetchAllData();
   }, [fetchAllData]);
 
+  // Realtime listener for submission updates
+  useEffect(() => {
+    if (!currentSeasonId || rounds.length === 0) return;
+
+    const activeRounds = rounds.filter(r => r.status === 'active');
+    if (activeRounds.length === 0) {
+      console.log('🔌 [Realtime] No active rounds found');
+      return;
+    }
+
+    console.log('🔌 [Realtime] Setting up listeners for', activeRounds.length, 'active rounds:', activeRounds.map(r => r.id));
+    console.log('🔌 [Realtime] Season ID:', currentSeasonId);
+
+    // Import Firebase Realtime DB
+    const { ref, onValue } = require('firebase/database');
+    const { realtimeDb } = require('@/lib/firebase/config');
+
+    if (!realtimeDb) {
+      console.error('❌ [Realtime] Firebase Realtime Database not initialized!');
+      return;
+    }
+
+    const unsubscribers: (() => void)[] = [];
+
+    // Listen to each active round for submission updates
+    activeRounds.forEach(round => {
+      const path = `updates/${currentSeasonId}/rounds/${round.id}`;
+      console.log('🔌 [Realtime] Listening to path:', path);
+      
+      const roundRef = ref(realtimeDb, path);
+      
+      const unsubscribe = onValue(
+        roundRef,
+        (snapshot) => {
+          const data = snapshot.val();
+          console.log('📡 [Realtime] Data received for round', round.id, ':', data);
+          
+          if (data && data.type === 'submission') {
+            console.log('📊 [Realtime] ✅ Submission update detected!', {
+              round: round.id,
+              action: data.action,
+              team: data.team_id,
+              timestamp: data.timestamp
+            });
+            
+            // Refetch submissions for this round
+            console.log('🔄 [Realtime] Refetching submissions for round:', round.id);
+            fetchWithTokenRefresh(`/api/admin/rounds/${round.id}/submissions`)
+              .then(res => res.json())
+              .then(subData => {
+                if (subData.success) {
+                  console.log('✅ [Realtime] Updated submissions for round:', round.id, subData.stats);
+                  setRoundSubmissions(prev => {
+                    const updated = {
+                      ...prev,
+                      [round.id]: {
+                        ...subData.stats,
+                        teams: subData.teams
+                      }
+                    };
+                    console.log('📊 [Realtime] New submission state:', updated);
+                    return updated;
+                  });
+                } else {
+                  console.error('❌ [Realtime] API returned error:', subData.error);
+                }
+              })
+              .catch(err => console.error('❌ [Realtime] Failed to fetch submissions:', err));
+          } else if (data) {
+            console.log('ℹ️ [Realtime] Received data but type is not "submission":', data.type);
+          } else {
+            console.log('ℹ️ [Realtime] Received null/empty data for round:', round.id);
+          }
+        },
+        (error) => {
+          console.error('❌ [Realtime] Error listening to round', round.id, ':', error);
+        }
+      );
+
+      unsubscribers.push(unsubscribe);
+    });
+
+    return () => {
+      console.log('🔌 [Realtime] Disconnecting', unsubscribers.length, 'submission listeners');
+      unsubscribers.forEach(unsub => unsub());
+    };
+  }, [currentSeasonId, rounds]);
+
   // Debug: Monitor roundSubmissions state changes
   useEffect(() => {
     console.log('📦 [State] roundSubmissions updated:', roundSubmissions);

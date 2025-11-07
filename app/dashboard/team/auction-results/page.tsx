@@ -62,6 +62,7 @@ export default function AuctionResultsPage() {
   const [rounds, setRounds] = useState<RoundResult[]>([]);
   const [selectedRound, setSelectedRound] = useState<string>('all');
   const [expandedPlayers, setExpandedPlayers] = useState<Set<string>>(new Set());
+  const [expandedOthers, setExpandedOthers] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'amount' | 'status' | 'name'>('amount');
@@ -122,6 +123,18 @@ export default function AuctionResultsPage() {
         newSet.delete(playerId);
       } else {
         newSet.add(playerId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleOthersExpand = (roundId: string) => {
+    setExpandedOthers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(roundId)) {
+        newSet.delete(roundId);
+      } else {
+        newSet.add(roundId);
       }
       return newSet;
     });
@@ -278,17 +291,73 @@ export default function AuctionResultsPage() {
                 </div>
               </div>
 
-              {/* Players List */}
-              <div className="space-y-3">
-                {sortPlayers(round.players).map(player => {
-                  const isExpanded = expandedPlayers.has(player.player_id);
-                  const statusColor = player.your_bid?.won 
-                    ? 'border-green-500 bg-green-50/50' 
-                    : player.your_bid 
-                    ? 'border-red-500 bg-red-50/50' 
-                    : 'border-gray-300 bg-gray-50/50';
+              {/* Your Result - Show prominently */}
+              {(() => {
+                const yourPlayer = round.players.find(p => p.winning_bid.is_you);
+                const otherPlayers = round.players.filter(p => !p.winning_bid.is_you);
+                const isOthersExpanded = expandedOthers.has(round.round_id);
 
-                  return (
+                return (
+                  <div className="space-y-4">
+                    {/* YOUR RESULT */}
+                    {yourPlayer && (
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Your Result
+                        </h3>
+                        {/* Render your player card */}
+                        {(() => {
+                      </div>
+                    )}
+
+                    {/* OTHER TEAM RESULTS - Collapsed by default */}
+                    {otherPlayers.length > 0 && (
+                      <div>
+                        <button
+                          onClick={() => toggleOthersExpand(round.round_id)}
+                          className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium text-gray-700"
+                        >
+                          <span className="flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            Other Team Results ({otherPlayers.length})
+                          </span>
+                          <svg 
+                            className={`w-5 h-5 transition-transform ${isOthersExpanded ? 'rotate-180' : ''}`} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        
+                        {isOthersExpanded && (
+                          <div className="mt-3 space-y-3">
+                            {sortPlayers(otherPlayers).map(player => {
+                              const isExpanded = expandedPlayers.has(player.player_id);
+                              const statusColor = player.your_bid?.won 
+                                ? 'border-green-500 bg-green-50/50' 
+                                : player.your_bid 
+                                ? 'border-red-500 bg-red-50/50' 
+                                : 'border-gray-300 bg-gray-50/50';
+
+                              return player; // Just returning for now to fix the map
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          ))}
+
                     <div key={player.player_id} className={`glass-card rounded-xl border-l-4 ${statusColor} overflow-hidden transition-all`}>
                       {/* Player Card Header */}
                       <div className="p-4">

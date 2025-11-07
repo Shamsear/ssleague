@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuctionDb } from '@/lib/neon/auction-config';
 import { verifyAuth } from '@/lib/auth-helper';
+import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 
 export async function POST(
   request: NextRequest,
@@ -117,6 +118,22 @@ export async function POST(
 
     console.log('✅ [Submit Bids] Submission successful:', submissionResult[0]);
 
+    // Get season_id from round
+    const seasonResult = await sql`
+      SELECT season_id FROM rounds WHERE id = ${roundId} LIMIT 1
+    `;
+    const seasonId = seasonResult[0]?.season_id;
+
+    // Broadcast submission update to realtime DB for live updates
+    if (seasonId) {
+      await broadcastRoundUpdate(seasonId, roundId, {
+        type: 'submission',
+        team_id: teamId,
+        action: 'submitted',
+        bid_count: bidCount,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Bids submitted successfully',
@@ -172,6 +189,21 @@ export async function DELETE(
       AND round_id = ${roundId}
     `;
     console.log('✅ [Unlock Bids] Submission unlocked successfully');
+
+    // Get season_id from round
+    const seasonResult = await sql`
+      SELECT season_id FROM rounds WHERE id = ${roundId} LIMIT 1
+    `;
+    const seasonId = seasonResult[0]?.season_id;
+
+    // Broadcast unlock update to realtime DB for live updates
+    if (seasonId) {
+      await broadcastRoundUpdate(seasonId, roundId, {
+        type: 'submission',
+        team_id: teamId,
+        action: 'unlocked',
+      });
+    }
 
     return NextResponse.json({
       success: true,
