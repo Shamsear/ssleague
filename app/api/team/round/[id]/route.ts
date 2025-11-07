@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { cookies } from 'next/headers';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
+import { adminDb } from '@/lib/firebase/admin';
 import { checkAndFinalizeExpiredRound } from '@/lib/lazy-finalize-round';
 import { decryptBidData } from '@/lib/encryption';
 
@@ -12,43 +12,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check Authorization header first (takes priority for fresh tokens)
-    const authHeader = request.headers.get('Authorization');
-    let token = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    }
-    
-    // Fallback to cookie if no Authorization header
-    if (!token) {
-      const cookieStore = await cookies();
-      token = cookieStore.get('token')?.value;
-    }
-
-    if (!token) {
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
-
-    // Note: Skipping role check since Firebase auth already validates the user
-    // All authenticated users with valid tokens are allowed to access team routes
+    const userId = auth.userId!;
 
     const { id: roundId } = await params;
 

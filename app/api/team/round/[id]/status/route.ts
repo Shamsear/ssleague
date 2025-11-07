@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { cookies } from 'next/headers';
-import { adminAuth } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { checkAndFinalizeExpiredRound } from '@/lib/lazy-finalize-round';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
@@ -11,34 +10,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check Authorization header first (takes priority for fresh tokens)
-    const authHeader = request.headers.get('Authorization');
-    let token = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    }
-    
-    // Fallback to cookie if no Authorization header
-    if (!token) {
-      const cookieStore = await cookies();
-      token = cookieStore.get('token')?.value;
-    }
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error: any) {
-      console.error('Token verification error:', error);
-      
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       // For status checks, return a soft error instead of 401
       // This prevents constant error popups when tokens expire
       return NextResponse.json({
@@ -49,9 +22,7 @@ export async function GET(
       });
     }
 
-    const userId = decodedToken.uid;
-
-    // Note: Skipping role check since Firebase auth already validates the user
+    const userId = auth.userId!;
 
     const { id: roundId } = await params;
 
