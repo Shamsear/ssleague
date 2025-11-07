@@ -286,6 +286,7 @@ export async function GET(
               let allocationStatus = 'pending';
               let allocatedToTeam = null;
               
+              // First check if player was allocated in footballplayers table (finalized)
               if (player.is_sold && player.current_team_id) {
                 if (player.current_team_id === userTeamId) {
                   allocationStatus = 'won';
@@ -304,24 +305,56 @@ export async function GET(
                     allocatedToTeam = teamDoc.empty ? player.current_team_id : teamDoc.docs[0].data()?.team_name;
                   }
                 }
-              } else if (bid.bid_status === 'lost') {
-                allocationStatus = 'lost';
-              } else if (player_id === tiebreaker.player_id) {
-                allocationStatus = 'tiebreaker';
-              } else {
-                // Check if this player is in any other active tiebreaker
-                const otherTiebreaker = await sql`
-                  SELECT id FROM tiebreakers
-                  WHERE round_id = ${tiebreaker.round_id}
-                  AND player_id = ${player_id}
-                  AND status IN ('active', 'pending')
+              } 
+              // Check if player was won in a resolved tiebreaker (not yet finalized to footballplayers)
+              else {
+                const resolvedTiebreaker = await sql`
+                  SELECT t.id, t.winner_team_id, t.status
+                  FROM tiebreakers t
+                  WHERE t.round_id = ${tiebreaker.round_id}
+                  AND t.player_id = ${player_id}
+                  AND t.status = 'resolved'
                   LIMIT 1
                 `;
                 
-                if (otherTiebreaker.length > 0) {
-                  allocationStatus = 'tiebreaker_other';
-                } else {
-                  allocationStatus = 'available';
+                if (resolvedTiebreaker.length > 0) {
+                  const winnerId = resolvedTiebreaker[0].winner_team_id;
+                  if (winnerId === userTeamId) {
+                    allocationStatus = 'won';
+                  } else if (winnerId) {
+                    allocationStatus = 'allocated_to_other';
+                    // Get winner team name
+                    const teamDoc = await adminDb.collection('team_seasons')
+                      .where('team_id', '==', winnerId)
+                      .where('season_id', '==', seasonId)
+                      .limit(1)
+                      .get();
+                    allocatedToTeam = teamDoc.empty ? winnerId : teamDoc.docs[0].data()?.team_name;
+                  }
+                }
+                // Check if bid is marked as lost
+                else if (bid.bid_status === 'lost') {
+                  allocationStatus = 'lost';
+                } 
+                // Check if it's the current tiebreaker
+                else if (player_id === tiebreaker.player_id) {
+                  allocationStatus = 'tiebreaker';
+                } 
+                // Check if player is in any other active/pending tiebreaker
+                else {
+                  const otherTiebreaker = await sql`
+                    SELECT id FROM tiebreakers
+                    WHERE round_id = ${tiebreaker.round_id}
+                    AND player_id = ${player_id}
+                    AND status IN ('active', 'pending')
+                    LIMIT 1
+                  `;
+                  
+                  if (otherTiebreaker.length > 0) {
+                    allocationStatus = 'tiebreaker_other';
+                  } else {
+                    allocationStatus = 'available';
+                  }
                 }
               }
 

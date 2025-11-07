@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { adminDb } from '@/lib/firebase/admin';
 import { decryptBidData } from '@/lib/encryption';
-import { broadcastTeamUpdatePusher as broadcastTeamUpdate } from '@/lib/websocket/pusher-broadcast';
+import { broadcastSquadUpdate, broadcastWalletUpdate } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.NEON_DATABASE_URL!);
 
