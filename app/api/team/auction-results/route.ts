@@ -1,36 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { getAuthToken } from '@/lib/auth/token-helper';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
+import { adminDb } from '@/lib/firebase/admin';
 import { decryptBidData } from '@/lib/encryption';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
   try {
-    // Get token from Authorization header or cookie
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       return NextResponse.json({
         success: false,
-        error: 'Unauthorized - No token',
+        error: auth.error || 'Unauthorized',
       }, { status: 401 });
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (err) {
-      console.error('Token verification error:', err);
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid token',
-      }, { status: 401 });
-    }
-
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('season_id');

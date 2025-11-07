@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { 
   getCachedUserTeamId, 
   getCachedActiveSeason, 
@@ -11,29 +11,15 @@ import { getCached, setCached } from '@/lib/firebase/cache';
 
 export async function GET(request: NextRequest) {
   try {
-    // Get token from Authorization header or cookie
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       return NextResponse.json({
         success: false,
-        error: 'Unauthorized - No token',
+        error: auth.error || 'Unauthorized',
       }, { status: 401 });
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (err) {
-      console.error('Token verification error:', err);
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid token',
-      }, { status: 401 });
-    }
-
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     // ✅ OPTIMIZED: Get team_id with smart caching (reduces 4 Firebase queries to 0-1)
     const teamId = await getCachedUserTeamId(userId);
