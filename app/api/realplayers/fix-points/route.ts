@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { verifyAuth } from '@/lib/auth-helper';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 // Base points by star rating
@@ -21,24 +20,10 @@ const STAR_RATING_BASE_POINTS: { [key: number]: number } = {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get Firebase ID token from cookie
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    const auth = await verifyAuth(['committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { error: 'Unauthorized - No token' },
-        { status: 401 }
-      );
-    }
-
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (err) {
-      console.error('Token verification error:', err);
-      return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }

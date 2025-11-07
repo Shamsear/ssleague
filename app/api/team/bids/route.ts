@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
 
     // Check if team already has a bid for this player in this round
     const existingBidResult = await sql`
-      SELECT id FROM bids 
+      SELECT id, encrypted_bid_data FROM bids 
       WHERE team_id = ${teamId}
       AND player_id = ${player_id}
       AND round_id = ${round_id}
@@ -198,6 +198,29 @@ export async function POST(request: NextRequest) {
     `;
 
     if (existingBidResult.length > 0) {
+      // Bid already exists - check if it's the same amount (idempotent)
+      const { decryptBidData } = await import('@/lib/encryption');
+      try {
+        const existingDecrypted = decryptBidData(existingBidResult[0].encrypted_bid_data);
+        if (existingDecrypted.amount === amount) {
+          // Same bid already exists - return success (idempotent)
+          console.log(`✅ Idempotent bid request for player ${player_id} with amount ${amount}`);
+          return NextResponse.json({
+            success: true,
+            message: 'Bid already placed',
+            bid: {
+              id: existingBidResult[0].id,
+              team_id: teamId,
+              round_id,
+              status: 'active'
+            },
+          });
+        }
+      } catch (err) {
+        console.error('Failed to decrypt existing bid:', err);
+      }
+      
+      // Different amount - return error
       return NextResponse.json(
         { success: false, error: 'You already have a bid for this player in this round' },
         { status: 400 }

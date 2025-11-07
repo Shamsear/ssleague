@@ -1,32 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { verifyAuth } from '@/lib/auth-helper';
 
 export async function POST(request: NextRequest) {
   try {
-    // Get token from Authorization header or cookie
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    const auth = await verifyAuth(['team', 'committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, message: 'Unauthorized - No token' },
+        { success: false, message: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (err) {
-      console.error('Token verification error:', err);
-      return NextResponse.json(
-        { success: false, message: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
     const body = await request.json();
     const { displayName } = body;
 

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { cookies } from 'next/headers';
-import { adminAuth } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { generateTiebreakerId } from '@/lib/id-generator';
 
 import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
@@ -19,24 +18,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
-
-    if (!token) {
+    const auth = await verifyAuth(['committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }

@@ -178,36 +178,15 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const token = await getAuthToken(request);
-    
-    if (!token) {
+    const auth = await verifyAuth(['admin', 'committee', 'committee_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const senderId = decodedToken.uid;
-
-    // Get user role from Firestore
-    const userDoc = await adminDb.collection('users').doc(senderId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const userData = userDoc.data();
-    const senderRole = userData?.role;
-
-    if (senderRole !== 'committee' && senderRole !== 'admin' && senderRole !== 'committee_admin') {
-      return NextResponse.json(
-        { success: false, error: 'Only committee/admin can send notifications' },
-        { status: 403 }
-      );
-    }
+    const senderId = auth.userId!;
 
     const { userIds, title, body, icon, url, data } = await request.json();
 

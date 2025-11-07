@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { neon } from '@neondatabase/serverless';
 import { getDeviceInfoFromRequest } from '@/lib/device-detector';
 
@@ -12,18 +12,15 @@ const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get and verify auth token
-    const token = await getAuthToken(request);
-    
-    if (!token) {
+    const auth = await verifyAuth(['team', 'committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - No token' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     // Get FCM token from request body
     const { fcmToken } = await request.json();
@@ -95,17 +92,15 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const token = await getAuthToken(request);
-    
-    if (!token) {
+    const auth = await verifyAuth(['team', 'committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     // Remove FCM token
     await adminDb.collection('users').doc(userId).update({

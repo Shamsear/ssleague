@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import * as XLSX from 'xlsx';
 
 interface PreviewTeamData {
@@ -77,18 +77,12 @@ export async function POST(
     const { id: seasonId } = await params;
     console.log(`📝 Parsing Excel file for historical season ID: ${seasonId}`);
 
-    // Verify authentication
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await verifyAuth(['committee'], request);
+    if (!auth.authenticated) {
+      return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(token);
     
-    // For parsing, we'll skip the user role check for simplicity, but in production
-    // you might want to keep the role check for security
-    console.log(`✅ User authenticated: ${decodedToken.uid}`);
+    console.log(`✅ User authenticated: ${auth.userId}`);
 
     // Get form data
     const formData = await request.formData();

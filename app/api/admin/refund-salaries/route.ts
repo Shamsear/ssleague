@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
@@ -9,24 +9,10 @@ import { sendNotificationToSeason } from '@/lib/notifications/send-notification'
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get Firebase ID token from cookie
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    const auth = await verifyAuth(['committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { error: 'Unauthorized - No token' },
-        { status: 401 }
-      );
-    }
-
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (err) {
-      console.error('Token verification error:', err);
-      return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }

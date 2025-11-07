@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { verifyAuth } from '@/lib/auth-helper';
 import { neon } from '@neondatabase/serverless';
 
 const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
@@ -11,17 +10,15 @@ const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = await getAuthToken(request);
-    
-    if (!token) {
+    const auth = await verifyAuth(['team', 'committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     // Get all devices for this user
     const devices = await sql`
@@ -71,17 +68,15 @@ export async function GET(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const token = await getAuthToken(request);
-    
-    if (!token) {
+    const auth = await verifyAuth(['team', 'committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     // Get device ID from query params
     const { searchParams } = new URL(request.url);

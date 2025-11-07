@@ -204,11 +204,8 @@ export default function TeamRoundPage() {
     try {
       await placeBidMutation.mutateAsync({ playerId, amount });
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Bid Failed',
-        message: error.message || 'Failed to place bid'
-      });
+      // Silent fail - optimistic UI will rollback automatically
+      console.error('Bid placement failed:', error.message);
     }
   };
 

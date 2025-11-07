@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { cookies } from 'next/headers';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 
 interface LineupPlayer {
   player_id: string;
@@ -16,19 +16,15 @@ export async function POST(
   try {
     const { fixtureId } = params;
     
-    // Verify authentication
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
-
-    if (!token) {
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     // Get request body
     const body = await request.json();
@@ -241,18 +237,13 @@ export async function GET(
   try {
     const { fixtureId } = params;
 
-    // Verify authentication
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
-
-    if (!token) {
+    const auth = await verifyAuth(['team', 'committee'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
-
-    await adminAuth.verifyIdToken(token);
 
     // Get fixture with lineup data
     const fixtureRef = adminDb.collection('fixtures').doc(fixtureId);
