@@ -46,7 +46,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
     console.log(`🎯 Starting finalization for round ${roundId}`);
     
     const roundResult = await sql`
-      SELECT id, position, max_bids_per_team, status, season_id
+      SELECT id, position, max_bids_per_team, status, season_id, round_number
       FROM rounds WHERE id = ${roundId}
     `;
 
@@ -56,6 +56,26 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
 
     const round = roundResult[0];
     const requiredBids = round.max_bids_per_team;
+    
+    // Fetch auction settings to determine current phase
+    const settingsResult = await sql`
+      SELECT phase_1_end_round, phase_2_end_round, phase_3_min_balance
+      FROM auction_settings WHERE season_id = ${round.season_id}
+    `;
+    const settings = settingsResult[0];
+    
+    // Determine current phase
+    let currentPhase: 'phase_1' | 'phase_2' | 'phase_3';
+    if (round.round_number <= settings.phase_1_end_round) {
+      currentPhase = 'phase_1';
+    } else if (round.round_number <= settings.phase_2_end_round) {
+      currentPhase = 'phase_2';
+    } else {
+      currentPhase = 'phase_3';
+    }
+    
+    console.log(`📍 Round ${round.round_number} is in ${currentPhase}`);
+    const minAllocation = currentPhase === 'phase_3' ? settings.phase_3_min_balance : null;
 
     // Check for active tiebreakers
     const activeTiebreakers = await sql`
@@ -217,9 +237,16 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         : 1000;
 
       console.log(`💰 Average price for non-submitted teams: £${avgAmount}`);
-
-      // Phase 2: Random allocation from team's own bid list
-      for (const teamId of nonSubmittedTeams) {
+      
+      // Phase 2: Teams can skip (no forced allocation)
+      if (currentPhase === 'phase_2') {
+        console.log(`⏭️ Phase 2: Non-submitted teams can skip this round`);
+        // Don't force allocation for Phase 2 - teams can skip
+      } else {
+        // Phase 1 & 3: Force allocation for non-submitted teams
+        console.log(`🔒 ${currentPhase}: Forcing allocation for non-submitted teams`);
+      
+        for (const teamId of nonSubmittedTeams) {
         if (allocatedTeams.has(teamId)) continue;
         
         // Get team name
@@ -252,8 +279,8 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           const randomIndex = Math.floor(Math.random() * teamBids.length);
           const randomBid = teamBids[randomIndex];
           
-          // Use minimum of avgAmount and £10 (enforce minimum)
-          const allocationAmount = Math.max(10, Math.min(avgAmount, 10));
+          // Phase 1: Use average price, Phase 2/3: Use £10 minimum
+          const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
           
           allocations.push({
             team_id: teamId,
@@ -266,15 +293,17 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           });
           allocatedPlayers.add(randomBid.player_id);
           allocatedTeams.add(teamId);
-          console.log(`🔄 Phase 2: Random allocation ${randomBid.player_name} → ${teamName} (£${allocationAmount}) - Team didn't submit`);
+          console.log(`🔄 ${currentPhase}: Random allocation ${randomBid.player_name} → ${teamName} (£${allocationAmount}) - Team didn't submit`);
         }
       }
+      } // End Phase 1 & 3 forced allocation
 
-      // Phase 3: Random allocation from entire position pool for teams without any remaining bids
-      const teamsWithoutPlayers = nonSubmittedTeams.filter(teamId => !allocatedTeams.has(teamId));
-      
-      if (teamsWithoutPlayers.length > 0) {
-        console.log(`🎲 Phase 3: ${teamsWithoutPlayers.length} teams need random allocation from position pool`);
+      // Random allocation from entire position pool for teams without any remaining bids (Phase 1 & 3 only)
+      if (currentPhase !== 'phase_2') {
+        const teamsWithoutPlayers = nonSubmittedTeams.filter(teamId => !allocatedTeams.has(teamId));
+        
+        if (teamsWithoutPlayers.length > 0) {
+          console.log(`🎲 ${currentPhase}: ${teamsWithoutPlayers.length} teams need random allocation from position pool`);
         
         // Get available players for this round's position/position_group
         // Support multi-position rounds (e.g., "LB,LWF")
@@ -332,8 +361,8 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           // Create a synthetic bid ID for this allocation
           const syntheticBidId = `synthetic_${teamId}_${randomPlayer.id}_${Date.now()}`;
           
-          // Enforce minimum £10 allocation
-          const allocationAmount = Math.max(10, Math.min(avgAmount, 10));
+          // Phase 1: Use average price, Phase 2/3: Use £10 minimum
+          const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
           
           allocations.push({
             team_id: teamId,
@@ -351,10 +380,11 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           // Remove from pool
           unallocatedPlayers.splice(randomIndex, 1);
           
-          console.log(`🎲 Phase 3: Random allocation ${randomPlayer.name} → ${teamName} (£${allocationAmount}) - No bids available`);
+          console.log(`🎲 ${currentPhase}: Random allocation ${randomPlayer.name} → ${teamName} (£${allocationAmount}) - No bids available`);
         }
-      }
-    }
+        } // End if teamsWithoutPlayers
+      } // End if currentPhase !== 'phase_2'
+    } // End if nonSubmittedTeams
 
     return { success: true, allocations, tieDetected: false };
   } catch (error) {
