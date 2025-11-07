@@ -416,10 +416,12 @@ export async function DELETE(
         // Use purchase_price if available, otherwise decrypt from bid
         let amount;
         if (purchasePriceResult.length > 0 && purchasePriceResult[0].purchase_price) {
-          amount = purchasePriceResult[0].purchase_price;
+          amount = parseInt(purchasePriceResult[0].purchase_price);
+          console.log(`💰 Found purchase price from team_players: £${amount}`);
         } else {
           const decrypted = decryptBidData(bid.encrypted_bid_data);
           amount = decrypted.amount;
+          console.log(`💰 Using bid amount: £${amount}`);
         }
         
         console.log(`💰 Refunding £${amount} for player ${bid.player_id} to team ${bid.team_id}`);
@@ -462,16 +464,21 @@ export async function DELETE(
             const teamSeasonData = teamSeasonDoc.data();
             const curr = teamSeasonData?.currency_system || 'single';
             const currentBudget = curr === 'dual' ? (teamSeasonData?.football_budget || 0) : (teamSeasonData?.budget || 0);
-            const totalSpent = Math.max(0, (teamSeasonData?.total_spent || 0) - amount);
+            const currentSpent = teamSeasonData?.total_spent || 0;
+            const totalSpent = Math.max(0, currentSpent - amount);
             const playersCount = Math.max(0, (teamSeasonData?.players_count || 0) - 1);
+            
+            console.log(`📊 Team ${bid.team_id} before: budget=£${currentBudget}, spent=£${currentSpent}, players=${teamSeasonData?.players_count || 0}`);
             
             // Get player position for position_counts update
             const playerResult = await sql`SELECT position FROM footballplayers WHERE id = ${bid.player_id}`;
             const playerPosition = playerResult[0]?.position;
             
-            const positionCounts = teamSeasonData?.position_counts || {};
-            if (playerPosition && playerPosition in positionCounts) {
-              positionCounts[playerPosition] = Math.max(0, (positionCounts[playerPosition] || 0) - 1);
+            const positionCounts = { ...(teamSeasonData?.position_counts || {}) };
+            if (playerPosition) {
+              const currentCount = positionCounts[playerPosition] || 0;
+              positionCounts[playerPosition] = Math.max(0, currentCount - 1);
+              console.log(`📉 Position ${playerPosition}: ${currentCount} → ${positionCounts[playerPosition]}`);
             }
             
             const upd: any = {
@@ -490,17 +497,20 @@ export async function DELETE(
             
             await teamSeasonRef.update(upd);
             console.log(`✅ Refunded team_seasons ${bid.team_id}: £${amount}`);
+            console.log(`📊 Team ${bid.team_id} after: budget=£${curr === 'dual' ? upd.football_budget : upd.budget}, spent=£${totalSpent}, players=${playersCount}`);
+            console.log(`📋 Position counts:`, positionCounts);
             
             // Broadcast squad and wallet updates
-            await broadcastTeamUpdate(bid.team_id, 'squad', {
+            await broadcastSquadUpdate(round.season_id, bid.team_id, {
+              type: 'player_removed',
               player_id: bid.player_id,
-              action: 'removed',
               refund: amount,
             });
             
-            await broadcastTeamUpdate(bid.team_id, 'wallet', {
+            await broadcastWalletUpdate(round.season_id, bid.team_id, {
+              type: 'refund',
               new_balance: curr === 'dual' ? upd.football_budget : upd.budget,
-              amount_refunded: amount,
+              amount: amount,
               currency_type: curr === 'dual' ? 'football' : 'single',
             });
           }
