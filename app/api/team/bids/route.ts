@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
         id,
         name,
         position,
+        position_group,
         is_auction_eligible,
         is_sold,
         team_id
@@ -181,7 +182,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (player.position !== round.position) {
+    // Validate position match - supports multi-position rounds (e.g., "LB,LWF") and position groups (e.g., "CF-1")
+    const positions = round.position.split(',').map((p: string) => p.trim());
+    
+    // Check if player matches any of the positions or position groups
+    const positionMatches = positions.some((pos: string) => {
+      // Check if this is a position group (e.g., "CF-1")
+      const isPositionGroup = /^[A-Z]+-\d+$/.test(pos);
+      return isPositionGroup 
+        ? player.position_group === pos
+        : player.position === pos;
+    });
+    
+    if (!positionMatches) {
       return NextResponse.json(
         { success: false, error: 'Player position does not match round position' },
         { status: 400 }

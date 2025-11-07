@@ -170,9 +170,11 @@ export async function GET(
     }
 
     // Get available players for this position or position group
-    // Check if round.position is a position group (e.g., "CF-1") or regular position
-    // Position groups contain hyphens and numbers (e.g., CF-1, CB-2)
-    const isPositionGroup = round.position && /^[A-Z]+-\d+$/.test(round.position);
+    // Supports multi-position rounds (e.g., "LB,LWF") and position groups (e.g., "CF-1")
+    const positions = round.position.split(',').map((p: string) => p.trim());
+    
+    // Check if any position is a position group (e.g., "CF-1")
+    const hasPositionGroups = positions.some((p: string) => /^[A-Z]+-\d+$/.test(p));
     
     const playersResult = await sql`
       SELECT 
@@ -215,7 +217,7 @@ export async function GET(
         CASE WHEN sp.player_id IS NOT NULL THEN true ELSE false END as is_starred_by_user
       FROM footballplayers p
       LEFT JOIN starred_players sp ON p.id = sp.player_id AND sp.team_id = ${teamId}
-      WHERE ${isPositionGroup ? sql`p.position_group = ${round.position}` : sql`p.position = ${round.position}`}
+      WHERE (p.position = ANY(${positions}) OR p.position_group = ANY(${positions}))
       AND p.is_auction_eligible = true
       AND (p.is_sold = false OR p.is_sold IS NULL)
       AND (p.team_id IS NULL OR p.team_id = '')

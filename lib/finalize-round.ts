@@ -256,12 +256,15 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         console.log(`🎲 Phase 3: ${teamsWithoutPlayers.length} teams need random allocation from position pool`);
         
         // Get available players for this round's position/position_group
+        // Support multi-position rounds (e.g., "LB,LWF")
+        const positions = round.position.split(',').map((p: string) => p.trim());
+        
         const availablePlayers = await sql`
           SELECT id, name, position, position_group
           FROM footballplayers
           WHERE is_auction_eligible = true
             AND is_sold = false
-            AND (position = ${round.position} OR position_group = ${round.position})
+            AND (position = ANY(${positions}) OR position_group = ANY(${positions}))
         `;
         
         // Filter out already allocated players

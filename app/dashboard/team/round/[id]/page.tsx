@@ -505,7 +505,7 @@ export default function TeamRoundPage() {
                   <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5"></span>
                   Live
                 </span>
-                <h3 className="text-lg font-bold text-dark">{round.position} Round</h3>
+                <h3 className="text-lg font-bold text-dark">{round.position.includes(',') ? round.position.split(',').join(' + ') : round.position} Round</h3>
               </div>
               <p className="text-sm text-gray-500 mt-1">
                 You must place exactly {round.max_bids_per_team} bids in this round for your bids to be considered

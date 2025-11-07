@@ -83,6 +83,7 @@ export default function RoundsManagementPage() {
     duration_minutes: '0',
     max_bids_per_team: '5',
   });
+  const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -512,11 +513,11 @@ export default function RoundsManagementPage() {
       return;
     }
 
-    if (!formData.position) {
+    if (selectedPositions.length === 0) {
       showAlert({
         type: 'warning',
         title: 'Missing Position',
-        message: 'Please select a position'
+        message: 'Please select at least one position'
       });
       return;
     }
@@ -530,13 +531,16 @@ export default function RoundsManagementPage() {
     const totalHours = parseFloat(formData.duration_hours) + (parseFloat(formData.duration_minutes) / 60);
     const durationSeconds = Math.round(totalHours * 3600);
 
+    // Combine selected positions with comma separator
+    const combinedPosition = selectedPositions.join(',');
+
     try {
       const response = await fetchWithTokenRefresh('/api/admin/rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           season_id: currentSeasonId,
-          position: formData.position,
+          position: combinedPosition,
           max_bids_per_team: parseInt(formData.max_bids_per_team),
           duration_hours: (parseFloat(formData.duration_hours) + (parseFloat(formData.duration_minutes) / 60)).toString(),
         }),
@@ -548,7 +552,7 @@ export default function RoundsManagementPage() {
         showAlert({
           type: 'success',
           title: 'Round Started',
-          message: `Round for ${formData.position} started successfully!`
+          message: `Round for ${selectedPositions.join(' + ')} started successfully!`
         });
         setFormData({
           position: '',
@@ -556,6 +560,7 @@ export default function RoundsManagementPage() {
           duration_minutes: '0',
           max_bids_per_team: '5',
         });
+        setSelectedPositions([]);
         
         // Refresh rounds
         const params = new URLSearchParams({ season_id: currentSeasonId });
@@ -889,26 +894,58 @@ export default function RoundsManagementPage() {
             <form onSubmit={handleStartRound} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label htmlFor="position" className="block text-sm font-medium text-gray-700 mb-1.5">Position</label>
+                  <label htmlFor="position" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Position(s)
+                    <span className="ml-2 text-xs text-gray-500">(Select multiple for combined rounds)</span>
+                  </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                    <span className="absolute top-3 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
                       </svg>
                     </span>
-                    <select
-                      id="position"
-                      value={formData.position}
-                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                      required
-                      className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all duration-200 text-base shadow-sm"
-                    >
-                      <option value="">Select a position</option>
-                      {availablePositions.map(position => (
-                        <option key={position} value={position}>{position}</option>
-                      ))}
-                    </select>
+                    <div className="pl-10 min-h-[48px] w-full py-2 bg-white/60 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#0066FF]/30 focus-within:border-[#0066FF] transition-all duration-200 shadow-sm">
+                      {/* Selected positions */}
+                      {selectedPositions.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 px-2 mb-2">
+                          {selectedPositions.map(pos => (
+                            <span key={pos} className="inline-flex items-center px-2 py-1 rounded-lg bg-blue-100 text-blue-800 text-sm font-medium">
+                              {pos}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPositions(prev => prev.filter(p => p !== pos))}
+                                className="ml-1.5 text-blue-600 hover:text-blue-800"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Dropdown */}
+                      <select
+                        id="position"
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value && !selectedPositions.includes(e.target.value)) {
+                            setSelectedPositions(prev => [...prev, e.target.value]);
+                          }
+                        }}
+                        className="w-full px-2 py-1 bg-transparent border-none focus:ring-0 outline-none text-base"
+                      >
+                        <option value="">+ Add position</option>
+                        {availablePositions
+                          .filter(pos => !selectedPositions.includes(pos))
+                          .map(position => (
+                            <option key={position} value={position}>{position}</option>
+                          ))
+                        }
+                      </select>
+                    </div>
                   </div>
+                  <p className="mt-1 text-xs text-gray-500">Select one position for regular rounds, or multiple for combined rounds (e.g., LB + LWF)</p>
                 </div>
                 
                 <div>

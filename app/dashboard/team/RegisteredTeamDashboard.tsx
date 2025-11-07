@@ -841,7 +841,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   href={`/dashboard/team/round/${round.id}`}
                   className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-xs sm:text-sm font-medium text-center"
                 >
-                  🔥 Round #{round.round_number}{round.position ? ` - ${round.position}` : ''}
+                  🔥 Round #{round.round_number}{round.position ? ` - ${round.position.includes(',') ? round.position.split(',').join(' + ') : round.position}` : ''}
                 </Link>
               ))}
               
@@ -1152,7 +1152,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="text-lg sm:text-xl font-bold text-gray-900">
-                              Round #{round.round_number}{round.round_type === 'bulk' ? ' - Bulk Bidding' : (round.position ? ` - ${round.position}` : '')}
+                              Round #{round.round_number}{round.round_type === 'bulk' ? ' - Bulk Bidding' : (round.position ? ` - ${round.position.includes(',') ? round.position.split(',').join(' + ') : round.position}` : '')}
                             </h3>
                             {round.round_type === 'bulk' && (
                               <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold">
