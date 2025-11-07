@@ -318,6 +318,7 @@ export async function GET(
       players: playersResult,
       myBids,
       teamBalance,
+      teamName,
       completedRounds,
       totalRounds,
       submission: submissionData ? {
