@@ -5,6 +5,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { isTiebreakerExpired, allTeamsSubmitted, resolveTiebreaker } from '@/lib/tiebreaker';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
 import { broadcastTiebreakerBid } from '@/lib/realtime/broadcast';
+import { calculateReserve } from '@/lib/reserve-calculator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -214,6 +215,28 @@ export async function POST(
             },
             { status: 400 }
           );
+        }
+        
+        // Check phase-based reserve requirement
+        try {
+          const reserveCheck = await calculateReserve(teamId, tiebreaker.round_id, seasonId);
+          
+          if (reserveCheck.requiresReserve) {
+            const maxAllowedBid = budgetRemaining - reserveCheck.minimumReserve;
+            
+            if (newBidAmount > maxAllowedBid) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: `Bid exceeds reserve. You must maintain £${reserveCheck.minimumReserve} for future rounds (${reserveCheck.explanation}). Maximum safe bid: £${Math.max(0, maxAllowedBid)}`
+                },
+                { status: 400 }
+              );
+            }
+          }
+        } catch (reserveErr) {
+          console.error('Reserve calculation failed:', reserveErr);
+          // Don't block bid if reserve calculation fails
         }
       } else {
         console.warn(`Team season doc not found for ${teamSeasonId}`);

@@ -247,6 +247,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         console.log(`🔒 ${currentPhase}: Forcing allocation for non-submitted teams`);
       
         for (const teamId of nonSubmittedTeams) {
+        // Skip if team already got a player (should only get 1 per round)
         if (allocatedTeams.has(teamId)) continue;
         
         // Get team name

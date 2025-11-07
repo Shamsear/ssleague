@@ -52,6 +52,23 @@ export async function checkAndFinalizeExpiredRound(roundId: string): Promise<{
 
     // Round has expired and is still active - auto-finalize it
     console.log(`🔄 Auto-finalizing expired round ${roundId} (${round.position})`);
+    
+    // Try to acquire lock by updating status to 'finalizing'
+    // This prevents other concurrent requests from finalizing the same round
+    const lockResult = await sql`
+      UPDATE rounds 
+      SET status = 'finalizing', updated_at = NOW()
+      WHERE id = ${roundId} AND status = 'active'
+      RETURNING id
+    `;
+    
+    // If no rows updated, another request already grabbed this round
+    if (lockResult.length === 0) {
+      console.log(`⚠️ Round ${roundId} already being finalized by another request - skipping`);
+      return { finalized: false, alreadyFinalized: true };
+    }
+    
+    console.log(`🔒 Acquired finalization lock for round ${roundId}`);
 
     const finalizationResult = await finalizeRound(roundId);
 

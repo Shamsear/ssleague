@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
 import { broadcastTiebreakerBid } from '@/lib/realtime/broadcast';
+import { calculateReserve } from '@/lib/reserve-calculator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -164,45 +165,24 @@ export async function POST(
       );
     }
 
-    // VALIDATION 7: Check reserve requirement (remaining slots × £10)
-    // Team must maintain enough balance for remaining empty player slots
+    // VALIDATION 7: Check phase-based reserve requirement
     try {
-      // Get team's current squad size
-      const squadData = await sql`
-        SELECT 
-          COALESCE(
-            (SELECT COUNT(*) FROM team_players WHERE team_id = ${teamId} AND season_id = ${seasonId}),
-            0
-          ) as players_count
-      `;
+      const reserveCheck = await calculateReserve(teamId, tiebreaker.bulk_round_id, seasonId);
       
-      const currentSquadSize = parseInt(squadData[0]?.players_count || '0');
-      
-      // Get max squad size from auction settings
-      const settingsData = await sql`
-        SELECT max_squad_size FROM auction_settings WHERE season_id = ${seasonId} LIMIT 1
-      `;
-      
-      const maxSquadSize = settingsData[0]?.max_squad_size || 25;
-      const remainingSlots = maxSquadSize - currentSquadSize;
-      const reserveRequired = remainingSlots * 10;
-      
-      const availableForBid = balance - reserveRequired;
-      
-      if (bid_amount > availableForBid) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: `Bid exceeds reserve limit. You must maintain £${reserveRequired} for ${remainingSlots} remaining slots. Maximum bid: £${Math.max(0, availableForBid)}`,
-            reserve_required: reserveRequired,
-            remaining_slots: remainingSlots,
-            max_bid: Math.max(0, availableForBid)
-          },
+      if (reserveCheck.requiresReserve) {
+        const maxAllowedBid = balance - reserveCheck.minimumReserve;
+        
+        if (bid_amount > maxAllowedBid) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Bid exceeds reserve. You must maintain £${reserveCheck.minimumReserve} for future rounds (${reserveCheck.explanation}). Maximum safe bid: £${Math.max(0, maxAllowedBid)}`
+            },
           { status: 400 }
         );
       }
       
-      console.log(`✅ Reserve check passed: Balance £${balance}, Reserve £${reserveRequired}, Bid £${bid_amount}`);
+      console.log(`✅ Reserve check passed: Balance £${balance}, Reserve £${reserveCheck.minimumReserve}, Bid £${bid_amount}`);
     } catch (reserveError) {
       console.error('⚠️ Reserve check failed:', reserveError);
       // Continue without reserve check (non-blocking)
