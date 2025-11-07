@@ -271,16 +271,7 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
-    // Broadcast round started via Firebase Realtime DB
-    await broadcastRoundUpdate(season_id, roundId!, {
-      type: 'round_started',
-      status: 'active',
-      round_id: roundId!,
-      position,
-      end_time: endTime.toISOString(),
-    });
-
-    // Send FCM notification to all teams in season
+    // Send FCM notification to all teams in season (before Firebase to avoid timeout)
     try {
       console.log(`📣 Sending round start notification for season ${season_id}, round ${roundId}`);
       const notifResult = await sendNotificationToSeason(
@@ -303,6 +294,15 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send round start notification:', notifError);
       // Don't fail the request if notification fails
     }
+
+    // Broadcast round started via Firebase Realtime DB (non-blocking)
+    broadcastRoundUpdate(season_id, roundId!, {
+      type: 'round_started',
+      status: 'active',
+      round_id: roundId!,
+      position,
+      end_time: endTime.toISOString(),
+    }).catch(err => console.error('Firebase broadcast failed:', err));
 
     return NextResponse.json({
       success: true,

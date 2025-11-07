@@ -1,36 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { verifyTeamAuth } from '@/lib/team-auth-helper';
+import { verifyAuth } from '@/lib/auth-helper';
 import { encryptBidData } from '@/lib/encryption';
 import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 import { generateBidId, generateTeamId } from '@/lib/id-generator';
+import { adminDb } from '@/lib/firebase/admin';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 export async function POST(request: NextRequest) {
   try {
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    // Verify JWT token
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     const body = await request.json();
     const { player_id, round_id, amount } = body;
