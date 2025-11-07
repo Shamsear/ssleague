@@ -85,6 +85,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log('🔍 [Auction Settings POST] Received body:', body);
     const { 
       season_id = 'default', 
       max_rounds, 
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest) {
       phase_2_min_balance = 30,
       phase_3_min_balance = 10
     } = body;
+    console.log('🔍 [Auction Settings POST] Extracted max_rounds:', max_rounds);
 
     if (!max_rounds || !min_balance_per_round || !max_squad_size) {
       return NextResponse.json(

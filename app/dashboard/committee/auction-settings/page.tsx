@@ -112,7 +112,7 @@ export default function AuctionSettingsPage() {
       const response = await fetchWithTokenRefresh('/api/auction-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, season_id: 'SSPSLS16' }),
       });
 
       const result = await response.json();

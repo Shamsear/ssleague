@@ -22,10 +22,6 @@ export interface ReserveConfig {
   max_squad_size: number;          // Total squad size (e.g., 25)
 }
 
-export interface RoundInfo {
-  round_number: number;
-}
-
 export interface ReserveInfo {
   reserve: number;                 // Total recommended reserve
   floorReserve: number;            // Minimum floor reserve (strictly enforced)
@@ -50,7 +46,6 @@ export function calculateReserveCore(
   currentRoundNumber: number,
   teamBalance: number,
   teamSquadSize: number,
-  allRounds: RoundInfo[],
   config: ReserveConfig
 ): ReserveInfo {
   
@@ -69,16 +64,10 @@ export function calculateReserveCore(
   // ===== PHASE 1: STRICT RESERVE =====
   if (phase === 'phase_1') {
     // Reserve for: Phase 1 remaining + Phase 2 full + Phase 3 slots
+    // Calculate based on EXPECTED rounds, not created rounds
     
-    const phase1Remaining = allRounds.filter(r => 
-      r.round_number > currentRoundNumber && 
-      r.round_number <= config.phase_1_end_round
-    ).length;
-    
-    const phase2Full = allRounds.filter(r => 
-      r.round_number > config.phase_1_end_round && 
-      r.round_number <= config.phase_2_end_round
-    ).length;
+    const phase1Remaining = Math.max(0, config.phase_1_end_round - currentRoundNumber);
+    const phase2Full = Math.max(0, config.phase_2_end_round - config.phase_1_end_round);
     
     // Calculate slots remaining after all Phase 1 & 2 rounds
     // Must include current round's player (team will get 1 player this round)
@@ -114,11 +103,9 @@ export function calculateReserveCore(
     // SKIPPABLE: Team only needs £30 to participate
     // Floor: Must maintain Phase 3 reserve assuming team MIGHT skip remaining Phase 2 rounds
     // Recommended: Phase 2 remaining + Phase 3 slots
+    // Calculate based on EXPECTED rounds, not created rounds
     
-    const phase2Remaining = allRounds.filter(r => 
-      r.round_number > currentRoundNumber && 
-      r.round_number <= config.phase_2_end_round
-    ).length;
+    const phase2Remaining = Math.max(0, config.phase_2_end_round - currentRoundNumber);
     
     // Floor calculation: Assume team gets player THIS round only, then skips rest of Phase 2
     const playersAfterThisRound = teamSquadSize + 1;
@@ -274,15 +261,7 @@ export async function calculateReserve(
     }
     
     const currentRoundNumber = roundResult[0].round_number;
-    
-    // Fetch all rounds for this season
-    const allRoundsResult = await sql`
-      SELECT round_number FROM rounds 
-      WHERE season_id = ${seasonId}
-      ORDER BY round_number ASC
-    `;
-    
-    const allRounds = allRoundsResult.map(r => ({ round_number: r.round_number }));
+    console.log(`🔍 [Reserve Calculator] Round ${roundId}: round_number = ${currentRoundNumber}`);
     
     // Fetch team data from Firebase
     const teamSeasonDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${seasonId}`).get();
@@ -299,11 +278,13 @@ export async function calculateReserve(
     const teamSquadSize = teamData?.players_count || 0;
     
     // Calculate reserve using core function
+    console.log(`🔍 [Reserve Calculator] Input: currentRound=${currentRoundNumber}, balance=${teamBalance}, squadSize=${teamSquadSize}`);
+    console.log(`🔍 [Reserve Calculator] Settings: phase1End=${settings.phase_1_end_round}, phase2End=${settings.phase_2_end_round}, maxSquad=${settings.max_squad_size}`);
+    
     const reserveInfo = calculateReserveCore(
       currentRoundNumber,
       teamBalance,
       teamSquadSize,
-      allRounds,
       {
         phase_1_end_round: settings.phase_1_end_round,
         phase_1_min_balance: settings.phase_1_min_balance,
@@ -313,6 +294,8 @@ export async function calculateReserve(
         max_squad_size: settings.max_squad_size,
       }
     );
+    
+    console.log(`🔍 [Reserve Calculator] Result: phase=${reserveInfo.phase}, reserve=${reserveInfo.floorReserve}, explanation="${reserveInfo.calculation}"`);
     
     return {
       requiresReserve: reserveInfo.enforceStrict,
