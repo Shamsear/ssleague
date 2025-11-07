@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { getAuctionDb } from '@/lib/neon/auction-config';
 import { verifyAuth } from '@/lib/auth-helper';
 
 export async function GET(
@@ -17,7 +17,7 @@ export async function GET(
     }
 
     const { id: roundId } = await params;
-    const sql = getTournamentDb();
+    const sql = getAuctionDb();
 
     // Get round details
     const roundResult = await sql`

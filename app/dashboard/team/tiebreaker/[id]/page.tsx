@@ -31,6 +31,27 @@ interface TiebreakerDetail {
   hasTimeLimit: boolean;
 }
 
+interface UserBidInRound {
+  bid_id: string;
+  player_id: string;
+  player_name: string;
+  position: string;
+  overall_rating: number;
+  player_team: string;
+  bid_amount: number;
+  allocation_status: 'won' | 'allocated_to_other' | 'lost' | 'tiebreaker' | 'tiebreaker_other' | 'available' | 'pending';
+  allocated_to_team: string | null;
+  is_current_tiebreaker: boolean;
+}
+
+interface TiedTeam {
+  team_id: string;
+  team_name: string;
+  submitted: boolean;
+  new_bid_amount: number | null;
+  is_current_user: boolean;
+}
+
 export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, loading, firebaseUser } = useAuth();
   const router = useRouter();
@@ -43,6 +64,8 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
   const [error, setError] = useState('');
   const [teamBalance, setTeamBalance] = useState(0);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [userBidsInRound, setUserBidsInRound] = useState<UserBidInRound[]>([]);
+  const [tiedTeams, setTiedTeams] = useState<TiedTeam[]>([]);
 
   useEffect(() => {
     params.then(({ id }) => setTiebreakerId(id));
@@ -118,6 +141,16 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
         });
         
         setTeamBalance(teamTiebreaker?.team_balance || 0);
+        
+        // Set user bids in round
+        if (result.data.userBidsInRound) {
+          setUserBidsInRound(result.data.userBidsInRound);
+        }
+        
+        // Set tied teams
+        if (result.data.teamTiebreakers) {
+          setTiedTeams(result.data.teamTiebreakers);
+        }
       } else {
         setError(result.error || 'Failed to load tiebreaker details');
       }
@@ -372,6 +405,190 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
           </div>
+
+          {/* Tied Teams */}
+          {tiedTeams.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                <svg className="w-5 h-5 text-[#0066FF] mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Teams in Tiebreaker
+              </h3>
+              <div className="bg-white/60 p-5 rounded-2xl shadow-sm">
+                <p className="text-sm text-gray-600 mb-4">
+                  {tiedTeams.length} team{tiedTeams.length !== 1 ? 's' : ''} tied with the same bid amount:
+                </p>
+                <div className="space-y-3">
+                  {tiedTeams.map((team) => (
+                    <div
+                      key={team.team_id}
+                      className={`flex items-center justify-between p-4 rounded-xl ${
+                        team.is_current_user
+                          ? 'bg-blue-50 border-2 border-blue-400'
+                          : team.submitted
+                          ? 'bg-green-50'
+                          : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center flex-1">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
+                          team.is_current_user
+                            ? 'bg-blue-500'
+                            : team.submitted
+                            ? 'bg-green-500'
+                            : 'bg-gray-400'
+                        }`}>
+                          <span className="text-white font-bold text-lg">
+                            {team.team_name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-dark">{team.team_name}</p>
+                            {team.is_current_user && (
+                              <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-blue-600 text-white">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            {team.submitted ? (
+                              <>
+                                <span className="text-xs text-green-600 font-medium flex items-center">
+                                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                  </svg>
+                                  Bid Submitted
+                                </span>
+                                {team.new_bid_amount && (
+                                  <span className="text-xs text-gray-500">
+                                    £{team.new_bid_amount.toLocaleString()}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-500 font-medium flex items-center">
+                                <svg className="w-3 h-3 mr-1 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                </svg>
+                                Pending
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Summary */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="grid grid-cols-2 gap-2 text-center text-sm">
+                    <div>
+                      <p className="text-gray-600">Submitted</p>
+                      <p className="font-bold text-green-600">
+                        {tiedTeams.filter(t => t.submitted).length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Pending</p>
+                      <p className="font-bold text-gray-600">
+                        {tiedTeams.filter(t => !t.submitted).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* User's All Bids in This Round */}
+          {userBidsInRound.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                <svg className="w-5 h-5 text-[#0066FF] mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Your Bids in This Round
+              </h3>
+              <div className="bg-white/60 p-5 rounded-2xl shadow-sm">
+                <p className="text-sm text-gray-600 mb-4">
+                  See how your bids compare to help you decide on this tiebreaker:
+                </p>
+                <div className="space-y-3">
+                  {userBidsInRound.map((bid) => {
+                    const statusConfig = {
+                      won: { icon: '✅', color: 'text-green-600', bg: 'bg-green-50', label: 'You Won' },
+                      allocated_to_other: { icon: '❌', color: 'text-red-600', bg: 'bg-red-50', label: `Won by ${bid.allocated_to_team}` },
+                      lost: { icon: '❌', color: 'text-red-600', bg: 'bg-red-50', label: 'Lost' },
+                      tiebreaker: { icon: '⚖️', color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Current Tiebreaker' },
+                      tiebreaker_other: { icon: '⚖️', color: 'text-orange-600', bg: 'bg-orange-50', label: 'Other Tiebreaker' },
+                      available: { icon: '✨', color: 'text-blue-600', bg: 'bg-blue-50', label: 'Still Available' },
+                      pending: { icon: '⏳', color: 'text-gray-600', bg: 'bg-gray-50', label: 'Pending' },
+                    };
+                    
+                    const config = statusConfig[bid.allocation_status];
+                    
+                    return (
+                      <div
+                        key={bid.bid_id}
+                        className={`flex items-center justify-between p-3 rounded-xl ${config.bg} ${
+                          bid.is_current_tiebreaker ? 'border-2 border-yellow-400' : ''
+                        }`}
+                      >
+                        <div className="flex items-center flex-1">
+                          <span className="text-2xl mr-3">{config.icon}</span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-dark">{bid.player_name}</p>
+                              <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-white/60">
+                                {bid.position}
+                              </span>
+                              {bid.overall_rating && (
+                                <span className="text-xs text-gray-500">★ {bid.overall_rating}</span>
+                              )}
+                            </div>
+                            <p className={`text-sm ${config.color} font-medium mt-1`}>
+                              {config.label}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-[#0066FF]">£{bid.bid_amount.toLocaleString()}</p>
+                          <p className="text-xs text-gray-500">Your bid</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Summary */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                    <div>
+                      <p className="text-gray-600">Allocated</p>
+                      <p className="font-bold text-red-600">
+                        {userBidsInRound.filter(b => b.allocation_status === 'allocated_to_other').length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Available</p>
+                      <p className="font-bold text-blue-600">
+                        {userBidsInRound.filter(b => b.allocation_status === 'available').length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Tiebreakers</p>
+                      <p className="font-bold text-yellow-600">
+                        {userBidsInRound.filter(b => b.allocation_status === 'tiebreaker' || b.allocation_status === 'tiebreaker_other').length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Bid Submission */}
           <div className="mb-8">
