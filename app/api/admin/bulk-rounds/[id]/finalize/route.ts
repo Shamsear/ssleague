@@ -6,7 +6,7 @@ import { batchGetFirebaseFields } from '@/lib/firebase/batch';
 import { logAuctionWin } from '@/lib/transaction-logger';
 import { triggerNews } from '@/lib/news/trigger';
 import { generateTiebreakerId } from '@/lib/id-generator';
-import { broadcastTeamUpdatePusher as broadcastTeamUpdate } from '@/lib/websocket/pusher-broadcast';
+import { broadcastSquadUpdate, broadcastWalletUpdate } from '@/lib/realtime/broadcast';
 
 // WebSocket broadcast function (set by WebSocket server)
 declare global {

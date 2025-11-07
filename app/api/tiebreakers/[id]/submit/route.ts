@@ -4,7 +4,7 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { adminDb } from '@/lib/firebase/admin';
 import { isTiebreakerExpired, allTeamsSubmitted, resolveTiebreaker } from '@/lib/tiebreaker';
 import { finalizeRound, applyFinalizationResults } from '@/lib/finalize-round';
-import { broadcastTiebreakerBidPusher as broadcastTiebreakerBid } from '@/lib/websocket/pusher-broadcast';
+import { broadcastTiebreakerBid } from '@/lib/realtime/broadcast';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
