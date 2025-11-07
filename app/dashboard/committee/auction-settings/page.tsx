@@ -13,6 +13,11 @@ interface AuctionSettings {
   min_balance_per_round: number;
   max_squad_size: number;
   contract_duration: number;
+  phase_1_end_round: number;
+  phase_1_min_balance: number;
+  phase_2_end_round: number;
+  phase_2_min_balance: number;
+  phase_3_min_balance: number;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +45,11 @@ export default function AuctionSettingsPage() {
     min_balance_per_round: 30,
     max_squad_size: 25,
     contract_duration: 2,
+    phase_1_end_round: 18,
+    phase_1_min_balance: 30,
+    phase_2_end_round: 20,
+    phase_2_min_balance: 30,
+    phase_3_min_balance: 10,
   });
 
   useEffect(() => {
@@ -80,6 +90,11 @@ export default function AuctionSettingsPage() {
           min_balance_per_round: data.settings.min_balance_per_round,
           max_squad_size: data.settings.max_squad_size || 25,
           contract_duration: data.settings.contract_duration || 2,
+          phase_1_end_round: data.settings.phase_1_end_round || 18,
+          phase_1_min_balance: data.settings.phase_1_min_balance || 30,
+          phase_2_end_round: data.settings.phase_2_end_round || 20,
+          phase_2_min_balance: data.settings.phase_2_min_balance || 30,
+          phase_3_min_balance: data.settings.phase_3_min_balance || 10,
         });
       }
     } catch (err) {
@@ -280,6 +295,94 @@ export default function AuctionSettingsPage() {
                   />
                 </div>
                 <p className="mt-1 text-xs text-gray-500">Default contract duration for players (default: 2 years)</p>
+              </div>
+            </div>
+
+            {/* Phase Configuration */}
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <h4 className="text-md font-semibold text-gray-800 mb-4">Budget Reserve Phases</h4>
+              <p className="text-sm text-gray-600 mb-4">Configure three-phase reserve system to ensure teams maintain enough balance throughout the auction.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="phase_1_end_round" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Phase 1 End Round (Strict Reserve)
+                  </label>
+                  <input
+                    type="number"
+                    id="phase_1_end_round"
+                    value={formData.phase_1_end_round}
+                    onChange={(e) => setFormData({ ...formData, phase_1_end_round: parseInt(e.target.value) })}
+                    min="1"
+                    required
+                    className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Last round of Phase 1 (bids exceeding reserve are rejected)</p>
+                </div>
+
+                <div>
+                  <label htmlFor="phase_1_min_balance" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Phase 1 Reserve Amount (£)
+                  </label>
+                  <input
+                    type="number"
+                    id="phase_1_min_balance"
+                    value={formData.phase_1_min_balance}
+                    onChange={(e) => setFormData({ ...formData, phase_1_min_balance: parseInt(e.target.value) })}
+                    min="0"
+                    required
+                    className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Reserve amount per round in Phase 1 (default: £30)</p>
+                </div>
+
+                <div>
+                  <label htmlFor="phase_2_end_round" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Phase 2 End Round (Soft Reserve)
+                  </label>
+                  <input
+                    type="number"
+                    id="phase_2_end_round"
+                    value={formData.phase_2_end_round}
+                    onChange={(e) => setFormData({ ...formData, phase_2_end_round: parseInt(e.target.value) })}
+                    min="1"
+                    required
+                    className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Last round of Phase 2 (bids allowed with warnings)</p>
+                </div>
+
+                <div>
+                  <label htmlFor="phase_2_min_balance" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Phase 2 Reserve Amount (£)
+                  </label>
+                  <input
+                    type="number"
+                    id="phase_2_min_balance"
+                    value={formData.phase_2_min_balance}
+                    onChange={(e) => setFormData({ ...formData, phase_2_min_balance: parseInt(e.target.value) })}
+                    min="0"
+                    required
+                    className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Reserve amount per round in Phase 2 (default: £30)</p>
+                </div>
+
+                <div>
+                  <label htmlFor="phase_3_min_balance" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Phase 3 Reserve Amount (£)
+                  </label>
+                  <input
+                    type="number"
+                    id="phase_3_min_balance"
+                    value={formData.phase_3_min_balance}
+                    onChange={(e) => setFormData({ ...formData, phase_3_min_balance: parseInt(e.target.value) })}
+                    min="0"
+                    required
+                    className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Reserve amount per slot in Phase 3 (default: £10)</p>
+                </div>
               </div>
             </div>
 

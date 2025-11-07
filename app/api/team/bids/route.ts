@@ -5,6 +5,7 @@ import { encryptBidData } from '@/lib/encryption';
 import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 import { generateBidId, generateTeamId } from '@/lib/id-generator';
 import { adminDb } from '@/lib/firebase/admin';
+import { calculateReserve } from '@/lib/reserve-calculator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -117,6 +118,28 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Insufficient team balance' },
         { status: 400 }
       );
+    }
+
+    // Check reserve requirement
+    try {
+      const reserve = await calculateReserve(teamId!, round.id, round.season_id);
+      
+      if (reserve.requiresReserve) {
+        const availableForBid = teamBalance - reserve.minimumReserve;
+        
+        if (amount > availableForBid) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: `Bid exceeds reserve. You must maintain £${reserve.minimumReserve} for future rounds (${reserve.explanation}). Maximum safe bid: £${Math.max(0, availableForBid)}` 
+            },
+            { status: 400 }
+          );
+        }
+      }
+    } catch (reserveError) {
+      console.error('Reserve calculation error:', reserveError);
+      // Continue with bid if reserve calculation fails (non-blocking)
     }
 
     // Check if round is active

@@ -588,6 +588,12 @@ export default function TeamRoundPage() {
                     </p>
                   </div>
                 </div>
+                <div className="mt-3 pt-3 border-t border-blue-200/30">
+                  <p className="text-xs text-blue-600">
+                    💡 <strong>Budget Reserve System:</strong> The system enforces phase-based minimum reserves to ensure you have enough balance for future rounds. 
+                    Bids that would leave you below the required reserve will be rejected.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

@@ -225,6 +225,24 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         // Get team name
         const teamName = teamNamesMap.get(teamId) || teamId;
         
+        // Check team balance in Firebase
+        try {
+          const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
+          if (tsDoc.exists) {
+            const tsd = tsDoc.data();
+            const curr = tsd?.currency_system || 'single';
+            const teamBalance = curr === 'dual' ? (tsd?.football_budget || 0) : (tsd?.budget || 0);
+            
+            // Skip if balance < £10 (cannot participate)
+            if (teamBalance < 10) {
+              console.log(`⚠️ Phase 2: Team ${teamName} has insufficient balance (£${teamBalance}) - skipping`);
+              continue;
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to check balance for team ${teamId}:`, err);
+        }
+        
         // Get this team's bids (excluding already allocated players)
         const teamBids = bidsWithNames
           .filter(b => b.team_id === teamId && !allocatedPlayers.has(b.player_id));
@@ -234,18 +252,21 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           const randomIndex = Math.floor(Math.random() * teamBids.length);
           const randomBid = teamBids[randomIndex];
           
+          // Use minimum of avgAmount and £10 (enforce minimum)
+          const allocationAmount = Math.max(10, Math.min(avgAmount, 10));
+          
           allocations.push({
             team_id: teamId,
             team_name: teamName,
             player_id: randomBid.player_id,
             player_name: randomBid.player_name,
-            amount: avgAmount,
+            amount: allocationAmount,
             bid_id: randomBid.id,
             phase: 'incomplete',
           });
           allocatedPlayers.add(randomBid.player_id);
           allocatedTeams.add(teamId);
-          console.log(`🔄 Phase 2: Random allocation ${randomBid.player_name} → ${teamName} (£${avgAmount}) - Team didn't submit`);
+          console.log(`🔄 Phase 2: Random allocation ${randomBid.player_name} → ${teamName} (£${allocationAmount}) - Team didn't submit`);
         }
       }
 
@@ -283,6 +304,27 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           // Get team name
           const teamName = teamNamesMap.get(teamId) || teamId;
           
+          // Check team balance in Firebase
+          let canParticipate = true;
+          try {
+            const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
+            if (tsDoc.exists) {
+              const tsd = tsDoc.data();
+              const curr = tsd?.currency_system || 'single';
+              const teamBalance = curr === 'dual' ? (tsd?.football_budget || 0) : (tsd?.budget || 0);
+              
+              // Skip if balance < £10 (cannot participate in Phase 3)
+              if (teamBalance < 10) {
+                console.log(`⚠️ Phase 3: Team ${teamName} has insufficient balance (£${teamBalance}) - skipping`);
+                canParticipate = false;
+              }
+            }
+          } catch (err) {
+            console.error(`Failed to check balance for team ${teamId}:`, err);
+          }
+          
+          if (!canParticipate) continue;
+          
           // Randomly pick a player from unallocated pool
           const randomIndex = Math.floor(Math.random() * unallocatedPlayers.length);
           const randomPlayer = unallocatedPlayers[randomIndex];
@@ -290,12 +332,15 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           // Create a synthetic bid ID for this allocation
           const syntheticBidId = `synthetic_${teamId}_${randomPlayer.id}_${Date.now()}`;
           
+          // Enforce minimum £10 allocation
+          const allocationAmount = Math.max(10, Math.min(avgAmount, 10));
+          
           allocations.push({
             team_id: teamId,
             team_name: teamName,
             player_id: randomPlayer.id,
             player_name: randomPlayer.name,
-            amount: avgAmount,
+            amount: allocationAmount,
             bid_id: syntheticBidId,
             phase: 'incomplete',
           });
@@ -306,7 +351,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           // Remove from pool
           unallocatedPlayers.splice(randomIndex, 1);
           
-          console.log(`🎲 Phase 3: Random allocation ${randomPlayer.name} → ${teamName} (£${avgAmount}) - No bids available`);
+          console.log(`🎲 Phase 3: Random allocation ${randomPlayer.name} → ${teamName} (£${allocationAmount}) - No bids available`);
         }
       }
     }

@@ -9,6 +9,11 @@ export interface AuctionSettings {
   min_balance_per_round: number;
   contract_duration: number;
   max_squad_size: number;
+  phase_1_end_round: number;
+  phase_1_min_balance: number;
+  phase_2_end_round: number;
+  phase_2_min_balance: number;
+  phase_3_min_balance: number;
   created_at: string;
   updated_at: string;
 }
