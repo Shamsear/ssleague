@@ -49,6 +49,10 @@ export function useDashboardWebSocket(seasonId: string | null, teamId: string | 
       unsubWallets();
     };
   }, [seasonId, queryClient]);
+
+  return {
+    isConnected: !!seasonId,
+  };
 }
 
 /**

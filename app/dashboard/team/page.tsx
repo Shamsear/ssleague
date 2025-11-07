@@ -33,7 +33,11 @@ export default function TeamDashboard() {
   const [teamDocId, setTeamDocId] = useState<string>('');
 
   // ✅ Enable WebSocket for real-time dashboard updates (wallet, notifications)
-  const { isConnected } = useDashboardWebSocket(user?.uid || '', !!user);
+  // Note: seasonId will be available after seasonStatus is loaded
+  const { isConnected } = useDashboardWebSocket(
+    seasonStatus?.seasonId || null,
+    user?.uid || null
+  );
 
   useEffect(() => {
     if (!loading && !user) {
