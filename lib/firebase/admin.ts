@@ -13,6 +13,7 @@ if (!admin.apps.length) {
           clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
           privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, '\n'),
         }),
+        databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || `https://${process.env.FIREBASE_ADMIN_PROJECT_ID}-default-rtdb.firebaseio.com`,
       });
       console.log('Firebase Admin initialized with service account');
     } else if (projectId) {
@@ -20,6 +21,7 @@ if (!admin.apps.length) {
       // This will work but with limited admin capabilities
       admin.initializeApp({
         projectId: projectId,
+        databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || `https://${projectId}-default-rtdb.firebaseio.com`,
       });
       console.log(`Firebase Admin initialized with project ID: ${projectId}`);
     } else {
