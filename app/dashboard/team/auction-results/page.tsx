@@ -23,6 +23,8 @@ interface Player {
   position: string;
   overall_rating: number;
   player_team: string;
+  phase: 'phase1' | 'phase2' | 'phase3';
+  phase_note: string | null;
   winning_bid: {
     amount: number;
     team_id: string;
@@ -313,7 +315,28 @@ export default function AuctionResultsPage() {
                                 {player.player_team && (
                                   <span className="text-sm text-gray-600">{player.player_team}</span>
                                 )}
+                                {/* Phase Badge */}
+                                {player.phase && (
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                    player.phase === 'phase1' ? 'bg-green-100 text-green-700' :
+                                    player.phase === 'phase2' ? 'bg-orange-100 text-orange-700' :
+                                    'bg-purple-100 text-purple-700'
+                                  }`}>
+                                    {player.phase === 'phase1' ? 'Phase 1: Regular' :
+                                     player.phase === 'phase2' ? 'Phase 2: Incomplete' :
+                                     'Phase 3: Random'}
+                                  </span>
+                                )}
                               </div>
+
+                              {/* Phase Note */}
+                              {player.phase_note && (
+                                <div className="mt-2 p-2 rounded-lg bg-yellow-50 border border-yellow-200">
+                                  <p className="text-xs text-yellow-800">
+                                    <span className="font-semibold">⚠️ Note:</span> {player.phase_note}
+                                  </p>
+                                </div>
+                              )}
 
                               {/* Bid Info */}
                               <div className="flex flex-wrap items-center gap-3 mt-2">
@@ -325,6 +348,9 @@ export default function AuctionResultsPage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className="text-sm text-gray-600">Winner:</span>
+                                      {!player.your_bid.won && (
+                                        <span className="text-sm text-gray-700 font-medium">{player.winning_bid.team_name} •</span>
+                                      )}
                                       <span className={`font-bold ${player.your_bid.won ? 'text-green-600' : 'text-red-600'}`}>
                                         £{player.winning_bid.amount.toLocaleString()}
                                       </span>

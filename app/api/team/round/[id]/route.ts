@@ -169,7 +169,11 @@ export async function GET(
       teamBalance = teamSeasonData?.budget || 0;
     }
 
-    // Get available players for this position
+    // Get available players for this position or position group
+    // Check if round.position is a position group (e.g., "CF-1") or regular position
+    // Position groups contain hyphens and numbers (e.g., CF-1, CB-2)
+    const isPositionGroup = round.position && /^[A-Z]+-\d+$/.test(round.position);
+    
     const playersResult = await sql`
       SELECT 
         p.id,
@@ -211,7 +215,7 @@ export async function GET(
         CASE WHEN sp.player_id IS NOT NULL THEN true ELSE false END as is_starred_by_user
       FROM footballplayers p
       LEFT JOIN starred_players sp ON p.id = sp.player_id AND sp.team_id = ${teamId}
-      WHERE p.position = ${round.position}
+      WHERE ${isPositionGroup ? sql`p.position_group = ${round.position}` : sql`p.position = ${round.position}`}
       AND p.is_auction_eligible = true
       AND (p.is_sold = false OR p.is_sold IS NULL)
       AND (p.team_id IS NULL OR p.team_id = '')

@@ -73,6 +73,8 @@ export async function GET(request: NextRequest) {
           b.amount,
           b.encrypted_bid_data,
           b.status,
+          b.phase,
+          b.actual_bid_amount,
           b.created_at,
           p.name as player_name,
           p.position,
@@ -84,6 +86,28 @@ export async function GET(request: NextRequest) {
         LEFT JOIN team_players tp ON b.player_id = tp.player_id AND tp.team_id = b.team_id
         WHERE b.round_id = ${round.id}
         ORDER BY b.player_id, b.amount DESC
+      `;
+
+      // Get synthetic allocations (Phase 3 - no bids)
+      const syntheticAllocations = await sql`
+        SELECT 
+          tp.team_id,
+          tp.player_id,
+          tp.purchase_price,
+          tp.acquired_at,
+          p.name as player_name,
+          p.position,
+          p.overall_rating,
+          p.team_name as player_team
+        FROM team_players tp
+        JOIN footballplayers p ON tp.player_id = p.id
+        WHERE tp.round_id = ${round.id}
+          AND NOT EXISTS (
+            SELECT 1 FROM bids b 
+            WHERE b.round_id = ${round.id} 
+              AND b.team_id = tp.team_id 
+              AND b.player_id = tp.player_id
+          )
       `;
 
       // Decrypt all bids
@@ -110,8 +134,10 @@ export async function GET(request: NextRequest) {
         playerBidsMap.get(bid.player_id)!.push(bid);
       });
 
-      // Get team names in batch
-      const uniqueTeamIds = [...new Set(allBidsDecrypted.map(b => b.team_id))];
+      // Get team names in batch (include both bid teams and synthetic allocation teams)
+      const bidTeamIds = allBidsDecrypted.map(b => b.team_id);
+      const syntheticTeamIds = syntheticAllocations.map(s => s.team_id);
+      const uniqueTeamIds = [...new Set([...bidTeamIds, ...syntheticTeamIds])];
       const teamNamesMap = new Map<string, string>();
       
       await Promise.all(uniqueTeamIds.map(async (teamId) => {
@@ -129,12 +155,26 @@ export async function GET(request: NextRequest) {
         const winningBid = sortedBids.find(b => b.status === 'won') || sortedBids[0];
         const myBid = sortedBids.find(b => b.team_id === dbTeamId);
         
+        // Determine phase
+        let phase = 'phase1'; // Regular auction
+        let phaseNote = null;
+        
+        if (winningBid.phase === 'incomplete') {
+          phase = 'phase2';
+          phaseNote = `Team didn't submit. Random from bid list at average price.`;
+          if (winningBid.actual_bid_amount) {
+            phaseNote += ` Original bid: £${winningBid.actual_bid_amount.toLocaleString()}`;
+          }
+        }
+        
         return {
           player_id: playerId,
           player_name: bids[0].player_name,
           position: bids[0].position,
           overall_rating: bids[0].overall_rating,
           player_team: bids[0].player_team,
+          phase,
+          phase_note: phaseNote,
           winning_bid: {
             amount: winningBid.final_amount || winningBid.decrypted_amount,
             team_id: winningBid.team_id,
@@ -160,6 +200,34 @@ export async function GET(request: NextRequest) {
           total_bids: bids.length,
         };
       });
+
+      // Add synthetic allocations (Phase 3)
+      for (const synthetic of syntheticAllocations) {
+        const teamName = teamNamesMap.get(synthetic.team_id) || synthetic.team_id;
+        players.push({
+          player_id: synthetic.player_id,
+          player_name: synthetic.player_name,
+          position: synthetic.position,
+          overall_rating: synthetic.overall_rating,
+          player_team: synthetic.player_team,
+          phase: 'phase3',
+          phase_note: `Team had no valid bids. Random from position pool at average price.`,
+          winning_bid: {
+            amount: synthetic.purchase_price,
+            team_id: synthetic.team_id,
+            team_name: teamName,
+            is_you: synthetic.team_id === dbTeamId,
+          },
+          your_bid: synthetic.team_id === dbTeamId ? {
+            amount: 0,
+            status: 'won',
+            won: true,
+            lost_by: 0,
+          } : null,
+          all_bids: [],
+          total_bids: 0,
+        });
+      }
 
       // Sort players by winning bid amount (descending)
       players.sort((a, b) => b.winning_bid.amount - a.winning_bid.amount);

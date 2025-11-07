@@ -318,106 +318,147 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     };
   }, [seasonStatus?.seasonId]);
 
-  // Refetch when Firebase real-time updates occur
-  // useDashboardWebSocket automatically invalidates React Query caches
-  // which triggers refetch via fetchDashboard
+  // ⚡ Comprehensive Firebase Realtime Database listeners
   useEffect(() => {
     if (!seasonStatus?.seasonId) return;
 
-    const { listenToSeasonRoundUpdates } = require('@/lib/realtime/listeners');
+    const { listenToSeasonRoundUpdates, listenToSquadUpdates, listenToWalletUpdates } = require('@/lib/realtime/listeners');
     
-    const unsubscribe = listenToSeasonRoundUpdates(seasonStatus.seasonId, (message: any) => {
-      console.log('🔴 [Team Dashboard] Round update:', message.type);
+    console.log('🔴 [Team Dashboard] Setting up Firebase listeners for season:', seasonStatus.seasonId);
+    
+    // Listen to round updates (started, finalized, status changes)
+    const unsubRounds = listenToSeasonRoundUpdates(seasonStatus.seasonId, (message: any) => {
+      console.log('🔴 [Team Dashboard] Round update:', message.type, message);
       
-      // Refetch dashboard when round events occur
+      // Refetch dashboard immediately without loader for any round event
       if (message.type === 'round_started' ||
           message.type === 'round_finalized' ||
+          message.type === 'round_status_changed' ||
+          message.type === 'round_updated' ||
           message.type === 'bid_submitted') {
         fetchDashboard(false, true); // Bust cache for fresh data
       }
     });
 
-    return () => unsubscribe();
-  }, [seasonStatus?.seasonId, fetchDashboard]);
-
-  // Timer effect for active rounds - runs every second
-  useEffect(() => {
-    if (!dashboardData?.activeRounds) return;
-
-    // Start timers for any rounds that don't have one yet
-    dashboardData.activeRounds.forEach(round => {
-      if (round.end_time && !timerRefs.current[round.id]) {
-        timerRefs.current[round.id] = setInterval(() => {
-          const now = Date.now();
-          const end = new Date(round.end_time!).getTime();
-          const remaining = Math.max(0, Math.floor((end - now) / 1000));
-          setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
-
-          if (remaining <= 0) {
-            clearInterval(timerRefs.current[round.id]);
-            delete timerRefs.current[round.id];
-          }
-        }, 1000);
-        
-        // Set initial time immediately
-        const now = Date.now();
-        const end = new Date(round.end_time!).getTime();
-        const remaining = Math.max(0, Math.floor((end - now) / 1000));
-        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
+    // Listen to squad updates (player acquired/refunded)
+    const unsubSquads = listenToSquadUpdates(seasonStatus.seasonId, (event: any) => {
+      console.log('📦 [Team Dashboard] Squad update:', event);
+      
+      // Refetch if it's for this team or affects any team (could be tiebreaker result)
+      if (!dashboardData?.team?.id || event.team_id === dashboardData.team.id) {
+        fetchDashboard(false, true);
       }
     });
 
-    // Clean up timers for rounds that no longer exist
-    Object.keys(timerRefs.current).forEach(id => {
-      if (!dashboardData.activeRounds.find(r => r.id === id)) {
-        clearInterval(timerRefs.current[id]);
-        delete timerRefs.current[id];
+    // Listen to wallet updates (balance changes)
+    const unsubWallets = listenToWalletUpdates(seasonStatus.seasonId, (event: any) => {
+      console.log('💰 [Team Dashboard] Wallet update:', event);
+      
+      // Refetch if it's for this team
+      if (!dashboardData?.team?.id || event.team_id === dashboardData.team.id) {
+        fetchDashboard(false, true);
       }
     });
 
     return () => {
-      Object.values(timerRefs.current).forEach(timer => clearInterval(timer));
+      console.log('🔴 [Team Dashboard] Cleaning up Firebase listeners');
+      unsubRounds();
+      unsubSquads();
+      unsubWallets();
+    };
+  }, [seasonStatus?.seasonId, dashboardData?.team?.id, fetchDashboard]);
+
+  // Timer effect for active rounds - optimized with requestAnimationFrame
+  useEffect(() => {
+    if (!dashboardData?.activeRounds || dashboardData.activeRounds.length === 0) return;
+
+    let animationFrameId: number;
+    let lastUpdate = Date.now();
+
+    const updateTimers = () => {
+      const now = Date.now();
+      
+      // Only update every second to reduce re-renders
+      if (now - lastUpdate >= 1000) {
+        lastUpdate = now;
+        
+        const newTimeRemaining: { [key: string]: number } = {};
+        let hasActiveTimers = false;
+
+        dashboardData.activeRounds.forEach(round => {
+          if (round.end_time) {
+            const end = new Date(round.end_time).getTime();
+            const remaining = Math.max(0, Math.floor((end - now) / 1000));
+            newTimeRemaining[round.id] = remaining;
+            if (remaining > 0) hasActiveTimers = true;
+          }
+        });
+
+        setTimeRemaining(newTimeRemaining);
+        
+        // Continue animation loop only if there are active timers
+        if (hasActiveTimers) {
+          animationFrameId = requestAnimationFrame(updateTimers);
+        }
+      } else {
+        animationFrameId = requestAnimationFrame(updateTimers);
+      }
+    };
+
+    // Start the animation loop
+    animationFrameId = requestAnimationFrame(updateTimers);
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
     };
   }, [dashboardData?.activeRounds]);
 
-  // Timer effect for bulk rounds - runs every second
+  // Timer effect for bulk rounds - optimized with requestAnimationFrame
   useEffect(() => {
-    if (!dashboardData?.activeBulkRounds) return;
+    if (!dashboardData?.activeBulkRounds || dashboardData.activeBulkRounds.length === 0) return;
 
-    // Start timers for any bulk rounds that don't have one yet
-    dashboardData.activeBulkRounds.forEach(bulkRound => {
-      if (bulkRound.end_time && !bulkTimerRefs.current[bulkRound.id]) {
-        bulkTimerRefs.current[bulkRound.id] = setInterval(() => {
-          const now = Date.now();
-          const end = new Date(bulkRound.end_time!).getTime();
-          const remaining = Math.max(0, Math.floor((end - now) / 1000));
-          setBulkTimeRemaining(prev => ({ ...prev, [bulkRound.id]: remaining }));
+    let animationFrameId: number;
+    let lastUpdate = Date.now();
 
-          if (remaining <= 0) {
-            clearInterval(bulkTimerRefs.current[bulkRound.id]);
-            delete bulkTimerRefs.current[bulkRound.id];
-          }
-        }, 1000);
+    const updateBulkTimers = () => {
+      const now = Date.now();
+      
+      // Only update every second to reduce re-renders
+      if (now - lastUpdate >= 1000) {
+        lastUpdate = now;
         
-        // Set initial time immediately
-        const now = Date.now();
-        const end = new Date(bulkRound.end_time!).getTime();
-        const remaining = Math.max(0, Math.floor((end - now) / 1000));
-        setBulkTimeRemaining(prev => ({ ...prev, [bulkRound.id]: remaining }));
-      }
-    });
+        const newBulkTimeRemaining: { [key: number]: number } = {};
+        let hasActiveTimers = false;
 
-    // Clean up timers for bulk rounds that no longer exist
-    Object.keys(bulkTimerRefs.current).forEach(id => {
-      const bulkId = parseInt(id);
-      if (!dashboardData.activeBulkRounds.find(br => br.id === bulkId)) {
-        clearInterval(bulkTimerRefs.current[bulkId]);
-        delete bulkTimerRefs.current[bulkId];
+        dashboardData.activeBulkRounds.forEach(bulkRound => {
+          if (bulkRound.end_time) {
+            const end = new Date(bulkRound.end_time).getTime();
+            const remaining = Math.max(0, Math.floor((end - now) / 1000));
+            newBulkTimeRemaining[bulkRound.id] = remaining;
+            if (remaining > 0) hasActiveTimers = true;
+          }
+        });
+
+        setBulkTimeRemaining(newBulkTimeRemaining);
+        
+        // Continue animation loop only if there are active timers
+        if (hasActiveTimers) {
+          animationFrameId = requestAnimationFrame(updateBulkTimers);
+        }
+      } else {
+        animationFrameId = requestAnimationFrame(updateBulkTimers);
       }
-    });
+    };
+
+    // Start the animation loop
+    animationFrameId = requestAnimationFrame(updateBulkTimers);
 
     return () => {
-      Object.values(bulkTimerRefs.current).forEach(timer => clearInterval(timer));
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
     };
   }, [dashboardData?.activeBulkRounds]);
 

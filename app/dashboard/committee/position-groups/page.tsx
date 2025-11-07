@@ -28,7 +28,7 @@ const POSITION_COLORS = {
 } as const;
 
 interface Player {
-  id: number;
+  id: string; // UUID stored as string
   name: string;
   position: string;
   overall_rating: number;
@@ -86,15 +86,20 @@ export default function PositionGroupsPage() {
   const fetchPlayers = async () => {
     try {
       setLoading(true);
-      const response = await fetchWithTokenRefresh('/api/players');
+      // Fetch all players without limit to get complete data
+      const response = await fetchWithTokenRefresh('/api/players?limit=10000');
       const { data: players, success } = await response.json();
 
       if (success) {
-        // Filter only eligible players with the specified positions
+        console.log(`📊 [Position Groups] Fetched ${players.length} total players`);
+        
+        // Filter to only show players with the specified positions
+        // Don't filter by is_auction_eligible - we want to group ALL players
         const relevantPlayers = players.filter((p: Player) => 
-          p.is_auction_eligible && 
           POSITION_GROUP_POSITIONS.includes(p.position?.toUpperCase() as any)
         );
+        
+        console.log(`📊 [Position Groups] Filtered to ${relevantPlayers.length} players in CB/DMF/CMF/AMF/CF positions`);
 
         setAllPlayers(relevantPlayers);
         calculateStats(relevantPlayers);
@@ -151,7 +156,7 @@ export default function PositionGroupsPage() {
       sortedPlayers.forEach((player, index) => {
         const group = index % 2 === 0 ? `${selectedPosition}-1` : `${selectedPosition}-2`;
         updates.push(
-          fetch(`/api/players/${player.id}`, {
+          fetchWithTokenRefresh(`/api/players/${player.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ position_group: group })
@@ -161,9 +166,37 @@ export default function PositionGroupsPage() {
 
       await Promise.all(updates);
       
-      // Refresh data
+      console.log(`✅ [Position Groups] Updated ${sortedPlayers.length} players with position_group`);
+      
+      // Refresh data from database
       await fetchPlayers();
-      handlePositionClick(selectedPosition);
+      
+      // Small delay to ensure state has updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Re-fetch the fresh data and update the view
+      const response = await fetchWithTokenRefresh('/api/players?limit=10000');
+      const { data: freshPlayers, success } = await response.json();
+      
+      if (success) {
+        const relevantPlayers = freshPlayers.filter((p: Player) => 
+          POSITION_GROUP_POSITIONS.includes(p.position?.toUpperCase() as any)
+        );
+        
+        setAllPlayers(relevantPlayers);
+        
+        // Now update the position view with fresh data
+        const posPlayers = relevantPlayers.filter(p => p.position?.toUpperCase() === selectedPosition);
+        console.log(`📊 [Position Groups] Found ${posPlayers.length} ${selectedPosition} players after division`);
+        
+        setGroupedPlayers({
+          group1: posPlayers.filter(p => p.position_group === `${selectedPosition}-1`),
+          group2: posPlayers.filter(p => p.position_group === `${selectedPosition}-2`),
+          ungrouped: posPlayers.filter(p => !p.position_group)
+        });
+        
+        calculateStats(relevantPlayers);
+      }
       
       showAlert({
         type: 'success',

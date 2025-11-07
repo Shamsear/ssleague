@@ -189,11 +189,44 @@ export default function RoundsManagementPage() {
         }
       }
 
-      // Process positions
+      // Process positions and position groups
       const { success: playersSuccess, data: playersData } = await playersResponse.json();
       if (playersSuccess && playersData.length > 0) {
-        const positions = [...new Set(playersData.map((p: any) => p.position).filter(Boolean))] as string[];
-        setAvailablePositions(positions.sort());
+        // Get all unique positions
+        const allPositions = [...new Set(playersData.map((p: any) => p.position).filter(Boolean))] as string[];
+        
+        // Get positions that have been divided into groups
+        const positionGroups = [...new Set(
+          playersData
+            .map((p: any) => p.position_group)
+            .filter(Boolean)
+        )] as string[];
+        
+        // Create map of which positions have groups
+        const positionsWithGroups = new Set(
+          positionGroups.map(pg => pg.split('-')[0]) // Extract position from "CB-1" -> "CB"
+        );
+        
+        console.log('📊 [Positions] All positions:', allPositions);
+        console.log('📊 [Positions] Position groups found:', positionGroups);
+        console.log('📊 [Positions] Positions with groups:', Array.from(positionsWithGroups));
+        
+        // Build final list: use groups if they exist, otherwise use base position
+        const finalPositions: string[] = [];
+        
+        allPositions.forEach(pos => {
+          if (positionsWithGroups.has(pos)) {
+            // Position has been divided - add all its groups
+            const groups = positionGroups.filter(pg => pg.startsWith(`${pos}-`));
+            finalPositions.push(...groups);
+          } else {
+            // Position not divided - add as-is
+            finalPositions.push(pos);
+          }
+        });
+        
+        console.log('📊 [Positions] Final dropdown options:', finalPositions);
+        setAvailablePositions(finalPositions.sort());
       }
 
       // Process tiebreakers
@@ -345,17 +378,20 @@ export default function RoundsManagementPage() {
     console.log('📦 [State] roundSubmissions updated:', roundSubmissions);
   }, [roundSubmissions]);
 
-  // Firebase Realtime Database listener for real-time round updates
+  // ⚡ Comprehensive Firebase Realtime Database listeners for instant updates
   useEffect(() => {
     if (!currentSeasonId) return;
 
-    const { listenToSeasonRoundUpdates } = require('@/lib/realtime/listeners');
+    const { listenToSeasonRoundUpdates, listenToSquadUpdates, listenToWalletUpdates } = require('@/lib/realtime/listeners');
     
-    const unsubscribe = listenToSeasonRoundUpdates(currentSeasonId, (message: any) => {
-      console.log('🔴 Rounds Firebase Realtime DB update:', message);
+    console.log('🔴 [Committee Rounds] Setting up Firebase listeners for season:', currentSeasonId);
+    
+    // Listen to round updates (started, finalized, status changes, bids submitted)
+    const unsubRounds = listenToSeasonRoundUpdates(currentSeasonId, (message: any) => {
+      console.log('🔴 [Committee Rounds] Round update:', message.type, message);
       
       if (message.type === 'bid_submitted') {
-        // When a team submits bids, only refetch submissions for that specific round
+        // When a team submits bids, refetch submissions for that specific round immediately
         console.log('🔍 [Firebase] Bid submitted for round:', message.data?.round_id);
         if (message.data?.round_id) {
           const roundId = message.data.round_id;
@@ -387,52 +423,80 @@ export default function RoundsManagementPage() {
         message.type === 'round_updated' ||
         message.type === 'round_status_changed'
       ) {
-        // For round status changes, refetch all rounds data
+        // For round status changes, refetch all rounds data immediately
+        console.log('🔄 [Firebase] Refetching all rounds due to:', message.type);
         fetchRounds(false);
       }
     });
 
-    return () => unsubscribe();
-  }, [currentSeasonId, fetchRounds]);
-
-  // Timer management for active rounds
-  useEffect(() => {
-    const activeRounds = rounds.filter(r => r.status === 'active');
-    
-    activeRounds.forEach(round => {
-      if (round.end_time && !timerRefs.current[round.id]) {
-        // Calculate and set initial time immediately
-        const now = new Date().getTime();
-        const end = new Date(round.end_time!).getTime();
-        const remaining = Math.max(0, Math.floor((end - now) / 1000));
-        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
-        
-        // Then start the interval
-        timerRefs.current[round.id] = setInterval(() => {
-          const now = new Date().getTime();
-          const end = new Date(round.end_time!).getTime();
-          const remaining = Math.max(0, Math.floor((end - now) / 1000));
-          
-          setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
-          
-          if (remaining <= 0) {
-            clearInterval(timerRefs.current[round.id]);
-            delete timerRefs.current[round.id];
-          }
-        }, 1000);
-      }
+    // Listen to squad updates (player allocations during finalization)
+    const unsubSquads = listenToSquadUpdates(currentSeasonId, (event: any) => {
+      console.log('📦 [Committee Rounds] Squad update:', event);
+      // Refetch rounds to update bid counts and team stats
+      fetchRounds(false);
     });
 
-    // Cleanup timers for inactive rounds
-    Object.keys(timerRefs.current).forEach(id => {
-      if (!activeRounds.find(r => r.id === id)) {
-        clearInterval(timerRefs.current[id]);
-        delete timerRefs.current[id];
-      }
+    // Listen to wallet updates (balance changes during bidding/finalization)
+    const unsubWallets = listenToWalletUpdates(currentSeasonId, (event: any) => {
+      console.log('💰 [Committee Rounds] Wallet update:', event);
+      // Wallet changes might affect submission status
+      fetchRounds(false);
     });
 
     return () => {
-      Object.values(timerRefs.current).forEach(timer => clearInterval(timer));
+      console.log('🔴 [Committee Rounds] Cleaning up Firebase listeners');
+      unsubRounds();
+      unsubSquads();
+      unsubWallets();
+    };
+  }, [currentSeasonId, fetchRounds]);
+
+  // Timer management for active rounds - optimized with requestAnimationFrame
+  useEffect(() => {
+    const activeRounds = rounds.filter(r => r.status === 'active');
+    
+    if (activeRounds.length === 0) return;
+
+    let animationFrameId: number;
+    let lastUpdate = Date.now();
+
+    const updateTimers = () => {
+      const now = Date.now();
+      
+      // Only update every second to reduce re-renders
+      if (now - lastUpdate >= 1000) {
+        lastUpdate = now;
+        
+        const newTimeRemaining: {[key: string]: number} = {};
+        let hasActiveTimers = false;
+
+        activeRounds.forEach(round => {
+          if (round.end_time) {
+            const end = new Date(round.end_time).getTime();
+            const remaining = Math.max(0, Math.floor((end - now) / 1000));
+            newTimeRemaining[round.id] = remaining;
+            if (remaining > 0) hasActiveTimers = true;
+          }
+        });
+
+        setTimeRemaining(newTimeRemaining);
+        
+        // Continue animation loop only if there are active timers
+        if (hasActiveTimers) {
+          animationFrameId = requestAnimationFrame(updateTimers);
+        }
+      } else {
+        animationFrameId = requestAnimationFrame(updateTimers);
+      }
+    };
+
+    // Start the animation loop
+    animationFrameId = requestAnimationFrame(updateTimers);
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
     };
   }, [rounds]);
 
