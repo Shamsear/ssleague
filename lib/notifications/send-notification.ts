@@ -179,14 +179,22 @@ export async function sendNotificationToSeason(
 ): Promise<{ success: boolean; sentCount: number; failedCount: number }> {
   try {
     // Get all teams registered for this season
-    const teamsResult = await sql`
-      SELECT team_id
-      FROM team_seasons
+    // Note: team_seasons table is in Firebase, need to query from main Neon DB
+    const mainSql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+    const teamsResult = await mainSql`
+      SELECT DISTINCT firebase_uid as team_id
+      FROM teams
       WHERE season_id = ${seasonId}
-        AND status = 'active'
     `;
 
-    const teamIds = teamsResult.map(t => t.team_id);
+    console.log(`🔍 Found ${teamsResult.length} teams for season ${seasonId}`);
+
+    const teamIds = teamsResult.map(t => t.team_id).filter(id => id);
+
+    if (teamIds.length === 0) {
+      console.log('⚠️ No team IDs found for season');
+      return { success: false, sentCount: 0, failedCount: 0 };
+    }
 
     return await sendNotification(payload, { teamIds });
   } catch (error: any) {

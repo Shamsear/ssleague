@@ -28,6 +28,8 @@ export default function TestNotificationsPage() {
   const { data: activeSeasons } = useCachedSeasons({ isActive: 'true' });
   const activeSeason = activeSeasons?.[0];
   const seasonId = activeSeason?.id || '';
+  
+  const [tokenStatus, setTokenStatus] = useState<any>(null);
 
   const loadNotificationUsers = async () => {
     setLoadingUsers(true);
@@ -159,6 +161,37 @@ export default function TestNotificationsPage() {
                 </p>
               </div>
             )}
+
+            {/* FCM Token Status */}
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-gray-700">FCM Token Status</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetchWithTokenRefresh('/api/notifications/check-tokens');
+                      const data = await response.json();
+                      setTokenStatus(data);
+                    } catch (error: any) {
+                      setResult(`❌ Error: ${error.message}`);
+                    }
+                  }}
+                  className="text-xs px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium"
+                >
+                  Check Tokens
+                </button>
+              </div>
+              {tokenStatus && (
+                <div className="text-sm text-gray-600 space-y-1">
+                  <p>✅ Active Tokens: <strong className="text-green-600">{tokenStatus.activeTokens}</strong></p>
+                  <p>❌ Inactive Tokens: <strong className="text-gray-500">{tokenStatus.inactiveTokens}</strong></p>
+                  <p>📊 Total: {tokenStatus.totalTokens}</p>
+                  {tokenStatus.totalTokens === 0 && (
+                    <p className="mt-2 text-red-600 font-medium">⚠️ No FCM tokens registered! Enable notifications on a device first.</p>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Quick Test Buttons */}
             <div className="grid grid-cols-2 gap-4">
