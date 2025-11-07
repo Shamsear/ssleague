@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthToken } from '@/lib/auth/token-helper';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { neon } from '@neondatabase/serverless';
 
 const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
@@ -11,36 +10,12 @@ const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get and verify auth token (only committee/admin)
-    const token = await getAuthToken(request);
-    
-    if (!token) {
+    // Verify authentication (only committee/admin can view notification users)
+    const auth = await verifyAuth(['admin', 'committee', 'committee_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
-      );
-    }
-
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
-
-    // Get user role from Firestore
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData?.role;
-
-    // Only committee or admin can view notification users
-    if (userRole !== 'committee' && userRole !== 'admin' && userRole !== 'committee_admin') {
-      return NextResponse.json(
-        { success: false, error: 'Only committee/admin can view notification users' },
-        { status: 403 }
       );
     }
 

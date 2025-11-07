@@ -1,33 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(request: NextRequest) {
     try {
-      // Get token from Authorization header or cookie
-      const token = await getAuthToken(request);
+      // ✅ ZERO FIREBASE READS - Uses JWT claims only
+      const auth = await verifyAuth(['team'], request);
+      if (!auth.authenticated) {
+        return NextResponse.json(
+          { success: false, error: auth.error || 'Unauthorized' },
+          { status: 401 }
+        );
+      }
 
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = decodedToken.uid;
+      const userId = auth.userId!;
 
     // Get user details to get team info
     const userDoc = await adminDb.collection('users').doc(userId).get();

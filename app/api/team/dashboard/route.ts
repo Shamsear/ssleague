@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { getAuthToken } from '@/lib/auth/token-helper';
+import { adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { getCached, setCached } from '@/lib/firebase/cache';
 import { checkAndFinalizeExpiredRound } from '@/lib/lazy-finalize-round';
 import { batchGetFirebaseFields } from '@/lib/firebase/batch';
@@ -17,32 +17,20 @@ export async function GET(request: NextRequest) {
     'CDN-Cache-Control': 'public, s-maxage=60',
   });
   try {
-    // Get token from Authorization header or cookie
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
       return NextResponse.json({
         success: false,
-        error: 'Unauthorized - No token',
+        error: auth.error || 'Unauthorized',
       }, { status: 401 });
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (err) {
-      console.error('Token verification error:', err);
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid token',
-      }, { status: 401 });
-    }
-
-    const userId = decodedToken.uid;
+    const userId = auth.userId!;
 
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('season_id');
+    const bustCache = searchParams.get('bust_cache') === 'true'; // Allow cache busting
 
     if (!seasonId) {
       return NextResponse.json({
@@ -52,7 +40,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch season settings for slot limits
-    let seasonData = getCached<any>('seasons', seasonId, 30 * 60 * 1000); // 30 min TTL
+    // ⚡ Smart caching: Use cache unless explicitly busted by WebSocket update
+    let seasonData = bustCache ? null : getCached<any>('seasons', seasonId, 30 * 60 * 1000);
     if (!seasonData) {
       const seasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
       if (seasonDoc.exists) {
@@ -61,8 +50,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // OPTIMIZED: Check cache first for user data (extended cache duration)
-    let userData = getCached<any>('users', userId, 30 * 60 * 1000); // 30 min TTL
+    // Get user data from Firebase (still needed for team name/logo)
+    // ⚡ Smart caching: Use cache unless explicitly busted
+    let userData = bustCache ? null : getCached<any>('users', userId, 30 * 60 * 1000);
     if (!userData) {
       const userDoc = await adminDb.collection('users').doc(userId).get();
       if (!userDoc.exists) {
@@ -80,8 +70,8 @@ export async function GET(request: NextRequest) {
     let teamSeasonData = null;
     let teamSeasonId = `${userId}_${seasonId}`;
     
-    // First try with userId_seasonId (direct lookup)
-    teamSeasonData = getCached<any>('team_seasons', teamSeasonId, 15 * 60 * 1000);
+    // ⚡ Smart caching: Shorter TTL for team_seasons (updates more frequently)
+    teamSeasonData = bustCache ? null : getCached<any>('team_seasons', teamSeasonId, 5 * 60 * 1000); // 5 min TTL
     
     if (!teamSeasonData) {
       const teamSeasonDoc = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
@@ -438,6 +428,17 @@ export async function GET(request: NextRequest) {
 
     // Fetch tiebreakers from Neon (if any)
     // Include both regular tiebreakers (team_id matches) and bulk round tiebreakers (composite ID pattern)
+    console.log(`🔍 Fetching tiebreakers for team ${dbTeamId}, season ${seasonId}`);
+    
+    // Debug: Check what's in the database
+    if (dbTeamId) {
+      const debugTiebreakers = await sql`SELECT id, round_id, player_id, status, season_id FROM tiebreakers WHERE season_id = ${seasonId}`;
+      console.log(`   📊 Total tiebreakers in season: ${debugTiebreakers.length}`, debugTiebreakers);
+      
+      const debugTeamTiebreakers = await sql`SELECT id, tiebreaker_id, team_id, team_name, submitted FROM team_tiebreakers LIMIT 10`;
+      console.log(`   📊 Team tiebreakers sample:`, debugTeamTiebreakers);
+    }
+    
     const tiebreakersResult = dbTeamId ? await sql`
       SELECT 
         t.*,
@@ -461,6 +462,10 @@ export async function GET(request: NextRequest) {
       AND t.season_id = ${seasonId}
       ORDER BY t.created_at DESC
     ` : [];
+    console.log(`✅ Found ${tiebreakersResult.length} tiebreaker(s) for team ${dbTeamId}`);
+    if (tiebreakersResult.length > 0) {
+      console.log('   Tiebreaker details:', tiebreakersResult.map(t => ({ id: t.id, player: t.player_name, status: t.status })));
+    }
     
     const tiebreakers = tiebreakersResult.map(tiebreaker => ({
       id: tiebreaker.id,

@@ -48,6 +48,7 @@ interface TeamBids {
       amount: number;
       timestamp: string;
       won: boolean;
+      lossReason?: string;
     }>;
   };
 }
@@ -203,11 +204,41 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
           };
         }
 
+        // Determine loss reason
+        let lossReason = '';
+        if (bid.status === 'lost') {
+          // Check if this team won a different player
+          const teamWonBid = round?.bids.find(
+            b => b.team_id === bid.team_id && b.status === 'won'
+          );
+          
+          // Only show loss reason if the bid was higher than what they won
+          // (No need to explain why lower bids lost)
+          if (teamWonBid && bid.amount > teamWonBid.amount) {
+            // First check if another team won this specific player
+            if (playerData.winningBid && playerData.winningBid.team_id !== bid.team_id) {
+              // This player was won by another team - show who won
+              lossReason = `${playerData.player.name} won by ${playerData.winningBid.team_name} (£${playerData.winningBid.amount.toLocaleString()})`;
+            } else {
+              // Team's other higher bids were cancelled after winning a player
+              lossReason = `Team already won ${teamWonBid.player_name}`;
+            }
+          } else if (!teamWonBid) {
+            // Team didn't win anything - show who won this player
+            if (playerData.winningBid && playerData.winningBid.team_id !== bid.team_id) {
+              lossReason = `${playerData.player.name} won by ${playerData.winningBid.team_name} (£${playerData.winningBid.amount.toLocaleString()})`;
+            } else {
+              lossReason = 'Lost bid';
+            }
+          }
+        }
+
         teamBids[bid.team_id].bids.push({
           player: playerData.player,
           amount: bid.amount,
           timestamp: bid.created_at,
           won: bid.status === 'won',
+          lossReason,
         });
       });
     });
@@ -741,11 +772,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
                       {isExpanded && (
                         <div className="divide-y divide-gray-100/30 bg-white/5">
                           {teamData.bids
-                            .sort(
-                              (a, b) =>
-                                new Date(b.timestamp).getTime() -
-                                new Date(a.timestamp).getTime()
-                            )
+                            .sort((a, b) => b.amount - a.amount)
                             .map((bid, bidIndex) => (
                               <div
                                 key={bidIndex}
@@ -766,6 +793,11 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
                                         {bid.won && (
                                           <span className="inline-flex items-center justify-center bg-green-100/70 text-green-800 text-xs px-1.5 py-0.5 rounded-full">
                                             Won
+                                          </span>
+                                        )}
+                                        {!bid.won && bid.lossReason && (
+                                          <span className="inline-flex items-center justify-center bg-orange-100/70 text-orange-800 text-xs px-1.5 py-0.5 rounded-full">
+                                            Cancelled
                                           </span>
                                         )}
                                       </div>
@@ -794,6 +826,11 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
                                           {new Date(bid.timestamp).toLocaleTimeString()}
                                         </span>
                                       </div>
+                                      {bid.lossReason && (
+                                        <div className="text-xs text-orange-600 mt-1 italic">
+                                          {bid.lossReason}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex flex-col items-end">

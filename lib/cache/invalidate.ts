@@ -54,6 +54,41 @@ export function invalidateAuctionCaches(queryClient: QueryClient, roundId?: stri
 }
 
 /**
+ * Invalidate team squad caches
+ */
+export function invalidateSquadCaches(queryClient: QueryClient, teamId?: string) {
+  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  queryClient.invalidateQueries({ queryKey: ['team-squad'] });
+  queryClient.invalidateQueries({ queryKey: ['footballplayers'] });
+  if (teamId) {
+    queryClient.invalidateQueries({ queryKey: ['team-players', teamId] });
+  }
+}
+
+/**
+ * Invalidate team wallet/budget caches
+ */
+export function invalidateWalletCaches(queryClient: QueryClient, teamId?: string) {
+  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  if (teamId) {
+    queryClient.invalidateQueries({ queryKey: ['team-wallet', teamId] });
+    queryClient.invalidateQueries({ queryKey: ['team-seasons', teamId] });
+    queryClient.invalidateQueries({ queryKey: ['transactions', teamId] });
+  }
+}
+
+/**
+ * Invalidate tiebreaker caches
+ */
+export function invalidateTiebreakerCaches(queryClient: QueryClient, tiebreakerId?: string) {
+  queryClient.invalidateQueries({ queryKey: ['tiebreakers'] });
+  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  if (tiebreakerId) {
+    queryClient.invalidateQueries({ queryKey: ['tiebreaker', tiebreakerId] });
+  }
+}
+
+/**
  * Invalidate all caches (nuclear option)
  */
 export function invalidateAllCaches(queryClient: QueryClient) {

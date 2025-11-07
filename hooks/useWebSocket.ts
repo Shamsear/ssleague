@@ -5,7 +5,8 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getWSClient } from '@/lib/websocket/client';
+import { getPusherClient } from '@/lib/websocket/pusher-client';
+// import { getWSClient } from '@/lib/websocket/client'; // Fallback to custom WebSocket
 
 type UseWebSocketOptions = {
   channel: string;
@@ -29,10 +30,10 @@ export function useWebSocket({
   const wsClient = useRef<ReturnType<typeof getWSClient>>(null);
   const handlerRef = useRef(onMessage);
 
-  // Initialize WebSocket client only in browser
+  // Initialize Pusher client only in browser
   useEffect(() => {
     if (typeof window !== 'undefined' && !wsClient.current) {
-      wsClient.current = getWSClient();
+      wsClient.current = getPusherClient();
     }
   }, []);
 
@@ -128,9 +129,27 @@ export function useTiebreakerWebSocket(tiebreakerId: string | undefined, enabled
     onMessage: useCallback((message: any) => {
       console.log('[Tiebreaker WS] Received:', message);
 
-      // Invalidate tiebreaker queries
-      queryClient.invalidateQueries({ queryKey: ['tiebreaker', tiebreakerId] });
-      queryClient.invalidateQueries({ queryKey: ['tiebreakers'] });
+      switch (message.type) {
+        case 'tiebreaker_bid':
+          // Team submitted a new tiebreaker bid
+          console.log('[Tiebreaker WS] New bid submitted:', message.data);
+          queryClient.invalidateQueries({ queryKey: ['tiebreaker', tiebreakerId] });
+          queryClient.invalidateQueries({ queryKey: ['tiebreakers'] });
+          break;
+
+        case 'tiebreaker_finalized':
+          // Tiebreaker was resolved
+          console.log('[Tiebreaker WS] Tiebreaker finalized:', message.data);
+          queryClient.invalidateQueries({ queryKey: ['tiebreaker', tiebreakerId] });
+          queryClient.invalidateQueries({ queryKey: ['tiebreakers'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          break;
+
+        default:
+          // Fallback: invalidate tiebreaker queries
+          queryClient.invalidateQueries({ queryKey: ['tiebreaker', tiebreakerId] });
+          queryClient.invalidateQueries({ queryKey: ['tiebreakers'] });
+      }
     }, [queryClient, tiebreakerId]),
   });
 
@@ -149,11 +168,47 @@ export function useDashboardWebSocket(teamId: string | undefined, enabled: boole
     onMessage: useCallback((message: any) => {
       console.log('[Dashboard WS] Received:', message);
 
-      // Invalidate dashboard queries
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['bids'] });
-      queryClient.invalidateQueries({ queryKey: ['team-history'] });
-    }, [queryClient]),
+      switch (message.type) {
+        case 'squad_update':
+          // Player was acquired or removed from squad
+          console.log('[Dashboard WS] Squad updated:', message.data);
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['team-players', teamId] });
+          queryClient.invalidateQueries({ queryKey: ['team-squad'] });
+          queryClient.invalidateQueries({ queryKey: ['footballplayers'] });
+          break;
+
+        case 'wallet_update':
+          // Team budget/balance changed
+          console.log('[Dashboard WS] Wallet updated:', message.data);
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['team-wallet', teamId] });
+          queryClient.invalidateQueries({ queryKey: ['team-seasons', teamId] });
+          queryClient.invalidateQueries({ queryKey: ['transactions', teamId] });
+          break;
+
+        case 'new_round':
+          // New auction round started
+          console.log('[Dashboard WS] New round:', message.data);
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['rounds'] });
+          queryClient.invalidateQueries({ queryKey: ['auction-rounds'] });
+          break;
+
+        case 'tiebreaker_created':
+          // Tiebreaker created for this team
+          console.log('[Dashboard WS] Tiebreaker created:', message.data);
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['tiebreakers'] });
+          break;
+
+        default:
+          // Fallback: invalidate general dashboard queries
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          queryClient.invalidateQueries({ queryKey: ['bids'] });
+          queryClient.invalidateQueries({ queryKey: ['team-history'] });
+      }
+    }, [queryClient, teamId]),
   });
 
   return { isConnected };

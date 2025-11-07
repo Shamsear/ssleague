@@ -57,6 +57,10 @@ export async function createTiebreaker(
     const originalAmount = tiedBids[0].amount;
     const tiedTeamsCount = tiedBids.length;
     
+    // Get season_id from round
+    const roundResult = await sql`SELECT season_id FROM rounds WHERE id = ${roundId} LIMIT 1`;
+    const seasonId = roundResult.length > 0 ? roundResult[0].season_id : null;
+    
     // Generate readable tiebreaker ID
     const tiebreakerId = await generateTiebreakerId();
 
@@ -66,6 +70,7 @@ export async function createTiebreaker(
         id,
         round_id,
         player_id,
+        season_id,
         original_amount,
         tied_teams,
         status,
@@ -74,6 +79,7 @@ export async function createTiebreaker(
         ${tiebreakerId},
         ${roundId},
         ${playerId},
+        ${seasonId},
         ${originalAmount},
         ${tiedTeamsCount},
         'active',

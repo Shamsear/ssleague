@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { DollarSign, TrendingDown, TrendingUp, Calendar, Filter, Download } from 'lucide-react';
+import { DollarSign, TrendingDown, TrendingUp, Calendar, Download } from 'lucide-react';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Transaction {
@@ -34,7 +34,6 @@ export default function TransactionsPage() {
   const [realPlayerData, setRealPlayerData] = useState<CurrencyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [seasonId, setSeasonId] = useState<string>('');
-  const [filterType, setFilterType] = useState<string>('all');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,14 +60,29 @@ export default function TransactionsPage() {
       const response = await fetchWithTokenRefresh('/api/team/transactions');
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        let errorData;
+        const contentType = response.headers.get('content-type');
+        
+        try {
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await response.json();
+          } else {
+            const text = await response.text();
+            console.error('Non-JSON error response:', text);
+            errorData = { error: `Server error (${response.status}): ${text || 'No response'}` };
+          }
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          errorData = { error: `Server error (${response.status})` };
+        }
+        
         console.error('Transaction API error:', errorData);
         
         // Special handling for "not registered" error
         if (errorData.error?.includes('not registered') || errorData.error === 'Season ID is required') {
           setErrorMessage('You are not registered for any season yet. Please register to view transactions.');
         } else {
-          setErrorMessage(errorData.error || 'Failed to load transactions');
+          setErrorMessage(errorData.error || `Failed to load transactions (${response.status})`);
         }
         throw new Error(errorData.error || 'Failed to load transactions');
       }
@@ -121,28 +135,6 @@ export default function TransactionsPage() {
     }
   };
 
-  const getTransactionTypes = () => {
-    return [
-      { value: 'all', label: 'All Transactions' },
-      { value: 'auction', label: 'Auction Wins' },
-      { value: 'salary', label: 'Salaries' },
-      { value: 'fine', label: 'Fines' },
-      { value: 'bonus', label: 'Bonuses' },
-      { value: 'adjustment', label: 'Adjustments' },
-      { value: 'transfer_payment', label: 'Transfer Payments' },
-      { value: 'transfer_compensation', label: 'Transfer Compensation' },
-      { value: 'swap_fee_paid', label: 'Swap Fees Paid' },
-      { value: 'swap_fee_received', label: 'Swap Fees Received' },
-      { value: 'player_release_refund', label: 'Release Refunds' },
-      { value: 'real_player_fee', label: 'Real Player Fees' },
-      { value: 'initial_balance', label: 'Initial Balance' },
-    ];
-  };
-
-  const filterTransactions = (transactions: Transaction[]) => {
-    if (filterType === 'all') return transactions;
-    return transactions.filter(t => t.type === filterType);
-  };
 
   const getTransactionColor = (amount: number) => {
     return amount < 0 ? 'text-red-600' : 'text-green-600';
@@ -197,77 +189,95 @@ export default function TransactionsPage() {
     return (
       <div className="space-y-6">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-blue-100 text-sm font-medium">Current Balance</span>
-              <DollarSign className="w-5 h-5 text-blue-100" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-3 md:p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-1 md:mb-2">
+              <span className="text-blue-100 text-xs md:text-sm font-medium">Current</span>
+              <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-blue-100" />
             </div>
-            <p className="text-3xl font-bold">{data.current_balance.toLocaleString()}</p>
+            <p className="text-xl md:text-3xl font-bold">{data.current_balance.toLocaleString()}</p>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 text-sm font-medium">Starting Balance</span>
-              <Calendar className="w-5 h-5 text-gray-400" />
+          <div className="bg-white rounded-xl p-3 md:p-6 shadow-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-1 md:mb-2">
+              <span className="text-gray-600 text-xs md:text-sm font-medium">Starting</span>
+              <Calendar className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">{data.starting_balance.toLocaleString()}</p>
+            <p className="text-lg md:text-2xl font-bold text-gray-900">{data.starting_balance.toLocaleString()}</p>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-red-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 text-sm font-medium">Total Spent</span>
-              <TrendingDown className="w-5 h-5 text-red-500" />
+          <div className="bg-white rounded-xl p-3 md:p-6 shadow-lg border border-red-200">
+            <div className="flex items-center justify-between mb-1 md:mb-2">
+              <span className="text-gray-600 text-xs md:text-sm font-medium">Spent</span>
+              <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-red-500" />
             </div>
-            <p className="text-2xl font-bold text-red-600">{data.total_spent.toLocaleString()}</p>
+            <p className="text-lg md:text-2xl font-bold text-red-600">{data.total_spent.toLocaleString()}</p>
           </div>
 
           {data.total_earned > 0 && (
-            <div className="bg-white rounded-xl p-6 shadow-lg border border-green-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 text-sm font-medium">Total Earned</span>
-                <TrendingUp className="w-5 h-5 text-green-500" />
+            <div className="bg-white rounded-xl p-3 md:p-6 shadow-lg border border-green-200">
+              <div className="flex items-center justify-between mb-1 md:mb-2">
+                <span className="text-gray-600 text-xs md:text-sm font-medium">Earned</span>
+                <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
               </div>
-              <p className="text-2xl font-bold text-green-600">+{data.total_earned.toLocaleString()}</p>
+              <p className="text-lg md:text-2xl font-bold text-green-600">+{data.total_earned.toLocaleString()}</p>
             </div>
           )}
         </div>
 
-        {/* Filter and Export Bar */}
-        <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Filter className="w-5 h-5 text-gray-500" />
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              {getTransactionTypes().map(type => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-            {filterType !== 'all' && (
-              <button
-                onClick={() => setFilterType('all')}
-                className="text-sm text-blue-600 hover:text-blue-800 underline"
-              >
-                Clear filter
-              </button>
-            )}
-          </div>
+        {/* Export Bar */}
+        <div className="flex justify-end">
           <button
             onClick={() => exportTransactions(currencyType)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+            className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm w-full sm:w-auto"
           >
             <Download className="w-4 h-4" />
-            Export CSV
+            <span className="hidden sm:inline">Export CSV</span>
+            <span className="sm:hidden">Export</span>
           </button>
         </div>
 
-        {/* Transactions Table */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        {/* Transactions - Mobile Cards (hidden on lg+) */}
+        <div className="lg:hidden space-y-3">
+          {data.transactions.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center text-gray-500">
+              No transactions yet
+            </div>
+          ) : (
+            data.transactions.map((transaction) => (
+              <div key={transaction.id} className="bg-white rounded-xl shadow-lg border border-gray-200 p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{getTransactionIcon(transaction.type)}</span>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 capitalize">
+                        {transaction.type.replace('_', ' ')}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {formatDate(transaction.date)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`text-lg font-bold ${getTransactionColor(transaction.amount)}`}>
+                    {transaction.amount > 0 ? '+' : ''}{transaction.amount.toLocaleString()}
+                  </div>
+                </div>
+                <div className="text-sm text-gray-700 mb-2">
+                  {transaction.reason}
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <span className="text-xs text-gray-500">Balance After</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {transaction.balance_after.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Transactions Table - Desktop (hidden on mobile) */}
+        <div className="hidden lg:block bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -290,14 +300,14 @@ export default function TransactionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filterTransactions(data.transactions).length === 0 ? (
+                {data.transactions.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                      {data.transactions.length === 0 ? 'No transactions yet' : 'No transactions match the selected filter'}
+                      No transactions yet
                     </td>
                   </tr>
                 ) : (
-                  filterTransactions(data.transactions).map((transaction) => (
+                  data.transactions.map((transaction) => (
                     <tr key={transaction.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {formatDate(transaction.date)}
@@ -378,7 +388,7 @@ export default function TransactionsPage() {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('football')}
-              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors ${
+              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 text-center text-sm sm:text-base font-semibold transition-colors ${
                 activeTab === 'football'
                   ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
                   : 'bg-gray-50 text-gray-600 hover:bg-gray-100'

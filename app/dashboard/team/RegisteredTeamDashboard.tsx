@@ -242,17 +242,20 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   const timerRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
   const bulkTimerRefs = useRef<{ [key: number]: NodeJS.Timeout }>({});
   const previousDataRef = useRef<string>('');
-  const fetchDashboardRef = useRef<(showLoader?: boolean) => Promise<void>>();
+  const fetchDashboardRef = useRef<(showLoader?: boolean, bustCache?: boolean) => Promise<void>>();
   const [showManagerForm, setShowManagerForm] = useState(false);
   const [showOwnerForm, setShowOwnerForm] = useState(false);
 
   // Fetch dashboard data
-  const fetchDashboard = useCallback(async (showLoader = true) => {
+  const fetchDashboard = useCallback(async (showLoader = true, bustCache = false) => {
       if (!seasonStatus?.seasonId) return;
       if (showLoader) setIsLoading(true);
 
       try {
-        const params = new URLSearchParams({ season_id: seasonStatus.seasonId });
+        const params = new URLSearchParams({ 
+          season_id: seasonStatus.seasonId,
+          ...(bustCache && { bust_cache: 'true' }) // ⚡ Bust cache on live updates
+        });
         const response = await fetchWithTokenRefresh(`/api/team/dashboard?${params}`, {
           headers: { 'Cache-Control': 'no-cache' },
         });
@@ -305,7 +308,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
       
       // Handle different update types
       if (message.type === 'wallet_update' && message.data) {
-        // ⚡ Instant wallet update
+        // ⚡ Instant wallet update (optimistic, no refetch needed)
         setDashboardData(prev => {
           if (!prev) return prev;
           return {
@@ -322,14 +325,17 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
           };
         });
       } else if (message.type === 'squad_update') {
-        // Refetch for squad changes
-        fetchDashboardRef.current?.(false);
+        // ⚡ Squad changed - bust cache and refetch
+        console.log('[Dashboard] Squad update - busting cache');
+        fetchDashboardRef.current?.(false, true);
       } else if (message.type === 'new_round' || message.type === 'tiebreaker_created') {
-        // Refetch for new rounds/tiebreakers
-        fetchDashboardRef.current?.(false);
+        // ⚡ New round/tiebreaker - bust cache and refetch
+        console.log('[Dashboard] New round/tiebreaker - busting cache');
+        fetchDashboardRef.current?.(false, true);
       } else if (message.type !== 'subscribed' && message.type !== 'connected') {
-        // For other updates, do a background refetch
-        fetchDashboardRef.current?.(false);
+        // ⚡ Other updates - use cache (no need to bust)
+        console.log('[Dashboard] Background update - using cache');
+        fetchDashboardRef.current?.(false, false);
       }
     }, []),
   });
@@ -348,7 +354,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
         (dashboardData?.activeBulkRounds?.length || 0) > 0 ||
         (dashboardData?.tiebreakers?.length || 0) > 0;
       
-      const pollInterval = hasActiveContent ? 3000 : 10000;
+      // CRITICAL: Reduced from 3s to 30s to prevent hitting Firebase read quota (50K/day)
+      // With 3s polling, we were using 37K reads in partial day
+      const pollInterval = hasActiveContent ? 30000 : 60000;
       clearInterval(interval);
       interval = setInterval(() => fetchDashboard(false), pollInterval);
     };
@@ -363,21 +371,15 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     };
   }, [seasonStatus?.seasonId]);
 
-  // Timer effect for active rounds
+  // Timer effect for active rounds - runs every second
   useEffect(() => {
     if (!dashboardData?.activeRounds) return;
 
+    // Start timers for any rounds that don't have one yet
     dashboardData.activeRounds.forEach(round => {
       if (round.end_time && !timerRefs.current[round.id]) {
-        // Calculate and set initial time immediately
-        const now = new Date().getTime();
-        const end = new Date(round.end_time!).getTime();
-        const remaining = Math.max(0, Math.floor((end - now) / 1000));
-        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
-        
-        // Then start the interval
         timerRefs.current[round.id] = setInterval(() => {
-          const now = new Date().getTime();
+          const now = Date.now();
           const end = new Date(round.end_time!).getTime();
           const remaining = Math.max(0, Math.floor((end - now) / 1000));
           setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
@@ -387,9 +389,16 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             delete timerRefs.current[round.id];
           }
         }, 1000);
+        
+        // Set initial time immediately
+        const now = Date.now();
+        const end = new Date(round.end_time!).getTime();
+        const remaining = Math.max(0, Math.floor((end - now) / 1000));
+        setTimeRemaining(prev => ({ ...prev, [round.id]: remaining }));
       }
     });
 
+    // Clean up timers for rounds that no longer exist
     Object.keys(timerRefs.current).forEach(id => {
       if (!dashboardData.activeRounds.find(r => r.id === id)) {
         clearInterval(timerRefs.current[id]);
@@ -402,14 +411,15 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     };
   }, [dashboardData?.activeRounds]);
 
-  // Timer effect for bulk rounds
+  // Timer effect for bulk rounds - runs every second
   useEffect(() => {
     if (!dashboardData?.activeBulkRounds) return;
 
+    // Start timers for any bulk rounds that don't have one yet
     dashboardData.activeBulkRounds.forEach(bulkRound => {
       if (bulkRound.end_time && !bulkTimerRefs.current[bulkRound.id]) {
         bulkTimerRefs.current[bulkRound.id] = setInterval(() => {
-          const now = new Date().getTime();
+          const now = Date.now();
           const end = new Date(bulkRound.end_time!).getTime();
           const remaining = Math.max(0, Math.floor((end - now) / 1000));
           setBulkTimeRemaining(prev => ({ ...prev, [bulkRound.id]: remaining }));
@@ -419,9 +429,16 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             delete bulkTimerRefs.current[bulkRound.id];
           }
         }, 1000);
+        
+        // Set initial time immediately
+        const now = Date.now();
+        const end = new Date(bulkRound.end_time!).getTime();
+        const remaining = Math.max(0, Math.floor((end - now) / 1000));
+        setBulkTimeRemaining(prev => ({ ...prev, [bulkRound.id]: remaining }));
       }
     });
 
+    // Clean up timers for bulk rounds that no longer exist
     Object.keys(bulkTimerRefs.current).forEach(id => {
       const bulkId = parseInt(id);
       if (!dashboardData.activeBulkRounds.find(br => br.id === bulkId)) {
@@ -873,6 +890,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   📊 View Results
                 </button>
               )}
+              
+              <Link href="/dashboard/team/auction-results" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 transition-all text-xs sm:text-sm font-medium text-center">
+                🎯 Auction Results
+              </Link>
             </div>
           </div>
 

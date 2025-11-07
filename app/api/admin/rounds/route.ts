@@ -211,8 +211,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate readable round ID
-    const roundId = await generateRoundId();
+    // Generate readable round ID with retry logic
+    let roundId: string;
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      roundId = await generateRoundId();
+      
+      // Check if this ID already exists
+      const existing = await sql`SELECT id FROM rounds WHERE id = ${roundId} LIMIT 1`;
+      
+      if (existing.length === 0) {
+        break; // ID is unique, proceed
+      }
+      
+      attempts++;
+      console.log(`⚠️ Round ID ${roundId} already exists, retrying... (attempt ${attempts}/${maxAttempts})`);
+      
+      if (attempts >= maxAttempts) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to generate unique round ID after multiple attempts' },
+          { status: 500 }
+        );
+      }
+      
+      // Wait a bit before retrying to avoid race conditions
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
     
     // Calculate end time (always use UTC)
     const now = new Date();
@@ -230,7 +256,7 @@ export async function POST(request: NextRequest) {
         created_at,
         updated_at
       ) VALUES (
-        ${roundId},
+        ${roundId!},
         ${season_id},
         ${position},
         ${max_bids_per_team},

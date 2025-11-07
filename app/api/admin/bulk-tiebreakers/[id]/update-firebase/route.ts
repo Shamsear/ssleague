@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { cookies } from 'next/headers';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
+import { adminDb } from '@/lib/firebase/admin';
 import { logAuctionWin } from '@/lib/transaction-logger';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
@@ -16,28 +16,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('token')?.value;
-
-    if (!token) {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth(['admin', 'committee', 'committee_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
-      );
-    }
-
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
-
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    const userData = userDoc.data();
-    const userRole = userData?.role;
-
-    const allowedRoles = ['admin', 'committee', 'committee_admin'];
-    if (!allowedRoles.includes(userRole)) {
-      return NextResponse.json(
-        { success: false, error: 'Access denied' },
-        { status: 403 }
       );
     }
 

@@ -4,9 +4,10 @@
  */
 
 type WebSocketMessage = {
-  type: 'bid' | 'round_update' | 'tiebreaker' | 'player_sold' | 'round_status';
+  type: 'bid' | 'round_update' | 'tiebreaker' | 'player_sold' | 'round_status' | 
+        'squad_update' | 'wallet_update' | 'tiebreaker_bid' | 'new_round' | 'tiebreaker_created';
   data: any;
-  timestamp: number;
+  timestamp?: number;
 };
 
 type MessageHandler = (message: WebSocketMessage) => void;
@@ -160,6 +161,24 @@ export class WSClient {
     if (type === 'bid' && data?.round_id) {
       const channel = `round:${data.round_id}`;
       const channelHandlers = this.handlers.get(channel);
+      if (channelHandlers) {
+        channelHandlers.forEach(handler => handler(message));
+      }
+    }
+    
+    // For bid_submitted messages: data should contain round_id
+    if (type === 'bid_submitted' && data?.round_id) {
+      const seasonChannel = `season:${data.season_id}`;
+      const seasonHandlers = this.handlers.get(seasonChannel);
+      if (seasonHandlers) {
+        seasonHandlers.forEach(handler => handler({ ...message, data: { ...data, round_id: data.round_id } }));
+      }
+    }
+    
+    // Handle team-specific messages (squad_update, wallet_update, new_round, tiebreaker_created)
+    // These messages come on the 'team:{teamId}' channel
+    if (data?.channel && data.channel.startsWith('team:')) {
+      const channelHandlers = this.handlers.get(data.channel);
       if (channelHandlers) {
         channelHandlers.forEach(handler => handler(message));
       }

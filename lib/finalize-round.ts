@@ -136,28 +136,26 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
       team_name: teamNamesMap.get(bid.team_id) || bid.team_id
     }));
 
-    // Separate complete vs incomplete teams
-    const teamBidCounts = new Map<string, number>();
-    bidsWithNames.forEach(bid => {
-      teamBidCounts.set(bid.team_id, (teamBidCounts.get(bid.team_id) || 0) + 1);
-    });
-
-    const completeTeams = new Set<string>();
-    const incompleteTeams = new Set<string>();
-    teamBidCounts.forEach((count, teamId) => {
-      if (count === requiredBids) completeTeams.add(teamId);
-      else if (count < requiredBids) incompleteTeams.add(teamId);
-    });
-
-    console.log(`📊 ${completeTeams.size} complete, ${incompleteTeams.size} incomplete`);
+    // Get teams that submitted their bids (clicked Submit button)
+    const submissions = await sql`SELECT team_id FROM bid_submissions WHERE round_id = ${roundId}`;
+    const submittedTeams = new Set(submissions.map((s: any) => s.team_id));
+    
+    // Get all teams in this season
+    const allTeamsResult = await sql`SELECT id FROM teams WHERE season_id = ${round.season_id}`;
+    const allTeamIds = allTeamsResult.map((t: any) => t.id);
+    
+    // Separate submitted vs non-submitted teams
+    const nonSubmittedTeams = allTeamIds.filter((teamId: string) => !submittedTeams.has(teamId));
+    
+    console.log(`📊 ${submittedTeams.size} teams submitted bids, ${nonSubmittedTeams.length} teams didn't submit`);
 
     const allocations: AllocationResult[] = [];
     const allocatedPlayers = new Set<string>();
     const allocatedTeams = new Set<string>();
 
-    // Allocate to complete teams
+    // Allocate to submitted teams (normal auction - highest bid wins, 1 player per team)
     let activeBids: Bid[] = bidsWithNames
-      .filter(bid => completeTeams.has(bid.team_id))
+      .filter(bid => submittedTeams.has(bid.team_id))
       .map(bid => ({
         id: bid.id,
         team_id: bid.team_id,
@@ -168,7 +166,8 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         round_id: bid.round_id,
       }));
 
-    while (activeBids.length > 0 && allocatedTeams.size < completeTeams.size) {
+    // Each team gets MAX 1 player
+    while (activeBids.length > 0 && allocatedTeams.size < submittedTeams.size) {
       activeBids.sort((a, b) => b.amount - a.amount);
       const topBid = activeBids[0];
       const tiedBids = activeBids.filter(b => b.amount === topBid.amount && b.player_id === topBid.player_id);
@@ -207,26 +206,35 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
 
       allocatedPlayers.add(topBid.player_id);
       allocatedTeams.add(topBid.team_id);
+      // Remove this player AND this team from the pool (1 player per team max)
       activeBids = activeBids.filter(b => b.player_id !== topBid.player_id && b.team_id !== topBid.team_id);
     }
 
-    // Handle incomplete teams
-    if (incompleteTeams.size > 0) {
+    // Handle non-submitted teams (teams that didn't click Submit button)
+    if (nonSubmittedTeams.length > 0) {
       const avgAmount = allocations.length > 0
         ? Math.round(allocations.reduce((sum, a) => sum + a.amount, 0) / allocations.length)
         : 1000;
 
-      for (const teamId of incompleteTeams) {
+      console.log(`💰 Average price for non-submitted teams: £${avgAmount}`);
+
+      for (const teamId of nonSubmittedTeams) {
         if (allocatedTeams.has(teamId)) continue;
+        
+        // Get team name
+        const teamName = teamNamesMap.get(teamId) || teamId;
+        
+        // Get this team's bids (if any)
         const teamBids = bidsWithNames
           .filter(b => b.team_id === teamId && !allocatedPlayers.has(b.player_id))
           .sort((a, b) => b.amount - a.amount);
 
         if (teamBids.length > 0) {
+          // Auto-allocate their highest bid at average price
           const top = teamBids[0];
           allocations.push({
-            team_id: top.team_id,
-            team_name: top.team_name,
+            team_id: teamId,
+            team_name: teamName,
             player_id: top.player_id,
             player_name: top.player_name,
             amount: avgAmount,
@@ -234,7 +242,8 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
             phase: 'incomplete',
           });
           allocatedPlayers.add(top.player_id);
-          allocatedTeams.add(top.team_id);
+          allocatedTeams.add(teamId);
+          console.log(`🔄 Auto-allocated ${top.player_name} → ${teamName} (£${avgAmount}) - Team didn't submit`);
         }
       }
     }
@@ -284,7 +293,17 @@ export async function applyFinalizationResults(
         await sql`UPDATE bids SET status = 'won', phase = 'regular', updated_at = NOW() WHERE id = ${alloc.bid_id}`;
       }
 
-      await sql`INSERT INTO team_players (team_id, player_id, season_id, round_id, purchase_price, acquired_at) VALUES (${alloc.team_id}, ${alloc.player_id}, ${seasonId}, ${roundId}, ${alloc.amount}, NOW())`;
+      // Use ON CONFLICT to handle players that might already be in team_players table
+      await sql`
+        INSERT INTO team_players (team_id, player_id, season_id, round_id, purchase_price, acquired_at) 
+        VALUES (${alloc.team_id}, ${alloc.player_id}, ${seasonId}, ${roundId}, ${alloc.amount}, NOW())
+        ON CONFLICT (player_id, season_id) 
+        DO UPDATE SET 
+          team_id = ${alloc.team_id},
+          round_id = ${roundId},
+          purchase_price = ${alloc.amount},
+          acquired_at = NOW()
+      `;
 
       const playerRes = await sql`SELECT position FROM footballplayers WHERE id = ${alloc.player_id}`;
       const pos = playerRes[0]?.position;

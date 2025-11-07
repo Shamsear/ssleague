@@ -1,32 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { verifyAuth } from '@/lib/auth-helper';
 
 export async function POST(request: NextRequest) {
   try {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth(['super_admin'], request);
+    if (!auth.authenticated) {
+      return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
+    }
+
     console.log('🚀 Starting cleanup of legacy balance fields from dual currency teams...');
-
-    // Verify authentication
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    
-    // Check user role
-    const userDoc = await adminDb.collection('users').doc(decodedToken.uid).get();
-    if (!userDoc.exists) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-    
-    const userData = userDoc.data();
-    if (userData?.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden: Super admin access required' }, { status: 403 });
-    }
-
-    console.log('✅ Super admin access confirmed');
 
     // Find all team_seasons with dual currency system
     const teamSeasonsSnapshot = await adminDb.collection('team_seasons')

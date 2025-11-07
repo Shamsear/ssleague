@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useTeamDashboard, useDeleteBid } from '@/hooks/useTeamDashboard';
 import { useModal } from '@/hooks/useModal';
+import { useDashboardWebSocket } from '@/hooks/useWebSocket';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
@@ -29,6 +30,12 @@ export default function OptimizedDashboard({ seasonStatus, user }: Props) {
   );
 
   const deleteBidMutation = useDeleteBid();
+  
+  // WebSocket for real-time updates (squad, wallet, rounds, tiebreakers)
+  const { isConnected: wsConnected } = useDashboardWebSocket(
+    dashboardData?.team?.id,
+    !!dashboardData?.team?.id
+  );
 
   // UI state
   const [timeRemaining, setTimeRemaining] = useState<{ [key: string]: number }>({});

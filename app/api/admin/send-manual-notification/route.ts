@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthToken } from '@/lib/auth/token-helper';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
 import { sendNotification, sendNotificationToSeason } from '@/lib/notifications/send-notification';
 import { neon } from '@neondatabase/serverless';
 
@@ -26,34 +25,12 @@ const sql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify admin authentication
-    const token = await getAuthToken(request);
-    if (!token) {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth(['admin', 'committee', 'committee_admin'], request);
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
-      );
-    }
-
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const userId = decodedToken.uid;
-
-    // Check if user is admin/committee
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData?.role;
-
-    if (userRole !== 'committee' && userRole !== 'admin' && userRole !== 'committee_admin') {
-      return NextResponse.json(
-        { success: false, error: 'Only admin/committee can send notifications' },
-        { status: 403 }
       );
     }
 

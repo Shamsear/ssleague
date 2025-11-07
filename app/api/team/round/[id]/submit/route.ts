@@ -103,6 +103,7 @@ export async function POST(
     }
 
     // Insert or update submission
+    console.log('🔍 [Submit Bids] Submitting bids for team:', teamId, 'round:', roundId, 'bid_count:', bidCount);
     const submissionResult = await sql`
       INSERT INTO bid_submissions (
         team_id,
@@ -127,6 +128,8 @@ export async function POST(
         updated_at = NOW()
       RETURNING *
     `;
+
+    console.log('✅ [Submit Bids] Submission successful:', submissionResult[0]);
 
     return NextResponse.json({
       success: true,
@@ -187,11 +190,13 @@ export async function DELETE(
     const teamId = teamResult[0].id;
 
     // Delete submission (unlock bids)
+    console.log('🔍 [Unlock Bids] Unlocking bids for team:', teamId, 'round:', roundId);
     await sql`
       DELETE FROM bid_submissions
       WHERE team_id = ${teamId}
       AND round_id = ${roundId}
     `;
+    console.log('✅ [Unlock Bids] Submission unlocked successfully');
 
     return NextResponse.json({
       success: true,

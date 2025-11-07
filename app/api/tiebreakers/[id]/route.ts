@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { getAuthToken } from '@/lib/auth/token-helper';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyAuth } from '@/lib/auth-helper';
+import { adminDb } from '@/lib/firebase/admin';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -14,40 +14,21 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const token = await getAuthToken(request);
-
-    if (!token) {
+    // ✅ ZERO FIREBASE READS - Uses JWT claims only
+    const auth = await verifyAuth([], request); // No role restriction, but must be authenticated
+    if (!auth.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: auth.error || 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Verify Firebase ID token
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification error:', error);
-      return NextResponse.json(
-        { success: false, error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
+    const userId = auth.userId!;
+    const { id: tiebreakerId} = await params;
 
-    const userId = decodedToken.uid;
-    const { id: tiebreakerId } = await params;
-
-    // Get user role from Firestore
+    // Get user data from Firebase (needed for other data, not auth)
     const userDoc = await adminDb.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    const userData = userDoc.data();
+    const userData = userDoc.exists ? userDoc.data() : null;
 
     // Get user's team ID from team_seasons collection or teams table
     let userTeamId: string | null = null;
@@ -264,11 +245,121 @@ export async function GET(
     const submittedCount = teamData.filter((t) => t.submitted).length;
     const totalTeams = teamData.length;
 
+    // Fetch user's all bids in this round with allocation status
+    let userBidsInRound: any[] = [];
+    if (userTeamId) {
+      try {
+        // Get all bids by this team in the same round
+        const userBidsResult = await sql`
+          SELECT 
+            b.id as bid_id,
+            b.encrypted_bid_data,
+            b.status as bid_status
+          FROM bids b
+          WHERE b.round_id = ${tiebreaker.round_id}
+          AND b.team_id = ${userTeamId}
+        `;
+
+        // Decrypt bids and get player info
+        for (const bid of userBidsResult) {
+          try {
+            const { player_id, amount } = require('@/lib/encryption').decryptBidData(bid.encrypted_bid_data);
+            
+            // Get player details
+            const playerResult = await sql`
+              SELECT 
+                id,
+                name,
+                position,
+                overall_rating,
+                team_name,
+                is_sold,
+                team_id as current_team_id
+              FROM footballplayers
+              WHERE id = ${player_id}
+            `;
+
+            if (playerResult.length > 0) {
+              const player = playerResult[0];
+              
+              // Determine allocation status
+              let allocationStatus = 'pending';
+              let allocatedToTeam = null;
+              
+              if (player.is_sold && player.current_team_id) {
+                if (player.current_team_id === userTeamId) {
+                  allocationStatus = 'won';
+                } else {
+                  allocationStatus = 'allocated_to_other';
+                  // Get team name
+                  const teamResult = await sql`
+                    SELECT id FROM teams WHERE id = ${player.current_team_id} AND season_id = ${seasonId} LIMIT 1
+                  `;
+                  if (teamResult.length > 0) {
+                    const teamDoc = await adminDb.collection('team_seasons')
+                      .where('team_id', '==', player.current_team_id)
+                      .where('season_id', '==', seasonId)
+                      .limit(1)
+                      .get();
+                    allocatedToTeam = teamDoc.empty ? player.current_team_id : teamDoc.docs[0].data()?.team_name;
+                  }
+                }
+              } else if (bid.bid_status === 'lost') {
+                allocationStatus = 'lost';
+              } else if (player_id === tiebreaker.player_id) {
+                allocationStatus = 'tiebreaker';
+              } else {
+                // Check if this player is in any other active tiebreaker
+                const otherTiebreaker = await sql`
+                  SELECT id FROM tiebreakers
+                  WHERE round_id = ${tiebreaker.round_id}
+                  AND player_id = ${player_id}
+                  AND status IN ('active', 'pending')
+                  LIMIT 1
+                `;
+                
+                if (otherTiebreaker.length > 0) {
+                  allocationStatus = 'tiebreaker_other';
+                } else {
+                  allocationStatus = 'available';
+                }
+              }
+
+              userBidsInRound.push({
+                bid_id: bid.bid_id,
+                player_id,
+                player_name: player.name,
+                position: player.position,
+                overall_rating: player.overall_rating,
+                player_team: player.team_name,
+                bid_amount: amount,
+                allocation_status: allocationStatus,
+                allocated_to_team: allocatedToTeam,
+                is_current_tiebreaker: player_id === tiebreaker.player_id,
+              });
+            }
+          } catch (decryptError) {
+            console.error('Error decrypting bid:', decryptError);
+          }
+        }
+
+        // Sort: Tiebreaker first, then by bid amount descending
+        userBidsInRound.sort((a, b) => {
+          if (a.is_current_tiebreaker) return -1;
+          if (b.is_current_tiebreaker) return 1;
+          return b.bid_amount - a.bid_amount;
+        });
+      } catch (error) {
+        console.error('Error fetching user bids in round:', error);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         tiebreaker,
         teamTiebreakers: teamData,
+        userBidsInRound,
         stats: {
           submittedCount,
           totalTeams,
