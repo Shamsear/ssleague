@@ -96,12 +96,39 @@ export async function POST(
       );
     }
 
-    // Broadcast round finalized via Firebase Realtime DB
+    // Get season for notifications
     const seasonResult = await sql`
       SELECT season_id FROM rounds WHERE id = ${roundId}
     `;
-    if (seasonResult.length > 0) {
-      const seasonId = seasonResult[0].season_id;
+    const seasonId = seasonResult[0]?.season_id;
+    
+    // Send general round finalized notification to all teams
+    if (seasonId) {
+      try {
+        console.log(`📣 Sending round finalized notification for season ${seasonId}, round ${roundId}`);
+        const notifResult = await sendNotificationToSeason(
+          {
+            title: '🏁 Round Finalized!',
+            body: `${round.position} bidding round has been completed. ${finalizationResult.allocations.length} players allocated. Check results now!`,
+            url: `/dashboard/team`,
+            icon: '/logo.png',
+            data: {
+              type: 'round_finalized',
+              roundId: roundId,
+              position: round.position,
+              allocationsCount: finalizationResult.allocations.length
+            }
+          },
+          seasonId
+        );
+        console.log(`✅ Round finalized notification result:`, notifResult);
+      } catch (notifError) {
+        console.error('Failed to send round finalized notification:', notifError);
+      }
+    }
+    
+    // Broadcast round finalized via Firebase Realtime DB
+    if (seasonId) {
       await broadcastRoundUpdate(seasonId, roundId, {
         type: 'round_finalized',
         status: 'completed',
@@ -110,67 +137,36 @@ export async function POST(
       });
     }
 
-    // Send notifications to winners and losers
+    // Send notifications to winners
     try {
-      // Get round details (season name only in Firebase, not needed for notifications)
-      const roundDetails = await sql`
-        SELECT *
-        FROM rounds
-        WHERE id = ${roundId}
-        LIMIT 1
-      `;
-
-      if (roundDetails.length > 0) {
-        const roundInfo = roundDetails[0];
-
-        // Notify each team about their result
-        for (const allocation of finalizationResult.allocations) {
-          const teamId = allocation.team_id;
-          const playerName = allocation.player_name;
-          const amount = allocation.amount;
-          const won = allocation.won;
-
-          if (won) {
-            // Winner notification
-            await sendNotification(
-              {
-                title: '🎉 Player Won!',
-                body: `Congratulations! You won ${playerName} for $${amount.toLocaleString()}`,
-                url: `/dashboard/team/round/${roundId}`,
-                icon: '/logo.png',
-                data: {
-                  type: 'round_result',
-                  roundId,
-                  playerId: allocation.player_id || '',
-                  result: 'won'
-                }
-              },
-              { teamId }
-            );
-          } else {
-            // Loser notification
-            await sendNotification(
-              {
-                title: '❌ Bid Lost',
-                body: `You lost the bid for ${playerName}. Better luck next time!`,
-                url: `/dashboard/team/round/${roundId}`,
-                icon: '/logo.png',
-                data: {
-                  type: 'round_result',
-                  roundId,
-                  playerId: allocation.player_id || '',
-                  result: 'lost'
-                }
-              },
-              { teamId }
-            );
-          }
+      // Notify each winning team
+      for (const allocation of finalizationResult.allocations) {
+        try {
+          await sendNotification(
+            {
+              title: '🎉 Player Won!',
+              body: `Congratulations! You won ${allocation.player_name} for £${allocation.amount.toLocaleString()}`,
+              url: `/dashboard/team`,
+              icon: '/logo.png',
+              data: {
+                type: 'player_won',
+                roundId,
+                playerId: allocation.player_id,
+                playerName: allocation.player_name,
+                amount: allocation.amount.toString(),
+                phase: allocation.phase
+              }
+            },
+            { teamId: allocation.team_id }
+          );
+        } catch (err) {
+          console.error(`Failed to send notification to team ${allocation.team_id}:`, err);
         }
-
-        console.log(`✅ Sent ${finalizationResult.allocations.length} round result notifications`);
       }
+
+      console.log(`✅ Sent ${finalizationResult.allocations.length} winner notifications`);
     } catch (notifError) {
-      console.error('Error sending round finalization notifications:', notifError);
+      console.error('Error sending winner notifications:', notifError);
       // Don't fail the entire operation if notifications fail
     }
 
