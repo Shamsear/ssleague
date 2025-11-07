@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import { useCachedSeasons } from '@/hooks/useCachedFirebase';
 
 interface NotificationUser {
   userId: string;
@@ -22,6 +23,11 @@ export default function TestNotificationsPage() {
   const [body, setBody] = useState('This is a test push notification!');
   const [notificationUsers, setNotificationUsers] = useState<NotificationUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  
+  // Fetch active season
+  const { data: activeSeasons } = useCachedSeasons({ isActive: 'true' });
+  const activeSeason = activeSeasons?.[0];
+  const seasonId = activeSeason?.id || '';
 
   const loadNotificationUsers = async () => {
     setLoadingUsers(true);
@@ -145,16 +151,89 @@ export default function TestNotificationsPage() {
               </p>
             </div>
 
+            {/* Active Season Display */}
+            {activeSeason && (
+              <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                <p className="text-sm text-gray-700">
+                  <strong>Active Season:</strong> <span className="font-mono text-green-700">{activeSeason.name}</span> ({seasonId})
+                </p>
+              </div>
+            )}
+
             {/* Quick Test Buttons */}
-            <div className="flex gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={() => sendTestNotification()}
                 disabled={loading}
-                className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-6 py-3 rounded-lg font-medium hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+                className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-6 py-3 rounded-lg font-medium hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
               >
                 {loading ? 'Sending...' : '📤 Send to Myself'}
               </button>
+              <button
+                onClick={async () => {
+                  if (!seasonId) {
+                    setResult('❌ No active season found');
+                    return;
+                  }
+                  setLoading(true);
+                  setResult('📤 Sending test round start notification...');
+                  try {
+                    const response = await fetchWithTokenRefresh('/api/notifications/test-round-start', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ seasonId })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                      setResult(`✅ Round Start: Sent to ${data.sentCount} device(s)\n${data.failedCount > 0 ? `⚠️ Failed: ${data.failedCount}` : ''}`);
+                    } else {
+                      setResult(`❌ Error: ${data.error}`);
+                    }
+                  } catch (error: any) {
+                    setResult(`❌ Failed: ${error.message}`);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading || !seasonId}
+                className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-6 py-3 rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+              >
+                {loading ? 'Sending...' : '🎯 Test Round Start'}
+              </button>
             </div>
+
+            {/* Test Round Finalize Button */}
+            <button
+              onClick={async () => {
+                if (!seasonId) {
+                  setResult('❌ No active season found');
+                  return;
+                }
+                setLoading(true);
+                setResult('📤 Sending test round finalize notifications...');
+                try {
+                  const response = await fetchWithTokenRefresh('/api/notifications/test-round-finalize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ seasonId })
+                  });
+                  const data = await response.json();
+                  if (response.ok) {
+                    setResult(`✅ Round Finalize: Sent ${data.winnerCount} winner + ${data.loserCount} loser notifications`);
+                  } else {
+                    setResult(`❌ Error: ${data.error}`);
+                  }
+                } catch (error: any) {
+                  setResult(`❌ Failed: ${error.message}`);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading || !seasonId}
+              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-lg font-medium hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+            >
+              {loading ? 'Sending...' : '🏆 Test Round Finalize (Win/Loss)'}
+            </button>
 
             {/* Users with Notifications Enabled */}
             <div>

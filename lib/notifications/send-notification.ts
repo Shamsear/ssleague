@@ -174,8 +174,8 @@ export async function sendNotification(
  * Send notification to all teams in a season
  */
 export async function sendNotificationToSeason(
-  seasonId: string,
-  payload: NotificationPayload
+  payload: NotificationPayload,
+  seasonId: string
 ): Promise<{ success: boolean; sentCount: number; failedCount: number }> {
   try {
     // Get all teams registered for this season

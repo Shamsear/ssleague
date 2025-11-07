@@ -282,7 +282,8 @@ export async function POST(request: NextRequest) {
 
     // Send FCM notification to all teams in season
     try {
-      await sendNotificationToSeason(
+      console.log(`📣 Sending round start notification for season ${season_id}, round ${roundId}`);
+      const notifResult = await sendNotificationToSeason(
         {
           title: '🎯 New Auction Round Available!',
           body: `${position} bidding is now open. Duration: ${duration_hours} hour(s). Place your bids now!`,
@@ -297,6 +298,7 @@ export async function POST(request: NextRequest) {
         },
         season_id
       );
+      console.log(`✅ Round start notification result:`, notifResult);
     } catch (notifError) {
       console.error('Failed to send round start notification:', notifError);
       // Don't fail the request if notification fails
