@@ -3,7 +3,6 @@ import { neon } from '@neondatabase/serverless';
 import { verifyTeamAuth } from '@/lib/team-auth-helper';
 import { encryptBidData } from '@/lib/encryption';
 import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
-import { encryptBidData } from '@/lib/encryption';
 import { generateBidId, generateTeamId } from '@/lib/id-generator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);

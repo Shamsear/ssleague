@@ -1,10 +1,4 @@
 import { neon } from '@neondatabase/serverless';
-import ws from 'ws';
-
-// Configure WebSocket for better connection reliability
-if (typeof WebSocket === 'undefined') {
-  (global as any).WebSocket = ws;
-}
 
 // Fantasy League Neon Database connection
 const connectionString = process.env.FANTASY_DATABASE_URL || 'postgresql://neondb_owner:npg_K1IGoDtlkPA3@ep-silent-sun-a1hf5mn7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require';
