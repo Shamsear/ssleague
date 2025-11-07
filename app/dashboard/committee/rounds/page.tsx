@@ -352,11 +352,11 @@ export default function RoundsManagementPage() {
     const { listenToSeasonRoundUpdates } = require('@/lib/realtime/listeners');
     
     const unsubscribe = listenToSeasonRoundUpdates(currentSeasonId, (message: any) => {
-      console.log('🔴 Rounds Firebase update:', message);
+      console.log('🔴 Rounds Firebase Realtime DB update:', message);
       
       if (message.type === 'bid_submitted') {
         // When a team submits bids, only refetch submissions for that specific round
-        console.log('🔍 [WebSocket] Bid submitted for round:', message.data?.round_id);
+        console.log('🔍 [Firebase] Bid submitted for round:', message.data?.round_id);
         if (message.data?.round_id) {
           const roundId = message.data.round_id;
           setLoadingSubmissions(prev => ({ ...prev, [roundId]: true }));
@@ -365,7 +365,7 @@ export default function RoundsManagementPage() {
             .then(res => res.json())
             .then(subData => {
               if (subData.success) {
-                console.log('✅ [WebSocket] Updated submissions for round:', roundId);
+                console.log('✅ [Firebase] Updated submissions for round:', roundId);
                 setRoundSubmissions(prev => ({
                   ...prev,
                   [roundId]: {
@@ -377,7 +377,7 @@ export default function RoundsManagementPage() {
               setLoadingSubmissions(prev => ({ ...prev, [roundId]: false }));
             })
             .catch(err => {
-              console.error('❌ [WebSocket] Error fetching submissions:', err);
+              console.error('❌ [Firebase] Error fetching submissions:', err);
               setLoadingSubmissions(prev => ({ ...prev, [roundId]: false }));
             });
         }
@@ -393,18 +393,6 @@ export default function RoundsManagementPage() {
     });
 
     return () => unsubscribe();
-  }, [currentSeasonId, fetchRounds]);
-
-  // Polling interval as fallback (every 30 seconds - reduced from 3)
-  useEffect(() => {
-    if (!currentSeasonId) return;
-
-    const interval = setInterval(() => {
-      console.log('⏰ [Polling] Fetching rounds update...');
-      fetchRounds(false);
-    }, 30000); // Changed from 3000ms to 30000ms
-
-    return () => clearInterval(interval);
   }, [currentSeasonId, fetchRounds]);
 
   // Timer management for active rounds

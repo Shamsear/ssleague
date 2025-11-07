@@ -170,14 +170,24 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
 
         // Fetch players, fixtures, and standings from API
         const [playersRes, fixturesRes, standingsRes] = await Promise.all([
-          fetch(`/api/team/${teamId}/players`),
+          fetch(`/api/team/${teamId}/players?seasonId=${seasonId}`),
           fetch(`/api/team/${teamId}/fixtures?seasonId=${seasonId}`),
           fetch(`/api/team/${teamId}/standings?seasonId=${seasonId}`)
         ]);
 
         if (playersRes.ok) {
           const playersData = await playersRes.json();
-          setPlayers(playersData.players || []);
+          setPlayers(playersData.data || []);
+          
+          // Update balance from API if available (Neon is source of truth after finalization)
+          if (playersData.balance) {
+            setTeamProfile(prev => prev ? {
+              ...prev,
+              budget: playersData.balance.football_budget || prev.budget,
+              totalSpent: playersData.balance.football_spent || prev.totalSpent,
+              playersCount: (playersData.footballplayers?.length || 0) + (playersData.realplayers?.length || 0),
+            } : null);
+          }
         }
 
         if (fixturesRes.ok) {
@@ -300,13 +310,13 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
                   </span>
                 )}
                 <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
-                  £{teamProfile.totalSpent.toLocaleString()} Spent
+                  ⚽ £{teamProfile.totalSpent.toLocaleString()} Spent (Football)
                 </span>
                 <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
-                  £{teamProfile.budget.toLocaleString()} Left
+                  ⚽ £{teamProfile.budget.toLocaleString()} Left (Football)
                 </span>
                 <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-                  {teamProfile.playersCount} Players
+                  {players.filter((p: any) => p.type === 'footballplayer').length} eFootball + {players.filter((p: any) => p.type === 'realplayer').length} Tournament
                 </span>
               </div>
             </div>
@@ -351,47 +361,148 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
 
         {/* Tab Content */}
         {activeTab === 'squad' && (
-          <div className="glass rounded-3xl p-6">
-            <h2 className="text-2xl font-bold mb-6">Squad</h2>
-            {players.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {players.map((player) => (
-                  <div key={player.id} className="glass rounded-xl p-4 hover:shadow-lg transition-all">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="h-12 w-12 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                        {player.imageUrl ? (
-                          <Image 
-                            src={player.imageUrl} 
-                            alt={player.name} 
-                            width={48}
-                            height={48}
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="h-full w-full flex items-center justify-center bg-gray-300 text-gray-600 font-bold">
-                            {player.name.substring(0, 2).toUpperCase()}
+          <div className="space-y-6">
+            {/* eFootball Players Section */}
+            <div className="glass rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <span>⚽</span>
+                  <span>eFootball Players</span>
+                </h2>
+                <span className="text-sm font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
+                  {players.filter((p: any) => p.type === 'footballplayer').length} Players
+                </span>
+              </div>
+              {players.filter((p: any) => p.type === 'footballplayer').length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {players.filter((p: any) => p.type === 'footballplayer').map((player) => (
+                    <div key={player.id} className="glass rounded-xl p-4 hover:shadow-lg transition-all border-l-4 border-blue-400">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-12 w-12 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                          {player.photo_url ? (
+                            <Image 
+                              src={player.photo_url} 
+                              alt={player.name} 
+                              width={48}
+                              height={48}
+                              className="object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center bg-gray-300 text-gray-600 font-bold">
+                              {player.name.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-dark truncate">{player.name}</h3>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {player.position && (
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${getPositionColor(player.position)}`}>
+                                {player.position}
+                              </span>
+                            )}
+                            {player.overall_rating && (
+                              <span className="text-sm font-semibold text-orange-600">{player.overall_rating}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-gray-600 space-y-1">
+                        {player.purchase_price && (
+                          <div>
+                            <span className="font-medium">Price:</span> £{player.purchase_price.toLocaleString()}
+                          </div>
+                        )}
+                        {player.club && (
+                          <div>
+                            <span className="font-medium">Club:</span> {player.club}
+                          </div>
+                        )}
+                        {player.nationality && (
+                          <div>
+                            <span className="font-medium">Nation:</span> {player.nationality}
                           </div>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-dark truncate">{player.name}</h3>
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${getPositionColor(player.position)}`}>
-                            {player.position}
-                          </span>
-                          <span className="text-sm font-semibold text-orange-600">{player.rating}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 py-8">No eFootball players acquired yet</p>
+              )}
+            </div>
+
+            {/* Tournament Players Section */}
+            <div className="glass rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <span>🏆</span>
+                  <span>Tournament Players</span>
+                </h2>
+                <span className="text-sm font-semibold text-green-600 bg-green-100 px-3 py-1 rounded-full">
+                  {players.filter((p: any) => p.type === 'realplayer').length} Players
+                </span>
+              </div>
+              {players.filter((p: any) => p.type === 'realplayer').length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {players.filter((p: any) => p.type === 'realplayer').map((player) => (
+                    <div key={player.id} className="glass rounded-xl p-4 hover:shadow-lg transition-all border-l-4 border-green-400">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-12 w-12 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                          {player.photo_url ? (
+                            <Image 
+                              src={player.photo_url} 
+                              alt={player.name} 
+                              width={48}
+                              height={48}
+                              className="object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center bg-gray-300 text-gray-600 font-bold">
+                              {player.name.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-dark truncate">{player.name}</h3>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {player.star_rating && (
+                              <span className="text-sm font-semibold text-yellow-600">⭐ {player.star_rating}</span>
+                            )}
+                            {player.category && (
+                              <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800 font-medium">
+                                {player.category}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      
+                      <div className="text-sm text-gray-600 space-y-1">
+                        {player.nationality && (
+                          <div>
+                            <span className="font-medium">Nationality:</span> {player.nationality}
+                          </div>
+                        )}
+                        {player.place && (
+                          <div>
+                            <span className="font-medium">Place:</span> {player.place}
+                          </div>
+                        )}
+                        {player.points !== undefined && (
+                          <div>
+                            <span className="font-medium">Points:</span> {player.points}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">Price:</span> £{player.purchasePrice.toLocaleString()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-center text-gray-500 py-8">No players in squad</p>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 py-8">No tournament players registered yet</p>
+              )}
+            </div>
           </div>
         )}
 

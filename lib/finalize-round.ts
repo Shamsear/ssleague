@@ -218,32 +218,92 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
 
       console.log(`💰 Average price for non-submitted teams: £${avgAmount}`);
 
+      // Phase 2: Random allocation from team's own bid list
       for (const teamId of nonSubmittedTeams) {
         if (allocatedTeams.has(teamId)) continue;
         
         // Get team name
         const teamName = teamNamesMap.get(teamId) || teamId;
         
-        // Get this team's bids (if any)
+        // Get this team's bids (excluding already allocated players)
         const teamBids = bidsWithNames
-          .filter(b => b.team_id === teamId && !allocatedPlayers.has(b.player_id))
-          .sort((a, b) => b.amount - a.amount);
+          .filter(b => b.team_id === teamId && !allocatedPlayers.has(b.player_id));
 
         if (teamBids.length > 0) {
-          // Auto-allocate their highest bid at average price
-          const top = teamBids[0];
+          // Randomly pick from their remaining bids
+          const randomIndex = Math.floor(Math.random() * teamBids.length);
+          const randomBid = teamBids[randomIndex];
+          
           allocations.push({
             team_id: teamId,
             team_name: teamName,
-            player_id: top.player_id,
-            player_name: top.player_name,
+            player_id: randomBid.player_id,
+            player_name: randomBid.player_name,
             amount: avgAmount,
-            bid_id: top.id,
+            bid_id: randomBid.id,
             phase: 'incomplete',
           });
-          allocatedPlayers.add(top.player_id);
+          allocatedPlayers.add(randomBid.player_id);
           allocatedTeams.add(teamId);
-          console.log(`🔄 Auto-allocated ${top.player_name} → ${teamName} (£${avgAmount}) - Team didn't submit`);
+          console.log(`🔄 Phase 2: Random allocation ${randomBid.player_name} → ${teamName} (£${avgAmount}) - Team didn't submit`);
+        }
+      }
+
+      // Phase 3: Random allocation from entire position pool for teams without any remaining bids
+      const teamsWithoutPlayers = nonSubmittedTeams.filter(teamId => !allocatedTeams.has(teamId));
+      
+      if (teamsWithoutPlayers.length > 0) {
+        console.log(`🎲 Phase 3: ${teamsWithoutPlayers.length} teams need random allocation from position pool`);
+        
+        // Get available players for this round's position/position_group
+        const availablePlayers = await sql`
+          SELECT id, name, position, position_group
+          FROM footballplayers
+          WHERE is_auction_eligible = true
+            AND is_sold = false
+            AND (position = ${round.position} OR position_group = ${round.position})
+        `;
+        
+        // Filter out already allocated players
+        const unallocatedPlayers = availablePlayers.filter(
+          (p: any) => !allocatedPlayers.has(p.id)
+        );
+        
+        console.log(`📦 Found ${unallocatedPlayers.length} unallocated players in position ${round.position}`);
+        
+        for (const teamId of teamsWithoutPlayers) {
+          if (unallocatedPlayers.length === 0) {
+            console.log(`⚠️ No more players available for team ${teamId}`);
+            break;
+          }
+          
+          // Get team name
+          const teamName = teamNamesMap.get(teamId) || teamId;
+          
+          // Randomly pick a player from unallocated pool
+          const randomIndex = Math.floor(Math.random() * unallocatedPlayers.length);
+          const randomPlayer = unallocatedPlayers[randomIndex];
+          
+          // Create a synthetic bid ID for this allocation
+          const syntheticBidId = `synthetic_${teamId}_${randomPlayer.id}_${Date.now()}`;
+          
+          allocations.push({
+            team_id: teamId,
+            team_name: teamName,
+            player_id: randomPlayer.id,
+            player_name: randomPlayer.name,
+            amount: avgAmount,
+            bid_id: syntheticBidId,
+            phase: 'incomplete',
+          });
+          
+          allocatedPlayers.add(randomPlayer.id);
+          allocatedTeams.add(teamId);
+          
+          // Remove from pool
+          unallocatedPlayers.splice(randomIndex, 1);
+          
+          console.log(`🎲 Phase 3: Random allocation ${randomPlayer.name} → ${teamName} (£${avgAmount}) - No bids available`);
         }
       }
     }
@@ -286,11 +346,20 @@ export async function applyFinalizationResults(
     const winningIds = new Set(allocations.map(a => a.bid_id));
 
     for (const alloc of allocations) {
-      if (alloc.phase === 'incomplete') {
-        const orig = decryptedAll.find(b => b.id === alloc.bid_id);
-        await sql`UPDATE bids SET status = 'won', phase = 'incomplete', actual_bid_amount = ${orig?.amount || alloc.amount}, updated_at = NOW() WHERE id = ${alloc.bid_id}`;
+      // Check if this is a synthetic bid (Phase 3 random allocation)
+      const isSyntheticBid = alloc.bid_id.startsWith('synthetic_');
+      
+      if (!isSyntheticBid) {
+        // Real bid - update it in database
+        if (alloc.phase === 'incomplete') {
+          const orig = decryptedAll.find(b => b.id === alloc.bid_id);
+          await sql`UPDATE bids SET status = 'won', phase = 'incomplete', actual_bid_amount = ${orig?.amount || alloc.amount}, updated_at = NOW() WHERE id = ${alloc.bid_id}`;
+        } else {
+          await sql`UPDATE bids SET status = 'won', phase = 'regular', updated_at = NOW() WHERE id = ${alloc.bid_id}`;
+        }
       } else {
-        await sql`UPDATE bids SET status = 'won', phase = 'regular', updated_at = NOW() WHERE id = ${alloc.bid_id}`;
+        // Synthetic bid - no bid to update, just log it
+        console.log(`🎲 Synthetic allocation for team ${alloc.team_id}: ${alloc.player_name}`);
       }
 
       // Use ON CONFLICT to handle players that might already be in team_players table

@@ -156,11 +156,72 @@ export async function GET(
       ORDER BY highest_bid DESC;
     `;
 
+    // Fetch synthetic allocations (Phase 3 - teams that got players without bids)
+    const syntheticAllocations = [];
+    if (round.status === 'completed') {
+      const teamPlayersWithoutBids = await sql`
+        SELECT 
+          tp.team_id,
+          tp.player_id,
+          tp.purchase_price as amount,
+          tp.acquired_at as created_at,
+          p.name as player_name,
+          p.position,
+          p.overall_rating,
+          t.id as team_table_id
+        FROM team_players tp
+        JOIN footballplayers p ON tp.player_id = p.id
+        LEFT JOIN teams t ON tp.team_id = t.id AND t.season_id = ${round.season_id}
+        WHERE tp.round_id = ${roundId}
+          AND NOT EXISTS (
+            SELECT 1 FROM bids b 
+            WHERE b.round_id = ${roundId} 
+              AND b.team_id = tp.team_id 
+              AND b.player_id = tp.player_id
+          )
+      `;
+
+      // Fetch team names from Firebase
+      const teamIds = [...new Set(teamPlayersWithoutBids.map((tp: any) => tp.team_id))];
+      const teamNamesMap = new Map<string, string>();
+      
+      await Promise.all(teamIds.map(async (teamId) => {
+        try {
+          const doc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
+          teamNamesMap.set(teamId, doc.exists ? doc.data()?.team_name || teamId : teamId);
+        } catch {
+          teamNamesMap.set(teamId, teamId);
+        }
+      }));
+
+      // Create synthetic bid objects
+      for (const tp of teamPlayersWithoutBids) {
+        syntheticAllocations.push({
+          id: `synthetic_${tp.team_id}_${tp.player_id}`,
+          team_id: tp.team_id,
+          player_id: tp.player_id,
+          amount: tp.amount,
+          player_name: tp.player_name,
+          position: tp.position,
+          overall_rating: tp.overall_rating,
+          team_name: teamNamesMap.get(tp.team_id) || tp.team_id,
+          status: 'won',
+          phase: 'incomplete',
+          created_at: tp.created_at,
+          round_id: roundId,
+          is_synthetic: true,
+        });
+      }
+    }
+
+    // Merge bids with synthetic allocations
+    const allBids = [...bids, ...syntheticAllocations];
+
     return NextResponse.json({
       success: true,
       data: {
         ...round,
-        bids,
+        bids: allBids,
         bidStats,
         roundPlayers,
       },

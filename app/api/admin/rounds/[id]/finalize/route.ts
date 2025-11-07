@@ -112,12 +112,11 @@ export async function POST(
 
     // Send notifications to winners and losers
     try {
-      // Get round and season details for notifications
+      // Get round details (season name only in Firebase, not needed for notifications)
       const roundDetails = await sql`
-        SELECT r.*, s.id as season_id, s.name as season_name
-        FROM rounds r
-        JOIN seasons s ON r.season_id = s.id
-        WHERE r.id = ${roundId}
+        SELECT *
+        FROM rounds
+        WHERE id = ${roundId}
         LIMIT 1
       `;
 
