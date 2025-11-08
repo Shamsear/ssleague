@@ -185,7 +185,7 @@ export function usePlaceBid(roundId: string) {
             team_name: player.team_name,
             overall_rating: player.overall_rating,
             playing_style: player.playing_style,
-            is_starred: player.is_starred_by_user || false,
+            is_starred: player.is_starred || false,
           },
         };
 

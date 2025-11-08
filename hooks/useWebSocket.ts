@@ -43,10 +43,28 @@ export function useDashboardWebSocket(seasonId: string | null, teamId: string | 
       invalidateWalletCaches(queryClient, seasonId, event.team_id);
     });
 
+    // Listen to round updates (new rounds, status changes)
+    const { ref, onValue } = require('firebase/database');
+    const { realtimeDb } = require('@/lib/firebase/config');
+    
+    const seasonRoundsRef = ref(realtimeDb, `seasons/${seasonId}/rounds`);
+    
+    const unsubRounds = onValue(seasonRoundsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        console.log('🎯 [Round Update] Received for season:', seasonId);
+        // Invalidate dashboard queries to refetch active rounds
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['active-rounds'] });
+        queryClient.invalidateQueries({ queryKey: ['team-dashboard'] });
+      }
+    });
+
     return () => {
       console.log('🔌 [Realtime DB] Disconnecting from season:', seasonId);
       unsubSquads();
       unsubWallets();
+      unsubRounds();
     };
   }, [seasonId, queryClient]);
 

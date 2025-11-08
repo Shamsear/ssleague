@@ -9,16 +9,57 @@ export interface AuthResult {
   error?: string;
 }
 
+// In-memory cache for verified tokens (reduces Firebase reads)
+interface CachedToken {
+  userId: string;
+  role?: string;
+  expiresAt: number;
+}
+
+const tokenCache = new Map<string, CachedToken>();
+
+// Cache tokens for 5 minutes (tokens are valid for 1 hour)
+const CACHE_TTL = 5 * 60 * 1000;
+
+// Clean up expired cache entries every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, cached] of tokenCache.entries()) {
+    if (cached.expiresAt < now) {
+      tokenCache.delete(token);
+    }
+  }
+}, 10 * 60 * 1000);
+
+function getCachedToken(token: string): CachedToken | null {
+  const cached = tokenCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached;
+  }
+  tokenCache.delete(token);
+  return null;
+}
+
+function setCachedToken(token: string, userId: string, role?: string) {
+  tokenCache.set(token, {
+    userId,
+    role,
+    expiresAt: Date.now() + CACHE_TTL
+  });
+}
+
 /**
  * Verify Firebase JWT token and extract user role from custom claims
  * ✅ ZERO DATABASE READS - Uses JWT token claims only
  * 
  * @param requiredRoles - Optional array of roles that are allowed (e.g., ['admin', 'committee_admin'])
  * @param request - Optional NextRequest object to extract token from header
+ * @param lightweight - If true, uses local JWT decode without Firebase verification (for low-risk operations)
  */
 export async function verifyAuth(
   requiredRoles?: string[],
-  request?: NextRequest
+  request?: NextRequest,
+  lightweight: boolean = false
 ): Promise<AuthResult> {
   try {
     // Get token from request header (if provided) or cookie
@@ -44,25 +85,58 @@ export async function verifyAuth(
       };
     }
 
-    // ✅ Verify Firebase token (validates signature, expiry, etc.)
-    // This does NOT read from database - only validates the JWT
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (error: any) {
-      console.error('Token verification error:', error);
-      return {
-        authenticated: false,
-        error: 'Invalid or expired token',
-      };
-    }
+    let userId: string;
+    let role: string | undefined;
 
-    const userId = decodedToken.uid;
-    
-    // ✅ Get role from custom claims (already in the JWT token - zero DB reads!)
-    // Note: Custom claims must be set when user is created/updated
-    // See: adminAuth.setCustomUserClaims(uid, { role: 'committee_admin' })
-    const role = decodedToken.role as string | undefined;
+    if (lightweight) {
+      // Lightweight mode: Just decode JWT locally without Firebase verification
+      // Use for low-risk operations only (player browsing, starred players, etc.)
+      const { decodeJWTLocally } = await import('@/lib/jwt-decode');
+      const decoded = decodeJWTLocally(token);
+      
+      if (!decoded || !decoded.uid) {
+        return {
+          authenticated: false,
+          error: 'Invalid token format',
+        };
+      }
+      
+      userId = decoded.uid;
+      role = decoded.role;
+    } else {
+      // Full verification mode: Check cache then Firebase
+      const cached = getCachedToken(token);
+
+      if (cached) {
+        // Cache hit - no Firebase call needed!
+        userId = cached.userId;
+        role = cached.role;
+      } else {
+        // Cache miss - verify token with Firebase
+        // ✅ Verify Firebase token (validates signature, expiry, etc.)
+        // This does NOT read from database - only validates the JWT
+        let decodedToken;
+        try {
+          decodedToken = await adminAuth.verifyIdToken(token);
+        } catch (error: any) {
+          console.error('Token verification error:', error);
+          return {
+            authenticated: false,
+            error: 'Invalid or expired token',
+          };
+        }
+
+        userId = decodedToken.uid;
+        
+        // ✅ Get role from custom claims (already in the JWT token - zero DB reads!)
+        // Note: Custom claims must be set when user is created/updated
+        // See: adminAuth.setCustomUserClaims(uid, { role: 'committee_admin' })
+        role = decodedToken.role as string | undefined;
+        
+        // Cache the result for future requests
+        setCachedToken(token, userId, role);
+      }
+    }
 
     // Check if user has required role (if specified)
     if (requiredRoles && requiredRoles.length > 0) {

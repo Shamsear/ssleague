@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/neon/config';
-import { adminAuth } from '@/lib/firebase/admin';
 import { cookies } from 'next/headers';
+import { getFirebaseUidFromToken } from '@/lib/jwt-decode';
 
 export async function POST(
   request: NextRequest,
@@ -19,9 +19,15 @@ export async function POST(
       );
     }
 
-    // Verify Firebase ID token and get Firebase UID
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    const firebaseUid = decodedToken.uid;
+    // Decode token locally (no Firebase verification for starred players)
+    const firebaseUid = getFirebaseUidFromToken(token);
+    
+    if (!firebaseUid) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid token' },
+        { status: 401 }
+      );
+    }
 
     // Get the Neon team_id for this user
     const teamResult = await sql`
