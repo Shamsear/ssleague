@@ -1,12 +1,12 @@
-import { redirect } from 'next/navigation';
-import Link from 'next/link';
-import { getSeasonById } from '@/lib/firebase/seasons';
-import { getFixturesByRounds } from '@/lib/firebase/fixtures';
-import { cookies } from 'next/headers';
-import { getUserFromToken } from '@/lib/auth/server';
-import TeamManagementClient from './team-management-client';
+'use client';
 
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import { usePermissions } from '@/hooks/usePermissions';
+import TeamManagementClient from './team-management-client';
 interface Team {
   team: {
     id: string;
@@ -39,119 +39,77 @@ interface Match {
   created_at?: any;
 }
 
-async function getTeamsData(userSeasonId: string, token: string) {
-  try {
-    console.log('[getTeamsData] Fetching season:', userSeasonId);
-    const season = await getSeasonById(userSeasonId);
-    if (!season) {
-      console.log('[getTeamsData] Season not found');
-      return { teams: [], seasonName: '', recentMatches: [] };
+
+export default function TeamManagementPage() {
+  const { user, loading } = useAuth();
+  const { userSeasonId } = usePermissions();
+  const router = useRouter();
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [seasonName, setSeasonName] = useState('');
+  const [recentMatches, setRecentMatches] = useState<Match[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Redirect if not authenticated or not committee admin
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login?redirect=/dashboard/committee/team-management');
     }
-    
-    console.log('[getTeamsData] Season found:', season.name);
-
-    // Fetch teams using the API route logic directly
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const apiUrl = `${baseUrl}/api/team/all?season_id=${userSeasonId}`;
-    console.log('[getTeamsData] Calling API:', apiUrl);
-    
-    const response = await fetchWithTokenRefresh(apiUrl, {
-      cache: 'no-store',
-      headers: {
-        'Cookie': `auth-token=${token}`,
-      },
-    });
-    
-    console.log('[getTeamsData] API response status:', response.status);
-    const data = await response.json();
-    console.log('[getTeamsData] API response:', data);
-
-    const teams = data.success && data.data.teams ? data.data.teams : [];
-
-    // Fetch recent matches
-    let recentMatches: Match[] = [];
-    try {
-      const fixtureRounds = await getFixturesByRounds(userSeasonId);
-
-      const allMatches = fixtureRounds.flatMap(round =>
-        round.matches
-          .filter(match => match.status === 'completed')
-          .map(match => ({
-            ...match,
-            round_number: round.round_number,
-            leg: round.leg
-          }))
-      );
-
-      const sortedMatches = allMatches.sort((a, b) => {
-        const dateA = a.updated_at || a.created_at || new Date(0);
-        const dateB = b.updated_at || b.created_at || new Date(0);
-        return new Date(dateB).getTime() - new Date(dateA).getTime();
-      });
-
-      recentMatches = sortedMatches.slice(0, 5);
-    } catch (error) {
-      console.error('Error fetching matches:', error);
+    if (!loading && user && user.role !== 'committee_admin' && user.role !== 'super_admin') {
+      router.push('/dashboard');
     }
+  }, [user, loading, router]);
 
-    return { teams, seasonName: season.name, recentMatches };
-  } catch (error) {
-    console.error('Error fetching teams data:', error);
-    return { teams: [], seasonName: '', recentMatches: [] };
+  // Fetch teams and season data
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user || !userSeasonId) return;
+      
+      setIsLoading(true);
+      try {
+        // Fetch season info
+        const seasonResponse = await fetchWithTokenRefresh(`/api/seasons/${userSeasonId}`);
+        const seasonData = await seasonResponse.json();
+        if (seasonData.success && seasonData.data) {
+          setSeasonName(seasonData.data.name || '');
+        }
+
+        // Fetch teams
+        const teamsResponse = await fetchWithTokenRefresh(`/api/team/all?season_id=${userSeasonId}`);
+        const teamsData = await teamsResponse.json();
+        if (teamsData.success && teamsData.data.teams) {
+          setTeams(teamsData.data.teams);
+        }
+
+        // Fetch recent matches
+        const matchesResponse = await fetchWithTokenRefresh(`/api/fixtures?season_id=${userSeasonId}&status=completed&limit=5`);
+        const matchesData = await matchesResponse.json();
+        if (matchesData.success && matchesData.data) {
+          setRecentMatches(matchesData.data.slice(0, 5));
+        }
+      } catch (error) {
+        console.error('Error fetching team management data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user, userSeasonId]);
+
+  if (loading || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading team management...</p>
+        </div>
+      </div>
+    );
   }
-}
-
-export default async function TeamManagementPage() {
-  // Get user from server-side cookie
-  const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value;
-
-  if (!token) {
-    redirect('/login?redirect=/dashboard/committee/team-management');
-  }
-
-  const user = await getUserFromToken(token);
 
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600">Authentication Error</h1>
-          <p>User not found from token</p>
-        </div>
-      </div>
-    );
+    return null;
   }
-
-  if (user.role !== 'committee_admin' && user.role !== 'super_admin') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
-          <p>Your role: {user.role}</p>
-          <p>Required: committee_admin or super_admin</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Get user's season ID (check both field names for compatibility)
-  const userSeasonId = user.current_season_id || user.seasonId || '';
-  
-  console.log('[TeamManagement] User ID:', user.id);
-  console.log('[TeamManagement] User role:', user.role);
-  console.log('[TeamManagement] User current_season_id:', user.current_season_id);
-  console.log('[TeamManagement] User seasonId:', user.seasonId);
-  console.log('[TeamManagement] Using season ID:', userSeasonId);
-
-  // Fetch all data server-side
-  const { teams, seasonName, recentMatches } = userSeasonId
-    ? await getTeamsData(userSeasonId, token)
-    : { teams: [], seasonName: '', recentMatches: [] };
-  
-  console.log('[TeamManagement] Fetched teams count:', teams.length);
-  console.log('[TeamManagement] Season name:', seasonName);
-  console.log('[TeamManagement] Recent matches count:', recentMatches.length);
 
   return (
     <TeamManagementClient

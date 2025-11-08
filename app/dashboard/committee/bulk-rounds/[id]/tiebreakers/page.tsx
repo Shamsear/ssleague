@@ -2,9 +2,10 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface Tiebreaker {
   id: string;
@@ -57,6 +58,7 @@ export default function BulkRoundTiebreakersPage() {
   const [expandedTiebreakers, setExpandedTiebreakers] = useState<Set<string>>(new Set());
   const [resolvingTiebreaker, setResolvingTiebreaker] = useState<string | null>(null);
   const [creatingTiebreaker, setCreatingTiebreaker] = useState<string | null>(null);
+  const [seasonId, setSeasonId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -86,6 +88,9 @@ export default function BulkRoundTiebreakersPage() {
             status: roundData.status,
             base_price: roundData.base_price,
           });
+          if (roundData.season_id) {
+            setSeasonId(roundData.season_id);
+          }
         }
 
         // Fetch tiebreakers for this round
@@ -123,6 +128,28 @@ export default function BulkRoundTiebreakersPage() {
 
     fetchData();
   }, [roundId]);
+
+  // WebSocket for live updates
+  const { isConnected } = useWebSocket({
+    channel: seasonId ? `updates/${seasonId}/tiebreakers` : null,
+    enabled: !!seasonId,
+    onMessage: useCallback((message: any) => {
+      if (message.team_id && message.bid_amount) {
+        setTiebreakers(prev => prev.map(tb => {
+          const teamInTiebreaker = tb.teams.find(t => t.team_id === message.team_id);
+          if (!teamInTiebreaker) return tb;
+          return {
+            ...tb,
+            current_highest_bid: message.bid_amount,
+            current_highest_team_id: message.team_id,
+            teams: tb.teams.map(t => 
+              t.team_id === message.team_id ? { ...t, bid_amount: message.bid_amount } : t
+            ),
+          };
+        }));
+      }
+    }, []),
+  });
 
   const toggleTiebreaker = (tiebreakerId: string) => {
     const newExpanded = new Set(expandedTiebreakers);
