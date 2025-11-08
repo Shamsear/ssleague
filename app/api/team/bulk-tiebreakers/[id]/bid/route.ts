@@ -126,14 +126,28 @@ export async function POST(
       );
     }
 
-    // VALIDATION 5: Bid must be higher than current highest
-    if (bid_amount <= tiebreaker.current_highest_bid) {
+    // VALIDATION 5: Bid must be higher than current highest (unless you're the current highest bidder)
+    // If you're the current highest bidder, you can raise your own bid
+    const isCurrentHighest = tiebreaker.current_highest_team_id === teamId;
+    
+    if (!isCurrentHighest && bid_amount <= tiebreaker.current_highest_bid) {
       return NextResponse.json(
         { 
           success: false, 
           error: `Bid must be higher than current highest bid of £${tiebreaker.current_highest_bid}`,
           current_highest_bid: tiebreaker.current_highest_bid,
           should_refresh: true
+        },
+        { status: 400 }
+      );
+    }
+    
+    // If you're already the highest bidder, just ensure new bid is higher than your current bid
+    if (isCurrentHighest && bid_amount <= teamData.current_bid) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Your new bid must be higher than your current bid of £${teamData.current_bid}`
         },
         { status: 400 }
       );
@@ -220,6 +234,7 @@ export async function POST(
     `;
 
     // Update tiebreaker with new highest bid (with optimistic locking)
+    // Allow update if: bid is higher OR you're the current highest bidder raising your own bid OR it's the first bid (NULL)
     const updateResult = await sql`
       UPDATE bulk_tiebreakers
       SET 
@@ -228,13 +243,13 @@ export async function POST(
         last_activity_time = ${bidTime.toISOString()},
         updated_at = NOW()
       WHERE id = ${tiebreakerId}
-      AND current_highest_bid < ${bid_amount}
+      AND (current_highest_bid IS NULL OR current_highest_bid < ${bid_amount} OR current_highest_team_id = ${teamId})
       RETURNING current_highest_bid
     `;
     
     // Check if update succeeded (race condition check)
     if (updateResult.length === 0) {
-      // Someone else bid higher in the meantime
+      // Someone else bid higher in the meantime (or you're no longer the highest bidder)
       const latestTiebreaker = await sql`
         SELECT current_highest_bid, current_highest_team_id
         FROM bulk_tiebreakers
@@ -242,16 +257,20 @@ export async function POST(
       `;
       
       const actualHighest = latestTiebreaker[0]?.current_highest_bid || bid_amount;
+      const actualHighestTeam = latestTiebreaker[0]?.current_highest_team_id;
       
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: `Bid was outbid! Current highest bid is now £${actualHighest}`,
-          current_highest_bid: actualHighest,
-          should_refresh: true
-        },
-        { status: 409 } // 409 Conflict
-      );
+      // Only return error if someone else is now the highest bidder
+      if (actualHighestTeam !== teamId) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Bid was outbid! Current highest bid is now £${actualHighest}`,
+            current_highest_bid: actualHighest,
+            should_refresh: true
+          },
+          { status: 409 } // 409 Conflict
+        );
+      }
     }
 
     console.log(`✅ Bid placed: £${bid_amount} by team ${teamId}`);
