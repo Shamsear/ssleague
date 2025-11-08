@@ -8,21 +8,34 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Get session cookie and verify authentication
+    // Get token cookie and verify authentication
     const cookieStore = await cookies();
-    const session = cookieStore.get('session')?.value;
+    const token = cookieStore.get('token')?.value;
 
-    if (!session) {
+    if (!token) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Verify the session and get team_id
-    const decodedClaims = await adminAuth.verifySessionCookie(session, true);
-    const teamId = decodedClaims.uid;
+    // Verify Firebase ID token and get Firebase UID
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    const firebaseUid = decodedToken.uid;
 
+    // Get the Neon team_id for this user
+    const teamResult = await sql`
+      SELECT id FROM teams WHERE firebase_uid = ${firebaseUid} LIMIT 1
+    `;
+
+    if (teamResult.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Team not found in database' },
+        { status: 404 }
+      );
+    }
+
+    const teamId = teamResult[0].id;
     const { id: playerId } = await params;
 
     // Insert into starred_players table (ON CONFLICT DO NOTHING prevents duplicates)

@@ -214,14 +214,14 @@ export async function GET(
         p.gk_parrying,
         p.gk_reflexes,
         p.gk_reach,
-        CASE WHEN sp.player_id IS NOT NULL THEN true ELSE false END as is_starred_by_user
+        CASE WHEN sp.player_id IS NOT NULL THEN true ELSE false END as is_starred
       FROM footballplayers p
       LEFT JOIN starred_players sp ON p.id = sp.player_id AND sp.team_id = ${teamId}
       WHERE (p.position = ANY(${positions}) OR p.position_group = ANY(${positions}))
       AND p.is_auction_eligible = true
       AND (p.is_sold = false OR p.is_sold IS NULL)
       AND (p.team_id IS NULL OR p.team_id = '')
-      ORDER BY is_starred_by_user DESC, p.overall_rating DESC
+      ORDER BY is_starred DESC, p.overall_rating DESC
     `;
 
     // Get user's bids for this round (including encrypted_bid_data for decryption)
