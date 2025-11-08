@@ -362,14 +362,14 @@ export async function POST(
           console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${bid.team_id}`);
           
           // Broadcast squad and wallet updates to team
-          await broadcastTeamUpdate(bid.team_id, 'squad', {
+          await broadcastSquadUpdate(round.season_id, bid.team_id, {
             player_id: playerId,
-            player_name: playerInfo?.player_name,
+            player_name: playerInfo?.player_name || 'Unknown Player',
             action: 'acquired',
             price: round.base_price,
           });
           
-          await broadcastTeamUpdate(bid.team_id, 'wallet', {
+          await broadcastWalletUpdate(round.season_id, bid.team_id, {
             new_balance: isDualCurrency ? updateData.football_budget : updateData.budget,
             amount_spent: round.base_price,
             currency_type: isDualCurrency ? 'football' : 'single',

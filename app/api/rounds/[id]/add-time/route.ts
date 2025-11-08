@@ -65,7 +65,9 @@ export async function POST(
     
     if (seasonId) {
       await broadcastRoundUpdate(seasonId, id, {
+        type: 'round_updated',
         end_time: updatedRound[0].end_time,
+        duration_seconds: updatedRound[0].duration_seconds,
         time_extended: true,
         minutes_added: minutes,
       });

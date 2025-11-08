@@ -18,7 +18,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await verifyAuth(['committee'], request);
+    const auth = await verifyAuth(['admin', 'committee_admin'], request);
     if (!auth.authenticated) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },
