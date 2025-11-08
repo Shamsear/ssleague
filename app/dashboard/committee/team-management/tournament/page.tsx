@@ -66,7 +66,9 @@ export default function TournamentDashboardPage() {
     away_deadline_time: '17:00',
     result_day_offset: 2,
     result_deadline_time: '00:30',
+    has_league_stage: true,
     has_group_stage: false,
+    group_assignment_mode: 'auto',
     number_of_groups: 4,
     teams_per_group: 4,
     teams_advancing_per_group: 2,
@@ -140,6 +142,29 @@ export default function TournamentDashboardPage() {
       tournament_name: generatedName
     }));
   }, [newTournament.tournament_type, activeSeasonId]);
+
+  // Auto-compute is_pure_knockout: true when knockout is enabled but no league/group stage
+  useEffect(() => {
+    const isPureKnockout = newTournament.has_knockout_stage && !newTournament.has_league_stage && !newTournament.has_group_stage;
+    if (newTournament.is_pure_knockout !== isPureKnockout) {
+      setNewTournament(prev => ({
+        ...prev,
+        is_pure_knockout: isPureKnockout
+      }));
+    }
+  }, [newTournament.has_knockout_stage, newTournament.has_league_stage, newTournament.has_group_stage]);
+
+  // Auto-compute is_pure_knockout for edit form
+  useEffect(() => {
+    if (!editingTournament) return;
+    const isPureKnockout = editingTournament.has_knockout_stage && !editingTournament.has_league_stage && !editingTournament.has_group_stage;
+    if (editingTournament.is_pure_knockout !== isPureKnockout) {
+      setEditingTournament(prev => ({
+        ...prev!,
+        is_pure_knockout: isPureKnockout
+      }));
+    }
+  }, [editingTournament?.has_knockout_stage, editingTournament?.has_league_stage, editingTournament?.has_group_stage]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -286,7 +311,9 @@ export default function TournamentDashboardPage() {
           away_deadline_time: '17:00',
           result_day_offset: 2,
           result_deadline_time: '00:30',
+          has_league_stage: true,
           has_group_stage: false,
+          group_assignment_mode: 'auto',
           number_of_groups: 4,
           teams_per_group: 4,
           teams_advancing_per_group: 2,
@@ -1595,13 +1622,21 @@ export default function TournamentDashboardPage() {
                       <label className="flex items-start p-4 bg-white/50 rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
                         <input
                           type="checkbox"
-                          checked={newTournament.has_knockout_stage}
-                          onChange={(e) => setNewTournament({ ...newTournament, has_knockout_stage: e.target.checked })}
+                          checked={newTournament.has_league_stage}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setNewTournament({ 
+                              ...newTournament, 
+                              has_league_stage: checked,
+                              // Uncheck group if league is checked
+                              has_group_stage: checked ? false : newTournament.has_group_stage
+                            });
+                          }}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
                         />
                         <div className="flex-1">
-                          <span className="font-medium text-gray-900">Include Knockout Stage</span>
-                          <p className="text-xs text-gray-500 mt-1">Add playoffs after league stage</p>
+                          <span className="font-medium text-gray-900">⚽ Include League Stage</span>
+                          <p className="text-xs text-gray-500 mt-1">Round-robin format where all teams play each other</p>
                         </div>
                       </label>
 
@@ -1609,14 +1644,150 @@ export default function TournamentDashboardPage() {
                         <input
                           type="checkbox"
                           checked={newTournament.has_group_stage}
-                          onChange={(e) => setNewTournament({ ...newTournament, has_group_stage: e.target.checked })}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setNewTournament({ 
+                              ...newTournament, 
+                              has_group_stage: checked,
+                              // Uncheck league if group is checked
+                              has_league_stage: checked ? false : newTournament.has_league_stage
+                            });
+                          }}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
                         />
                         <div className="flex-1">
-                          <span className="font-medium text-gray-900">Include Group Stage</span>
-                          <p className="text-xs text-gray-500 mt-1">Divide teams into groups</p>
+                          <span className="font-medium text-gray-900">🏆 Include Group Stage</span>
+                          <p className="text-xs text-gray-500 mt-1">Divide teams into groups (e.g., Group A, B, C, D)</p>
                         </div>
                       </label>
+
+                      <label className="flex items-start p-4 bg-white/50 rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
+                        <input
+                          type="checkbox"
+                          checked={newTournament.has_knockout_stage}
+                          onChange={(e) => setNewTournament({ ...newTournament, has_knockout_stage: e.target.checked })}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-gray-900">🥇 Include Knockout Stage</span>
+                          <p className="text-xs text-gray-500 mt-1">Add playoff bracket (quarters, semis, final)</p>
+                        </div>
+                      </label>
+
+                      {/* Group Stage Configuration */}
+                      {newTournament.has_group_stage && (
+                        <div className="ml-8 p-4 bg-blue-50/50 rounded-xl border border-blue-200 space-y-3">
+                          <h4 className="font-semibold text-gray-900 text-sm">Group Stage Settings</h4>
+                          
+                          {/* Group Assignment Mode */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Group Assignment Mode</label>
+                            <div className="flex gap-3">
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="radio"
+                                  value="auto"
+                                  checked={newTournament.group_assignment_mode === 'auto'}
+                                  onChange={(e) => setNewTournament({ ...newTournament, group_assignment_mode: e.target.value })}
+                                  className="mr-2"
+                                />
+                                <span className="text-sm">🤖 Automatic (evenly distributed)</span>
+                              </label>
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="radio"
+                                  value="manual"
+                                  checked={newTournament.group_assignment_mode === 'manual'}
+                                  onChange={(e) => setNewTournament({ ...newTournament, group_assignment_mode: e.target.value })}
+                                  className="mr-2"
+                                />
+                                <span className="text-sm">✋ Manual (assign teams to groups)</span>
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Number of Groups</label>
+                              <input
+                                type="number"
+                                min="2"
+                                max="8"
+                                value={newTournament.number_of_groups}
+                                onChange={(e) => setNewTournament({ ...newTournament, number_of_groups: parseInt(e.target.value) || 4 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Teams per Group</label>
+                              <input
+                                type="number"
+                                min="2"
+                                max="8"
+                                value={newTournament.teams_per_group}
+                                onChange={(e) => setNewTournament({ ...newTournament, teams_per_group: parseInt(e.target.value) || 4 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Teams Advancing</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="4"
+                                value={newTournament.teams_advancing_per_group}
+                                onChange={(e) => setNewTournament({ ...newTournament, teams_advancing_per_group: parseInt(e.target.value) || 2 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Knockout Stage Configuration */}
+                      {newTournament.has_knockout_stage && (
+                        <div className="ml-8 p-4 bg-purple-50/50 rounded-xl border border-purple-200 space-y-3">
+                          <h4 className="font-semibold text-gray-900 text-sm">Knockout Stage Settings</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Playoff Teams</label>
+                              <input
+                                type="number"
+                                min="2"
+                                max="16"
+                                value={newTournament.playoff_teams}
+                                onChange={(e) => setNewTournament({ ...newTournament, playoff_teams: parseInt(e.target.value) || 4 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Total teams in knockout</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Direct Semifinal</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="4"
+                                value={newTournament.direct_semifinal_teams}
+                                onChange={(e) => setNewTournament({ ...newTournament, direct_semifinal_teams: parseInt(e.target.value) || 2 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Top teams skip quarters</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Qualification %</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={newTournament.qualification_threshold}
+                                onChange={(e) => setNewTournament({ ...newTournament, qualification_threshold: parseInt(e.target.value) || 75 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Min % points to qualify</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <label className="flex items-start p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 cursor-pointer hover:border-blue-500 transition-all shadow-sm">
                         <input
@@ -1780,11 +1951,15 @@ export default function TournamentDashboardPage() {
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   try {
+                    // Compute is_pure_knockout before submission
+                    const isPureKnockout = editingTournament.has_knockout_stage && !editingTournament.has_league_stage && !editingTournament.has_group_stage;
+                    
                     // Update tournament basic info
                     const tournamentRes = await fetchWithTokenRefresh(`/api/tournaments/${editingTournament.id}`, {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
+                        tournament_type: editingTournament.tournament_type,
                         tournament_name: editingTournament.tournament_name,
                         tournament_code: editingTournament.tournament_code,
                         status: editingTournament.status,
@@ -1794,6 +1969,17 @@ export default function TournamentDashboardPage() {
                         is_primary: editingTournament.is_primary,
                         include_in_fantasy: editingTournament.include_in_fantasy,
                         include_in_awards: editingTournament.include_in_awards,
+                        has_league_stage: editingTournament.has_league_stage ?? true,
+                        has_group_stage: editingTournament.has_group_stage,
+                        group_assignment_mode: editingTournament.group_assignment_mode || 'auto',
+                        number_of_groups: editingTournament.number_of_groups,
+                        teams_per_group: editingTournament.teams_per_group,
+                        teams_advancing_per_group: editingTournament.teams_advancing_per_group,
+                        has_knockout_stage: editingTournament.has_knockout_stage,
+                        playoff_teams: editingTournament.playoff_teams,
+                        direct_semifinal_teams: editingTournament.direct_semifinal_teams,
+                        qualification_threshold: editingTournament.qualification_threshold,
+                        is_pure_knockout: isPureKnockout,
                       })
                     });
                     
@@ -1843,9 +2029,47 @@ export default function TournamentDashboardPage() {
                     });
                   }
                 }} className="space-y-6">
+                  {/* Basic Info */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Tournament Name</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Tournament Type
+                      </label>
+                      <select
+                        value={editingTournament.tournament_type}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, tournament_type: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        required
+                      >
+                        <option value="league">⚽ League</option>
+                        <option value="cup">🏆 Cup</option>
+                        <option value="ucl">🌟 Champions League</option>
+                        <option value="uel">⭐ Europa League</option>
+                        <option value="super_cup">🏅 Super Cup</option>
+                        <option value="league_cup">🥤 League Cup</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Status
+                      </label>
+                      <select
+                        value={editingTournament.status}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, status: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        required
+                      >
+                        <option value="upcoming">Upcoming</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Tournament Name
+                      </label>
                       <input
                         type="text"
                         value={editingTournament.tournament_name}
@@ -1854,22 +2078,48 @@ export default function TournamentDashboardPage() {
                         required
                       />
                     </div>
-                    
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                      <select
-                        value={editingTournament.status}
-                        onChange={(e) => setEditingTournament({ ...editingTournament, status: e.target.value })}
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Tournament Code
+                      </label>
+                      <input
+                        type="text"
+                        value={editingTournament.tournament_code}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, tournament_code: e.target.value })}
                         className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
-                      >
-                        <option value="upcoming">Upcoming</option>
-                        <option value="active">Active</option>
-                        <option value="completed">Completed</option>
-                      </select>
+                        required
+                      />
                     </div>
-                    
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">👥 Squad Size</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={editingTournament.start_date}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, start_date: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        value={editingTournament.end_date}
+                        onChange={(e) => setEditingTournament({ ...editingTournament, end_date: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        👥 Squad Size (Players per Match)
+                      </label>
                       <input
                         type="number"
                         value={editingTournament.squad_size || 11}
@@ -1887,20 +2137,263 @@ export default function TournamentDashboardPage() {
                           }
                         }}
                         className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        placeholder="11"
                         required
                       />
-                      <p className="text-xs text-gray-500 mt-1">Players per match lineup (1-18)</p>
+                      <p className="text-xs text-gray-500 mt-1">Number of players each team can field (1-18)</p>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      value={editingTournament.description}
+                      onChange={(e) => setEditingTournament({ ...editingTournament, description: e.target.value })}
+                      rows={3}
+                      className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                      placeholder="Optional description..."
+                    />
+                  </div>
+
+                  {/* Format Settings */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Tournament Format</h3>
                     
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                      <input
-                        type="text"
-                        value={editingTournament.description || ''}
-                        onChange={(e) => setEditingTournament({ ...editingTournament, description: e.target.value })}
-                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
-                        placeholder="Optional"
-                      />
+                    <div className="space-y-4">
+                      <label className="flex items-start p-4 bg-white/50 rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
+                        <input
+                          type="checkbox"
+                          checked={editingTournament.has_league_stage ?? true}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setEditingTournament({ 
+                              ...editingTournament, 
+                              has_league_stage: checked,
+                              // Uncheck group if league is checked
+                              has_group_stage: checked ? false : editingTournament.has_group_stage
+                            });
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-gray-900">⚽ Include League Stage</span>
+                          <p className="text-xs text-gray-500 mt-1">Round-robin format where all teams play each other</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start p-4 bg-white/50 rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
+                        <input
+                          type="checkbox"
+                          checked={editingTournament.has_group_stage}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setEditingTournament({ 
+                              ...editingTournament, 
+                              has_group_stage: checked,
+                              // Uncheck league if group is checked
+                              has_league_stage: checked ? false : editingTournament.has_league_stage
+                            });
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-gray-900">🏆 Include Group Stage</span>
+                          <p className="text-xs text-gray-500 mt-1">Divide teams into groups (e.g., Group A, B, C, D)</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start p-4 bg-white/50 rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-all">
+                        <input
+                          type="checkbox"
+                          checked={editingTournament.has_knockout_stage}
+                          onChange={(e) => setEditingTournament({ ...editingTournament, has_knockout_stage: e.target.checked })}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-gray-900">🥇 Include Knockout Stage</span>
+                          <p className="text-xs text-gray-500 mt-1">Add playoff bracket (quarters, semis, final)</p>
+                        </div>
+                      </label>
+
+                      {/* Group Stage Configuration */}
+                      {editingTournament.has_group_stage && (
+                        <div className="ml-8 p-4 bg-blue-50/50 rounded-xl border border-blue-200 space-y-3">
+                          <h4 className="font-semibold text-gray-900 text-sm">Group Stage Settings</h4>
+                          
+                          {/* Group Assignment Mode */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Group Assignment Mode</label>
+                            <div className="flex gap-3">
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="radio"
+                                  value="auto"
+                                  checked={(editingTournament.group_assignment_mode || 'auto') === 'auto'}
+                                  onChange={(e) => setEditingTournament({ ...editingTournament, group_assignment_mode: e.target.value })}
+                                  className="mr-2"
+                                />
+                                <span className="text-sm">🤖 Automatic (evenly distributed)</span>
+                              </label>
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="radio"
+                                  value="manual"
+                                  checked={(editingTournament.group_assignment_mode || 'auto') === 'manual'}
+                                  onChange={(e) => setEditingTournament({ ...editingTournament, group_assignment_mode: e.target.value })}
+                                  className="mr-2"
+                                />
+                                <span className="text-sm">✋ Manual (assign teams to groups)</span>
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Number of Groups</label>
+                              <input
+                                type="number"
+                                min="2"
+                                max="8"
+                                value={editingTournament.number_of_groups || 4}
+                                onChange={(e) => setEditingTournament({ ...editingTournament, number_of_groups: parseInt(e.target.value) || 4 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Teams per Group</label>
+                              <input
+                                type="number"
+                                min="2"
+                                max="8"
+                                value={editingTournament.teams_per_group || 4}
+                                onChange={(e) => setEditingTournament({ ...editingTournament, teams_per_group: parseInt(e.target.value) || 4 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Teams Advancing</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="4"
+                                value={editingTournament.teams_advancing_per_group || 2}
+                                onChange={(e) => setEditingTournament({ ...editingTournament, teams_advancing_per_group: parseInt(e.target.value) || 2 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Knockout Stage Configuration */}
+                      {editingTournament.has_knockout_stage && (
+                        <div className="ml-8 p-4 bg-purple-50/50 rounded-xl border border-purple-200 space-y-3">
+                          <h4 className="font-semibold text-gray-900 text-sm">Knockout Stage Settings</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Playoff Teams</label>
+                              <input
+                                type="number"
+                                min="2"
+                                max="16"
+                                value={editingTournament.playoff_teams || 4}
+                                onChange={(e) => setEditingTournament({ ...editingTournament, playoff_teams: parseInt(e.target.value) || 4 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Total teams in knockout</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Direct Semifinal</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="4"
+                                value={editingTournament.direct_semifinal_teams || 2}
+                                onChange={(e) => setEditingTournament({ ...editingTournament, direct_semifinal_teams: parseInt(e.target.value) || 2 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Top teams skip quarters</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Qualification %</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={editingTournament.qualification_threshold || 75}
+                                onChange={(e) => setEditingTournament({ ...editingTournament, qualification_threshold: parseInt(e.target.value) || 75 })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Min % points to qualify</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <label className="flex items-start p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 cursor-pointer hover:border-blue-500 transition-all shadow-sm">
+                        <input
+                          type="checkbox"
+                          checked={editingTournament.is_primary}
+                          onChange={(e) => setEditingTournament({ ...editingTournament, is_primary: e.target.checked })}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900">⭐ Set as Primary Tournament</span>
+                            <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">IMPORTANT</span>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-2 font-medium">Primary tournament is the main league competition for this season:</p>
+                          <ul className="text-xs text-gray-600 mt-1 ml-4 list-disc space-y-1">
+                            <li>Automatically generates news on season lifecycle events (creation, activation, completion)</li>
+                            <li>Shown as the main tournament on dashboard and public pages</li>
+                            <li>Only ONE tournament should be marked as primary per season</li>
+                          </ul>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 cursor-pointer hover:border-green-400 transition-all shadow-sm">
+                        <input
+                          type="checkbox"
+                          checked={editingTournament.include_in_fantasy}
+                          onChange={(e) => setEditingTournament({ ...editingTournament, include_in_fantasy: e.target.checked })}
+                          className="rounded border-gray-300 text-green-600 focus:ring-green-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900">⚡ Include in Fantasy League</span>
+                            <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full font-semibold">IMPORTANT</span>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-2 font-medium">Player stats from this tournament will count towards fantasy league:</p>
+                          <ul className="text-xs text-gray-600 mt-1 ml-4 list-disc space-y-1">
+                            <li>Fantasy league points and rankings</li>
+                            <li>Fantasy team scoring calculations</li>
+                          </ul>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start p-4 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-xl border-2 border-amber-200 cursor-pointer hover:border-amber-400 transition-all shadow-sm">
+                        <input
+                          type="checkbox"
+                          checked={editingTournament.include_in_awards}
+                          onChange={(e) => setEditingTournament({ ...editingTournament, include_in_awards: e.target.checked })}
+                          className="rounded border-gray-300 text-amber-600 focus:ring-amber-500 mt-1 mr-3"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900">🏆 Include in Player Awards</span>
+                            <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded-full font-semibold">IMPORTANT</span>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-2 font-medium">Player stats from this tournament will count towards end-of-season awards:</p>
+                          <ul className="text-xs text-gray-600 mt-1 ml-4 list-disc space-y-1">
+                            <li>Golden Boot (Top Goal Scorer)</li>
+                            <li>Golden Glove (Most Clean Sheets)</li>
+                            <li>Golden Ball (Most POTM Awards)</li>
+                            <li>Category-specific awards (Legend/Classic)</li>
+                          </ul>
+                        </div>
+                      </label>
                     </div>
                   </div>
                   

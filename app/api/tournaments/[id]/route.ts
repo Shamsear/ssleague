@@ -45,6 +45,7 @@ export async function PATCH(
     const body = await request.json();
     
     const {
+      tournament_type,
       tournament_name,
       tournament_code,
       status,
@@ -55,11 +56,23 @@ export async function PATCH(
       display_order,
       include_in_fantasy,
       include_in_awards,
+      has_league_stage,
+      has_group_stage,
+      group_assignment_mode,
+      number_of_groups,
+      teams_per_group,
+      teams_advancing_per_group,
+      has_knockout_stage,
+      playoff_teams,
+      direct_semifinal_teams,
+      qualification_threshold,
+      is_pure_knockout,
     } = body;
 
     const result = await sql`
       UPDATE tournaments
       SET
+        tournament_type = COALESCE(${tournament_type}, tournament_type),
         tournament_name = COALESCE(${tournament_name}, tournament_name),
         tournament_code = COALESCE(${tournament_code}, tournament_code),
         status = COALESCE(${status}, status),
@@ -70,6 +83,17 @@ export async function PATCH(
         display_order = COALESCE(${display_order}::integer, display_order),
         include_in_fantasy = COALESCE(${include_in_fantasy}::boolean, include_in_fantasy),
         include_in_awards = COALESCE(${include_in_awards}::boolean, include_in_awards),
+        has_league_stage = COALESCE(${has_league_stage}::boolean, has_league_stage),
+        has_group_stage = COALESCE(${has_group_stage}::boolean, has_group_stage),
+        group_assignment_mode = COALESCE(${group_assignment_mode}, group_assignment_mode),
+        number_of_groups = COALESCE(${number_of_groups}::integer, number_of_groups),
+        teams_per_group = COALESCE(${teams_per_group}::integer, teams_per_group),
+        teams_advancing_per_group = COALESCE(${teams_advancing_per_group}::integer, teams_advancing_per_group),
+        has_knockout_stage = COALESCE(${has_knockout_stage}::boolean, has_knockout_stage),
+        playoff_teams = COALESCE(${playoff_teams}::integer, playoff_teams),
+        direct_semifinal_teams = COALESCE(${direct_semifinal_teams}::integer, direct_semifinal_teams),
+        qualification_threshold = COALESCE(${qualification_threshold}::integer, qualification_threshold),
+        is_pure_knockout = COALESCE(${is_pure_knockout}::boolean, is_pure_knockout),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *

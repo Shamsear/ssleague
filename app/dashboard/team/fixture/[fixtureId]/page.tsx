@@ -223,17 +223,17 @@ export default function FixturePage() {
     const substitutions = matchups.filter(m => m.home_substituted || m.away_substituted);
     const hasSubstitutions = substitutions.length > 0;
 
-    const text = `*SS PES SUPER LEAGUE - S${seasonNumber}* ⚽
+    const text = `*SS PES SUPER LEAGUE - S${seasonNumber}*
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🏆 *MATCHDAY ${fixture.round_number}* - ${fixture.leg === 'first' ? '1st' : '2nd'} Leg
+*MATCHDAY ${fixture.round_number}* - ${fixture.leg === 'first' ? '1st' : '2nd'} Leg
 
-🔵 *${fixture.home_team_name}*  🆚  🔴 *${fixture.away_team_name}*
+*${fixture.home_team_name}*  vs  *${fixture.away_team_name}*
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 *MATCHUPS:*
+*MATCHUPS:*
 
 ${matchups.map((m, idx) => {
   let line = '';
@@ -246,10 +246,10 @@ ${matchups.map((m, idx) => {
   
   // Add substitution indicators
   if (m.home_substituted) {
-    line += `\n   🔁 H: ${m.home_original_player_name} ➡️ ${m.home_player_name}`;
+    line += `\n   SUB H: ${m.home_original_player_name} -> ${m.home_player_name}`;
   }
   if (m.away_substituted) {
-    line += `\n   🔁 A: ${m.away_original_player_name} ➡️ ${m.away_player_name}`;
+    line += `\n   SUB A: ${m.away_original_player_name} -> ${m.away_player_name}`;
   }
   
   return line;
@@ -257,46 +257,45 @@ ${matchups.map((m, idx) => {
 
 ${hasSubstitutions ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔄 *SUBSTITUTIONS & PENALTIES:*
+*SUBSTITUTIONS & PENALTIES:*
 
 ${substitutions.map(m => {
   let subText = [];
   if (m.home_substituted) {
-    subText.push(`⚠️ Home: +${m.home_sub_penalty || 0} penalty goals awarded to ${fixture.away_team_name}`);
+    subText.push(`WARNING Home: +${m.home_sub_penalty || 0} penalty goals awarded to ${fixture.away_team_name}`);
   }
   if (m.away_substituted) {
-    subText.push(`⚠️ Away: +${m.away_sub_penalty || 0} penalty goals awarded to ${fixture.home_team_name}`);
+    subText.push(`WARNING Away: +${m.away_sub_penalty || 0} penalty goals awarded to ${fixture.home_team_name}`);
   }
   return subText.join('\n');
 }).join('\n')}
 
 ` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 *SCORE BREAKDOWN:*
+*SCORE BREAKDOWN:*
 
-🏠 *${fixture.home_team_name}*
+*${fixture.home_team_name}*
 Total: *${hasResults ? homeTotalGoals : 0}* goals
-${hasResults && (homePlayerGoals > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0) ? `   • Player Goals: ${homePlayerGoals}
-${awaySubPenalties > 0 ? `   • Opponent Sub Penalties: +${awaySubPenalties}\n` : ''}${homePenaltyGoals > 0 ? `   • Fine/Violation Goals: +${homePenaltyGoals}\n` : ''}` : ''}
-✈️ *${fixture.away_team_name}*
+${hasResults && (homePlayerGoals > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0) ? `   - Player Goals: ${homePlayerGoals}
+${awaySubPenalties > 0 ? `   - Opponent Sub Penalties: +${awaySubPenalties}\n` : ''}${homePenaltyGoals > 0 ? `   - Fine/Violation Goals: +${homePenaltyGoals}\n` : ''}` : ''}
+*${fixture.away_team_name}*
 Total: *${hasResults ? awayTotalGoals : 0}* goals
-${hasResults && (awayPlayerGoals > 0 || homeSubPenalties > 0 || awayPenaltyGoals > 0) ? `   • Player Goals: ${awayPlayerGoals}
-${homeSubPenalties > 0 ? `   • Opponent Sub Penalties: +${homeSubPenalties}\n` : ''}${awayPenaltyGoals > 0 ? `   • Fine/Violation Goals: +${awayPenaltyGoals}\n` : ''}` : ''}
+${hasResults && (awayPlayerGoals > 0 || homeSubPenalties > 0 || awayPenaltyGoals > 0) ? `   - Player Goals: ${awayPlayerGoals}
+${homeSubPenalties > 0 ? `   - Opponent Sub Penalties: +${homeSubPenalties}\n` : ''}${awayPenaltyGoals > 0 ? `   - Fine/Violation Goals: +${awayPenaltyGoals}\n` : ''}` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*MAN OF THE MATCH*
+${hasResults ? `${motmName}` : 'To be announced'}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⭐ *MAN OF THE MATCH*
-${hasResults ? `🏅 ${motmName}` : '⏳ To be announced'}
+${hasResults ? `*RESULT*
+${winner === 'DRAW' ? '*MATCH DRAWN*' : `*${winner} WON!*`}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-${hasResults ? `🎯 *RESULT*
-${winner === 'DRAW' ? '🤝 *MATCH DRAWN*' : `🎉 *${winner} WON!*`}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━` : `⏳ *Match yet to be played*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━` : `*Match yet to be played*
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━`}
 
-_Powered by SS Super League S${seasonNumber} Committee_ 💫`;
+_Powered by SS Super League S${seasonNumber} Committee_`;
 
     return text;
   };

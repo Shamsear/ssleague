@@ -31,7 +31,7 @@ export async function POST(
 
     const team_ids = assignedTeams.map(t => t.team_id);
 
-    // Get tournament details
+    // Get tournament details with format settings
     const tournament = await sql`
       SELECT t.*, ts.tournament_system
       FROM tournaments t
@@ -48,6 +48,14 @@ export async function POST(
     }
 
     const tournamentData = tournament[0];
+
+    // Validate tournament has at least one stage enabled
+    if (!tournamentData.has_league_stage && !tournamentData.has_group_stage && !tournamentData.has_knockout_stage) {
+      return NextResponse.json(
+        { success: false, error: 'Tournament must have at least one stage enabled (League, Group, or Knockout)' },
+        { status: 400 }
+      );
+    }
 
     // Check if fixtures already exist
     const existingFixtures = await sql`
@@ -83,13 +91,80 @@ export async function POST(
     // Sort teams by name for consistent fixture generation
     const teams = teamsData.sort((a, b) => a.team_name.localeCompare(b.team_name));
 
-    // Generate round-robin fixtures
-    const fixtures = generateRoundRobinFixtures(
-      tournamentId,
-      tournamentData.season_id,
-      teams,
-      is_two_legged ?? true
-    );
+    // Generate fixtures based on tournament format
+    let fixtures: any[] = [];
+
+    if (tournamentData.has_league_stage) {
+      // League format: Round-robin
+      console.log('Generating league fixtures (round-robin)...');
+      fixtures = generateRoundRobinFixtures(
+        tournamentId,
+        tournamentData.season_id,
+        teams,
+        is_two_legged ?? true
+      );
+    } else if (tournamentData.has_group_stage) {
+      // Group format: Divide into groups, then round-robin within each group
+      console.log('Generating group stage fixtures...');
+      
+      // Check if manual group assignment is required
+      if (tournamentData.group_assignment_mode === 'manual') {
+        // Fetch manual group assignments
+        const groupAssignments = await sql`
+          SELECT team_id, group_name
+          FROM tournament_team_groups
+          WHERE tournament_id = ${tournamentId}
+        `;
+        
+        if (groupAssignments.length === 0) {
+          return NextResponse.json(
+            { success: false, error: 'Manual group assignment mode is enabled but no teams have been assigned to groups. Please assign teams to groups first.' },
+            { status: 400 }
+          );
+        }
+        
+        // Map teams to their groups
+        const teamGroupMap = new Map(groupAssignments.map(a => [a.team_id, a.group_name]));
+        
+        // Add group info to teams
+        teams.forEach(team => {
+          team.group = teamGroupMap.get(team.id) || null;
+        });
+        
+        // Check if all teams are assigned
+        if (teams.some(t => !t.group)) {
+          return NextResponse.json(
+            { success: false, error: 'Some teams are not assigned to any group. Please complete group assignments.' },
+            { status: 400 }
+          );
+        }
+      }
+      
+      fixtures = generateGroupStageFixtures(
+        tournamentId,
+        tournamentData.season_id,
+        teams,
+        tournamentData.number_of_groups || 4,
+        is_two_legged ?? true,
+        tournamentData.group_assignment_mode
+      );
+    } else if (tournamentData.is_pure_knockout) {
+      // Pure knockout: Generate bracket
+      console.log('Generating knockout bracket...');
+      fixtures = generateKnockoutFixtures(
+        tournamentId,
+        tournamentData.season_id,
+        teams,
+        tournamentData.playoff_teams || teams.length
+      );
+    }
+
+    if (fixtures.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No fixtures generated. Check tournament format settings.' },
+        { status: 400 }
+      );
+    }
 
     // Insert fixtures in batch
     for (const fixture of fixtures) {
@@ -352,6 +427,240 @@ function generateRoundRobinFixtures(
         });
       }
     }
+  }
+
+  return fixtures;
+}
+
+// Helper function to generate group stage fixtures
+function generateGroupStageFixtures(
+  tournamentId: string,
+  seasonId: string,
+  teams: any[],
+  numberOfGroups: number,
+  isTwoLegged: boolean,
+  groupAssignmentMode?: string
+) {
+  const fixtures: any[] = [];
+  
+  // Divide teams into groups based on mode
+  const groups: any[][] = [];
+  
+  if (groupAssignmentMode === 'manual') {
+    // Manual mode: teams already have .group property assigned
+    // Group teams by their assigned group
+    const groupMap = new Map<string, any[]>();
+    
+    teams.forEach(team => {
+      const groupName = team.group;
+      if (!groupMap.has(groupName)) {
+        groupMap.set(groupName, []);
+      }
+      groupMap.get(groupName)!.push(team);
+    });
+    
+    // Convert map to array, sorted by group name
+    const sortedGroupNames = Array.from(groupMap.keys()).sort();
+    sortedGroupNames.forEach(groupName => {
+      groups.push(groupMap.get(groupName)!);
+    });
+  } else {
+    // Auto mode: distribute teams evenly
+    const teamsPerGroup = Math.ceil(teams.length / numberOfGroups);
+    for (let i = 0; i < numberOfGroups; i++) {
+      const groupTeams = teams.slice(i * teamsPerGroup, (i + 1) * teamsPerGroup);
+      if (groupTeams.length > 0) {
+        groups.push(groupTeams);
+      }
+    }
+  }
+
+  // Generate fixtures for each group
+  let overallRound = 0;
+  groups.forEach((groupTeams, groupIndex) => {
+    const groupName = String.fromCharCode(65 + groupIndex); // A, B, C, D...
+    const teamList = [...groupTeams];
+
+    // Add bye if odd number of teams
+    if (teamList.length % 2 !== 0) {
+      teamList.push({ id: 'bye', team_name: 'BYE' });
+    }
+
+    const numTeams = teamList.length;
+    const numRounds = numTeams - 1;
+    const matchesPerRound = numTeams / 2;
+
+    // Generate first leg
+    for (let round = 0; round < numRounds; round++) {
+      overallRound++;
+      let matchNumber = 0;
+
+      for (let match = 0; match < matchesPerRound; match++) {
+        let home: number, away: number;
+
+        if (match === 0) {
+          home = 0;
+          away = round + 1;
+        } else {
+          home = (round + match) % (numTeams - 1) + 1;
+          away = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
+        }
+
+        // Skip bye teams
+        if (teamList[home].id === 'bye' || teamList[away].id === 'bye') {
+          continue;
+        }
+
+        matchNumber++;
+        const fixtureId = `${tournamentId}_grp${groupName}_leg1_r${round + 1}_m${matchNumber}`;
+
+        fixtures.push({
+          id: fixtureId,
+          tournament_id: tournamentId,
+          season_id: seasonId,
+          round_number: overallRound,
+          match_number: matchNumber,
+          home_team_id: teamList[home].id,
+          away_team_id: teamList[away].id,
+          home_team_name: teamList[home].team_name,
+          away_team_name: teamList[away].team_name,
+          status: 'scheduled',
+          leg: 'first',
+          group_name: groupName,
+        });
+      }
+    }
+
+    // Generate second leg if needed
+    if (isTwoLegged) {
+      const roundsInFirstLeg = numRounds;
+
+      for (let round = 0; round < numRounds; round++) {
+        overallRound++;
+        let matchNumber = 0;
+
+        for (let match = 0; match < matchesPerRound; match++) {
+          let home: number, away: number;
+
+          if (match === 0) {
+            home = 0;
+            away = round + 1;
+          } else {
+            home = (round + match) % (numTeams - 1) + 1;
+            away = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
+          }
+
+          // Skip bye teams
+          if (teamList[home].id === 'bye' || teamList[away].id === 'bye') {
+            continue;
+          }
+
+          matchNumber++;
+          const fixtureId = `${tournamentId}_grp${groupName}_leg2_r${round + roundsInFirstLeg + 1}_m${matchNumber}`;
+
+          // Swap home and away for second leg
+          fixtures.push({
+            id: fixtureId,
+            tournament_id: tournamentId,
+            season_id: seasonId,
+            round_number: overallRound,
+            match_number: matchNumber,
+            home_team_id: teamList[away].id, // Swapped
+            away_team_id: teamList[home].id, // Swapped
+            home_team_name: teamList[away].team_name,
+            away_team_name: teamList[home].team_name,
+            status: 'scheduled',
+            leg: 'second',
+            group_name: groupName,
+          });
+        }
+      }
+    }
+  });
+
+  return fixtures;
+}
+
+// Helper function to generate knockout bracket fixtures
+function generateKnockoutFixtures(
+  tournamentId: string,
+  seasonId: string,
+  teams: any[],
+  playoffTeams: number
+) {
+  const fixtures: any[] = [];
+  
+  // Ensure playoff teams is a power of 2 (2, 4, 8, 16...)
+  const validSizes = [2, 4, 8, 16, 32];
+  const actualPlayoffTeams = validSizes.find(size => size >= Math.min(playoffTeams, teams.length)) || 2;
+  
+  // Take only the number of teams that fit the bracket
+  const bracketTeams = teams.slice(0, actualPlayoffTeams);
+  
+  if (bracketTeams.length < 2) {
+    return fixtures;
+  }
+
+  // Determine tournament structure
+  const rounds: { [key: string]: string } = {
+    '2': 'Final',
+    '4': 'Semi-Final',
+    '8': 'Quarter-Final',
+    '16': 'Round of 16',
+    '32': 'Round of 32',
+  };
+
+  let currentRound = 1;
+  let teamsInRound = bracketTeams.length;
+  
+  // Generate fixtures for each knockout round
+  while (teamsInRound >= 2) {
+    const roundName = rounds[teamsInRound.toString()] || `Round ${currentRound}`;
+    const matchesInRound = teamsInRound / 2;
+
+    for (let matchNum = 1; matchNum <= matchesInRound; matchNum++) {
+      const fixtureId = `${tournamentId}_ko_r${currentRound}_m${matchNum}`;
+
+      // For the first round, assign actual teams. For later rounds, use TBD
+      if (currentRound === 1) {
+        const homeIdx = (matchNum - 1) * 2;
+        const awayIdx = homeIdx + 1;
+
+        fixtures.push({
+          id: fixtureId,
+          tournament_id: tournamentId,
+          season_id: seasonId,
+          round_number: currentRound,
+          match_number: matchNum,
+          home_team_id: bracketTeams[homeIdx].id,
+          away_team_id: bracketTeams[awayIdx].id,
+          home_team_name: bracketTeams[homeIdx].team_name,
+          away_team_name: bracketTeams[awayIdx].team_name,
+          status: 'scheduled',
+          leg: 'knockout',
+          knockout_round: roundName,
+        });
+      } else {
+        // TBD teams for future rounds
+        fixtures.push({
+          id: fixtureId,
+          tournament_id: tournamentId,
+          season_id: seasonId,
+          round_number: currentRound,
+          match_number: matchNum,
+          home_team_id: 'TBD',
+          away_team_id: 'TBD',
+          home_team_name: `Winner R${currentRound - 1}M${(matchNum - 1) * 2 + 1}`,
+          away_team_name: `Winner R${currentRound - 1}M${(matchNum - 1) * 2 + 2}`,
+          status: 'pending',
+          leg: 'knockout',
+          knockout_round: roundName,
+        });
+      }
+    }
+
+    teamsInRound = teamsInRound / 2;
+    currentRound++;
   }
 
   return fixtures;
