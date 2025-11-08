@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.NEON_AUCTION_DB_URL!);
 
 /**
  * GET /api/bulk-rounds/:id
