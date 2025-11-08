@@ -41,6 +41,7 @@ export default function AuctionSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [formData, setFormData] = useState({
     auction_window: 'season_start',
     max_rounds: 25,
@@ -53,6 +54,32 @@ export default function AuctionSettingsPage() {
     phase_2_min_balance: 30,
     phase_3_min_balance: 10,
   });
+
+  // Auto-adjust phase end rounds when max_rounds changes
+  const handleMaxRoundsChange = (newMaxRounds: number) => {
+    // Calculate proportional phase ends based on typical 25-round structure (18, 20)
+    // Phase 1: ~72% of rounds (18/25)
+    // Phase 2: ~80% of rounds (20/25)
+    const phase1Percent = 0.72;
+    const phase2Percent = 0.80;
+    
+    const newPhase1 = Math.max(1, Math.floor(newMaxRounds * phase1Percent));
+    const newPhase2 = Math.max(newPhase1 + 1, Math.floor(newMaxRounds * phase2Percent));
+    
+    setFormData(prev => ({
+      ...prev,
+      max_rounds: newMaxRounds,
+      phase_1_end_round: Math.min(newPhase1, newMaxRounds - 2),
+      phase_2_end_round: Math.min(newPhase2, newMaxRounds),
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  // Handle form data changes and mark as unsaved
+  const handleFormChange = (updates: Partial<typeof formData>) => {
+    setFormData(prev => ({ ...prev, ...updates }));
+    setHasUnsavedChanges(true);
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -87,18 +114,22 @@ export default function AuctionSettingsPage() {
       if (success) {
         setSettings(data.settings);
         setStats(data.stats);
-        setFormData({
-          auction_window: data.settings.auction_window || 'season_start',
-          max_rounds: data.settings.max_rounds,
-          min_balance_per_round: data.settings.min_balance_per_round,
-          max_squad_size: data.settings.max_squad_size || 25,
-          contract_duration: data.settings.contract_duration || 2,
-          phase_1_end_round: data.settings.phase_1_end_round || 18,
-          phase_1_min_balance: data.settings.phase_1_min_balance || 30,
-          phase_2_end_round: data.settings.phase_2_end_round || 20,
-          phase_2_min_balance: data.settings.phase_2_min_balance || 30,
-          phase_3_min_balance: data.settings.phase_3_min_balance || 10,
-        });
+        
+        // Only update form data if there are no unsaved changes
+        if (!hasUnsavedChanges) {
+          setFormData({
+            auction_window: data.settings.auction_window || 'season_start',
+            max_rounds: data.settings.max_rounds,
+            min_balance_per_round: data.settings.min_balance_per_round,
+            max_squad_size: data.settings.max_squad_size || 25,
+            contract_duration: data.settings.contract_duration || 2,
+            phase_1_end_round: data.settings.phase_1_end_round || 18,
+            phase_1_min_balance: data.settings.phase_1_min_balance || 30,
+            phase_2_end_round: data.settings.phase_2_end_round || 20,
+            phase_2_min_balance: data.settings.phase_2_min_balance || 30,
+            phase_3_min_balance: data.settings.phase_3_min_balance || 10,
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching auction settings:', err);
@@ -109,6 +140,23 @@ export default function AuctionSettingsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation: Phase end rounds must be within max_rounds
+    if (formData.phase_1_end_round >= formData.max_rounds) {
+      alert(`Phase 1 End Round (${formData.phase_1_end_round}) must be less than Maximum Rounds (${formData.max_rounds})`);
+      return;
+    }
+    
+    if (formData.phase_2_end_round > formData.max_rounds) {
+      alert(`Phase 2 End Round (${formData.phase_2_end_round}) cannot exceed Maximum Rounds (${formData.max_rounds})`);
+      return;
+    }
+    
+    if (formData.phase_1_end_round >= formData.phase_2_end_round) {
+      alert(`Phase 1 End Round (${formData.phase_1_end_round}) must be less than Phase 2 End Round (${formData.phase_2_end_round})`);
+      return;
+    }
+    
     setSaving(true);
 
     try {
@@ -122,6 +170,7 @@ export default function AuctionSettingsPage() {
 
       if (result.success) {
         alert('Settings saved successfully!');
+        setHasUnsavedChanges(false);
         fetchSettings();
       } else {
         alert(`Error: ${result.error}`);
@@ -219,7 +268,7 @@ export default function AuctionSettingsPage() {
                   <select
                     id="auction_window"
                     value={formData.auction_window}
-                    onChange={(e) => setFormData({ ...formData, auction_window: e.target.value })}
+                    onChange={(e) => handleFormChange({ auction_window: e.target.value })}
                     required
                     className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base appearance-none"
                   >
@@ -247,13 +296,13 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="max_rounds"
                     value={formData.max_rounds}
-                    onChange={(e) => setFormData({ ...formData, max_rounds: parseInt(e.target.value) })}
+                    onChange={(e) => handleMaxRoundsChange(parseInt(e.target.value) || 1)}
                     min="1"
                     required
                     className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
                   />
                 </div>
-                <p className="mt-1 text-xs text-gray-500">Maximum number of rounds in this auction (default: 25)</p>
+                <p className="mt-1 text-xs text-gray-500">Maximum number of rounds in this auction. Phase end rounds will auto-adjust.</p>
               </div>
 
               <div>
@@ -270,7 +319,7 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="min_balance_per_round"
                     value={formData.min_balance_per_round}
-                    onChange={(e) => setFormData({ ...formData, min_balance_per_round: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ min_balance_per_round: parseInt(e.target.value) || 0 })}
                     min="0"
                     required
                     className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
@@ -293,7 +342,7 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="max_squad_size"
                     value={formData.max_squad_size}
-                    onChange={(e) => setFormData({ ...formData, max_squad_size: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ max_squad_size: parseInt(e.target.value) || 1 })}
                     min="1"
                     max="50"
                     required
@@ -317,7 +366,7 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="contract_duration"
                     value={formData.contract_duration}
-                    onChange={(e) => setFormData({ ...formData, contract_duration: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ contract_duration: parseInt(e.target.value) || 1 })}
                     min="1"
                     max="5"
                     required
@@ -342,12 +391,18 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="phase_1_end_round"
                     value={formData.phase_1_end_round}
-                    onChange={(e) => setFormData({ ...formData, phase_1_end_round: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ phase_1_end_round: parseInt(e.target.value) || 1 })}
                     min="1"
+                    max={formData.max_rounds - 1}
                     required
-                    className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                    className={`w-full py-3 px-4 bg-white/60 border rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base ${
+                      formData.phase_1_end_round >= formData.max_rounds ? 'border-red-300 bg-red-50/50' : 'border-gray-200'
+                    }`}
                   />
                   <p className="mt-1 text-xs text-gray-500">Last round of Phase 1 (bids exceeding reserve are rejected)</p>
+                  {formData.phase_1_end_round >= formData.max_rounds && (
+                    <p className="mt-1 text-xs text-red-600">⚠ Must be less than max rounds ({formData.max_rounds})</p>
+                  )}
                 </div>
 
                 <div>
@@ -358,7 +413,7 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="phase_1_min_balance"
                     value={formData.phase_1_min_balance}
-                    onChange={(e) => setFormData({ ...formData, phase_1_min_balance: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ phase_1_min_balance: parseInt(e.target.value) || 0 })}
                     min="0"
                     required
                     className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
@@ -374,12 +429,23 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="phase_2_end_round"
                     value={formData.phase_2_end_round}
-                    onChange={(e) => setFormData({ ...formData, phase_2_end_round: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ phase_2_end_round: parseInt(e.target.value) || 1 })}
                     min="1"
+                    max={formData.max_rounds}
                     required
-                    className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
+                    className={`w-full py-3 px-4 bg-white/60 border rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base ${
+                      formData.phase_2_end_round > formData.max_rounds || formData.phase_2_end_round <= formData.phase_1_end_round
+                        ? 'border-red-300 bg-red-50/50'
+                        : 'border-gray-200'
+                    }`}
                   />
                   <p className="mt-1 text-xs text-gray-500">Last round of Phase 2 (bids allowed with warnings)</p>
+                  {formData.phase_2_end_round > formData.max_rounds && (
+                    <p className="mt-1 text-xs text-red-600">⚠ Cannot exceed max rounds ({formData.max_rounds})</p>
+                  )}
+                  {formData.phase_2_end_round <= formData.phase_1_end_round && (
+                    <p className="mt-1 text-xs text-red-600">⚠ Must be greater than Phase 1 ({formData.phase_1_end_round})</p>
+                  )}
                 </div>
 
                 <div>
@@ -390,7 +456,7 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="phase_2_min_balance"
                     value={formData.phase_2_min_balance}
-                    onChange={(e) => setFormData({ ...formData, phase_2_min_balance: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ phase_2_min_balance: parseInt(e.target.value) || 0 })}
                     min="0"
                     required
                     className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"
@@ -406,7 +472,7 @@ export default function AuctionSettingsPage() {
                     type="number"
                     id="phase_3_min_balance"
                     value={formData.phase_3_min_balance}
-                    onChange={(e) => setFormData({ ...formData, phase_3_min_balance: parseInt(e.target.value) })}
+                    onChange={(e) => handleFormChange({ phase_3_min_balance: parseInt(e.target.value) || 0 })}
                     min="0"
                     required
                     className="w-full py-3 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base"

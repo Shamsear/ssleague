@@ -319,8 +319,14 @@ export async function deletePlayer(id: string): Promise<boolean> {
  * Delete all players
  */
 export async function deleteAllPlayers(): Promise<number> {
-  const result = await sql`DELETE FROM footballplayers`;
-  return result.length;
+  // First get the count
+  const countResult = await sql`SELECT COUNT(*) as count FROM footballplayers`;
+  const count = parseInt(countResult[0]?.count || '0');
+  
+  // Then delete all
+  await sql`DELETE FROM footballplayers`;
+  
+  return count;
 }
 
 /**
