@@ -1233,9 +1233,33 @@ export default function RoundsManagementPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
                             </svg>
                           </div>
-                          <h3 className="text-base sm:text-lg font-semibold">
-                            {round.position} Round #{extractIdNumberAsInt(round.id)}
-                          </h3>
+                          <div>
+                            <h3 className="text-base sm:text-lg font-semibold">
+                              {round.position} Round #{round.round_number || extractIdNumberAsInt(round.id)}
+                            </h3>
+                            {(() => {
+                              // Determine phase based on round number and auction settings
+                              const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
+                              if (!settings || !round.round_number) return null;
+                              
+                              let phase = 'Phase 3';
+                              let phaseColor = 'bg-purple-100 text-purple-700';
+                              
+                              if (round.round_number <= settings.phase_1_end_round) {
+                                phase = 'Phase 1';
+                                phaseColor = 'bg-blue-100 text-blue-700';
+                              } else if (round.round_number <= settings.phase_2_end_round) {
+                                phase = 'Phase 2';
+                                phaseColor = 'bg-orange-100 text-orange-700';
+                              }
+                              
+                              return (
+                                <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>
+                                  {phase}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </div>
                         <div className="text-sm font-medium px-4 py-2 rounded-xl bg-white/80 backdrop-blur-sm shadow-sm flex items-center">
                           <svg className="w-4 h-4 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1500,9 +1524,25 @@ export default function RoundsManagementPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                           </div>
-                          <h3 className="text-base sm:text-lg font-semibold">
-                            {round.position} Round #{extractIdNumberAsInt(round.id)}
-                          </h3>
+                          <div>
+                            <h3 className="text-base sm:text-lg font-semibold">
+                              {round.position} Round #{round.round_number || extractIdNumberAsInt(round.id)}
+                            </h3>
+                            {(() => {
+                              const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
+                              if (!settings || !round.round_number) return null;
+                              let phase = 'Phase 3';
+                              let phaseColor = 'bg-purple-100 text-purple-700';
+                              if (round.round_number <= settings.phase_1_end_round) {
+                                phase = 'Phase 1';
+                                phaseColor = 'bg-blue-100 text-blue-700';
+                              } else if (round.round_number <= settings.phase_2_end_round) {
+                                phase = 'Phase 2';
+                                phaseColor = 'bg-orange-100 text-orange-700';
+                              }
+                              return <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>{phase}</span>;
+                            })()}
+                          </div>
                         </div>
                         <span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium">
                           Resolving Tiebreakers
@@ -1592,9 +1632,25 @@ export default function RoundsManagementPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                           </div>
-                          <h3 className="text-base sm:text-lg font-semibold">
-                            {round.position} Round #{extractIdNumberAsInt(round.id)}
-                          </h3>
+                          <div>
+                            <h3 className="text-base sm:text-lg font-semibold">
+                              {round.position} Round #{round.round_number || extractIdNumberAsInt(round.id)}
+                            </h3>
+                            {(() => {
+                              const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
+                              if (!settings || !round.round_number) return null;
+                              let phase = 'Phase 3';
+                              let phaseColor = 'bg-purple-100 text-purple-700';
+                              if (round.round_number <= settings.phase_1_end_round) {
+                                phase = 'Phase 1';
+                                phaseColor = 'bg-blue-100 text-blue-700';
+                              } else if (round.round_number <= settings.phase_2_end_round) {
+                                phase = 'Phase 2';
+                                phaseColor = 'bg-orange-100 text-orange-700';
+                              }
+                              return <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>{phase}</span>;
+                            })()}
+                          </div>
                         </div>
                         <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-medium">
                           Expired

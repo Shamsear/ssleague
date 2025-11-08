@@ -593,7 +593,7 @@ export default function TeamBulkTiebreakerPage() {
               <div>
                 <h3 className="text-lg font-bold text-orange-900">You're Being Outbid!</h3>
                 <p className="text-orange-700">
-                  {tiebreaker.highest_bidder_team_name} has the highest bid at £{tiebreaker.current_highest_bid}
+                  Another team has the highest bid at £{tiebreaker.current_highest_bid}
                 </p>
               </div>
             </div>
@@ -636,8 +636,8 @@ export default function TeamBulkTiebreakerPage() {
             <div className="glass rounded-xl p-4 border border-white/10">
               <div className="text-sm text-gray-600 mb-1">Current Highest Bid</div>
               <div className="text-3xl font-bold text-red-600">£{tiebreaker.current_highest_bid}</div>
-              {tiebreaker.highest_bidder_team_name && (
-                <div className="text-sm text-gray-600 mt-1">by {tiebreaker.highest_bidder_team_name}</div>
+              {!isWinning && (
+                <div className="text-sm text-gray-600 mt-1">by another team</div>
               )}
             </div>
 
