@@ -35,6 +35,14 @@ interface BulkRound {
   base_price: number;
 }
 
+interface ContestedPlayer {
+  player_id: string;
+  player_name: string;
+  position: string;
+  bid_count: number;
+  status: string;
+}
+
 export default function BulkRoundTiebreakersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -43,10 +51,12 @@ export default function BulkRoundTiebreakersPage() {
 
   const [bulkRound, setBulkRound] = useState<BulkRound | null>(null);
   const [tiebreakers, setTiebreakers] = useState<Tiebreaker[]>([]);
+  const [contestedPlayers, setContestedPlayers] = useState<ContestedPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [expandedTiebreakers, setExpandedTiebreakers] = useState<Set<string>>(new Set());
   const [resolvingTiebreaker, setResolvingTiebreaker] = useState<string | null>(null);
+  const [creatingTiebreaker, setCreatingTiebreaker] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -88,6 +98,20 @@ export default function BulkRoundTiebreakersPage() {
         } else {
           console.error('❌ Failed to load tiebreakers:', tiebreakerResult.error);
           setTiebreakers([]);
+        }
+        
+        // Fetch contested players (pending tiebreaker creation)
+        const contestedResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
+        const contestedResult = await contestedResponse.json();
+        
+        if (contestedResult.success && contestedResult.data) {
+          const roundData = contestedResult.data;
+          // Filter players with status 'contested' and no tiebreaker_id
+          const pending = (roundData.players || []).filter((p: any) => 
+            p.status === 'contested' && p.bid_count > 1 && !p.tiebreaker_id
+          );
+          setContestedPlayers(pending);
+          console.log(`✅ Found ${pending.length} contested players needing tiebreakers`);
         }
       } catch (err) {
         console.error('❌ Error fetching data:', err);
@@ -147,13 +171,57 @@ export default function BulkRoundTiebreakersPage() {
       
       if (tiebreakerResult.success && tiebreakerResult.data) {
         setTiebreakers(tiebreakerResult.data);
-        alert('✅ Status refreshed successfully');
       }
+      
+      // Also refresh contested players
+      const contestedResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
+      const contestedResult = await contestedResponse.json();
+      
+      if (contestedResult.success && contestedResult.data) {
+        const roundData = contestedResult.data;
+        const pending = (roundData.players || []).filter((p: any) => 
+          p.status === 'contested' && p.bid_count > 1 && !p.tiebreaker_id
+        );
+        setContestedPlayers(pending);
+      }
+      
+      alert('✅ Status refreshed successfully');
     } catch (err) {
       console.error('Error refreshing:', err);
       alert('❌ Failed to refresh status');
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  const handleCreateTiebreaker = async (playerId: string, playerName: string) => {
+    const confirmed = window.confirm(
+      `Create tiebreaker for ${playerName}? This will start a Last Person Standing auction for all teams who bid on this player.`
+    );
+    
+    if (!confirmed) return;
+    
+    setCreatingTiebreaker(playerId);
+    try {
+      const response = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${roundId}/create-tiebreaker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_id: playerId }),
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`✅ Tiebreaker created successfully for ${playerName}!`);
+        // Refresh the page
+        window.location.reload();
+      } else {
+        alert(`❌ Failed to create tiebreaker: ${result.error}`);
+      }
+    } catch (err) {
+      console.error('Error creating tiebreaker:', err);
+      alert('❌ An error occurred while creating the tiebreaker');
+    } finally {
+      setCreatingTiebreaker(null);
     }
   };
 
@@ -337,10 +405,52 @@ export default function BulkRoundTiebreakersPage() {
           </div>
         </div>
 
-        {/* Tiebreakers List */}
+        {/* Pending Tiebreakers (Not Yet Created) */}
+        {contestedPlayers.length > 0 && (
+          <div className="glass rounded-2xl p-6 border border-white/20 mb-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+              <svg className="w-6 h-6 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Pending Tiebreakers ({contestedPlayers.length})
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              These players have multiple bids and need tiebreaker auctions to be created:
+            </p>
+            <div className="space-y-3">
+              {contestedPlayers.map((player) => (
+                <div
+                  key={player.player_id}
+                  className="flex items-center justify-between p-4 bg-orange-50 rounded-lg border border-orange-200"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="font-bold text-gray-800">{player.player_name}</h3>
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                        {player.position}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {player.bid_count} teams bidding
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleCreateTiebreaker(player.player_id, player.player_name)}
+                    disabled={creatingTiebreaker === player.player_id}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creatingTiebreaker === player.player_id ? 'Creating...' : '🔥 Create Tiebreaker'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Active Tiebreakers List */}
         <div className="glass rounded-2xl p-6 border border-white/20">
           <h2 className="text-xl font-bold text-gray-800 mb-4">
-            Tiebreakers ({filteredTiebreakers.length})
+            Active Tiebreakers ({filteredTiebreakers.length})
           </h2>
 
           {filteredTiebreakers.length === 0 ? (

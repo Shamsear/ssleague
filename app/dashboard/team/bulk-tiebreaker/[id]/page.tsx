@@ -68,6 +68,7 @@ export default function TeamBulkTiebreakerPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [myTeamId, setMyTeamId] = useState<string | null>(null); // Store current user's team ID
+  const [isWithdrawn, setIsWithdrawn] = useState(false); // Track if user has withdrawn
   
   // Winner modal state
   const [showWinnerModal, setShowWinnerModal] = useState(false);
@@ -112,6 +113,11 @@ export default function TeamBulkTiebreakerPage() {
         // Store current user's team ID for comparison
         if (myTeam?.team_id) {
           setMyTeamId(myTeam.team_id);
+        }
+        
+        // Check if user has withdrawn
+        if (myTeam && myTeam.status === 'withdrawn') {
+          setIsWithdrawn(true);
         }
         
         // Store season ID for WebSocket
@@ -530,6 +536,48 @@ export default function TeamBulkTiebreakerPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600">Tiebreaker not found</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show withdrawn message page
+  if (isWithdrawn) {
+    return (
+      <div className="min-h-screen py-8 px-4">
+        <div className="container mx-auto max-w-3xl">
+          <div className="glass rounded-2xl p-8 border border-white/20 text-center">
+            <div className="mb-6">
+              <div className="inline-flex p-4 rounded-full bg-gray-100 mb-4">
+                <svg className="w-16 h-16 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-3">You Have Withdrawn</h1>
+              <p className="text-lg text-gray-600 mb-6">
+                You have withdrawn from the tiebreaker for <span className="font-bold">{player.name}</span>.
+              </p>
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  You are no longer participating in this Last Person Standing auction.
+                  {tiebreaker.highest_bidder_team_name && (
+                    <span className="block mt-2">
+                      Current leader: <strong>{tiebreaker.highest_bidder_team_name}</strong> with a bid of <strong>£{tiebreaker.current_highest_bid}</strong>
+                    </span>
+                  )}
+                </p>
+              </div>
+              <Link
+                href="/dashboard/team"
+                className="inline-flex items-center px-6 py-3 bg-[#0066FF] text-white rounded-xl hover:bg-[#0052CC] transition-colors font-bold"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Dashboard
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     );
