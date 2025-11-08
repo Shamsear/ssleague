@@ -269,9 +269,9 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         const teamName = teamNamesMap.get(teamId) || teamId;
         
         // Phase 1: Use average price, Phase 3: Use £10 minimum
-        const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
+        let allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
         
-        // Check team balance and reserve requirements
+        // Check team balance and reserve requirements, adjust price if needed
         let canAfford = false;
         try {
           const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
@@ -298,13 +298,19 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
               reserveConfig
             );
             
-            // Check if team can afford allocation while maintaining reserve
-            const balanceAfterAllocation = teamBalance - allocationAmount;
+            // Calculate maximum they can afford while maintaining reserve
+            const maxAffordable = teamBalance - reserveInfo.floorReserve;
             
-            if (balanceAfterAllocation >= reserveInfo.floorReserve) {
+            if (maxAffordable >= (minAllocation || 10)) {
+              // Team can afford at least minimum allocation
+              if (allocationAmount > maxAffordable) {
+                // Adjust allocation to what they can afford
+                allocationAmount = maxAffordable;
+                console.log(`💰 ${currentPhase}: Adjusted allocation for ${teamName} from £${currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10)} to £${allocationAmount} (their max affordable)`);
+              }
               canAfford = true;
             } else {
-              console.log(`⚠️ ${currentPhase}: Team ${teamName} cannot afford £${allocationAmount} (balance: £${teamBalance}, reserve needed: £${reserveInfo.floorReserve}, would have: £${balanceAfterAllocation})`);
+              console.log(`⚠️ ${currentPhase}: Team ${teamName} cannot afford even minimum £${minAllocation || 10} (balance: £${teamBalance}, reserve needed: £${reserveInfo.floorReserve}, max affordable: £${maxAffordable})`);
             }
           }
         } catch (err) {
@@ -374,9 +380,9 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           const teamName = teamNamesMap.get(teamId) || teamId;
           
           // Phase 1: Use average price, Phase 3: Use £10 minimum
-          const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
+          let allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
           
-          // Check team balance and reserve requirements
+          // Check team balance and reserve requirements, adjust price if needed
           let canParticipate = false;
           try {
             const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
@@ -403,13 +409,19 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
                 reserveConfig
               );
               
-              // Check if team can afford allocation while maintaining reserve
-              const balanceAfterAllocation = teamBalance - allocationAmount;
+              // Calculate maximum they can afford while maintaining reserve
+              const maxAffordable = teamBalance - reserveInfo.floorReserve;
               
-              if (balanceAfterAllocation >= reserveInfo.floorReserve) {
+              if (maxAffordable >= (minAllocation || 10)) {
+                // Team can afford at least minimum allocation
+                if (allocationAmount > maxAffordable) {
+                  // Adjust allocation to what they can afford
+                  allocationAmount = maxAffordable;
+                  console.log(`💰 ${currentPhase}: Adjusted allocation for ${teamName} from £${currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10)} to £${allocationAmount} (their max affordable)`);
+                }
                 canParticipate = true;
               } else {
-                console.log(`⚠️ Phase 3: Team ${teamName} cannot afford £${allocationAmount} (balance: £${teamBalance}, reserve needed: £${reserveInfo.floorReserve}, would have: £${balanceAfterAllocation})`);
+                console.log(`⚠️ ${currentPhase}: Team ${teamName} cannot afford even minimum £${minAllocation || 10} (balance: £${teamBalance}, reserve needed: £${reserveInfo.floorReserve}, max affordable: £${maxAffordable})`);
               }
             }
           } catch (err) {
