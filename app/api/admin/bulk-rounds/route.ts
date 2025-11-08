@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         position_group,
         overall_rating
       FROM footballplayers
-      WHERE season_id = ${season_id}
+      WHERE (season_id = ${season_id} OR season_id IS NULL)
       AND is_auction_eligible = true
       AND is_sold = false
       ORDER BY overall_rating DESC, name ASC
