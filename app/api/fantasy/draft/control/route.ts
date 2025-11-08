@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
 import { triggerNews } from '@/lib/news/trigger';
 import { broadcastFantasyDraftUpdate } from '@/lib/realtime/broadcast';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/fantasy/draft/control
@@ -65,11 +66,12 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Draft status updated to ${draft_status} for league ${league_id}`);
 
-    // Trigger news generation for draft status changes
+    // Trigger news generation and push notifications for draft status changes
     try {
       const leagueData = result[0];
       
       if (draft_status === 'active') {
+        // Trigger news
         await triggerNews('fantasy_opened', {
           season_id: leagueData.season_id,
           season_name: leagueData.season_name,
@@ -78,16 +80,41 @@ export async function POST(request: NextRequest) {
           max_squad_size: leagueData.max_squad_size,
         });
         console.log('📰 Fantasy draft opening news triggered');
+        
+        // Send push notification to all users
+        await sendNotification(
+          {
+            title: '🎮 Fantasy Draft is Now Open!',
+            body: `Start building your squad for ${leagueData.league_name}! Draft closes at ${draft_closes_at ? new Date(draft_closes_at).toLocaleString() : 'TBD'}`,
+            icon: '/fantasy-icon.png',
+            url: '/dashboard/fantasy/draft',
+          },
+          { allUsers: true }
+        );
+        console.log('📬 Fantasy draft opening notification sent');
       } else if (draft_status === 'closed') {
+        // Trigger news
         await triggerNews('fantasy_draft_complete', {
           season_id: leagueData.season_id,
           season_name: leagueData.season_name,
           league_name: leagueData.league_name,
         });
         console.log('📰 Fantasy draft completion news triggered');
+        
+        // Send push notification to all users
+        await sendNotification(
+          {
+            title: '🏁 Fantasy Draft Closed',
+            body: `Draft period has ended for ${leagueData.league_name}. Check your squad and prepare for the season!`,
+            icon: '/fantasy-icon.png',
+            url: '/dashboard/fantasy',
+          },
+          { allUsers: true }
+        );
+        console.log('📬 Fantasy draft completion notification sent');
       }
     } catch (newsError) {
-      console.error('Error triggering fantasy news (non-critical):', newsError);
+      console.error('Error triggering fantasy news/notifications (non-critical):', newsError);
     }
 
     // Broadcast to Firebase Realtime DB

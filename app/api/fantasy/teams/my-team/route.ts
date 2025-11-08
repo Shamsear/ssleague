@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     // Get drafted players from PostgreSQL with draft order
     const squadPlayers = await fantasySql`
-      SELECT 
+      SELECT DISTINCT ON (s.real_player_id)
         s.squad_id as draft_id,
         s.real_player_id,
         s.player_name,
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         AND d.team_id = ${teamId}
         AND d.real_player_id = s.real_player_id
       WHERE s.team_id = ${teamId}
-      ORDER BY COALESCE(d.draft_order, 999), s.acquired_at ASC
+      ORDER BY s.real_player_id, d.draft_order ASC NULLS LAST, s.acquired_at ASC
     `;
 
     // Get points breakdown for each player
