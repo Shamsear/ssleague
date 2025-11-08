@@ -4,7 +4,8 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { getAuctionSettings } from '@/lib/auction-settings';
 import { broadcastRoundUpdate } from '@/lib/realtime/broadcast';
 
-const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+// Use auction database
+const sql = neon(process.env.DATABASE_URL || process.env.NEON_AUCTION_DB_URL!);
 
 /**
  * POST /api/team/bulk-rounds/:id/bids
@@ -32,7 +33,7 @@ export async function POST(
 
     // Get team_id and team_name from teams table using firebase_uid
     const teamResult = await sql`
-      SELECT id, team_name FROM teams
+      SELECT id, name FROM teams
       WHERE firebase_uid = ${firebaseUid}
     `;
 
@@ -44,7 +45,7 @@ export async function POST(
     }
 
     const teamId = teamResult[0].id;
-    const teamName = teamResult[0].team_name || 'Unknown Team';
+    const teamName = teamResult[0].name || 'Unknown Team';
 
     // Validate input
     if (!player_id) {

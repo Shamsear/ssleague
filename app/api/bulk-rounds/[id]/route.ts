@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.NEON_AUCTION_DB_URL!);
+// Use auction database
+const sql = neon(process.env.DATABASE_URL || process.env.NEON_AUCTION_DB_URL!);
 
 /**
  * GET /api/bulk-rounds/:id
@@ -28,7 +29,17 @@ export async function GET(
 
     const round = rounds[0];
 
-    // Fetch players with bulk tiebreaker info
+    // Get summary statistics only (much faster than fetching all players)
+    const stats = await sql`
+      SELECT 
+        COUNT(*) as total_players,
+        COUNT(*) FILTER (WHERE rp.status = 'pending') as pending_count,
+        COUNT(*) FILTER (WHERE rp.status = 'sold') as sold_count
+      FROM round_players rp
+      WHERE rp.round_id = ${roundId}
+    `;
+
+    // Get only players with bids or tiebreakers (these are the ones committee needs to see)
     const roundPlayers = await sql`
       SELECT 
         rp.*,
@@ -41,11 +52,12 @@ export async function GET(
         bt.start_time as tiebreaker_start_time,
         bt.last_activity_time
       FROM round_players rp
-      LEFT JOIN round_bids rb ON rp.round_id::text = rb.round_id::text AND rp.player_id = rb.player_id
-      LEFT JOIN bulk_tiebreakers bt ON rp.player_id = bt.player_id AND bt.bulk_round_id::text = ${roundId}
-      WHERE rp.round_id::text = ${roundId}
+      LEFT JOIN round_bids rb ON rp.round_id = rb.round_id AND rp.player_id = rb.player_id
+      LEFT JOIN bulk_tiebreakers bt ON rp.player_id = bt.player_id AND bt.bulk_round_id = ${roundId}
+      WHERE rp.round_id = ${roundId}
       GROUP BY rp.id, bt.id, bt.status, bt.created_at, bt.current_highest_bid, bt.current_highest_team_id, bt.start_time, bt.last_activity_time
-      ORDER BY rp.status, rp.player_name
+      HAVING COUNT(rb.id) > 0 OR bt.id IS NOT NULL
+      ORDER BY COUNT(rb.id) DESC, rp.player_name
     `;
 
     // For each player with a bulk tiebreaker, fetch team bids
@@ -94,6 +106,11 @@ export async function GET(
       data: {
         ...round,
         roundPlayers,
+        stats: {
+          total_players: parseInt(stats[0]?.total_players || '0'),
+          pending_count: parseInt(stats[0]?.pending_count || '0'),
+          sold_count: parseInt(stats[0]?.sold_count || '0'),
+        },
       },
     });
   } catch (error: any) {

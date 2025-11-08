@@ -4,7 +4,8 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { adminDb } from '@/lib/firebase/admin';
 import { getAuctionSettings } from '@/lib/auction-settings';
 
-const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+// Use auction database
+const sql = neon(process.env.DATABASE_URL || process.env.NEON_AUCTION_DB_URL!);
 
 /**
  * GET /api/team/bulk-rounds/:id

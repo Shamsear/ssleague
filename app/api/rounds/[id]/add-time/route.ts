@@ -49,10 +49,11 @@ export async function POST(
     const round = rounds[0];
 
     // Update end_time by adding the specified minutes
+    // Use sql.unsafe for interval concatenation since tagged template can't handle it
     const updatedRound = await sql`
       UPDATE rounds 
       SET 
-        end_time = end_time + INTERVAL '${minutes} minutes',
+        end_time = end_time + (${minutes} || ' minutes')::interval,
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *

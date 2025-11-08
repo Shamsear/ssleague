@@ -640,11 +640,11 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
             </div>
             <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-indigo-200">
               <label className="block text-xs sm:text-sm font-medium text-indigo-700 mb-1">Total Players</label>
-              <p className="text-xl sm:text-2xl font-bold text-indigo-900">{round.roundPlayers?.length || 0}</p>
+              <p className="text-xl sm:text-2xl font-bold text-indigo-900">{round.stats?.total_players || round.roundPlayers?.length || 0}</p>
             </div>
             <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-green-200">
               <label className="block text-xs sm:text-sm font-medium text-green-700 mb-1">Sold</label>
-              <p className="text-xl sm:text-2xl font-bold text-green-900">{sold.length}</p>
+              <p className="text-xl sm:text-2xl font-bold text-green-900">{round.stats?.sold_count || sold.length}</p>
             </div>
           </div>
 
@@ -744,7 +744,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 <h3 className="text-sm sm:text-lg font-bold text-gray-800">Pending</h3>
               </div>
               <span className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-lg sm:text-xl font-bold">
-                {pending.length}
+                {round.stats?.pending_count || pending.length}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">Players awaiting bids</p>
@@ -761,7 +761,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 <h3 className="text-sm sm:text-lg font-bold text-green-800">Sold</h3>
               </div>
               <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-lg sm:text-xl font-bold">
-                {sold.length}
+                {round.stats?.sold_count || sold.length}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-green-700 mt-1">Successfully assigned</p>
@@ -864,11 +864,12 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           {/* Players List */}
           {!round.roundPlayers || round.roundPlayers.length === 0 ? (
             <div className="text-center py-12">
-              <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              <svg className="w-16 h-16 mx-auto text-blue-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <h3 className="text-xl font-medium text-gray-600 mb-2">No players assigned</h3>
-              <p className="text-gray-500">Add players to this bulk round to begin bidding</p>
+              <h3 className="text-xl font-medium text-gray-700 mb-2">Waiting for bids...</h3>
+              <p className="text-gray-600 mb-1">This round has <span className="font-bold text-blue-600">{round.stats?.total_players || 0} players</span></p>
+              <p className="text-gray-500 text-sm">Players with bids will appear here automatically</p>
             </div>
           ) : (
             <>
