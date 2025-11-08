@@ -314,14 +314,20 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if notification fails
     }
 
-    // Broadcast round started via Firebase Realtime DB (non-blocking)
-    broadcastRoundUpdate(seasonId, roundId!, {
-      type: 'round_started',
-      status: 'active',
-      round_id: roundId!,
-      position,
-      end_time: endTime.toISOString(),
-    }).catch(err => console.error('Firebase broadcast failed:', err));
+    // Broadcast round started via Firebase Realtime DB (blocking to ensure it completes)
+    try {
+      await broadcastRoundUpdate(seasonId, roundId!, {
+        type: 'round_started',
+        status: 'active',
+        round_id: roundId!,
+        position,
+        end_time: endTime.toISOString(),
+      });
+      console.log(`✅ Round started broadcast sent for round ${roundId}`);
+    } catch (broadcastError) {
+      console.error('❌ Firebase broadcast failed:', broadcastError);
+      // Don't fail the request if broadcast fails
+    }
 
     return NextResponse.json({
       success: true,
