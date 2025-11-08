@@ -302,7 +302,7 @@ export async function POST(request: NextRequest) {
           data: {
             type: 'round_started',
             roundId: roundId!,
-            position,
+            position: position,
             endTime: endTime.toISOString()
           }
         },

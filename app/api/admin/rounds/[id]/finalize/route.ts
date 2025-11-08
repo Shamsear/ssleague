@@ -116,7 +116,7 @@ export async function POST(
               type: 'round_finalized',
               roundId: roundId,
               position: round.position,
-              allocationsCount: finalizationResult.allocations.length
+              allocationsCount: finalizationResult.allocations.length.toString()
             }
           },
           seasonId
@@ -150,8 +150,8 @@ export async function POST(
               icon: '/logo.png',
               data: {
                 type: 'player_won',
-                roundId,
-                playerId: allocation.player_id,
+                roundId: roundId,
+                playerId: allocation.player_id.toString(),
                 playerName: allocation.player_name,
                 amount: allocation.amount.toString(),
                 phase: allocation.phase
