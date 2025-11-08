@@ -171,15 +171,18 @@ export function useWebSocket(options: {
     options.onConnect?.();
 
     // Listen to the channel path in Firebase Realtime DB
-    const { ref, onValue } = require('firebase/database');
+    // Use onChildAdded to listen for new messages pushed to the channel
+    const { ref, onChildAdded } = require('firebase/database');
     const { realtimeDb } = require('@/lib/firebase/config');
     
     const channelRef = ref(realtimeDb, options.channel.replace(/:/g, '/'));
     
-    const unsubscribe = onValue(channelRef, (snapshot) => {
+    // onChildAdded fires for each new child added to the channel
+    // This is perfect for .push() broadcasts which create new child nodes
+    const unsubscribe = onChildAdded(channelRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        console.log('📨 [Channel Update] Received:', data);
+        console.log('📨 [Channel Update] New message:', data);
         setLastMessage(JSON.stringify(data));
         options.onMessage?.(data);
       }
