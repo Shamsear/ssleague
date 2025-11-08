@@ -168,6 +168,35 @@ export default function TeamBulkTiebreakerPage() {
           });
           setShowWinnerModal(true);
         }
+        
+        // Auto-withdraw if balance is insufficient (can't afford current highest bid + 1)
+        const minRequiredBalance = highestBid + 1;
+        const currentBalance = myTeam?.team_balance || teamBalance;
+        
+        if (myTeam && myTeam.status === 'active' && currentBalance < minRequiredBalance) {
+          // Team can't afford to participate anymore - auto-withdraw
+          console.log(`⚠️ Auto-withdrawing: Balance £${currentBalance} < Required £${minRequiredBalance}`);
+          
+          // Call withdraw API
+          fetchWithTokenRefresh(`/api/team/bulk-tiebreakers/${tiebreakerId}/withdraw`, {
+            method: 'POST',
+          }).then(async (response) => {
+            const result = await response.json();
+            if (result.success) {
+              console.log('✅ Auto-withdrawal successful');
+              showAlert({
+                type: 'warning',
+                title: 'Automatically Withdrawn',
+                message: `You have been automatically withdrawn from this tiebreaker due to insufficient balance. Current balance: £${currentBalance}, Required: £${minRequiredBalance}`
+              });
+              
+              // Redirect to dashboard after 3 seconds
+              setTimeout(() => router.push('/dashboard/team'), 3000);
+            }
+          }).catch((err) => {
+            console.error('❌ Auto-withdrawal failed:', err);
+          });
+        }
       } else {
         console.error('❌ API returned error:', result);
         setFetchError(result.error || 'Failed to load tiebreaker data');

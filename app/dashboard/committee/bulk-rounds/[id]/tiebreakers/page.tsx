@@ -46,6 +46,7 @@ export default function BulkRoundTiebreakersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [expandedTiebreakers, setExpandedTiebreakers] = useState<Set<string>>(new Set());
+  const [resolvingTiebreaker, setResolvingTiebreaker] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -63,63 +64,34 @@ export default function BulkRoundTiebreakersPage() {
 
       setIsLoading(true);
       try {
-        // TODO: Replace with actual API calls
-        // Fetch round details
-        // const roundResponse = await fetchWithTokenRefresh(`/api/rounds/${roundId}`);
-        // const { success: roundSuccess, data: roundData } = await roundResponse.json();
-
-        // Mock round data
-        const mockRound: BulkRound = {
-          id: parseInt(roundId),
-          round_number: 1,
-          status: 'active',
-          base_price: 10,
-        };
-        setBulkRound(mockRound);
+        // Fetch round details from bulk-rounds API
+        const roundResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
+        const roundResult = await roundResponse.json();
+        
+        if (roundResult.success && roundResult.data) {
+          const roundData = roundResult.data;
+          setBulkRound({
+            id: roundData.id,
+            round_number: roundData.round_number,
+            status: roundData.status,
+            base_price: roundData.base_price,
+          });
+        }
 
         // Fetch tiebreakers for this round
-        // const tiebreakerResponse = await fetchWithTokenRefresh(`/api/rounds/${roundId}/tiebreakers`);
-        // const { success: tbSuccess, data: tbData } = await tiebreakerResponse.json();
-
-        // Mock tiebreakers data
-        const mockTiebreakers: Tiebreaker[] = [
-          {
-            id: 'tb-1',
-            round_id: roundId,
-            player_id: 'p-1',
-            player_name: 'John Doe',
-            position: 'FWD',
-            original_amount: 10,
-            status: 'active',
-            teams_count: 3,
-            submitted_count: 2,
-            created_at: new Date().toISOString(),
-            teams: [
-              { team_id: 't-1', team_name: 'Team Alpha', bid_amount: 15, submitted_at: new Date().toISOString(), status: 'submitted' },
-              { team_id: 't-2', team_name: 'Team Beta', bid_amount: 12, submitted_at: new Date().toISOString(), status: 'submitted' },
-              { team_id: 't-3', team_name: 'Team Gamma', status: 'pending' },
-            ],
-          },
-          {
-            id: 'tb-2',
-            round_id: roundId,
-            player_id: 'p-2',
-            player_name: 'Jane Smith',
-            position: 'MID',
-            original_amount: 10,
-            status: 'pending',
-            teams_count: 2,
-            submitted_count: 0,
-            created_at: new Date().toISOString(),
-            teams: [
-              { team_id: 't-4', team_name: 'Team Delta', status: 'pending' },
-              { team_id: 't-5', team_name: 'Team Echo', status: 'pending' },
-            ],
-          },
-        ];
-        setTiebreakers(mockTiebreakers);
+        const tiebreakerResponse = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${roundId}/tiebreakers`);
+        const tiebreakerResult = await tiebreakerResponse.json();
+        
+        if (tiebreakerResult.success && tiebreakerResult.data) {
+          setTiebreakers(tiebreakerResult.data);
+          console.log(`✅ Loaded ${tiebreakerResult.data.length} tiebreakers`);
+        } else {
+          console.error('❌ Failed to load tiebreakers:', tiebreakerResult.error);
+          setTiebreakers([]);
+        }
       } catch (err) {
-        console.error('Error fetching data:', err);
+        console.error('❌ Error fetching data:', err);
+        setTiebreakers([]);
       } finally {
         setIsLoading(false);
       }
@@ -136,6 +108,53 @@ export default function BulkRoundTiebreakersPage() {
       newExpanded.add(tiebreakerId);
     }
     setExpandedTiebreakers(newExpanded);
+  };
+
+  const handleResolveTiebreaker = async (tiebreakerId: string, playerName: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to resolve the tiebreaker for ${playerName}? This will assign the player to the highest bidder and cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setResolvingTiebreaker(tiebreakerId);
+    try {
+      const response = await fetchWithTokenRefresh(`/api/admin/bulk-tiebreakers/${tiebreakerId}/finalize`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`✅ Tiebreaker resolved successfully! ${playerName} has been assigned to the winning team.`);
+        // Refresh the tiebreakers list
+        window.location.reload();
+      } else {
+        alert(`❌ Failed to resolve tiebreaker: ${result.error}`);
+      }
+    } catch (err) {
+      console.error('Error resolving tiebreaker:', err);
+      alert('❌ An error occurred while resolving the tiebreaker');
+    } finally {
+      setResolvingTiebreaker(null);
+    }
+  };
+
+  const handleRefreshStatus = async () => {
+    setIsLoading(true);
+    try {
+      const tiebreakerResponse = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${roundId}/tiebreakers`);
+      const tiebreakerResult = await tiebreakerResponse.json();
+      
+      if (tiebreakerResult.success && tiebreakerResult.data) {
+        setTiebreakers(tiebreakerResult.data);
+        alert('✅ Status refreshed successfully');
+      }
+    } catch (err) {
+      console.error('Error refreshing:', err);
+      alert('❌ Failed to refresh status');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -165,9 +184,9 @@ export default function BulkRoundTiebreakersPage() {
 
   const tiebreakerStats = {
     total: tiebreakers.length,
-    active: tiebreakers.filter(tb => tb.status === 'active').length,
+    active: tiebreakers.filter(tb => tb.status === 'active' || tb.status === 'ongoing').length,
     pending: tiebreakers.filter(tb => tb.status === 'pending').length,
-    completed: tiebreakers.filter(tb => tb.status === 'completed').length,
+    completed: tiebreakers.filter(tb => tb.status === 'resolved' || tb.status === 'finalized').length,
   };
 
   if (loading || !user || user.role !== 'committee_admin' || isLoading) {
@@ -305,38 +324,15 @@ export default function BulkRoundTiebreakersPage() {
         {/* Action Buttons */}
         <div className="glass rounded-2xl p-4 mb-6 border border-white/20">
           <div className="flex flex-wrap gap-3">
-            {/* Placeholder buttons for future features */}
             <button
-              disabled
-              className="inline-flex items-center px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed font-medium"
-              title="Feature coming soon"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Create Tiebreaker (Coming Soon)
-            </button>
-
-            <button
-              disabled
-              className="inline-flex items-center px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed font-medium"
-              title="Feature coming soon"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Resolve All (Coming Soon)
-            </button>
-
-            <button
-              disabled
-              className="inline-flex items-center px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed font-medium"
-              title="Feature coming soon"
+              onClick={handleRefreshStatus}
+              disabled={isLoading}
+              className="inline-flex items-center px-4 py-2 bg-[#0066FF] text-white rounded-lg hover:bg-[#0052CC] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Refresh Status (Coming Soon)
+              {isLoading ? 'Refreshing...' : 'Refresh Status'}
             </button>
           </div>
         </div>
@@ -459,18 +455,11 @@ export default function BulkRoundTiebreakersPage() {
                         {/* Action Buttons */}
                         <div className="mt-4 pt-4 border-t border-gray-200/30 flex gap-2">
                           <button
-                            disabled
-                            className="px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed text-sm font-medium"
-                            title="Feature coming soon"
+                            onClick={() => handleResolveTiebreaker(tiebreaker.id, tiebreaker.player_name)}
+                            disabled={resolvingTiebreaker === tiebreaker.id || tiebreaker.status === 'resolved' || tiebreaker.status === 'finalized' || !tiebreaker.current_highest_team_id}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Resolve Tiebreaker (Coming Soon)
-                          </button>
-                          <button
-                            disabled
-                            className="px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed text-sm font-medium"
-                            title="Feature coming soon"
-                          >
-                            Cancel Tiebreaker (Coming Soon)
+                            {resolvingTiebreaker === tiebreaker.id ? 'Resolving...' : tiebreaker.status === 'resolved' ? 'Already Resolved' : 'Resolve Tiebreaker'}
                           </button>
                         </div>
                       </div>

@@ -28,7 +28,7 @@ export async function POST(
 
     const { id: tiebreakerId } = await params;
 
-    console.log(`🔄 Admin ${userId} attempting to finalize tiebreaker ${tiebreakerId}`);
+    console.log(`🔄 Admin attempting to finalize tiebreaker ${tiebreakerId}`);
 
     // Get tiebreaker details
     const tiebreakerCheck = await sql`

@@ -1385,16 +1385,20 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           )}
         </div>
 
-        {/* Tiebreakers Section - Only show after round is completed */}
-        {contested.length > 0 && round.status === 'completed' && (
+        {/* Tiebreakers Section - Show contested players that need tiebreakers */}
+        {contested.length > 0 && (
           <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 border-orange-300 shadow-md">
             <h2 className="text-lg sm:text-xl font-bold text-orange-900 mb-3 sm:mb-4 flex items-center">
               <svg className="w-5 h-5 sm:w-6 sm:h-6 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <span>⚠️ Tiebreakers Required</span>
+              <span>⚠️ {round.status === 'completed' ? 'Tiebreakers Required' : 'Pending Tiebreakers'}</span>
             </h2>
-            <p className="text-sm sm:text-base text-orange-800 mb-3 sm:mb-4">The following players have multiple bids and require a tiebreaker auction:</p>
+            <p className="text-sm sm:text-base text-orange-800 mb-3 sm:mb-4">
+              {round.status === 'completed' 
+                ? 'The following players have multiple bids and require a tiebreaker auction:'
+                : 'These players currently have multiple bids at the base price. Tiebreakers will be created when the round ends:'}
+            </p>
             <div className="space-y-2 sm:space-y-3">
               {contested.map((player) => (
                 <div key={player.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 sm:p-4 bg-white rounded-lg shadow-sm border border-orange-200">
