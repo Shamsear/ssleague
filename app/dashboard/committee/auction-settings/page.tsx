@@ -104,7 +104,7 @@ export default function AuctionSettingsPage() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [autoRefresh, user]);
+  }, [autoRefresh, user, hasUnsavedChanges]);
 
   const fetchSettings = async () => {
     try {
@@ -112,6 +112,7 @@ export default function AuctionSettingsPage() {
       const { data, success } = await response.json();
 
       if (success) {
+        // Always update settings and stats (for display purposes)
         setSettings(data.settings);
         setStats(data.stats);
         
@@ -169,9 +170,12 @@ export default function AuctionSettingsPage() {
       const result = await response.json();
 
       if (result.success) {
-        alert('Settings saved successfully!');
         setHasUnsavedChanges(false);
-        fetchSettings();
+        // Update settings immediately from the response
+        setSettings(result.data);
+        alert('Settings saved successfully!');
+        // Fetch full data including stats (wait a bit for state to update)
+        setTimeout(() => fetchSettings(), 100);
       } else {
         alert(`Error: ${result.error}`);
       }

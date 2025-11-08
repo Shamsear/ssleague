@@ -5,6 +5,7 @@ import { createTiebreaker } from './tiebreaker';
 import { getTournamentDb } from './neon/tournament-config';
 import { logAuctionWin } from './transaction-logger';
 import { triggerNews } from './news/trigger';
+import { calculateReserveCore, ReserveConfig } from './reserve-calculator';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 const tournamentSql = getTournamentDb();
@@ -59,7 +60,8 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
     
     // Fetch auction settings to determine current phase
     const settingsResult = await sql`
-      SELECT phase_1_end_round, phase_2_end_round, phase_3_min_balance
+      SELECT phase_1_end_round, phase_1_min_balance, phase_2_end_round, 
+             phase_2_min_balance, phase_3_min_balance, max_squad_size
       FROM auction_settings WHERE season_id = ${round.season_id}
     `;
     const settings = settingsResult[0];
@@ -253,23 +255,50 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         // Get team name
         const teamName = teamNamesMap.get(teamId) || teamId;
         
-        // Check team balance in Firebase
+        // Phase 1: Use average price, Phase 3: Use £10 minimum
+        const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
+        
+        // Check team balance and reserve requirements
+        let canAfford = false;
         try {
           const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
           if (tsDoc.exists) {
             const tsd = tsDoc.data();
             const curr = tsd?.currency_system || 'single';
             const teamBalance = curr === 'dual' ? (tsd?.football_budget || 0) : (tsd?.budget || 0);
+            const teamSquadSize = tsd?.players_count || 0;
             
-            // Skip if balance < £10 (cannot participate)
-            if (teamBalance < 10) {
-              console.log(`⚠️ Phase 2: Team ${teamName} has insufficient balance (£${teamBalance}) - skipping`);
-              continue;
+            // Calculate reserve requirements
+            const reserveConfig: ReserveConfig = {
+              phase_1_end_round: settings.phase_1_end_round,
+              phase_1_min_balance: settings.phase_1_min_balance,
+              phase_2_end_round: settings.phase_2_end_round,
+              phase_2_min_balance: settings.phase_2_min_balance,
+              phase_3_min_balance: settings.phase_3_min_balance,
+              max_squad_size: settings.max_squad_size,
+            };
+            
+            const reserveInfo = calculateReserveCore(
+              round.round_number,
+              teamBalance,
+              teamSquadSize,
+              reserveConfig
+            );
+            
+            // Check if team can afford allocation while maintaining reserve
+            const balanceAfterAllocation = teamBalance - allocationAmount;
+            
+            if (balanceAfterAllocation >= reserveInfo.floorReserve) {
+              canAfford = true;
+            } else {
+              console.log(`⚠️ ${currentPhase}: Team ${teamName} cannot afford £${allocationAmount} (balance: £${teamBalance}, reserve needed: £${reserveInfo.floorReserve}, would have: £${balanceAfterAllocation})`);
             }
           }
         } catch (err) {
           console.error(`Failed to check balance for team ${teamId}:`, err);
         }
+        
+        if (!canAfford) continue;
         
         // Get this team's bids (excluding already allocated players)
         const teamBids = bidsWithNames
@@ -279,9 +308,6 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           // Randomly pick from their remaining bids
           const randomIndex = Math.floor(Math.random() * teamBids.length);
           const randomBid = teamBids[randomIndex];
-          
-          // Phase 1: Use average price, Phase 2/3: Use £10 minimum
-          const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
           
           allocations.push({
             team_id: teamId,
@@ -334,19 +360,43 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           // Get team name
           const teamName = teamNamesMap.get(teamId) || teamId;
           
-          // Check team balance in Firebase
-          let canParticipate = true;
+          // Phase 1: Use average price, Phase 3: Use £10 minimum
+          const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
+          
+          // Check team balance and reserve requirements
+          let canParticipate = false;
           try {
             const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
             if (tsDoc.exists) {
               const tsd = tsDoc.data();
               const curr = tsd?.currency_system || 'single';
               const teamBalance = curr === 'dual' ? (tsd?.football_budget || 0) : (tsd?.budget || 0);
+              const teamSquadSize = tsd?.players_count || 0;
               
-              // Skip if balance < £10 (cannot participate in Phase 3)
-              if (teamBalance < 10) {
-                console.log(`⚠️ Phase 3: Team ${teamName} has insufficient balance (£${teamBalance}) - skipping`);
-                canParticipate = false;
+              // Calculate reserve requirements
+              const reserveConfig: ReserveConfig = {
+                phase_1_end_round: settings.phase_1_end_round,
+                phase_1_min_balance: settings.phase_1_min_balance,
+                phase_2_end_round: settings.phase_2_end_round,
+                phase_2_min_balance: settings.phase_2_min_balance,
+                phase_3_min_balance: settings.phase_3_min_balance,
+                max_squad_size: settings.max_squad_size,
+              };
+              
+              const reserveInfo = calculateReserveCore(
+                round.round_number,
+                teamBalance,
+                teamSquadSize,
+                reserveConfig
+              );
+              
+              // Check if team can afford allocation while maintaining reserve
+              const balanceAfterAllocation = teamBalance - allocationAmount;
+              
+              if (balanceAfterAllocation >= reserveInfo.floorReserve) {
+                canParticipate = true;
+              } else {
+                console.log(`⚠️ Phase 3: Team ${teamName} cannot afford £${allocationAmount} (balance: £${teamBalance}, reserve needed: £${reserveInfo.floorReserve}, would have: £${balanceAfterAllocation})`);
               }
             }
           } catch (err) {
@@ -361,9 +411,6 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           
           // Create a synthetic bid ID for this allocation
           const syntheticBidId = `synthetic_${teamId}_${randomPlayer.id}_${Date.now()}`;
-          
-          // Phase 1: Use average price, Phase 2/3: Use £10 minimum
-          const allocationAmount = currentPhase === 'phase_1' ? avgAmount : (minAllocation || 10);
           
           allocations.push({
             team_id: teamId,
