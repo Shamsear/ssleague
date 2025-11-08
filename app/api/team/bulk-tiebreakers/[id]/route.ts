@@ -112,6 +112,16 @@ export async function GET(
     }
 
     const myTeam = myTeamData[0];
+    
+    // Get team balance from teams table
+    const teamBalanceData = await sql`
+      SELECT football_budget
+      FROM teams
+      WHERE id = ${teamId}
+      AND season_id = ${tiebreaker.season_id}
+    `;
+    
+    const teamBalance = teamBalanceData[0]?.football_budget || 1000;
 
     // Get all participating teams (for context)
     const participatingTeams = await sql`
@@ -188,7 +198,7 @@ export async function GET(
           status: team.status,
           current_bid: team.current_bid,
           is_current_user: team.team_id === teamId,
-          team_balance: team.team_id === teamId ? 1000 : null,
+          team_balance: team.team_id === teamId ? teamBalance : null,
         })),
         bid_history: bidHistory.map(bid => ({
           team_id: bid.team_id,

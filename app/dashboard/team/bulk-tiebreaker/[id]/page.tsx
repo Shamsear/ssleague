@@ -52,6 +52,7 @@ export default function TeamBulkTiebreakerPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [bidAmount, setBidAmount] = useState('');
   const [activeTeams, setActiveTeams] = useState(2); // Track active teams count
+  const [seasonId, setSeasonId] = useState<string | null>(null); // Track season ID for WebSocket
 
   // Modal system
   const {
@@ -106,6 +107,11 @@ export default function TeamBulkTiebreakerPage() {
         // Find current user's team
         const myTeam = teams.find((t: any) => t.is_current_user);
         const myLastBid = myTeam?.current_bid || null;
+        
+        // Store season ID for WebSocket
+        if (tiebreakerData.season_id) {
+          setSeasonId(tiebreakerData.season_id);
+        }
         
         setTiebreaker({
           id: tiebreakerData.id,
@@ -175,14 +181,15 @@ export default function TeamBulkTiebreakerPage() {
 
   // ✅ Enable WebSocket for real-time tiebreaker bid updates
   const { isConnected } = useWebSocket({
-    channel: `tiebreaker:${tiebreakerId}`,
-    enabled: !!tiebreakerId,
+    channel: seasonId ? `updates/${seasonId}/tiebreakers/${tiebreakerId}` : `tiebreaker:${tiebreakerId}`,
+    enabled: !!tiebreakerId && !!seasonId,
     onMessage: useCallback((message: any) => {
       console.log('[Tiebreaker WS] Received:', message);
       
-      // ⚡ INSTANT UPDATE - Use broadcast data directly for lightning-fast updates
-      if (message.type === 'tiebreaker_bid' && message.data) {
-        const bidData = message.data;
+      // ⚡ INSTANT UPDATE - Firebase pushes have timestamp and bid data directly
+      // Message format from broadcastTiebreakerBid: { team_id, team_name, bid_amount, timestamp }
+      if (message.team_id && message.bid_amount) {
+        const bidData = message;
         const userTeamName = (user as any)?.teamName || 'Your Team';
         const isOwnBid = bidData.team_name === userTeamName;
         
