@@ -129,30 +129,45 @@ export async function finalizeBulkTiebreaker(
       WHERE id = ${tiebreaker.player_id}
     `;
 
-    // Insert into team_players table
-    await sql`
-      INSERT INTO team_players (
-        team_id,
-        player_id,
-        season_id,
-        round_id,
-        purchase_price,
-        acquired_at
-      ) VALUES (
-        ${tiebreaker.current_highest_team_id},
-        ${tiebreaker.player_id},
-        ${seasonId},
-        ${tiebreaker.round_id},
-        ${winningAmount},
-        NOW()
-      )
-      ON CONFLICT (team_id, player_id) DO UPDATE
-      SET 
-        season_id = ${seasonId},
-        round_id = ${tiebreaker.round_id},
-        purchase_price = ${winningAmount},
-        acquired_at = NOW()
+    // Insert into team_players table (check if exists first to avoid constraint issues)
+    const existingTeamPlayer = await sql`
+      SELECT id FROM team_players
+      WHERE team_id = ${tiebreaker.current_highest_team_id}
+      AND player_id = ${tiebreaker.player_id}
     `;
+    
+    if (existingTeamPlayer.length > 0) {
+      // Update existing record
+      await sql`
+        UPDATE team_players
+        SET 
+          season_id = ${seasonId},
+          round_id = ${tiebreaker.round_id},
+          purchase_price = ${winningAmount},
+          acquired_at = NOW()
+        WHERE team_id = ${tiebreaker.current_highest_team_id}
+        AND player_id = ${tiebreaker.player_id}
+      `;
+    } else {
+      // Insert new record
+      await sql`
+        INSERT INTO team_players (
+          team_id,
+          player_id,
+          season_id,
+          round_id,
+          purchase_price,
+          acquired_at
+        ) VALUES (
+          ${tiebreaker.current_highest_team_id},
+          ${tiebreaker.player_id},
+          ${seasonId},
+          ${tiebreaker.round_id},
+          ${winningAmount},
+          NOW()
+        )
+      `;
+    }
 
     // Mark bulk tiebreaker as resolved
     await sql`
