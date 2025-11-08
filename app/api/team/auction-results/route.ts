@@ -152,7 +152,14 @@ export async function GET(request: NextRequest) {
       // Build players array with all bids
       const players = Array.from(playerBidsMap.entries()).map(([playerId, bids]) => {
         const sortedBids = bids.sort((a, b) => b.decrypted_amount - a.decrypted_amount);
-        const winningBid = sortedBids.find(b => b.status === 'won') || sortedBids[0];
+        // Find the actual winning bid - must have status 'won' OR have final_amount set (from team_players)
+        const winningBid = sortedBids.find(b => b.status === 'won' || b.final_amount !== null);
+        
+        if (!winningBid) {
+          console.error(`No winning bid found for player ${playerId}, bids:`, sortedBids);
+          return null; // Skip this player if no winner found
+        }
+        
         const myBid = sortedBids.find(b => b.team_id === dbTeamId);
         
         // Determine phase
@@ -199,7 +206,7 @@ export async function GET(request: NextRequest) {
           })),
           total_bids: bids.length,
         };
-      });
+      }).filter(p => p !== null); // Remove any players without valid winners
 
       // Add synthetic allocations (Phase 3)
       for (const synthetic of syntheticAllocations) {

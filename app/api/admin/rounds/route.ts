@@ -293,10 +293,21 @@ export async function POST(request: NextRequest) {
     // Send FCM notification to all teams in season (before Firebase to avoid timeout)
     try {
       console.log(`📣 Sending round start notification for season ${seasonId}, round ${roundId}`);
+      
+      // Format duration nicely
+      const durationHours = parseFloat(duration_hours);
+      let durationText: string;
+      if (durationHours >= 1) {
+        durationText = `${durationHours} hour${durationHours !== 1 ? 's' : ''}`;
+      } else {
+        const durationMinutes = Math.round(durationHours * 60);
+        durationText = `${durationMinutes} minute${durationMinutes !== 1 ? 's' : ''}`;
+      }
+      
       const notifResult = await sendNotificationToSeason(
         {
           title: `🎯 New ${auctionSettings.auction_window.replace('_', ' ').toUpperCase()} Round!`,
-          body: `${position} bidding is now open. Duration: ${duration_hours} hour(s). Place your bids now!`,
+          body: `${position} bidding is now open. Duration: ${durationText}. Place your bids now!`,
           url: `/dashboard/team`,
           icon: '/logo.png',
           data: {

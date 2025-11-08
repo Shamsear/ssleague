@@ -87,11 +87,14 @@ export async function POST(
 
       // Send FCM notification
       try {
-        const durationMinutes = Math.floor(round.duration_seconds / 60);
+        const durationMinutes = Math.round(round.duration_seconds / 60);
+        const durationText = durationMinutes >= 60 
+          ? `${Math.round(durationMinutes / 60)} hour${Math.round(durationMinutes / 60) !== 1 ? 's' : ''}` 
+          : `${durationMinutes} minute${durationMinutes !== 1 ? 's' : ''}`;
         await sendNotificationToSeason(
           {
             title: '⚡ Bulk Auction Round Started!',
-            body: `Round ${round.round_number} is now active. Duration: ${durationMinutes} min. Bid on multiple players!`,
+            body: `Round ${round.round_number} is now active. Duration: ${durationText}. Bid on multiple players!`,
             url: `/dashboard/committee/bulk-rounds/${roundId}`,
             icon: '/logo.png',
             data: {

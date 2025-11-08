@@ -101,10 +101,13 @@ export default function AuctionResultsPage() {
         const result = await response.json();
 
         if (result.success) {
+          console.log('Auction results data:', result.data);
           setRounds(result.data.rounds);
           if (result.data.rounds.length > 0) {
             setSelectedRound(result.data.rounds[0].round_id);
           }
+        } else {
+          console.error('Failed to fetch auction results:', result.error);
         }
       } catch (error) {
         console.error('Error fetching auction results:', error);
