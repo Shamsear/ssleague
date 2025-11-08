@@ -269,11 +269,10 @@ async function batchLoadForReimport(
         .get()
     );
     
-    // 2. Get team IDs only (for counter) - using select() for minimal data
-    console.log('   Loading team IDs (select only)...');
+    // 2. Get ALL teams with full data (needed for linking)
+    console.log('   Loading all teams (full data for linking)...');
     queries.push(
       adminDb.collection('teams')
-        .select()
         .get()
     );
     
@@ -309,10 +308,16 @@ async function batchLoadForReimport(
       }
     });
     
-    // Process team IDs
-    const teamIdsSnapshot = results[resultIndex++];
-    teamIdsSnapshot.forEach((doc: any) => {
+    // Process teams - store full data for linking
+    const teamsSnapshot = results[resultIndex++];
+    teamsSnapshot.forEach((doc: any) => {
       result.allTeamIds.push(doc.id);
+      const data = doc.data();
+      // Store by team_id (doc.id) for lookup
+      result.existingTeams.set(data.team_name?.toLowerCase() || '', {
+        teamId: doc.id,
+        doc: data
+      });
     });
     
     // Process season IDs
@@ -416,10 +421,9 @@ async function batchLoadExistingEntities(
         .get()
     );
     
-    // 4. Get team IDs only (for counter) - using select() for minimal data  
+    // 4. Get ALL teams for linking and counter (need full data for team linking)
     queries.push(
       adminDb.collection('teams')
-        .select() // Empty select() returns only document IDs
         .get()
     );
     
@@ -490,10 +494,20 @@ async function batchLoadExistingEntities(
       }
     });
     
-    // Process team IDs (for counter)
-    const teamIdsSnapshot = results[resultIndex++];
-    teamIdsSnapshot.forEach((doc: any) => {
+    // Process ALL teams (for counter and linking) - merge with existing teams
+    const allTeamsSnapshot = results[resultIndex++];
+    allTeamsSnapshot.forEach((doc: any) => {
+      const data = doc.data();
       result.allTeamIds.push(doc.id);
+      
+      // Also add to existingTeams map if not already there (for linking by ID)
+      const teamName = data.team_name?.toLowerCase();
+      if (teamName && !result.existingTeams.has(teamName)) {
+        result.existingTeams.set(teamName, {
+          teamId: doc.id,
+          doc: data
+        });
+      }
     });
     
     // Process season IDs

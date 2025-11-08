@@ -33,10 +33,28 @@ if (!admin.apps.length) {
   }
 }
 
-// Initialize Neon
+// Initialize Neon - Main Database
 const neonSql = process.env.NEON_DATABASE_URL ? neon(process.env.NEON_DATABASE_URL) : null;
 if (!neonSql) {
-  console.warn('⚠️  Warning: NEON_DATABASE_URL not found. Neon cleanup will be skipped.');
+  console.warn('⚠️  Warning: NEON_DATABASE_URL not found. Main Neon cleanup will be skipped.');
+}
+
+// Initialize Neon - Tournament Database
+const tournamentSql = process.env.NEON_TOURNAMENT_DB_URL ? neon(process.env.NEON_TOURNAMENT_DB_URL) : null;
+if (!tournamentSql) {
+  console.warn('⚠️  Warning: NEON_TOURNAMENT_DB_URL not found. Tournament DB cleanup will be skipped.');
+}
+
+// Initialize Neon - Fantasy Database
+const fantasySql = process.env.NEON_FANTASY_DB_URL ? neon(process.env.NEON_FANTASY_DB_URL) : null;
+if (!fantasySql) {
+  console.warn('⚠️  Warning: NEON_FANTASY_DB_URL not found. Fantasy DB cleanup will be skipped.');
+}
+
+// Initialize Neon - Auction Database
+const auctionSql = process.env.NEON_AUCTION_DB_URL ? neon(process.env.NEON_AUCTION_DB_URL) : null;
+if (!auctionSql) {
+  console.warn('⚠️  Warning: NEON_AUCTION_DB_URL not found. Auction DB cleanup will be skipped.');
 }
 
 const db = admin.firestore();
@@ -58,12 +76,16 @@ async function clearAllData() {
   console.log('   ✓ Firebase: All collections (seasons, teams, players, bids, matches, etc.)');
   console.log('   ✓ Firebase: All Auth users except super admin');
   console.log('   ✓ Firebase: All usernames except super admin');
-  console.log('   ✓ Neon: All tables (footballplayers, bids, rounds, auction settings, etc.)\n');
+  console.log('   ✓ Neon Main DB: All tables');
+  console.log('   ✓ Neon Tournament DB: All tables EXCEPT historical tournaments');
+  console.log('   ✓ Neon Fantasy DB: All tables');
+  console.log('   ✓ Neon Auction DB: All tables\n');
   
   console.log('📋 What will be PRESERVED:');
   console.log('   ✓ Firebase: Super Admin user and credentials');
   console.log('   ✓ Firebase: Security rules and indexes');
-  console.log('   ✓ Neon: Table structure (tables will be emptied, not dropped)\n');
+  console.log('   ✓ Neon Tournament DB: Historical tournaments (is_historical = true)');
+  console.log('   ✓ All Neon: Table structure (tables will be emptied, not dropped)\n');
 
   return new Promise((resolve) => {
     rl.question('❓ Are you ABSOLUTELY sure? Type "DELETE ALL DATA" to confirm: ', async (answer) => {
@@ -123,7 +145,28 @@ async function clearAllData() {
           'awards',
           'footballPlayers',
           'categories',
-          'import_progress'
+          'import_progress',
+          'news',
+          'notifications',
+          'polls',
+          'poll_options',
+          'poll_votes',
+          'user_poll_votes',
+          'fantasy_leagues',
+          'fantasy_teams',
+          'fantasy_team_selections',
+          'fantasy_round_scores',
+          'fantasy_lineups',
+          'player_awards',
+          'season_trophies',
+          'squad_submissions',
+          'squad_validations',
+          'group_stage_teams',
+          'knockout_bracket',
+          'tiebreakers',
+          'match_reviews',
+          'player_ratings',
+          'tournament_teams'
         ];
 
         for (const collectionName of collections) {
@@ -198,14 +241,17 @@ async function clearAllData() {
         // ============================================================
         // PART 2: NEON DATABASE CLEANUP
         // ============================================================
-        let neonTableCount = 0;
+        console.log('='.repeat(80) + '\n');
+        console.log('🐘 PART 2: NEON DATABASE CLEANUP\n');
+        
+        let totalTablesCleared = 0;
+        
+        // ============================================================
+        // 2A: Main Database
+        // ============================================================
         if (neonSql) {
-          console.log('='.repeat(80) + '\n');
-          console.log('🐘 PART 2: NEON DATABASE CLEANUP\n');
-
-          // Get all tables
-          console.log('6️⃣ Fetching Neon database tables...');
-          const tables = await neonSql`
+          console.log('6️⃣-A Clearing Main Database...');
+          const mainTables = await neonSql`
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = 'public'
@@ -213,32 +259,174 @@ async function clearAllData() {
             ORDER BY table_name;
           `;
           
-          neonTableCount = tables.length;
-          console.log(`   ✅ Found ${tables.length} tables\n`);
+          console.log(`   ✅ Found ${mainTables.length} tables in Main DB\n`);
 
-          // Clear each table (TRUNCATE is faster than DELETE)
-          for (const table of tables) {
+          for (const table of mainTables) {
             const tableName = table.table_name;
-            console.log(`7️⃣ Clearing table: ${tableName}...`);
+            console.log(`   Clearing: ${tableName}...`);
             
             try {
-              // Get count before deletion
               const countBefore = await neonSql.unsafe(`SELECT COUNT(*) as count FROM ${tableName}`);
               const recordCount = countBefore[0]?.count || 0;
               
               if (recordCount > 0) {
-                // Use TRUNCATE for better performance (resets sequences too)
                 await neonSql.unsafe(`TRUNCATE TABLE ${tableName} RESTART IDENTITY CASCADE`);
-                console.log(`   ✅ Cleared ${recordCount} records from ${tableName}\n`);
+                console.log(`   ✅ Cleared ${recordCount} records\n`);
               } else {
-                console.log(`   ℹ️  Table ${tableName} was already empty\n`);
+                console.log(`   ℹ️  Already empty\n`);
               }
+              totalTablesCleared++;
             } catch (error) {
-              console.log(`   ⚠️  Error clearing ${tableName}: ${error.message}\n`);
+              console.log(`   ⚠️  Error: ${error.message}\n`);
             }
           }
-        } else {
-          console.log('\n⚠️  Skipping Neon cleanup (no connection)\n');
+        }
+
+        // ============================================================
+        // 2B: Tournament Database (preserve historical)
+        // ============================================================
+        if (tournamentSql) {
+          console.log('\n6️⃣-B Clearing Tournament Database (preserving historical)...');
+          
+          // Get historical tournament IDs
+          const historicalTournaments = await tournamentSql`
+            SELECT id, tournament_name 
+            FROM tournaments 
+            WHERE is_historical = true
+          `;
+          
+          const historicalIds = historicalTournaments.map(t => t.id);
+          console.log(`   🔒 Found ${historicalIds.length} historical tournaments to preserve`);
+          historicalTournaments.forEach(t => {
+            console.log(`      - ${t.tournament_name} (${t.id})`);
+          });
+          console.log('');
+          
+          const tournamentTables = await tournamentSql`
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_type = 'BASE TABLE'
+            ORDER BY table_name;
+          `;
+          
+          console.log(`   ✅ Found ${tournamentTables.length} tables in Tournament DB\n`);
+
+          for (const table of tournamentTables) {
+            const tableName = table.table_name;
+            console.log(`   Clearing: ${tableName}...`);
+            
+            try {
+              const countBefore = await tournamentSql.unsafe(`SELECT COUNT(*) as count FROM ${tableName}`);
+              const recordCount = countBefore[0]?.count || 0;
+              
+              if (recordCount > 0) {
+                // Special handling for tournaments table
+                if (tableName === 'tournaments' && historicalIds.length > 0) {
+                  const idList = historicalIds.map(id => `'${id}'`).join(',');
+                  await tournamentSql.unsafe(`
+                    DELETE FROM ${tableName} 
+                    WHERE is_historical IS NOT TRUE
+                    OR is_historical IS NULL
+                  `);
+                  const preserved = await tournamentSql.unsafe(`SELECT COUNT(*) as count FROM ${tableName}`);
+                  console.log(`   ✅ Deleted ${recordCount - preserved[0].count} records, preserved ${preserved[0].count}\n`);
+                }
+                // Special handling for tables with tournament_id
+                else if (['fixtures', 'team_stats', 'player_stats', 'tournament_teams'].includes(tableName) && historicalIds.length > 0) {
+                  const idList = historicalIds.map(id => `'${id}'`).join(',');
+                  await tournamentSql.unsafe(`
+                    DELETE FROM ${tableName}
+                    WHERE tournament_id NOT IN (${idList})
+                  `);
+                  const remaining = await tournamentSql.unsafe(`SELECT COUNT(*) as count FROM ${tableName}`);
+                  console.log(`   ✅ Deleted ${recordCount - remaining[0].count} records, preserved ${remaining[0].count}\n`);
+                }
+                // All other tables - clear completely
+                else {
+                  await tournamentSql.unsafe(`TRUNCATE TABLE ${tableName} RESTART IDENTITY CASCADE`);
+                  console.log(`   ✅ Cleared ${recordCount} records\n`);
+                }
+              } else {
+                console.log(`   ℹ️  Already empty\n`);
+              }
+              totalTablesCleared++;
+            } catch (error) {
+              console.log(`   ⚠️  Error: ${error.message}\n`);
+            }
+          }
+        }
+
+        // ============================================================
+        // 2C: Fantasy Database
+        // ============================================================
+        if (fantasySql) {
+          console.log('\n6️⃣-C Clearing Fantasy Database...');
+          const fantasyTables = await fantasySql`
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_type = 'BASE TABLE'
+            ORDER BY table_name;
+          `;
+          
+          console.log(`   ✅ Found ${fantasyTables.length} tables in Fantasy DB\n`);
+
+          for (const table of fantasyTables) {
+            const tableName = table.table_name;
+            console.log(`   Clearing: ${tableName}...`);
+            
+            try {
+              const countBefore = await fantasySql.unsafe(`SELECT COUNT(*) as count FROM ${tableName}`);
+              const recordCount = countBefore[0]?.count || 0;
+              
+              if (recordCount > 0) {
+                await fantasySql.unsafe(`TRUNCATE TABLE ${tableName} RESTART IDENTITY CASCADE`);
+                console.log(`   ✅ Cleared ${recordCount} records\n`);
+              } else {
+                console.log(`   ℹ️  Already empty\n`);
+              }
+              totalTablesCleared++;
+            } catch (error) {
+              console.log(`   ⚠️  Error: ${error.message}\n`);
+            }
+          }
+        }
+
+        // ============================================================
+        // 2D: Auction Database
+        // ============================================================
+        if (auctionSql) {
+          console.log('\n6️⃣-D Clearing Auction Database...');
+          const auctionTables = await auctionSql`
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_type = 'BASE TABLE'
+            ORDER BY table_name;
+          `;
+          
+          console.log(`   ✅ Found ${auctionTables.length} tables in Auction DB\n`);
+
+          for (const table of auctionTables) {
+            const tableName = table.table_name;
+            console.log(`   Clearing: ${tableName}...`);
+            
+            try {
+              const countBefore = await auctionSql.unsafe(`SELECT COUNT(*) as count FROM ${tableName}`);
+              const recordCount = countBefore[0]?.count || 0;
+              
+              if (recordCount > 0) {
+                await auctionSql.unsafe(`TRUNCATE TABLE ${tableName} RESTART IDENTITY CASCADE`);
+                console.log(`   ✅ Cleared ${recordCount} records\n`);
+              } else {
+                console.log(`   ℹ️  Already empty\n`);
+              }
+              totalTablesCleared++;
+            } catch (error) {
+              console.log(`   ⚠️  Error: ${error.message}\n`);
+            }
+          }
         }
 
         // ============================================================
@@ -254,9 +442,10 @@ async function clearAllData() {
         console.log(`      - Auth users deleted: ${deletedAuthCount}`);
         console.log(`      - Super admin preserved: ${superAdminUid ? superAdminEmail + ' ✅' : 'None found ⚠️'}`);
         
-        if (neonSql && neonTableCount > 0) {
-          console.log('   Neon Database:');
-          console.log(`      - Tables cleared: ${neonTableCount}`);
+        if (totalTablesCleared > 0) {
+          console.log('   Neon Databases:');
+          console.log(`      - Total tables cleared: ${totalTablesCleared}`);
+          console.log('      - Historical tournaments preserved ✅');
           console.log('      - Table structure preserved ✅');
         }
         
