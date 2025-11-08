@@ -190,8 +190,6 @@ export default function TeamBulkTiebreakerPage() {
       // Message format from broadcastTiebreakerBid: { team_id, team_name, bid_amount, timestamp }
       if (message.team_id && message.bid_amount) {
         const bidData = message;
-        const userTeamName = (user as any)?.teamName || 'Your Team';
-        const isOwnBid = bidData.team_name === userTeamName;
         
         // Always update the highest bid info (even if it's our own bid)
         // This ensures the UI always shows the correct current highest bidder
@@ -210,21 +208,17 @@ export default function TeamBulkTiebreakerPage() {
             current_highest_bid: bidData.bid_amount,
             highest_bidder_team_id: bidData.team_id,
             highest_bidder_team_name: bidData.team_name,
-            // Only add to history if it's not our own bid (to avoid duplicates)
-            bid_history: isOwnBid ? prev.bid_history : [newBid, ...prev.bid_history],
+            // Add to history (WebSocket broadcasts to all including sender)
+            bid_history: [newBid, ...prev.bid_history.filter(b => 
+              !(b.team_id === newBid.team_id && b.amount === newBid.amount)
+            )],
           };
         });
         
-        if (isOwnBid) {
-          console.log('⚡ WebSocket confirmed own bid - updated current highest but skipped history');
-        } else {
-          console.log('⚡ WebSocket update from other team - full update');
-        }
+        console.log(`⚡ Instant UI update from WebSocket: ${bidData.team_name} bid £${bidData.bid_amount}`);
         
         // Update default bid amount (current highest + 1)
         setBidAmount((bidData.bid_amount + 1).toString());
-        
-        console.log('⚡ Instant UI update from WebSocket broadcast');
       } else if (message.type === 'tiebreaker_withdraw' && message.data) {
         // Someone withdrew - check if we're now the winner
         const withdrawData = message.data;
@@ -254,11 +248,15 @@ export default function TeamBulkTiebreakerPage() {
           finalBid: finalData.final_bid,
         });
         setShowWinnerModal(true);
-      } else if (message.type !== 'subscribed' && message.type !== 'connected') {
-        // For other message types, refetch data
+      } else if (message.type && message.type !== 'subscribed' && message.type !== 'connected') {
+        // Only refetch for unhandled message types that have explicit type field
+        console.log('[Tiebreaker WS] Unhandled message type, refetching:', message.type);
         if (fetchDataRef.current) {
           fetchDataRef.current();
         }
+      } else {
+        // No type field and no bid data - likely just connection message, ignore
+        console.log('[Tiebreaker WS] Ignoring message without type or bid data');
       }
     }, []), // Empty deps - uses ref instead
   });
