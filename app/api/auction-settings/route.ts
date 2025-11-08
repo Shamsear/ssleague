@@ -14,19 +14,24 @@ export async function GET(request: NextRequest) {
     
     try {
       // Get settings for specific season and auction window
-      let result = await client.query(
+      const result = await client.query(
         'SELECT * FROM auction_settings WHERE season_id = $1 AND auction_window = $2 LIMIT 1',
         [seasonId, auctionWindow]
       );
 
-      // If no settings found, create default
+      // If no settings found, return null
       if (result.rows.length === 0) {
-        result = await client.query(
-          `INSERT INTO auction_settings (season_id, auction_window, max_rounds, min_balance_per_round, contract_duration, max_squad_size, phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance) 
-           VALUES ($1, $2, 25, 30, 2, 25, 18, 30, 20, 30, 10) 
-           RETURNING *`,
-          [seasonId, auctionWindow]
-        );
+        return NextResponse.json({
+          success: true,
+          data: {
+            settings: null,
+            stats: {
+              total_rounds: 0,
+              completed_rounds: 0,
+              remaining_rounds: 0,
+            }
+          }
+        });
       }
 
       const settings = result.rows[0];

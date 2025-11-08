@@ -115,8 +115,8 @@ export default function AuctionSettingsPage() {
         setSettings(data.settings);
         setStats(data.stats);
         
-        // Only update form data if there are no unsaved changes
-        if (!hasUnsavedChanges) {
+        // Only update form data if there are no unsaved changes and settings exist
+        if (!hasUnsavedChanges && data.settings) {
           setFormData({
             auction_window: data.settings.auction_window || 'season_start',
             max_rounds: data.settings.max_rounds,
@@ -219,35 +219,56 @@ export default function AuctionSettingsPage() {
           </div>
         </div>
 
+        {/* No Settings Warning */}
+        {!settings && (
+          <div className="mb-6 glass p-5 rounded-2xl bg-yellow-50/60 backdrop-blur-sm border border-yellow-100/30">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-base font-medium text-yellow-800">No Auction Settings Found</h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <p>No auction settings have been configured yet. Please fill in the form below and save to create the initial settings.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Auction Settings Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="glass p-4 rounded-xl bg-white/40 backdrop-blur-sm border border-gray-100/20">
-            <h3 className="text-gray-700 text-lg font-medium mb-2">Total Rounds</h3>
-            <div className="flex items-end">
-              <span className="text-3xl font-bold text-primary">{stats.total_rounds}</span>
-              <span className="text-gray-500 ml-2 text-sm">/ {formData.max_rounds}</span>
+        {settings && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="glass p-4 rounded-xl bg-white/40 backdrop-blur-sm border border-gray-100/20">
+              <h3 className="text-gray-700 text-lg font-medium mb-2">Total Rounds</h3>
+              <div className="flex items-end">
+                <span className="text-3xl font-bold text-primary">{stats.total_rounds}</span>
+                <span className="text-gray-500 ml-2 text-sm">/ {formData.max_rounds}</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">Rounds created in this auction</p>
             </div>
-            <p className="text-sm text-gray-600 mt-1">Rounds created in this auction</p>
-          </div>
 
-          <div className="glass p-4 rounded-xl bg-white/40 backdrop-blur-sm border border-gray-100/20">
-            <h3 className="text-gray-700 text-lg font-medium mb-2">Completed Rounds</h3>
-            <div className="flex items-end">
-              <span className="text-3xl font-bold text-green-600">{stats.completed_rounds}</span>
-              <span className="text-gray-500 ml-2 text-sm">/ {formData.max_rounds}</span>
+            <div className="glass p-4 rounded-xl bg-white/40 backdrop-blur-sm border border-gray-100/20">
+              <h3 className="text-gray-700 text-lg font-medium mb-2">Completed Rounds</h3>
+              <div className="flex items-end">
+                <span className="text-3xl font-bold text-green-600">{stats.completed_rounds}</span>
+                <span className="text-gray-500 ml-2 text-sm">/ {formData.max_rounds}</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">Rounds that have been finalized</p>
             </div>
-            <p className="text-sm text-gray-600 mt-1">Rounds that have been finalized</p>
-          </div>
 
-          <div className="glass p-4 rounded-xl bg-white/40 backdrop-blur-sm border border-gray-100/20">
-            <h3 className="text-gray-700 text-lg font-medium mb-2">Remaining Rounds</h3>
-            <div className="flex items-end">
-              <span className="text-3xl font-bold text-blue-600">{stats.remaining_rounds}</span>
-              <span className="text-gray-500 ml-2 text-sm">/ {formData.max_rounds}</span>
+            <div className="glass p-4 rounded-xl bg-white/40 backdrop-blur-sm border border-gray-100/20">
+              <h3 className="text-gray-700 text-lg font-medium mb-2">Remaining Rounds</h3>
+              <div className="flex items-end">
+                <span className="text-3xl font-bold text-blue-600">{stats.remaining_rounds}</span>
+                <span className="text-gray-500 ml-2 text-sm">/ {formData.max_rounds}</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">Rounds that can still be created</p>
             </div>
-            <p className="text-sm text-gray-600 mt-1">Rounds that can still be created</p>
           </div>
-        </div>
+        )}
 
         {/* Settings Form */}
         <div className="glass p-5 sm:p-6 rounded-2xl bg-white/40 backdrop-blur-sm border border-gray-100/20">
