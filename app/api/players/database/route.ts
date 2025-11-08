@@ -40,21 +40,20 @@ export async function GET(request: Request) {
         // This is safe for read-only starred status - no sensitive operations
         try {
           const firebaseUid = getFirebaseUidFromToken(token);
+          
+          if (firebaseUid) {
+            // Check cache first
+            teamId = getCachedTeamId(firebaseUid);
             
-            if (firebaseUid) {
-              // Check cache first
-              teamId = getCachedTeamId(firebaseUid);
+            if (!teamId) {
+              // Cache miss - look up Neon team_id from Firebase UID
+              const teamResult = await sql`
+                SELECT id FROM teams WHERE firebase_uid = ${firebaseUid} LIMIT 1
+              `;
               
-              if (!teamId) {
-                // Cache miss - look up Neon team_id from Firebase UID
-                const teamResult = await sql`
-                  SELECT id FROM teams WHERE firebase_uid = ${firebaseUid} LIMIT 1
-                `;
-                
-                if (teamResult.length > 0) {
-                  teamId = teamResult[0].id;
-                  setCachedTeamId(firebaseUid, teamId);
-                }
+              if (teamResult.length > 0) {
+                teamId = teamResult[0].id;
+                setCachedTeamId(firebaseUid, teamId);
               }
             }
           }
