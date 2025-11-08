@@ -232,6 +232,19 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
       activeBids = activeBids.filter(b => b.player_id !== topBid.player_id && b.team_id !== topBid.team_id);
     }
 
+    // Get teams that already have players in this round (from previous finalization attempts)
+    const existingAllocations = await sql`
+      SELECT DISTINCT team_id
+      FROM team_players
+      WHERE round_id = ${roundId}
+    `;
+    const teamsWithPlayers = new Set(existingAllocations.map((a: any) => a.team_id));
+    
+    // Add to allocatedTeams to prevent duplicates
+    teamsWithPlayers.forEach(teamId => allocatedTeams.add(teamId));
+    
+    console.log(`🔍 Teams already allocated in this round: ${teamsWithPlayers.size}`);
+    
     // Handle non-submitted teams (teams that didn't click Submit button)
     if (nonSubmittedTeams.length > 0) {
       const avgAmount = allocations.length > 0

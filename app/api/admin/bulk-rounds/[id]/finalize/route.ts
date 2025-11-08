@@ -162,12 +162,32 @@ export async function POST(
       }
     }
     
+    // Get teams that already have players in this round (from previous finalization attempts)
+    // This prevents duplicate allocations if finalize endpoint is called multiple times
+    const existingAllocations = await sql`
+      SELECT DISTINCT team_id
+      FROM team_players
+      WHERE round_id = ${roundId}
+    `;
+    const teamsAlreadyAllocated = new Set(existingAllocations.map((a: any) => a.team_id));
+    
+    if (teamsAlreadyAllocated.size > 0) {
+      console.log(`🔍 Found ${teamsAlreadyAllocated.size} teams already allocated in this round (skipping them)`);
+    }
+    
     // PART 1: Immediately assign players with single bidder
     if (singleBidders.length > 0) {
       console.log(`\n🎯 Assigning ${singleBidders.length} players with single bidders...`);
 
       for (const playerId of singleBidders) {
         const bid = bidsByPlayer.get(playerId)![0];
+        
+        // Skip if this team already got a player in this round (prevents duplicates)
+        if (teamsAlreadyAllocated.has(bid.team_id)) {
+          console.log(`⏭️ Skipping ${bid.team_name} - already allocated in this round`);
+          continue;
+        }
+        
         const playerInfo = singlePlayerDetailsMap.get(playerId);
         const contractId = `contract_${playerId}_${round.season_id}_${Date.now()}`;
 
@@ -274,7 +294,12 @@ export async function POST(
           console.log(`🔄 Skipped team budget update (player already assigned to ${bid.team_id})`);
         }
 
-        // Get firebase_uid for this team for Firebase updates
+        // Update Firebase team_seasons using team_id (not firebase_uid)
+        const teamSeasonId = `${bid.team_id}_${round.season_id}`;
+        const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
+        const teamSeasonSnap = await teamSeasonRef.get();
+        
+        // Get firebase_uid for transaction logging
         const teamFirebaseResult = await sql`
           SELECT firebase_uid FROM teams
           WHERE id = ${bid.team_id}
@@ -283,16 +308,6 @@ export async function POST(
         `;
         
         const firebaseUid = teamFirebaseResult[0]?.firebase_uid;
-        if (!firebaseUid) {
-          console.warn(`⚠️ No firebase_uid found for team ${bid.team_id}`);
-          immediatelyAssigned++;
-          continue;
-        }
-
-        // Update Firebase team_seasons using firebase_uid
-        const teamSeasonId = `${firebaseUid}_${round.season_id}`;
-        const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
-        const teamSeasonSnap = await teamSeasonRef.get();
         
         if (teamSeasonSnap.exists) {
           const teamSeasonData = teamSeasonSnap.data();
@@ -330,19 +345,21 @@ export async function POST(
           // Update balance
           await teamSeasonRef.update(updateData);
           
-          // Log transaction using firebase_uid
-          await logAuctionWin(
-            firebaseUid,
-            round.season_id,
-            playerInfo?.player_name || 'Unknown Player',
-            playerId,
-            'football',
-            round.base_price,
-            currentBudget,
-            roundId
-          );
+          // Log transaction using firebase_uid (if available)
+          if (firebaseUid) {
+            await logAuctionWin(
+              firebaseUid,
+              round.season_id,
+              playerInfo?.player_name || 'Unknown Player',
+              playerId,
+              'football',
+              round.base_price,
+              currentBudget,
+              roundId
+            );
+          }
           
-          console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${firebaseUid}`);
+          console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${bid.team_id}`);
           
           // Broadcast squad and wallet updates to team
           await broadcastTeamUpdate(bid.team_id, 'squad', {
@@ -361,6 +378,8 @@ export async function POST(
           console.warn(`⚠️ Team season ${teamSeasonId} not found in Firebase`);
         }
 
+        // Mark this team as allocated to prevent multiple assignments in same run
+        teamsAlreadyAllocated.add(bid.team_id);
         immediatelyAssigned++;
       }
 
