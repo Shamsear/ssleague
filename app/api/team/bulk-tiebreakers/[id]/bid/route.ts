@@ -4,6 +4,7 @@ import { verifyAuth } from '@/lib/auth-helper';
 import { finalizeBulkTiebreaker } from '@/lib/finalize-bulk-tiebreaker';
 import { broadcastTiebreakerBid } from '@/lib/realtime/broadcast';
 import { calculateReserve } from '@/lib/reserve-calculator';
+import { sendNotification } from '@/lib/notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -296,6 +297,52 @@ export async function POST(
         bid_amount,
       }
     );
+    
+    // 📨 Send push notifications to all other participating teams
+    try {
+      // Get all participating teams except the bidder
+      const participatingTeams = await sql`
+        SELECT team_id
+        FROM bulk_tiebreaker_teams
+        WHERE tiebreaker_id = ${tiebreakerId}
+        AND status = 'active'
+        AND team_id != ${teamId}
+      `;
+      
+      if (participatingTeams.length > 0) {
+        // Get Firebase UIDs for these teams
+        const teamIdsToNotify = participatingTeams.map(t => t.team_id);
+        const teamFirebaseUids = await sql`
+          SELECT firebase_uid
+          FROM teams
+          WHERE id = ANY(${teamIdsToNotify})
+          AND season_id = ${seasonId}
+        `;
+        
+        const userIdsToNotify = teamFirebaseUids.map(t => t.firebase_uid).filter(Boolean);
+        
+        if (userIdsToNotify.length > 0) {
+          await sendNotification(
+            {
+              title: 'New Tiebreaker Bid',
+              body: `${teamName} bid £${bid_amount} for ${tiebreaker.player_name}`,
+              url: `/dashboard/team/bulk-tiebreaker/${tiebreakerId}`,
+              data: {
+                type: 'tiebreaker_bid',
+                tiebreaker_id: tiebreakerId,
+                player_name: tiebreaker.player_name,
+                bid_amount: bid_amount.toString(),
+              }
+            },
+            { userIds: userIdsToNotify }
+          );
+          console.log(`📨 Sent notifications to ${userIdsToNotify.length} teams`);
+        }
+      }
+    } catch (notifError) {
+      console.error('⚠️ Failed to send notifications:', notifError);
+      // Don't fail the bid if notifications fail
+    }
 
     if (isWinner) {
       console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${teamId} wins!`);

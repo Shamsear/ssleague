@@ -67,6 +67,7 @@ export default function TeamBulkTiebreakerPage() {
   const [teamBalance, setTeamBalance] = useState(1000); // Mock balance
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [myTeamId, setMyTeamId] = useState<string | null>(null); // Store current user's team ID
   
   // Winner modal state
   const [showWinnerModal, setShowWinnerModal] = useState(false);
@@ -107,6 +108,11 @@ export default function TeamBulkTiebreakerPage() {
         // Find current user's team
         const myTeam = teams.find((t: any) => t.is_current_user);
         const myLastBid = myTeam?.current_bid || null;
+        
+        // Store current user's team ID for comparison
+        if (myTeam?.team_id) {
+          setMyTeamId(myTeam.team_id);
+        }
         
         // Store season ID for WebSocket
         if (tiebreakerData.season_id) {
@@ -477,7 +483,7 @@ export default function TeamBulkTiebreakerPage() {
     return teamId === user?.uid;
   };
 
-  const isWinning = tiebreaker?.highest_bidder_team_id === user?.uid;
+  const isWinning = tiebreaker?.highest_bidder_team_id === myTeamId;
 
   if (loading || !user || user.role !== 'team' || isLoading) {
     return (
