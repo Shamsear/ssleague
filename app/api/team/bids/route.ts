@@ -124,32 +124,17 @@ export async function POST(request: NextRequest) {
     try {
       const reserve = await calculateReserve(teamId!, round.id, round.season_id);
       
-      // Phase-specific validations
-      if (reserve.phase === 'phase_2' || reserve.phase === 'phase_3') {
-        // Phase 2/3: Check minimum balance to participate
-        const minimumRequired = reserve.phase === 'phase_2' ? 30 : 10; // phase_2_min_balance or phase_3_min_balance
-        if (amount < minimumRequired) {
+      // Phase 2: Check floor reserve (Phase 3 minimum)
+      if (reserve.phase === 'phase_2' && reserve.minimumReserve > 0) {
+        const availableForBid = teamBalance - reserve.minimumReserve;
+        if (amount > availableForBid) {
           return NextResponse.json(
             { 
               success: false, 
-              error: `Minimum bid in ${reserve.phase === 'phase_2' ? 'Phase 2' : 'Phase 3'} is £${minimumRequired}` 
+              error: `Bid exceeds available balance. You must maintain £${reserve.minimumReserve} for Phase 3 slots (${reserve.explanation}). Maximum bid: £${Math.max(0, availableForBid)}` 
             },
             { status: 400 }
           );
-        }
-        
-        // Phase 2: Also check floor reserve (Phase 3 minimum)
-        if (reserve.phase === 'phase_2' && reserve.minimumReserve > 0) {
-          const availableForBid = teamBalance - reserve.minimumReserve;
-          if (amount > availableForBid) {
-            return NextResponse.json(
-              { 
-                success: false, 
-                error: `Bid exceeds available balance. You must maintain £${reserve.minimumReserve} for Phase 3 slots (${reserve.explanation}). Maximum bid: £${Math.max(0, availableForBid)}` 
-              },
-              { status: 400 }
-            );
-          }
         }
       }
       
