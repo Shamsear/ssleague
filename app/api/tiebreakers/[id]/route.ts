@@ -309,7 +309,7 @@ export async function GET(
               // Check if player was won in a resolved tiebreaker (not yet finalized to footballplayers)
               else {
                 const resolvedTiebreaker = await sql`
-                  SELECT t.id, t.winner_team_id, t.status
+                  SELECT t.id, t.winning_team_id, t.status
                   FROM tiebreakers t
                   WHERE t.round_id = ${tiebreaker.round_id}
                   AND t.player_id = ${player_id}

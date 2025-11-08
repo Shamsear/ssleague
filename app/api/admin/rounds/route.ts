@@ -177,32 +177,41 @@ export async function POST(request: NextRequest) {
 
     const {
       season_id,
+      auction_settings_id,
       position,
       max_bids_per_team,
       duration_hours,
     } = body;
 
     // Validate required fields
-    if (!season_id || !position || !max_bids_per_team || !duration_hours) {
+    if (!auction_settings_id || !position || !max_bids_per_team || !duration_hours) {
       return NextResponse.json(
-        { success: false, error: 'All fields are required' },
+        { success: false, error: 'auction_settings_id, position, max_bids_per_team, and duration_hours are required' },
         { status: 400 }
       );
     }
 
-    // Validate that auction settings exist for this season
-    const validation = await validateAuctionSettings(season_id);
-    if (!validation.valid) {
+    // Validate that auction settings exist and get season_id from it
+    const settingsResult = await sql`
+      SELECT season_id, auction_window, max_rounds 
+      FROM auction_settings 
+      WHERE id = ${auction_settings_id}
+    `;
+    
+    if (settingsResult.length === 0) {
       return NextResponse.json(
-        { success: false, error: validation.error },
-        { status: validation.status || 400 }
+        { success: false, error: 'Auction settings not found' },
+        { status: 404 }
       );
     }
+    
+    const auctionSettings = settingsResult[0];
+    const seasonId = auctionSettings.season_id;
 
     // Check if there's already an active round for this season
     const activeRound = await sql`
       SELECT id FROM rounds
-      WHERE season_id = ${season_id}
+      WHERE season_id = ${seasonId}
       AND status = 'active'
       LIMIT 1
     `;
@@ -249,7 +258,7 @@ export async function POST(request: NextRequest) {
     
     // Calculate round_number (count existing rounds + 1)
     const roundCountResult = await sql`
-      SELECT COUNT(*) as count FROM rounds WHERE season_id = ${season_id}
+      SELECT COUNT(*) as count FROM rounds WHERE season_id = ${seasonId}
     `;
     const roundNumber = parseInt(roundCountResult[0]?.count || '0') + 1;
     
@@ -258,6 +267,7 @@ export async function POST(request: NextRequest) {
       INSERT INTO rounds (
         id,
         season_id,
+        auction_settings_id,
         position,
         max_bids_per_team,
         round_number,
@@ -267,7 +277,8 @@ export async function POST(request: NextRequest) {
         updated_at
       ) VALUES (
         ${roundId!},
-        ${season_id},
+        ${seasonId},
+        ${auction_settings_id},
         ${position},
         ${max_bids_per_team},
         ${roundNumber},
@@ -281,10 +292,10 @@ export async function POST(request: NextRequest) {
 
     // Send FCM notification to all teams in season (before Firebase to avoid timeout)
     try {
-      console.log(`📣 Sending round start notification for season ${season_id}, round ${roundId}`);
+      console.log(`📣 Sending round start notification for season ${seasonId}, round ${roundId}`);
       const notifResult = await sendNotificationToSeason(
         {
-          title: '🎯 New Auction Round Available!',
+          title: `🎯 New ${auctionSettings.auction_window.replace('_', ' ').toUpperCase()} Round!`,
           body: `${position} bidding is now open. Duration: ${duration_hours} hour(s). Place your bids now!`,
           url: `/dashboard/team`,
           icon: '/logo.png',
@@ -295,7 +306,7 @@ export async function POST(request: NextRequest) {
             endTime: endTime.toISOString()
           }
         },
-        season_id
+        seasonId
       );
       console.log(`✅ Round start notification result:`, notifResult);
     } catch (notifError) {
@@ -304,7 +315,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Broadcast round started via Firebase Realtime DB (non-blocking)
-    broadcastRoundUpdate(season_id, roundId!, {
+    broadcastRoundUpdate(seasonId, roundId!, {
       type: 'round_started',
       status: 'active',
       round_id: roundId!,

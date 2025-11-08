@@ -62,6 +62,8 @@ export default function RoundsManagementPage() {
   const [roundDetails, setRoundDetails] = useState<{[key: string]: any}>({});
   const [roundSubmissions, setRoundSubmissions] = useState<{[key: string]: any}>({});
   const [loadingSubmissions, setLoadingSubmissions] = useState<{[key: string]: boolean}>({});
+  const [auctionSettings, setAuctionSettings] = useState<any[]>([]);
+  const [selectedAuctionSettingsId, setSelectedAuctionSettingsId] = useState<string>('');
   const timerRefs = useRef<{[key: string]: NodeJS.Timeout}>({});
   const previousRoundsRef = useRef<string>('');
 
@@ -116,6 +118,23 @@ export default function RoundsManagementPage() {
 
       const seasonId = seasonsSnapshot.docs[0].id;
       setCurrentSeasonId(seasonId);
+
+      // Fetch auction settings for this season
+      try {
+        const settingsResponse = await fetchWithTokenRefresh(
+          `/api/auction-settings/all?season_id=${seasonId}`
+        );
+        const settingsData = await settingsResponse.json();
+        if (settingsData.success && settingsData.data) {
+          setAuctionSettings(settingsData.data);
+          // Auto-select first setting if none selected
+          if (!selectedAuctionSettingsId && settingsData.data.length > 0) {
+            setSelectedAuctionSettingsId(String(settingsData.data[0].id));
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching auction settings:', err);
+      }
 
       // Fetch rounds, positions, and tiebreakers in parallel
       const roundsParams = new URLSearchParams({ season_id: seasonId });
@@ -622,12 +641,22 @@ export default function RoundsManagementPage() {
     // Combine selected positions with comma separator
     const combinedPosition = selectedPositions.join(',');
 
+    // Validate auction settings selected
+    if (!selectedAuctionSettingsId) {
+      showAlert({
+        type: 'warning',
+        title: 'Missing Settings',
+        message: 'Please select auction settings'
+      });
+      return;
+    }
+
     try {
       const response = await fetchWithTokenRefresh('/api/admin/rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          season_id: currentSeasonId,
+          auction_settings_id: parseInt(selectedAuctionSettingsId),
           position: combinedPosition,
           max_bids_per_team: parseInt(formData.max_bids_per_team),
           duration_hours: (parseFloat(formData.duration_hours) + (parseFloat(formData.duration_minutes) / 60)).toString(),
@@ -1035,7 +1064,53 @@ export default function RoundsManagementPage() {
                   </div>
                   <p className="mt-1 text-xs text-gray-500">Select one position for regular rounds, or multiple for combined rounds (e.g., LB + LWF)</p>
                 </div>
-                
+              </div>
+
+              {/* Auction Settings Selector */}
+              <div className="mt-4">
+                <label htmlFor="auction_settings" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Auction Settings
+                  <span className="ml-2 text-xs text-gray-500">(Window Type)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </span>
+                  <select
+                    id="auction_settings"
+                    value={selectedAuctionSettingsId}
+                    onChange={(e) => setSelectedAuctionSettingsId(e.target.value)}
+                    required
+                    className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all duration-200 text-base shadow-sm"
+                  >
+                    <option value="">Select auction settings...</option>
+                    {auctionSettings.map(setting => {
+                      const windowLabel = setting.auction_window
+                        .split('_')
+                        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+                      return (
+                        <option key={setting.id} value={setting.id}>
+                          {windowLabel} (Max {setting.max_rounds} rounds, {setting.max_squad_size} players)
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Choose settings based on auction type. 
+                  {auctionSettings.length === 0 && (
+                    <Link href="/dashboard/committee/auction-settings" className="text-blue-600 hover:text-blue-800 ml-1">
+                      Create settings first →
+                    </Link>
+                  )}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Duration</label>
                   <div className="grid grid-cols-2 gap-3">

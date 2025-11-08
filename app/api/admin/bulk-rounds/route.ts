@@ -23,11 +23,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get request body
-    const { season_id, base_price = 10, duration_hours = 0, duration_minutes = 5, duration_seconds = 0 } = await request.json();
+    const { auction_settings_id, base_price = 10, duration_hours = 0, duration_minutes = 5, duration_seconds = 0 } = await request.json();
 
-    if (!season_id) {
+    if (!auction_settings_id) {
       return NextResponse.json(
-        { success: false, error: 'season_id is required' },
+        { success: false, error: 'auction_settings_id is required' },
         { status: 400 }
       );
     }
@@ -35,17 +35,24 @@ export async function POST(request: NextRequest) {
     // Convert duration to total seconds
     const totalDurationSeconds = (duration_hours * 3600) + (duration_minutes * 60) + duration_seconds;
 
-    console.log('🔄 Creating bulk round:', { season_id, base_price, duration_hours, duration_minutes, duration_seconds, totalDurationSeconds });
-
-    // Validate that auction settings exist for this season
-    const validation = await validateAuctionSettings(season_id);
-    if (!validation.valid) {
+    // Validate that auction settings exist and get season_id from it
+    const settingsResult = await sql`
+      SELECT season_id, auction_window 
+      FROM auction_settings 
+      WHERE id = ${auction_settings_id}
+    `;
+    
+    if (settingsResult.length === 0) {
       return NextResponse.json(
-        { success: false, error: validation.error },
-        { status: validation.status || 400 }
+        { success: false, error: 'Auction settings not found' },
+        { status: 404 }
       );
     }
+    
+    const auctionSettings = settingsResult[0];
+    const season_id = auctionSettings.season_id;
 
+    console.log('🔄 Creating bulk round:', { auction_settings_id, season_id, base_price, duration_hours, duration_minutes, duration_seconds, totalDurationSeconds });
     console.log('✅ Auction settings validated for season:', season_id);
 
     // Get next round number for this season (includes ALL round types)
@@ -66,6 +73,7 @@ export async function POST(request: NextRequest) {
     INSERT INTO rounds (
         id,
         season_id,
+        auction_settings_id,
         round_number,
         round_type,
         base_price,
@@ -75,6 +83,7 @@ export async function POST(request: NextRequest) {
       ) VALUES (
         ${roundId},
         ${season_id},
+        ${auction_settings_id},
         ${nextRoundNumber},
         'bulk',
         ${base_price},

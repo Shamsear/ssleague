@@ -8,23 +8,24 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('season_id') || 'default';
+    const auctionWindow = searchParams.get('auction_window') || 'season_start';
 
     const client = await pool.connect();
     
     try {
-      // Get settings
+      // Get settings for specific season and auction window
       let result = await client.query(
-        'SELECT * FROM auction_settings WHERE season_id = $1 LIMIT 1',
-        [seasonId]
+        'SELECT * FROM auction_settings WHERE season_id = $1 AND auction_window = $2 LIMIT 1',
+        [seasonId, auctionWindow]
       );
 
       // If no settings found, create default
       if (result.rows.length === 0) {
         result = await client.query(
-          `INSERT INTO auction_settings (season_id, max_rounds, min_balance_per_round, contract_duration, max_squad_size, phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance) 
-           VALUES ($1, 25, 30, 2, 25, 18, 30, 20, 30, 10) 
+          `INSERT INTO auction_settings (season_id, auction_window, max_rounds, min_balance_per_round, contract_duration, max_squad_size, phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance) 
+           VALUES ($1, $2, 25, 30, 2, 25, 18, 30, 20, 30, 10) 
            RETURNING *`,
-          [seasonId]
+          [seasonId, auctionWindow]
         );
       }
 
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
           settings: {
             id: settings.id,
             season_id: settings.season_id,
+            auction_window: settings.auction_window || 'season_start',
             max_rounds: settings.max_rounds,
             min_balance_per_round: settings.min_balance_per_round,
             contract_duration: settings.contract_duration || 2,
@@ -87,7 +89,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('🔍 [Auction Settings POST] Received body:', body);
     const { 
-      season_id = 'default', 
+      season_id = 'default',
+      auction_window = 'season_start', 
       max_rounds, 
       min_balance_per_round, 
       contract_duration = 2, 
@@ -110,10 +113,10 @@ export async function POST(request: NextRequest) {
     const client = await pool.connect();
 
     try {
-      // Check if settings exist
+      // Check if settings exist for this season and auction window
       const checkResult = await client.query(
-        'SELECT id FROM auction_settings WHERE season_id = $1',
-        [season_id]
+        'SELECT id FROM auction_settings WHERE season_id = $1 AND auction_window = $2',
+        [season_id, auction_window]
       );
 
       let result;
@@ -124,23 +127,23 @@ export async function POST(request: NextRequest) {
            SET max_rounds = $1, min_balance_per_round = $2, contract_duration = $3, max_squad_size = $4,
                phase_1_end_round = $5, phase_1_min_balance = $6, phase_2_end_round = $7, 
                phase_2_min_balance = $8, phase_3_min_balance = $9
-           WHERE season_id = $10 
+           WHERE season_id = $10 AND auction_window = $11
            RETURNING *`,
           [max_rounds, min_balance_per_round, contract_duration, max_squad_size, 
-           phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance, season_id]
+           phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance, season_id, auction_window]
         );
       } else {
         // Insert new
         result = await client.query(
-          `INSERT INTO auction_settings (season_id, max_rounds, min_balance_per_round, contract_duration, max_squad_size, phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+          `INSERT INTO auction_settings (season_id, auction_window, max_rounds, min_balance_per_round, contract_duration, max_squad_size, phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
            RETURNING *`,
-          [season_id, max_rounds, min_balance_per_round, contract_duration, max_squad_size,
+          [season_id, auction_window, max_rounds, min_balance_per_round, contract_duration, max_squad_size,
            phase_1_end_round, phase_1_min_balance, phase_2_end_round, phase_2_min_balance, phase_3_min_balance]
         );
       }
 
-      console.log(`✅ Updated auction settings for season ${season_id}`);
+      console.log(`✅ Updated auction settings for season ${season_id}, window ${auction_window}`);
 
       return NextResponse.json({
         success: true,

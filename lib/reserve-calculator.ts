@@ -248,23 +248,53 @@ export async function calculateReserve(
   phase: 'phase_1' | 'phase_2' | 'phase_3';
 }> {
   try {
-    // Fetch auction settings
-    const settings = await getAuctionSettings(seasonId);
-    
-    // Fetch current round info
+    // Fetch round info with auction settings
     const roundResult = await sql`
-      SELECT round_number FROM rounds WHERE id = ${roundId}
+      SELECT 
+        r.round_number,
+        r.season_id,
+        r.auction_settings_id,
+        a.phase_1_end_round,
+        a.phase_1_min_balance,
+        a.phase_2_end_round,
+        a.phase_2_min_balance,
+        a.phase_3_min_balance,
+        a.max_squad_size
+      FROM rounds r
+      LEFT JOIN auction_settings a ON r.auction_settings_id = a.id
+      WHERE r.id = ${roundId}
     `;
     
     if (roundResult.length === 0) {
       throw new Error('Round not found');
     }
     
-    const currentRoundNumber = roundResult[0].round_number;
-    console.log(`🔍 [Reserve Calculator] Round ${roundId}: round_number = ${currentRoundNumber}`);
+    const round = roundResult[0];
+    const currentRoundNumber = round.round_number;
+    console.log(`🔍 [Reserve Calculator] Round ${roundId}: round_number = ${currentRoundNumber}, auction_settings_id = ${round.auction_settings_id}`);
+    
+    // Check if auction settings exist
+    if (!round.auction_settings_id || !round.phase_1_end_round) {
+      console.warn(`⚠️ [Reserve Calculator] Round ${roundId} has no auction_settings_id, falling back to season settings`);
+      // Fallback to old method for backward compatibility
+      const settings = await getAuctionSettings(round.season_id || seasonId);
+      const reserveInfo = calculateReserveCore(
+        currentRoundNumber,
+        0, // Will be filled from team data below
+        0,
+        {
+          phase_1_end_round: settings.phase_1_end_round,
+          phase_1_min_balance: settings.phase_1_min_balance,
+          phase_2_end_round: settings.phase_2_end_round,
+          phase_2_min_balance: settings.phase_2_min_balance,
+          phase_3_min_balance: settings.phase_3_min_balance,
+          max_squad_size: settings.max_squad_size,
+        }
+      );
+    }
     
     // Fetch team data from Firebase
-    const teamSeasonDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${seasonId}`).get();
+    const teamSeasonDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id || seasonId}`).get();
     
     if (!teamSeasonDoc.exists) {
       throw new Error('Team season data not found');
@@ -277,6 +307,16 @@ export async function calculateReserve(
       : (teamData?.budget || 0);
     const teamSquadSize = teamData?.players_count || 0;
     
+    // Use auction settings from round
+    const settings = {
+      phase_1_end_round: round.phase_1_end_round,
+      phase_1_min_balance: round.phase_1_min_balance,
+      phase_2_end_round: round.phase_2_end_round,
+      phase_2_min_balance: round.phase_2_min_balance,
+      phase_3_min_balance: round.phase_3_min_balance,
+      max_squad_size: round.max_squad_size,
+    };
+    
     // Calculate reserve using core function
     console.log(`🔍 [Reserve Calculator] Input: currentRound=${currentRoundNumber}, balance=${teamBalance}, squadSize=${teamSquadSize}`);
     console.log(`🔍 [Reserve Calculator] Settings: phase1End=${settings.phase_1_end_round}, phase2End=${settings.phase_2_end_round}, maxSquad=${settings.max_squad_size}`);
@@ -285,14 +325,7 @@ export async function calculateReserve(
       currentRoundNumber,
       teamBalance,
       teamSquadSize,
-      {
-        phase_1_end_round: settings.phase_1_end_round,
-        phase_1_min_balance: settings.phase_1_min_balance,
-        phase_2_end_round: settings.phase_2_end_round,
-        phase_2_min_balance: settings.phase_2_min_balance,
-        phase_3_min_balance: settings.phase_3_min_balance,
-        max_squad_size: settings.max_squad_size,
-      }
+      settings
     );
     
     console.log(`🔍 [Reserve Calculator] Result: phase=${reserveInfo.phase}, reserve=${reserveInfo.floorReserve}, explanation="${reserveInfo.calculation}"`);

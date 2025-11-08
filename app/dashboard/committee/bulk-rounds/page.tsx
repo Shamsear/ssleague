@@ -30,6 +30,8 @@ export default function BulkRoundsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [auctionSettings, setAuctionSettings] = useState<any[]>([]);
+  const [selectedAuctionSettingsId, setSelectedAuctionSettingsId] = useState<string>('');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -64,6 +66,23 @@ export default function BulkRoundsPage() {
         if (!seasonsSnapshot.empty) {
           const seasonId = seasonsSnapshot.docs[0].id;
           setCurrentSeasonId(seasonId);
+          
+          // Fetch auction settings for this season
+          try {
+            const settingsResponse = await fetchWithTokenRefresh(
+              `/api/auction-settings/all?season_id=${seasonId}`
+            );
+            const settingsData = await settingsResponse.json();
+            if (settingsData.success && settingsData.data) {
+              setAuctionSettings(settingsData.data);
+              // Auto-select first setting if none selected
+              if (!selectedAuctionSettingsId && settingsData.data.length > 0) {
+                setSelectedAuctionSettingsId(String(settingsData.data[0].id));
+              }
+            }
+          } catch (err) {
+            console.error('Error fetching auction settings:', err);
+          }
         }
       } catch (err) {
         console.error('Error fetching season:', err);
@@ -112,19 +131,22 @@ export default function BulkRoundsPage() {
       return;
     }
 
+    if (!selectedAuctionSettingsId) {
+      alert('Please select auction settings');
+      return;
+    }
+
     // Get next round number
     const nextRoundNumber = bulkRounds.length > 0 
       ? Math.max(...bulkRounds.map(r => r.round_number)) + 1 
       : 1;
 
     try {
-      const response = await fetchWithTokenRefresh('/api/rounds', {
+      const response = await fetchWithTokenRefresh('/api/admin/bulk-rounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          season_id: currentSeasonId,
-          round_number: nextRoundNumber,
-          round_type: 'bulk',
+          auction_settings_id: parseInt(selectedAuctionSettingsId),
           base_price: parseInt(formData.base_price),
           duration_hours: parseInt(formData.duration_hours),
           duration_minutes: parseInt(formData.duration_minutes),
@@ -307,6 +329,42 @@ export default function BulkRoundsPage() {
           <div className="glass rounded-2xl p-6 mb-6 border border-white/20">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Create New Bulk Bidding Round</h2>
             <form onSubmit={handleCreateBulkRound} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Auction Settings Selector */}
+              <div className="md:col-span-2">
+                <label htmlFor="auction_settings" className="block text-sm font-medium text-gray-700 mb-1">
+                  Auction Settings
+                  <span className="ml-2 text-xs text-gray-500">(Window Type)</span>
+                </label>
+                <select
+                  id="auction_settings"
+                  value={selectedAuctionSettingsId}
+                  onChange={(e) => setSelectedAuctionSettingsId(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0066FF] focus:border-[#0066FF]"
+                >
+                  <option value="">Select auction settings...</option>
+                  {auctionSettings.map(setting => {
+                    const windowLabel = setting.auction_window
+                      .split('_')
+                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join(' ');
+                    return (
+                      <option key={setting.id} value={setting.id}>
+                        {windowLabel} (Max {setting.max_rounds} rounds, {setting.max_squad_size} players)
+                      </option>
+                    );
+                  })}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Choose settings based on auction type.
+                  {auctionSettings.length === 0 && (
+                    <Link href="/dashboard/committee/auction-settings" className="text-blue-600 hover:text-blue-800 ml-1">
+                      Create settings first →
+                    </Link>
+                  )}
+                </p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Base Price (£)</label>
                 <div className="relative">

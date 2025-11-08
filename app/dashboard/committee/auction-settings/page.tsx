@@ -9,6 +9,7 @@ import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 interface AuctionSettings {
   id: number;
   season_id: string;
+  auction_window: string;
   max_rounds: number;
   min_balance_per_round: number;
   max_squad_size: number;
@@ -41,6 +42,7 @@ export default function AuctionSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [formData, setFormData] = useState({
+    auction_window: 'season_start',
     max_rounds: 25,
     min_balance_per_round: 30,
     max_squad_size: 25,
@@ -86,6 +88,7 @@ export default function AuctionSettingsPage() {
         setSettings(data.settings);
         setStats(data.stats);
         setFormData({
+          auction_window: data.settings.auction_window || 'season_start',
           max_rounds: data.settings.max_rounds,
           min_balance_per_round: data.settings.min_balance_per_round,
           max_squad_size: data.settings.max_squad_size || 25,
@@ -203,6 +206,33 @@ export default function AuctionSettingsPage() {
 
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2">
+                <label htmlFor="auction_window" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Auction Window Type
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </span>
+                  <select
+                    id="auction_window"
+                    value={formData.auction_window}
+                    onChange={(e) => setFormData({ ...formData, auction_window: e.target.value })}
+                    required
+                    className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-200 text-base appearance-none"
+                  >
+                    <option value="season_start">🏆 Season Start</option>
+                    <option value="transfer_window">🔄 Transfer Window</option>
+                    <option value="mid_season">⚡ Mid-Season</option>
+                    <option value="winter_window">❄️ Winter Window</option>
+                    <option value="summer_window">☀️ Summer Window</option>
+                  </select>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Select the type of auction window these settings apply to</p>
+              </div>
+
               <div>
                 <label htmlFor="max_rounds" className="block text-sm font-medium text-gray-700 mb-1.5">
                   Maximum Rounds
