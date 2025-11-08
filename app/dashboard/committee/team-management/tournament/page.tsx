@@ -13,6 +13,7 @@ import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import RoundFixturesShareButton from '@/components/RoundFixturesShareButton';
+import TournamentStandings from '@/components/tournament/TournamentStandings';
 
 interface Match {
   id: string;
@@ -1387,80 +1388,18 @@ export default function TournamentDashboardPage() {
               </div>
             </div>
 
-            {/* Standings Table */}
-            {selectedTournamentForStandings && (
+            {/* Tournament Standings - Format-Aware */}
+            {selectedTournamentForStandings ? (
+              <TournamentStandings tournamentId={selectedTournamentForStandings} />
+            ) : (
               <div className="glass rounded-3xl p-4 sm:p-6 shadow-xl border border-white/20">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">
-                  📊 League Table
-                </h3>
-                
-                {tournamentStandings.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <p className="font-medium mb-2">No standings data available</p>
-                    <p className="text-sm">Complete matches to generate standings</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b-2 border-gray-200">
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Pos</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Team</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">MP</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">W</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">D</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">L</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">GF</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">GA</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">GD</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Pts</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {tournamentStandings.map((standing, index) => (
-                          <tr key={standing.team_id} className="hover:bg-white/60 transition-colors">
-                            <td className="px-4 py-3 text-sm font-bold text-gray-900">
-                              {index + 1 === 1 && '🥇'}
-                              {index + 1 === 2 && '🥈'}
-                              {index + 1 === 3 && '🥉'}
-                              {index + 1 > 3 && `${index + 1}`}
-                            </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                              {standing.team_name}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm text-gray-600">
-                              {standing.matches_played || 0}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm font-semibold text-green-600">
-                              {standing.wins || 0}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm text-gray-600">
-                              {standing.draws || 0}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm font-semibold text-red-600">
-                              {standing.losses || 0}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm text-gray-600">
-                              {standing.goals_for || 0}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm text-gray-600">
-                              {standing.goals_against || 0}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm font-medium text-gray-900">
-                              {(standing.goals_for || 0) - (standing.goals_against || 0)}
-                            </td>
-                            <td className="px-4 py-3 text-center text-sm font-bold text-blue-600">
-                              {standing.points || 0}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <div className="text-center py-12 text-gray-500">
+                  <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  <p className="font-medium mb-2">Select a tournament</p>
+                  <p className="text-sm">Choose a tournament above to view its standings</p>
+                </div>
               </div>
             )}
           </div>
