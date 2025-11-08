@@ -41,7 +41,7 @@ export async function POST(
 
     // Get team_id and team_name from teams table using firebase_uid
     const teamResult = await sql`
-      SELECT id, team_name FROM teams
+      SELECT id, name FROM teams
       WHERE firebase_uid = ${firebaseUid}
     `;
 
@@ -53,7 +53,7 @@ export async function POST(
     }
 
     const teamId = teamResult[0].id;
-    const teamName = teamResult[0].team_name || 'Unknown Team';
+    const teamName = teamResult[0].name || 'Unknown Team';
 
     console.log(`💰 Team ${teamId} (firebase: ${firebaseUid}) bidding £${bid_amount} on tiebreaker ${tiebreakerId}`);
 

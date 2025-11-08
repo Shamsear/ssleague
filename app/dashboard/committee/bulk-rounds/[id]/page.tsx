@@ -81,25 +81,23 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
 
   // ⚡ Enable WebSocket for real-time round updates - NO PAGE REFRESH NEEDED!
   const { isConnected: isRoundConnected } = useWebSocket({
-    channel: `round:${resolvedParams.id}`,
+    channel: round?.season_id ? `updates/${round.season_id}/rounds/${resolvedParams.id}` : `round:${resolvedParams.id}`,
     enabled: true,
     onMessage: useCallback((message: any) => {
-      console.log('⚡ [Committee WS] Real-time update:', message.type, message.data);
+      console.log('⚡ [Committee WS] Real-time update:', message);
       
       // Handle different message types for instant UI updates
       switch (message.type) {
         case 'round_updated':
           // ⚡ INSTANT: Update round metadata (timer, status, etc.)
-          if (message.data) {
-            console.log('🔄 Updating round metadata...');
-            setRound(prev => prev ? {
-              ...prev,
-              status: message.data.status || prev.status,
-              start_time: message.data.start_time || prev.start_time,
-              end_time: message.data.end_time || prev.end_time,
-              duration_seconds: message.data.duration_seconds || prev.duration_seconds,
-            } : null);
-          }
+          console.log('🔄 Updating round metadata...', message);
+          setRound(prev => prev ? {
+            ...prev,
+            status: message.status || prev.status,
+            start_time: message.start_time || prev.start_time,
+            end_time: message.end_time || prev.end_time,
+            duration_seconds: message.duration_seconds || prev.duration_seconds,
+          } : null);
           break;
           
         case 'bid_added':
@@ -1387,8 +1385,8 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           )}
         </div>
 
-        {/* Tiebreakers Section */}
-        {contested.length > 0 && (
+        {/* Tiebreakers Section - Only show after round is completed */}
+        {contested.length > 0 && round.status === 'completed' && (
           <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 border-orange-300 shadow-md">
             <h2 className="text-lg sm:text-xl font-bold text-orange-900 mb-3 sm:mb-4 flex items-center">
               <svg className="w-5 h-5 sm:w-6 sm:h-6 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

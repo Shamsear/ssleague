@@ -151,13 +151,13 @@ export default function TeamBulkRoundPage() {
       console.log('📨 WebSocket message received:', message);
 
       // Handle round update (timer extension, etc.)
-      if (message.type === 'round_updated' && message.data) {
-        console.log('🔄 Round metadata updated via WebSocket');
+      if (message.type === 'round_updated') {
+        console.log('🔄 Round metadata updated via WebSocket', message);
         
         // If round is completed/finalized, redirect to dashboard
-        if (message.data.status === 'completed' || message.data.status === 'pending_tiebreakers') {
-          console.log(`✅ Round ${message.data.status} - redirecting to dashboard...`);
-          const statusMessage = message.data.status === 'pending_tiebreakers'
+        if (message.status === 'completed' || message.status === 'pending_tiebreakers') {
+          console.log(`✅ Round ${message.status} - redirecting to dashboard...`);
+          const statusMessage = message.status === 'pending_tiebreakers'
             ? 'has been finalized. Tiebreakers have been created for contested players.'
             : 'has been completed.';
           showAlert({
@@ -173,11 +173,12 @@ export default function TeamBulkRoundPage() {
         
         setBulkRound(prev => {
           if (!prev) return prev;
+          console.log('🔄 Updating round state', { old: prev.end_time, new: message.end_time });
           return {
             ...prev,
-            end_time: message.data.end_time || prev.end_time,
-            duration_seconds: message.data.duration_seconds || prev.duration_seconds,
-            status: message.data.status || prev.status,
+            end_time: message.end_time || prev.end_time,
+            duration_seconds: message.duration_seconds || prev.duration_seconds,
+            status: message.status || prev.status,
           };
         });
       }
