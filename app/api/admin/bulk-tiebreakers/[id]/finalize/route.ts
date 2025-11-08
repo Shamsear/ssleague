@@ -71,6 +71,7 @@ export async function POST(
     // Check how many teams are still active
     const activeTeamsCheck = await sql`
       SELECT COUNT(*) as count, 
+             array_agg(team_id) FILTER (WHERE status = 'active') as active_team_ids,
              array_agg(team_name) FILTER (WHERE status = 'active') as active_teams
       FROM bulk_tiebreaker_teams
       WHERE tiebreaker_id = ${tiebreakerId}
@@ -78,6 +79,7 @@ export async function POST(
     `;
 
     const activeCount = parseInt(activeTeamsCheck[0]?.count || '0');
+    const activeTeamIds = activeTeamsCheck[0]?.active_team_ids || [];
     const activeTeams = activeTeamsCheck[0]?.active_teams || [];
 
     if (activeCount === 0) {
@@ -87,14 +89,33 @@ export async function POST(
       );
     }
 
+    // If multiple teams are still active, auto-withdraw everyone except the highest bidder
     if (activeCount > 1) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: `Cannot finalize - ${activeCount} teams still active: ${activeTeams.join(', ')}` 
-        },
-        { status: 400 }
-      );
+      console.log(`⚠️ ${activeCount} teams still active: ${activeTeams.join(', ')}`);
+      console.log(`🔄 Auto-withdrawing all teams except highest bidder (${tiebreaker.current_highest_team_id})...`);
+      
+      // Withdraw all teams except the winner
+      const teamsToWithdraw = activeTeamIds.filter(id => id !== tiebreaker.current_highest_team_id);
+      
+      if (teamsToWithdraw.length > 0) {
+        await sql`
+          UPDATE bulk_tiebreaker_teams
+          SET 
+            status = 'withdrawn',
+            withdrawn_at = NOW()
+          WHERE tiebreaker_id = ${tiebreakerId}
+          AND team_id = ANY(${teamsToWithdraw})
+        `;
+        
+        // Update teams_remaining count
+        await sql`
+          UPDATE bulk_tiebreakers
+          SET teams_remaining = 1
+          WHERE id = ${tiebreakerId}
+        `;
+        
+        console.log(`✅ Auto-withdrew ${teamsToWithdraw.length} teams`);
+      }
     }
 
     console.log(`✅ Validation passed. Finalizing tiebreaker ${tiebreakerId}...`);
