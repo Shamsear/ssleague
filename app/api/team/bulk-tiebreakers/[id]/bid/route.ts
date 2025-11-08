@@ -178,8 +178,9 @@ export async function POST(
               success: false,
               error: `Bid exceeds reserve. You must maintain £${reserveCheck.minimumReserve} for future rounds (${reserveCheck.explanation}). Maximum safe bid: £${Math.max(0, maxAllowedBid)}`
             },
-          { status: 400 }
-        );
+            { status: 400 }
+          );
+        }
       }
       
       console.log(`✅ Reserve check passed: Balance £${balance}, Reserve £${reserveCheck.minimumReserve}, Bid £${bid_amount}`);
