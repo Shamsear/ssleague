@@ -9,14 +9,15 @@ import { uploadImage, deleteImage, getOptimizedImageUrl } from './upload';
 export async function uploadPlayerPhoto(playerId: string, file: File): Promise<{ url: string; fileId: string }> {
   try {
     const fileExtension = file.name.split('.').pop();
-    const fileName = `${playerId}.${fileExtension}`;
+    const timestamp = Date.now();
+    const fileName = `${playerId}_${timestamp}.${fileExtension}`;
     
     const result = await uploadImage({
       file,
       fileName,
       folder: '/player-photos',
       tags: ['player', 'photo', playerId],
-      useUniqueFileName: false, // Keep consistent naming with player ID
+      useUniqueFileName: false, // Use timestamp-based naming to prevent conflicts
     });
     
     console.log('✅ Player photo uploaded successfully:', result.url);

@@ -659,6 +659,7 @@ export default function PreviewHistoricalSeason() {
             name: p.name,
             team: p.team,
             category: p.category,
+            linked_player_id: p.linked_player_id,
             goals_scored: p.goals_scored,
             goals_per_game: p.goals_per_game,
             goals_conceded: p.goals_conceded,
