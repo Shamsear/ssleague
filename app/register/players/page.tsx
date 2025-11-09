@@ -255,10 +255,17 @@ function PlayersRegistrationPageContent() {
 
     if (value.trim().length >= 2) {
       const searchLower = value.toLowerCase()
-      const filtered = masterPlayers.filter(p =>
-        p.player_id?.toLowerCase().includes(searchLower) ||
-        p.name?.toLowerCase().includes(searchLower)
-      )
+      // Get list of registered player IDs for efficient lookup
+      const registeredPlayerIds = new Set(registeredPlayers.map(p => p.player_id))
+      
+      const filtered = masterPlayers.filter(p => {
+        // First check if player matches search criteria
+        const matchesSearch = p.player_id?.toLowerCase().includes(searchLower) ||
+          p.name?.toLowerCase().includes(searchLower)
+        
+        // Only include if matches search AND is not already registered
+        return matchesSearch && !registeredPlayerIds.has(p.player_id)
+      })
       setFilteredPlayers(filtered)
     } else {
       setFilteredPlayers([])

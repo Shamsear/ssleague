@@ -157,6 +157,58 @@ export default async function Home() {
         </div>
       )}
 
+      {/* Player Registration Banner */}
+      {currentSeason && currentSeason.is_player_registration_open && (
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-50 via-pink-50 to-rose-50 p-6 sm:p-8 mb-8 border border-purple-200/50 shadow-xl">
+          {/* Decorative Elements */}
+          <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-purple-200/20 to-transparent rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-pink-200/20 to-transparent rounded-full blur-3xl"></div>
+          
+          <div className="relative">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                    🎯 Player Registration Open!
+                  </h2>
+                </div>
+                <p className="text-gray-700 mb-4">
+                  Join <strong>{currentSeason.name}</strong> - Register now and be part of the action!
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={`/register/player?season=${currentSeason.id}`}
+                    className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                    </svg>
+                    Register Now
+                  </Link>
+                  <Link
+                    href={`/registered-players?season=${currentSeason.id}`}
+                    className="inline-flex items-center gap-2 bg-white text-purple-600 border-2 border-purple-300 px-6 py-3 rounded-full font-semibold hover:bg-purple-50 transition-all duration-200 hover:scale-105"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    View Registered Players
+                  </Link>
+                </div>
+              </div>
+              <div className="text-center sm:text-right">
+                <div className="text-5xl sm:text-6xl mb-2">⚽</div>
+                <div className="text-xs text-gray-600 font-medium">Don't miss out!</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Current Season Standings */}
       {currentSeason && (
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 p-8 sm:p-10 mb-8 border border-emerald-200/50 shadow-xl">
