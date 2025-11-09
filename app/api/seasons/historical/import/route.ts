@@ -261,11 +261,10 @@ async function batchLoadForReimport(
     
     const queries: Promise<any>[] = [];
     
-    // 1. Get player IDs only (for counter) - using select() for minimal data
-    console.log('   Loading player IDs (select only)...');
+    // 1. Get ALL players with full data (needed for player linking/matching)
+    console.log('   Loading all players (full data for matching)...');
     queries.push(
       adminDb.collection('realplayers')
-        .select('player_id')
         .get()
     );
     
@@ -299,12 +298,20 @@ async function batchLoadForReimport(
     
     let resultIndex = 0;
     
-    // Process player IDs
-    const playerIdsSnapshot = results[resultIndex++];
-    playerIdsSnapshot.forEach((doc: any) => {
+    // Process players - store full data for matching
+    const playersSnapshot = results[resultIndex++];
+    playersSnapshot.forEach((doc: any) => {
       const data = doc.data();
       if (data.player_id) {
         result.allPlayerIds.push(data.player_id);
+        // Store by player name (lowercase) for matching
+        const playerName = data.name?.toLowerCase();
+        if (playerName) {
+          result.existingPlayers.set(playerName, {
+            playerId: data.player_id,
+            doc: data
+          });
+        }
       }
     });
     
@@ -414,10 +421,9 @@ async function batchLoadExistingEntities(
       });
     }
     
-    // 3. Get player IDs only (for counter) - using select() for minimal data
+    // 3. Get ALL players with full data (needed for player matching)
     queries.push(
       adminDb.collection('realplayers')
-        .select('player_id')
         .get()
     );
     
@@ -485,12 +491,21 @@ async function batchLoadExistingEntities(
       });
     }
     
-    // Process player IDs (for counter)
-    const playerIdsSnapshot = results[resultIndex++];
-    playerIdsSnapshot.forEach((doc: any) => {
+    // Process ALL players (for counter and matching) - merge with existing players
+    const allPlayersSnapshot = results[resultIndex++];
+    allPlayersSnapshot.forEach((doc: any) => {
       const data = doc.data();
       if (data.player_id) {
         result.allPlayerIds.push(data.player_id);
+        
+        // Also add to existingPlayers map if not already there (for matching by name)
+        const playerName = data.name?.toLowerCase();
+        if (playerName && !result.existingPlayers.has(playerName)) {
+          result.existingPlayers.set(playerName, {
+            playerId: data.player_id,
+            doc: data
+          });
+        }
       }
     });
     
