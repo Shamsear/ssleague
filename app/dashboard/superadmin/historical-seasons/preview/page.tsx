@@ -48,6 +48,7 @@ interface PlayerData {
   category_wise_trophy_2?: string;
   individual_wise_trophy_1?: string;
   individual_wise_trophy_2?: string;
+  linked_player_id?: string; // Optional: link to existing player
 }
 
 interface SeasonUploadData {
@@ -1388,6 +1389,7 @@ export default function PreviewHistoricalSeason() {
                 <thead className="bg-white/10">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Link To</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Team</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Category</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Goals</th>
@@ -1423,6 +1425,83 @@ export default function PreviewHistoricalSeason() {
                           }`}
                           placeholder="Player name"
                         />
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={player.linked_player_id || ''}
+                          onChange={(e) => handlePlayerChange(index, 'linked_player_id', e.target.value)}
+                          className={`w-48 border outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 text-xs ${
+                            player.linked_player_id ? 'bg-blue-50 border-blue-300' : 'bg-transparent border-gray-300'
+                          }`}
+                        >
+                          <option value="">➕ New Player</option>
+                          {existingEntities?.players && existingEntities.players.length > 0 && (
+                            <>
+                              {(() => {
+                                // Find suggested player matches (similar name)
+                                const suggested = existingEntities.players.filter(existingPlayer => {
+                                  if (!existingPlayer.name || !player.name) return false;
+                                  
+                                  // Exact match (case-insensitive)
+                                  if (existingPlayer.name.toLowerCase() === player.name.toLowerCase()) {
+                                    return true;
+                                  }
+                                  
+                                  // Normalized match (removes spaces, special chars)
+                                  const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                  if (normalize(existingPlayer.name) === normalize(player.name)) {
+                                    return true;
+                                  }
+                                  
+                                  // High similarity (>85%)
+                                  const similarity = calculateSimilarity(player.name.toLowerCase(), existingPlayer.name.toLowerCase());
+                                  return similarity > 0.85;
+                                });
+                                
+                                if (suggested.length > 0) {
+                                  return (
+                                    <>
+                                      <optgroup label="🎯 Suggested Matches">
+                                        {suggested.map(existingPlayer => (
+                                          <option key={existingPlayer.player_id} value={existingPlayer.player_id}>
+                                            {existingPlayer.name}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                      <optgroup label="📋 All Other Players">
+                                        {existingEntities.players
+                                          .filter(p => !suggested.some(s => s.player_id === p.player_id))
+                                          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                                          .map(existingPlayer => (
+                                            <option key={existingPlayer.player_id} value={existingPlayer.player_id}>
+                                              {existingPlayer.name}
+                                            </option>
+                                          ))}
+                                      </optgroup>
+                                    </>
+                                  );
+                                } else {
+                                  // No suggested matches, show all players
+                                  return existingEntities.players
+                                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                                    .map(existingPlayer => (
+                                      <option key={existingPlayer.player_id} value={existingPlayer.player_id}>
+                                        {existingPlayer.name}
+                                      </option>
+                                    ));
+                                }
+                              })()}
+                            </>
+                          )}
+                          {(!existingEntities?.players || existingEntities.players.length === 0) && (
+                            <option disabled>No existing players</option>
+                          )}
+                        </select>
+                        {player.linked_player_id && (
+                          <div className="text-xs text-green-600 mt-1 font-medium">
+                            ✅ Linked • Change if needed
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <input
