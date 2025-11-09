@@ -45,6 +45,7 @@ interface ImportPlayerData {
   potm?: number | null; // Player of the Match (nullable)
   category_trophies?: string[];  // Changed to array for unlimited trophies
   individual_trophies?: string[]; // Changed to array for unlimited trophies
+  linked_player_id?: string; // Optional: link to existing player
 }
 
 interface ImportSeasonData {
@@ -1282,8 +1283,31 @@ async function importPlayers(
     const normalizedPlayerTeam = toTitleCase(player.team);
     console.log(`Processing player: "${player.name}" → "${normalizedPlayerName}" (Team: "${player.team}" → "${normalizedPlayerTeam}")`);
     
-    // Get existing player by name or create new one (using batch lookup - no Firebase read!)
-    const { playerId, isNew: isNewPlayer, playerDoc } = getOrCreatePlayerByName(normalizedPlayerName, batchLookup);
+    // Check if player is manually linked to an existing player
+    let playerId: string;
+    let isNewPlayer: boolean;
+    let playerDoc: any;
+    
+    if (player.linked_player_id) {
+      // User manually linked this player - use the linked player ID
+      playerId = player.linked_player_id;
+      isNewPlayer = false;
+      // Find the linked player doc from batch lookup
+      playerDoc = null;
+      for (const [_, existingPlayer] of batchLookup.existingPlayers) {
+        if (existingPlayer.playerId === player.linked_player_id) {
+          playerDoc = existingPlayer.doc;
+          break;
+        }
+      }
+      console.log(`  🔗 Using manually linked player: ${normalizedPlayerName} → ${playerId}`);
+    } else {
+      // Get existing player by name or create new one (using batch lookup - no Firebase read!)
+      const result = getOrCreatePlayerByName(normalizedPlayerName, batchLookup);
+      playerId = result.playerId;
+      isNewPlayer = result.isNew;
+      playerDoc = result.playerDoc;
+    }
     playerIds.push(playerId);
     
     // Use existing player data from batch lookup (no Firebase read!)
@@ -1491,25 +1515,26 @@ async function importPlayers(
         ${newStats.total_points || 0}, 3, ${trophiesJson}::jsonb,
         NOW(), NOW()
       )
-      ON CONFLICT (player_id, season_id) DO UPDATE
+      ON CONFLICT (player_id, tournament_id) DO UPDATE
       SET
+        season_id = EXCLUDED.season_id,
         player_name = EXCLUDED.player_name,
         category = EXCLUDED.category,
         team = EXCLUDED.team,
         team_id = EXCLUDED.team_id,
-        matches_played = EXCLUDED.matches_played,
-        matches_won = EXCLUDED.matches_won,
-        matches_drawn = EXCLUDED.matches_drawn,
-        matches_lost = EXCLUDED.matches_lost,
-        goals_scored = EXCLUDED.goals_scored,
-        goals_conceded = EXCLUDED.goals_conceded,
-        assists = EXCLUDED.assists,
-        wins = EXCLUDED.wins,
-        draws = EXCLUDED.draws,
-        losses = EXCLUDED.losses,
-        clean_sheets = EXCLUDED.clean_sheets,
-        motm_awards = EXCLUDED.motm_awards,
-        points = EXCLUDED.points,
+        matches_played = realplayerstats.matches_played + EXCLUDED.matches_played,
+        matches_won = realplayerstats.matches_won + EXCLUDED.matches_won,
+        matches_drawn = realplayerstats.matches_drawn + EXCLUDED.matches_drawn,
+        matches_lost = realplayerstats.matches_lost + EXCLUDED.matches_lost,
+        goals_scored = realplayerstats.goals_scored + EXCLUDED.goals_scored,
+        goals_conceded = realplayerstats.goals_conceded + EXCLUDED.goals_conceded,
+        assists = realplayerstats.assists + EXCLUDED.assists,
+        wins = realplayerstats.wins + EXCLUDED.wins,
+        draws = realplayerstats.draws + EXCLUDED.draws,
+        losses = realplayerstats.losses + EXCLUDED.losses,
+        clean_sheets = realplayerstats.clean_sheets + EXCLUDED.clean_sheets,
+        motm_awards = realplayerstats.motm_awards + EXCLUDED.motm_awards,
+        points = realplayerstats.points + EXCLUDED.points,
         trophies = EXCLUDED.trophies,
         updated_at = NOW()
     `;

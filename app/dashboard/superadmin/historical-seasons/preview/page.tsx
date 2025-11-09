@@ -107,6 +107,10 @@ export default function PreviewHistoricalSeason() {
   const [showBulkReplace, setShowBulkReplace] = useState(false);
   const [bulkFindText, setBulkFindText] = useState('');
   const [bulkReplaceText, setBulkReplaceText] = useState('');
+  
+  // Player search dropdown state
+  const [playerSearchQuery, setPlayerSearchQuery] = useState<Map<number, string>>(new Map());
+  const [openPlayerDropdown, setOpenPlayerDropdown] = useState<number | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -1420,83 +1424,159 @@ export default function PreviewHistoricalSeason() {
                           type="text"
                           value={player.name}
                           onChange={(e) => handlePlayerChange(index, 'name', e.target.value)}
-                          className={`w-full bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
+                          className={`w-48 bg-transparent border-none outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 ${
                             validationErrors.has(`player-${index}-name`) ? 'border-red-500 bg-red-50' : ''
                           }`}
                           placeholder="Player name"
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <select
-                          value={player.linked_player_id || ''}
-                          onChange={(e) => handlePlayerChange(index, 'linked_player_id', e.target.value)}
-                          className={`w-48 border outline-none focus:bg-white/50 focus:border focus:border-[#0066FF] rounded px-2 py-1 text-xs ${
-                            player.linked_player_id ? 'bg-blue-50 border-blue-300' : 'bg-transparent border-gray-300'
-                          }`}
-                        >
-                          <option value="">➕ New Player</option>
-                          {existingEntities?.players && existingEntities.players.length > 0 && (
-                            <>
-                              {(() => {
-                                // Find suggested player matches (similar name)
-                                const suggested = existingEntities.players.filter(existingPlayer => {
-                                  if (!existingPlayer.name || !player.name) return false;
-                                  
-                                  // Exact match (case-insensitive)
-                                  if (existingPlayer.name.toLowerCase() === player.name.toLowerCase()) {
-                                    return true;
-                                  }
-                                  
-                                  // Normalized match (removes spaces, special chars)
-                                  const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                  if (normalize(existingPlayer.name) === normalize(player.name)) {
-                                    return true;
-                                  }
-                                  
-                                  // High similarity (>85%)
-                                  const similarity = calculateSimilarity(player.name.toLowerCase(), existingPlayer.name.toLowerCase());
-                                  return similarity > 0.85;
-                                });
+                        <div className="relative">
+                          {/* Searchable Player Dropdown */}
+                          <div 
+                            className={`w-56 border rounded px-2 py-1 text-xs cursor-pointer ${
+                              player.linked_player_id ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-300'
+                            }`}
+                            onClick={() => setOpenPlayerDropdown(openPlayerDropdown === index ? null : index)}
+                          >
+                            {player.linked_player_id ? (
+                              <span className="text-gray-800">
+                                {existingEntities?.players.find(p => p.player_id === player.linked_player_id)?.name || 'Unknown Player'}
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">➕ New Player</span>
+                            )}
+                          </div>
+                          
+                          {/* Dropdown Menu */}
+                          {openPlayerDropdown === index && (
+                            <div className="absolute z-50 w-56 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-hidden">
+                              {/* Search Input */}
+                              <div className="p-2 border-b border-gray-200">
+                                <input
+                                  type="text"
+                                  placeholder="Search players..."
+                                  value={playerSearchQuery.get(index) || ''}
+                                  onChange={(e) => {
+                                    const newMap = new Map(playerSearchQuery);
+                                    newMap.set(index, e.target.value);
+                                    setPlayerSearchQuery(newMap);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                                  autoFocus
+                                />
+                              </div>
+                              
+                              {/* Player List */}
+                              <div className="max-h-52 overflow-y-auto">
+                                {/* New Player Option */}
+                                <div
+                                  className="px-3 py-2 text-xs hover:bg-gray-100 cursor-pointer border-b border-gray-200"
+                                  onClick={() => {
+                                    handlePlayerChange(index, 'linked_player_id', '');
+                                    setOpenPlayerDropdown(null);
+                                    const newMap = new Map(playerSearchQuery);
+                                    newMap.delete(index);
+                                    setPlayerSearchQuery(newMap);
+                                  }}
+                                >
+                                  <span className="font-medium">➕ New Player</span>
+                                </div>
                                 
-                                if (suggested.length > 0) {
+                                {/* Existing Players */}
+                                {(() => {
+                                  if (!existingEntities?.players || existingEntities.players.length === 0) {
+                                    return (
+                                      <div className="px-3 py-2 text-xs text-gray-500">No existing players</div>
+                                    );
+                                  }
+                                  
+                                  const searchQuery = (playerSearchQuery.get(index) || '').toLowerCase();
+                                  
+                                  // Find suggested matches
+                                  const suggested = existingEntities.players.filter(existingPlayer => {
+                                    if (!existingPlayer.name || !player.name) return false;
+                                    const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                    return (
+                                      existingPlayer.name.toLowerCase() === player.name.toLowerCase() ||
+                                      normalize(existingPlayer.name) === normalize(player.name) ||
+                                      calculateSimilarity(player.name.toLowerCase(), existingPlayer.name.toLowerCase()) > 0.85
+                                    );
+                                  });
+                                  
+                                  // Filter players based on search
+                                  const filteredSuggested = suggested.filter(p => 
+                                    p.name.toLowerCase().includes(searchQuery)
+                                  );
+                                  const filteredOthers = existingEntities.players
+                                    .filter(p => !suggested.some(s => s.player_id === p.player_id))
+                                    .filter(p => p.name.toLowerCase().includes(searchQuery))
+                                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                                  
                                   return (
                                     <>
-                                      <optgroup label="🎯 Suggested Matches">
-                                        {suggested.map(existingPlayer => (
-                                          <option key={existingPlayer.player_id} value={existingPlayer.player_id}>
-                                            {existingPlayer.name}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                      <optgroup label="📋 All Other Players">
-                                        {existingEntities.players
-                                          .filter(p => !suggested.some(s => s.player_id === p.player_id))
-                                          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-                                          .map(existingPlayer => (
-                                            <option key={existingPlayer.player_id} value={existingPlayer.player_id}>
+                                      {/* Suggested Matches */}
+                                      {filteredSuggested.length > 0 && (
+                                        <>
+                                          <div className="px-3 py-1 text-xs font-semibold text-gray-600 bg-gray-50">
+                                            🎯 Suggested Matches
+                                          </div>
+                                          {filteredSuggested.map(existingPlayer => (
+                                            <div
+                                              key={existingPlayer.player_id}
+                                              className="px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer"
+                                              onClick={() => {
+                                                handlePlayerChange(index, 'linked_player_id', existingPlayer.player_id);
+                                                setOpenPlayerDropdown(null);
+                                                const newMap = new Map(playerSearchQuery);
+                                                newMap.delete(index);
+                                                setPlayerSearchQuery(newMap);
+                                              }}
+                                            >
                                               {existingPlayer.name}
-                                            </option>
+                                            </div>
                                           ))}
-                                      </optgroup>
+                                        </>
+                                      )}
+                                      
+                                      {/* All Other Players */}
+                                      {filteredOthers.length > 0 && (
+                                        <>
+                                          <div className="px-3 py-1 text-xs font-semibold text-gray-600 bg-gray-50">
+                                            📋 All Other Players
+                                          </div>
+                                          {filteredOthers.map(existingPlayer => (
+                                            <div
+                                              key={existingPlayer.player_id}
+                                              className="px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer"
+                                              onClick={() => {
+                                                handlePlayerChange(index, 'linked_player_id', existingPlayer.player_id);
+                                                setOpenPlayerDropdown(null);
+                                                const newMap = new Map(playerSearchQuery);
+                                                newMap.delete(index);
+                                                setPlayerSearchQuery(newMap);
+                                              }}
+                                            >
+                                              {existingPlayer.name}
+                                            </div>
+                                          ))}
+                                        </>
+                                      )}
+                                      
+                                      {/* No results */}
+                                      {filteredSuggested.length === 0 && filteredOthers.length === 0 && (
+                                        <div className="px-3 py-2 text-xs text-gray-500">
+                                          No players found
+                                        </div>
+                                      )}
                                     </>
                                   );
-                                } else {
-                                  // No suggested matches, show all players
-                                  return existingEntities.players
-                                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-                                    .map(existingPlayer => (
-                                      <option key={existingPlayer.player_id} value={existingPlayer.player_id}>
-                                        {existingPlayer.name}
-                                      </option>
-                                    ));
-                                }
-                              })()}
-                            </>
+                                })()}
+                              </div>
+                            </div>
                           )}
-                          {(!existingEntities?.players || existingEntities.players.length === 0) && (
-                            <option disabled>No existing players</option>
-                          )}
-                        </select>
+                        </div>
                         {player.linked_player_id && (
                           <div className="text-xs text-green-600 mt-1 font-medium">
                             ✅ Linked • Change if needed
