@@ -4,10 +4,28 @@ import HallOfFameSelector from './components/HallOfFameSelector';
 
 export const dynamic = 'force-dynamic';
 
-const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// Get the base URL - works in both development and production
+function getBaseUrl() {
+  // In production, use the deployed URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  
+  // Use environment variable if set
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  
+  // Fallback to localhost for development
+  return 'http://localhost:3000';
+}
 
 async function fetchData() {
+  const baseUrl = getBaseUrl();
+  
   try {
+    console.log('🏠 Fetching homepage data from:', baseUrl);
+    
     // Check and finalize expired rounds (background task)
     fetch(`${baseUrl}/api/public/check-rounds`, { next: { revalidate: 0 } }).catch(() => {});
     
@@ -20,12 +38,12 @@ async function fetchData() {
       awardsRes,
       seasonRes
     ] = await Promise.all([
-      fetch(`${baseUrl}/api/public/league-stats`, { next: { revalidate: 300 } }),
-      fetch(`${baseUrl}/api/public/hall-of-fame`, { next: { revalidate: 300 } }),
-      fetch(`${baseUrl}/api/public/league-records`, { next: { revalidate: 300 } }),
-      fetch(`${baseUrl}/api/public/champions`, { next: { revalidate: 300 } }),
-      fetch(`${baseUrl}/api/public/award-winners`, { next: { revalidate: 300 } }),
-      fetch(`${baseUrl}/api/public/current-season`, { next: { revalidate: 60 } })
+      fetch(`${baseUrl}/api/public/league-stats`, { next: { revalidate: 300 }, cache: 'no-store' }),
+      fetch(`${baseUrl}/api/public/hall-of-fame`, { next: { revalidate: 300 }, cache: 'no-store' }),
+      fetch(`${baseUrl}/api/public/league-records`, { next: { revalidate: 300 }, cache: 'no-store' }),
+      fetch(`${baseUrl}/api/public/champions`, { next: { revalidate: 300 }, cache: 'no-store' }),
+      fetch(`${baseUrl}/api/public/award-winners`, { next: { revalidate: 300 }, cache: 'no-store' }),
+      fetch(`${baseUrl}/api/public/current-season`, { next: { revalidate: 60 }, cache: 'no-store' })
     ]);
     
     const [
@@ -105,7 +123,7 @@ export default async function Home() {
   } = await fetchData();
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 overflow-visible">
       {/* Hero Section */}
       <HeroSection />
 
