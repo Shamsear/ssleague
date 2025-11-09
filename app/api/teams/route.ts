@@ -1,20 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { tournamentSql as sql } from '@/lib/neon/tournament-config';
+import { withCache } from '@/lib/cache/memory-cache';
 
 export async function GET(request: NextRequest) {
   try {
     console.log('[Teams API] Fetching all teams...');
     
-    // Fetch all teams from Firebase
-    const teamsSnapshot = await adminDb
-      .collection('teams')
-      .orderBy('team_name')
-      .get();
+    // Fetch all teams from Firebase with 5-minute cache
+    const teamsData = await withCache(
+      'public:all-teams',
+      async () => {
+        console.log('[Teams API] Cache MISS - Querying Firebase...');
+        const snapshot = await adminDb
+          .collection('teams')
+          .orderBy('team_name')
+          .get();
+        
+        return snapshot.docs.map(doc => ({
+          id: doc.id,
+          data: doc.data()
+        }));
+      },
+      300 // 5 minutes cache
+    );
 
-    console.log(`[Teams API] Found ${teamsSnapshot.size} teams`);
+    console.log(`[Teams API] Found ${teamsData.length} teams`);
 
-    if (teamsSnapshot.empty) {
+    if (teamsData.length === 0) {
       return NextResponse.json({
         success: true,
         teams: []
@@ -22,16 +35,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Get team IDs and map to user IDs
-    const teamIds = teamsSnapshot.docs.map(doc => doc.id);
+    const teamIds = teamsData.map(t => t.id);
     const userIdToTeamIdMap = new Map();
     const userIds: string[] = [];
     
-    teamsSnapshot.docs.forEach(doc => {
-      const teamData = doc.data();
+    teamsData.forEach(({ id, data: teamData }) => {
       const userId = teamData.userId || teamData.user_id || teamData.owner_id;
       if (userId) {
         userIds.push(userId);
-        userIdToTeamIdMap.set(userId, doc.id);
+        userIdToTeamIdMap.set(userId, id);
       }
     });
     
@@ -40,37 +52,54 @@ export async function GET(request: NextRequest) {
     const logoUrlMap = new Map();
     
     // First, get logos from teams collection
-    teamsSnapshot.docs.forEach(doc => {
-      const teamData = doc.data();
+    teamsData.forEach(({ id, data: teamData }) => {
       if (teamData.logo_url) {
-        logoUrlMap.set(doc.id, teamData.logo_url);
+        logoUrlMap.set(id, teamData.logo_url);
       }
     });
     
     // For teams without logos, fallback to users collection
-    const teamsNeedingLogos = teamsSnapshot.docs
-      .filter(doc => !logoUrlMap.has(doc.id))
-      .map(doc => {
-        const teamData = doc.data();
+    const teamsNeedingLogos = teamsData
+      .filter(({ id }) => !logoUrlMap.has(id))
+      .map(({ id, data: teamData }) => {
         const userId = teamData.userId || teamData.user_id || teamData.owner_id;
-        return { teamId: doc.id, userId };
+        return { teamId: id, userId };
       })
       .filter(item => item.userId);
     
     if (teamsNeedingLogos.length > 0) {
       const userIdsForLogos = teamsNeedingLogos.map(item => item.userId);
-      const usersSnapshot = await adminDb
-        .collection('users')
-        .where('__name__', 'in', userIdsForLogos)
-        .get();
-      
       const userLogoMap = new Map();
-      usersSnapshot.docs.forEach(doc => {
-        const userData = doc.data();
-        if (userData.logoUrl) {
-          userLogoMap.set(doc.id, userData.logoUrl);
-        }
-      });
+      
+      // Firestore IN operator supports max 30 values - batch the queries with cache
+      const batchSize = 30;
+      for (let i = 0; i < userIdsForLogos.length; i += batchSize) {
+        const batch = userIdsForLogos.slice(i, i + batchSize);
+        
+        // Cache user logos for 10 minutes (they rarely change)
+        const usersData = await withCache(
+          `public:user-logos:${batch.sort().join(',')}`,
+          async () => {
+            console.log(`[Teams API] Cache MISS - Fetching ${batch.length} user logos from Firebase...`);
+            const snapshot = await adminDb
+              .collection('users')
+              .where('__name__', 'in', batch)
+              .get();
+            
+            return snapshot.docs.map(doc => ({
+              id: doc.id,
+              logoUrl: doc.data().logoUrl
+            }));
+          },
+          600 // 10 minutes cache (logos rarely change)
+        );
+        
+        usersData.forEach(({ id, logoUrl }) => {
+          if (logoUrl) {
+            userLogoMap.set(id, logoUrl);
+          }
+        });
+      }
       
       teamsNeedingLogos.forEach(({ teamId, userId }) => {
         const userLogo = userLogoMap.get(userId);
@@ -121,9 +150,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Map teams data with stats and logo URLs
-    const teams = teamsSnapshot.docs.map(doc => {
-      const teamId = doc.id;
-      const teamData = doc.data();
+    const teams = teamsData.map(({ id: teamId, data: teamData }) => {
       const stats = statsMap.get(teamId) || {
         matches_played: 0,
         wins: 0,
