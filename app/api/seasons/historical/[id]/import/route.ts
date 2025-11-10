@@ -313,8 +313,9 @@ export async function POST(
               ${teamTrophiesJsonStr}::jsonb,
               NOW(), NOW()
             )
-            ON CONFLICT (id) DO UPDATE
+            ON CONFLICT (team_id, season_id) DO UPDATE
             SET
+              id = EXCLUDED.id,
               team_name = EXCLUDED.team_name,
               points = EXCLUDED.points,
               matches_played = EXCLUDED.matches_played,
@@ -587,8 +588,9 @@ export async function POST(
               ${statsData.points || 0}, ${statsData.star_rating || 3},
               NOW(), NOW()
             )
-            ON CONFLICT (id) DO UPDATE
+            ON CONFLICT (player_id, season_id) DO UPDATE
             SET
+              id = EXCLUDED.id,
               player_name = EXCLUDED.player_name,
               category = EXCLUDED.category,
               team = EXCLUDED.team,

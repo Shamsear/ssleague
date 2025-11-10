@@ -1275,13 +1275,16 @@ async function importPlayers(
     }
   });
   
+  // Get SQL connection for checking existing stats (resume functionality)
+  const sqlPlayer = getTournamentDb();
+  
   for (let i = 0; i < players.length; i++) {
     const player = players[i];
     
     // Normalize player name to Title Case
     const normalizedPlayerName = toTitleCase(player.name);
     const normalizedPlayerTeam = toTitleCase(player.team);
-    console.log(`Processing player: "${player.name}" → "${normalizedPlayerName}" (Team: "${player.team}" → "${normalizedPlayerTeam}")`);
+    console.log(`Processing player ${i+1}/${players.length}: "${player.name}" → "${normalizedPlayerName}" (Team: "${player.team}" → "${normalizedPlayerTeam}")`);
     
     // Check if player is manually linked to an existing player
     let playerId: string;
@@ -1309,6 +1312,24 @@ async function importPlayers(
       playerDoc = result.playerDoc;
     }
     playerIds.push(playerId);
+    
+    // RESUME CHECK: Skip if this player already has stats in the database
+    const existingStatsCheck = await sqlPlayer`
+      SELECT id FROM realplayerstats 
+      WHERE player_id = ${playerId} AND season_id = ${seasonId}
+      LIMIT 1
+    `;
+    
+    if (existingStatsCheck.length > 0) {
+      console.log(`  ⏭️  Skipping ${normalizedPlayerName} - already imported`);
+      // Update progress
+      await updateProgress(importId, {
+        processedItems: i + 1,
+        progress: ((i + 1) / players.length) * 100,
+        currentTask: `Skipped (already imported): ${normalizedPlayerName}`
+      });
+      continue; // Skip to next player
+    }
     
     // Use existing player data from batch lookup (no Firebase read!)
     const currentPlayerData: any = playerDoc || {};
@@ -1403,7 +1424,7 @@ async function importPlayers(
     }
     
     // Write player stats to NEON instead of Firebase
-    const sqlPlayer = getTournamentDb();
+    // sqlPlayer is already declared at the function level (line 1279)
     const teamIdForPlayer = teamMap.get(normalizedPlayerTeam) || null;
     
     // Parse trophies from Excel data (handles numbered columns like category_wise_trophy_1, category_wise_trophy_2, etc.)
@@ -1515,9 +1536,10 @@ async function importPlayers(
         ${newStats.total_points || 0}, 3, ${trophiesJson}::jsonb,
         NOW(), NOW()
       )
-      ON CONFLICT (player_id, tournament_id) DO UPDATE
+      ON CONFLICT (player_id, season_id) DO UPDATE
       SET
-        season_id = EXCLUDED.season_id,
+        id = EXCLUDED.id,
+        tournament_id = EXCLUDED.tournament_id,
         player_name = EXCLUDED.player_name,
         category = EXCLUDED.category,
         team = EXCLUDED.team,

@@ -29,16 +29,14 @@ export default function OptimizedImage({
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Get optimized URL if it's an ImageKit URL
-  const optimizedSrc = src.includes('imagekit.io')
-    ? getOptimizedImageUrl(src, {
-        width,
-        height,
-        quality,
-        format: 'auto',
-        crop: 'maintain_ratio',
-      })
-    : src;
+  // Use original URL with cache-busting
+  // Note: ImageKit transformations can be added back later if needed
+  let optimizedSrc = src;
+  
+  // Add cache-busting parameter
+  const cacheBuster = '20250109-2';
+  const separator = optimizedSrc.includes('?') ? '&' : '?';
+  optimizedSrc = `${optimizedSrc}${separator}v=${cacheBuster}`;
 
   if (error && fallback) {
     return <>{fallback}</>;

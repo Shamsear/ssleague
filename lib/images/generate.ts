@@ -376,6 +376,18 @@ export async function fetchRealImageContext(
 }
 
 /**
+ * Generate image URL using Pollinations.ai (FREE, no API key needed)
+ */
+export function generateImageWithPollinations(
+  prompt: string,
+  width: number = 1200,
+  height: number = 630
+): string {
+  const encodedPrompt = encodeURIComponent(prompt);
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true&enhance=true`;
+}
+
+/**
  * Generate and upload news image in one go
  */
 export async function generateNewsImage(
@@ -384,26 +396,33 @@ export async function generateNewsImage(
   newsId: string
 ): Promise<string | null> {
   try {
-    if (!process.env.HUGGING_FACE_TOKEN) {
-      console.warn('⚠️ HUGGING_FACE_TOKEN not configured, skipping image generation');
-      return null;
-    }
-
-    console.log('🎨 Generating image with FLUX.1-schnell...');
+    console.log('🎨 Generating image with Pollinations.ai (free alternative)...');
 
     // Generate prompt with text instructions
     const prompt = generateSDXLPrompt(eventType, metadata);
     
-    // Generate image using FLUX
-    const imageBlob = await generateImage(prompt);
+    // Use Pollinations.ai instead of Hugging Face
+    const imageUrl = generateImageWithPollinations(prompt);
 
-    // Upload to storage
-    const imageUrl = await uploadImageToStorage(imageBlob, newsId);
-
-    console.log('✅ Successfully generated image with FLUX!');
+    console.log('✅ Image URL generated with Pollinations.ai!');
     return imageUrl;
   } catch (error) {
     console.error('❌ Failed to generate news image:', error);
+    
+    // Fallback to Hugging Face if Pollinations fails
+    if (process.env.HUGGING_FACE_TOKEN) {
+      try {
+        console.log('🔄 Trying Hugging Face as fallback...');
+        const imageBlob = await generateImage(prompt);
+        const imageUrl = await uploadImageToStorage(imageBlob, newsId);
+        console.log('✅ Fallback: Image generated with Hugging Face!');
+        return imageUrl;
+      } catch (hfError) {
+        console.error('❌ Hugging Face fallback also failed:', hfError);
+        return null;
+      }
+    }
+    
     return null;
   }
 }

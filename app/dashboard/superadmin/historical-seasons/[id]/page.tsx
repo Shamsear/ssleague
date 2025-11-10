@@ -519,6 +519,17 @@ export default function HistoricalSeasonDetailPage() {
       // Enter preview mode
       setPreviewMode(true);
       
+      // Save preview data to Firestore (persists player linkings)
+      try {
+        await updateDoc(doc(db, 'seasons', seasonId), {
+          preview_data: result.data,
+          preview_saved_at: serverTimestamp()
+        });
+        console.log('✅ Preview data saved to Firestore');
+      } catch (saveError) {
+        console.warn('⚠️ Could not save preview data:', saveError);
+      }
+      
       // Load existing teams for linking and auto-link
       await loadExistingTeams(result.data.teams || [], result.data.players || []);
       

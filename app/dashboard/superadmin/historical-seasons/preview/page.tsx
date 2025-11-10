@@ -389,15 +389,29 @@ export default function PreviewHistoricalSeason() {
   
   const handleRemoveTeam = useCallback((index: number) => {
     if (confirm('Remove this team from the import?')) {
-      setTeams(prev => prev.filter((_, i) => i !== index));
+      const newTeams = teams.filter((_, i) => i !== index);
+      setTeams(newTeams);
+      
+      // Save to localStorage
+      if (uploadData) {
+        const updatedUploadData = { ...uploadData, teams: newTeams };
+        localStorage.setItem('seasonUploadData', JSON.stringify(updatedUploadData));
+      }
     }
-  }, []);
+  }, [teams, uploadData]);
 
   const handleRemovePlayer = useCallback((index: number) => {
     if (confirm('Remove this player from the import?')) {
-      setPlayers(prev => prev.filter((_, i) => i !== index));
+      const newPlayers = players.filter((_, i) => i !== index);
+      setPlayers(newPlayers);
+      
+      // Save to localStorage
+      if (uploadData) {
+        const updatedUploadData = { ...uploadData, players: newPlayers };
+        localStorage.setItem('seasonUploadData', JSON.stringify(updatedUploadData));
+      }
     }
-  }, []);
+  }, [players, uploadData]);
 
   const handleTeamChange = useCallback((index: number, field: keyof TeamData, value: string) => {
     const oldTeams = [...teams];
@@ -405,12 +419,24 @@ export default function PreviewHistoricalSeason() {
     newTeams[index][field] = value;
     setTeams(newTeams);
     
+    // Save to localStorage to preserve linkings
+    if (uploadData) {
+      const updatedUploadData = { ...uploadData, teams: newTeams };
+      localStorage.setItem('seasonUploadData', JSON.stringify(updatedUploadData));
+    }
+    
     // When linked_team_id changes, update all player team names for this team
     if (field === 'linked_team_id' && existingEntities?.teams) {
       const updatedPlayers = syncPlayerTeamNames(players, oldTeams, newTeams, existingEntities.teams);
       if (JSON.stringify(updatedPlayers) !== JSON.stringify(players)) {
         setPlayers(updatedPlayers);
         console.log(`🔄 Updated player team names after linking team at index ${index}`);
+        
+        // Also save updated players to localStorage
+        if (uploadData) {
+          const updatedUploadData = { ...uploadData, teams: newTeams, players: updatedPlayers };
+          localStorage.setItem('seasonUploadData', JSON.stringify(updatedUploadData));
+        }
       }
     }
     
@@ -419,7 +445,7 @@ export default function PreviewHistoricalSeason() {
       const timeoutId = setTimeout(() => loadExistingEntitiesAndCheckDuplicates(), 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [teams, players, existingEntities, syncPlayerTeamNames, loadExistingEntitiesAndCheckDuplicates]);
+  }, [teams, players, existingEntities, uploadData, syncPlayerTeamNames, loadExistingEntitiesAndCheckDuplicates]);
 
   const handlePlayerChange = useCallback((index: number, field: keyof PlayerData, value: any) => {
     const newPlayers = [...players];
@@ -438,12 +464,18 @@ export default function PreviewHistoricalSeason() {
     }
     setPlayers(newPlayers);
     
+    // Save to localStorage to preserve linkings
+    if (uploadData) {
+      const updatedUploadData = { ...uploadData, players: newPlayers };
+      localStorage.setItem('seasonUploadData', JSON.stringify(updatedUploadData));
+    }
+    
     // Re-check duplicates when player name changes (debounced)
     if (field === 'name' && existingEntities) {
       const timeoutId = setTimeout(() => loadExistingEntitiesAndCheckDuplicates(), 500);
       return () => clearTimeout(timeoutId);
     }
-  }, [existingEntities, loadExistingEntitiesAndCheckDuplicates]);
+  }, [players, existingEntities, uploadData, loadExistingEntitiesAndCheckDuplicates]);
   
   const handleBulkReplaceTeamNames = useCallback(() => {
     if (!bulkFindText.trim() || !bulkReplaceText.trim()) {
@@ -465,11 +497,18 @@ export default function PreviewHistoricalSeason() {
     });
     
     setPlayers(updatedPlayers);
+    
+    // Save to localStorage
+    if (uploadData) {
+      const updatedUploadData = { ...uploadData, players: updatedPlayers };
+      localStorage.setItem('seasonUploadData', JSON.stringify(updatedUploadData));
+    }
+    
     alert(`✅ Replaced ${replacedCount} occurrences of "${bulkFindText}" with "${replaceText}"`);
     setBulkFindText('');
     setBulkReplaceText('');
     setShowBulkReplace(false);
-  }, [bulkFindText, bulkReplaceText, players]);
+  }, [bulkFindText, bulkReplaceText, players, uploadData]);
   
   const applySuggestion = useCallback((inputName: string, suggestedName: string, type: 'player' | 'team') => {
     if (type === 'player') {
@@ -687,10 +726,18 @@ export default function PreviewHistoricalSeason() {
         body: JSON.stringify(importData),
       });
       
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response received:', text.substring(0, 500));
+        throw new Error(`Server returned non-JSON response (Status: ${response.status}). This usually means the API route crashed.`);
+      }
+      
       const result = await response.json();
       
       if (!response.ok) {
-        throw new Error(result.error || 'Import failed');
+        throw new Error(result.error || `Import failed with status ${response.status}`);
       }
       
       if (!result.success) {
@@ -975,6 +1022,21 @@ export default function PreviewHistoricalSeason() {
               </button>
             </div>
           )}
+        </div>
+        
+        {/* Auto-save Information Banner */}
+        <div className="glass rounded-3xl p-4 mb-6 shadow-lg backdrop-blur-md border border-white/20 bg-green-50/30">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 mr-2 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <span className="text-sm font-semibold text-green-800">💾 Auto-Save Enabled</span>
+              <p className="text-xs text-green-700 mt-1">
+                All your player and team linkings are automatically saved as you work. If an import error occurs or you refresh the page, your linkings will be preserved.
+              </p>
+            </div>
+          </div>
         </div>
         
         {/* Validation Status */}

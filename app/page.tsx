@@ -1,126 +1,100 @@
+'use client'
+
 import Link from 'next/link';
 import HeroSection from './components/HeroSection';
 import HallOfFameSelector from './components/HallOfFameSelector';
+import { useEffect, useState } from 'react';
 
-export const dynamic = 'force-dynamic';
+export default function Home() {
+  const [loading, setLoading] = useState(true);
+  const [leagueStats, setLeagueStats] = useState<any>(null);
+  const [hallOfFame, setHallOfFame] = useState<any>(null);
+  const [records, setRecords] = useState<any>(null);
+  const [champions, setChampions] = useState<any[]>([]);
+  const [cupWinners, setCupWinners] = useState<any[]>([]);
+  const [totalChampions, setTotalChampions] = useState(0);
+  const [awardWinners, setAwardWinners] = useState<any>({});
+  const [currentSeason, setCurrentSeason] = useState<any>(null);
+  const [topTeams, setTopTeams] = useState<any[]>([]);
 
-// Get the base URL - works in both development and production
-function getBaseUrl() {
-  // In production, use the deployed URL
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  
-  // Use environment variable if set
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-  
-  // Fallback to localhost for development
-  return 'http://localhost:3000';
-}
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Check and finalize expired rounds (background task)
+        fetch('/api/public/check-rounds').catch(() => {});
+        
+        // Fetch all data in parallel
+        const [
+          leagueStatsRes,
+          hallOfFameRes,
+          recordsRes,
+          championsRes,
+          awardsRes,
+          seasonRes
+        ] = await Promise.all([
+          fetch('/api/public/league-stats'),
+          fetch('/api/public/hall-of-fame'),
+          fetch('/api/public/league-records'),
+          fetch('/api/public/champions'),
+          fetch('/api/public/award-winners'),
+          fetch('/api/public/current-season')
+        ]);
+        
+        const [
+          leagueStatsData,
+          hallOfFameData,
+          recordsData,
+          championsData,
+          awardsData,
+          seasonData
+        ] = await Promise.all([
+          leagueStatsRes.json(),
+          hallOfFameRes.json(),
+          recordsRes.json(),
+          championsRes.json(),
+          awardsRes.json(),
+          seasonRes.json()
+        ]);
 
-async function fetchData() {
-  const baseUrl = getBaseUrl();
-  
-  try {
-    console.log('🏠 Fetching homepage data from:', baseUrl);
-    
-    // Check and finalize expired rounds (background task)
-    fetch(`${baseUrl}/api/public/check-rounds`, { next: { revalidate: 0 } }).catch(() => {});
-    
-    // Fetch all data in parallel
-    const [
-      leagueStatsRes,
-      hallOfFameRes,
-      recordsRes,
-      championsRes,
-      awardsRes,
-      seasonRes
-    ] = await Promise.all([
-      fetch(`${baseUrl}/api/public/league-stats`, { next: { revalidate: 300 }, cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/hall-of-fame`, { next: { revalidate: 300 }, cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/league-records`, { next: { revalidate: 300 }, cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/champions`, { next: { revalidate: 300 }, cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/award-winners`, { next: { revalidate: 300 }, cache: 'no-store' }),
-      fetch(`${baseUrl}/api/public/current-season`, { next: { revalidate: 60 }, cache: 'no-store' })
-    ]);
-    
-    const [
-      leagueStatsData,
-      hallOfFameData,
-      recordsData,
-      championsData,
-      awardsData,
-      seasonData
-    ] = await Promise.all([
-      leagueStatsRes.json(),
-      hallOfFameRes.json(),
-      recordsRes.json(),
-      championsRes.json(),
-      awardsRes.json(),
-      seasonRes.json()
-    ]);
+        // Extract data
+        setLeagueStats(leagueStatsData.success ? leagueStatsData.data : null);
+        setHallOfFame(hallOfFameData.success ? hallOfFameData.data : null);
+        setRecords(recordsData.success ? recordsData.data : null);
+        setChampions(championsData.success ? championsData.data.champions : []);
+        setCupWinners(championsData.success ? championsData.data.cupWinners : []);
+        setTotalChampions(championsData.success ? championsData.data.totalChampions : 0);
+        setAwardWinners(awardsData.success ? awardsData.data.awardWinners : {});
+        const season = seasonData.success ? seasonData.data : null;
+        setCurrentSeason(season);
 
-    // Extract data
-    const leagueStats = leagueStatsData.success ? leagueStatsData.data : null;
-    const hallOfFame = hallOfFameData.success ? hallOfFameData.data : null;
-    const records = recordsData.success ? recordsData.data : null;
-    const champions = championsData.success ? championsData.data.champions : [];
-    const cupWinners = championsData.success ? championsData.data.cupWinners : [];
-    const totalChampions = championsData.success ? championsData.data.totalChampions : 0;
-    const awardWinners = awardsData.success ? awardsData.data.awardWinners : {};
-    const currentSeason = seasonData.success ? seasonData.data : null;
-
-    // Fetch current season standings if season exists
-    let topTeams: any[] = [];
-    if (currentSeason) {
-      const teamsRes = await fetch(`${baseUrl}/api/team/all?season_id=${currentSeason.id}`, { next: { revalidate: 300 } });
-      const teamsData = await teamsRes.json();
-      if (teamsData.success && teamsData.data?.teamStats) {
-        topTeams = teamsData.data.teamStats.sort((a: any, b: any) => a.rank - b.rank).slice(0, 3);
+        // Fetch current season standings if season exists
+        if (season) {
+          const teamsRes = await fetch(`/api/team/all?season_id=${season.id}`);
+          const teamsData = await teamsRes.json();
+          if (teamsData.success && teamsData.data?.teamStats) {
+            setTopTeams(teamsData.data.teamStats.sort((a: any, b: any) => a.rank - b.rank).slice(0, 3));
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching homepage data:', error);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
 
-    return {
-      leagueStats,
-      hallOfFame,
-      records,
-      champions,
-      cupWinners,
-      totalChampions,
-      awardWinners,
-      currentSeason,
-      topTeams
-    };
-  } catch (error) {
-    console.error('Error fetching homepage data:', error);
-    return {
-      leagueStats: null,
-      hallOfFame: null,
-      records: null,
-      champions: [],
-      cupWinners: [],
-      totalChampions: 0,
-      awardWinners: {},
-      currentSeason: null,
-      topTeams: []
-    };
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    );
   }
-}
-
-export default async function Home() {
-  const {
-    leagueStats,
-    hallOfFame,
-    records,
-    champions,
-    cupWinners,
-    totalChampions,
-    awardWinners,
-    currentSeason,
-    topTeams
-  } = await fetchData();
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 overflow-visible">

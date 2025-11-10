@@ -45,7 +45,12 @@ export async function uploadImage(options: UploadOptions): Promise<UploadResult>
     const ik = getImageKit();
     
     // Get authentication parameters from server
-    const authResponse = await fetch(imagekitConfig.authenticationEndpoint);
+    // Use absolute URL for server-side fetch
+    const authEndpoint = imagekitConfig.authenticationEndpoint.startsWith('http') 
+      ? imagekitConfig.authenticationEndpoint
+      : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}${imagekitConfig.authenticationEndpoint}`;
+    
+    const authResponse = await fetch(authEndpoint);
     if (!authResponse.ok) {
       throw new Error('Failed to get authentication parameters');
     }

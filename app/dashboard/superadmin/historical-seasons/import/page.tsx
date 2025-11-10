@@ -72,7 +72,65 @@ export default function ImportHistoricalSeason() {
         throw new Error(result.error || 'Upload failed');
       }
       
-      // Store the parsed data in localStorage for the preview page
+      // Check if there's existing data with linkings for the same season
+      const existingDataStr = localStorage.getItem('seasonUploadData');
+      let preservedLinkings: any = {};
+      
+      if (existingDataStr) {
+        try {
+          const existingData = JSON.parse(existingDataStr);
+          
+          // Only preserve linkings if it's the same season number
+          if (existingData.seasonInfo?.seasonNumber === parseInt(seasonNumber)) {
+            console.log('🔗 Preserving existing linkings for Season', seasonNumber);
+            
+            // Build maps of existing linkings by name
+            const existingTeamLinkings = new Map();
+            const existingPlayerLinkings = new Map();
+            
+            existingData.teams?.forEach((team: any) => {
+              if (team.linked_team_id && team.team) {
+                existingTeamLinkings.set(team.team.toLowerCase().trim(), team.linked_team_id);
+              }
+            });
+            
+            existingData.players?.forEach((player: any) => {
+              if (player.linked_player_id && player.name) {
+                existingPlayerLinkings.set(player.name.toLowerCase().trim(), player.linked_player_id);
+              }
+            });
+            
+            preservedLinkings = { teams: existingTeamLinkings, players: existingPlayerLinkings };
+          }
+        } catch (e) {
+          console.warn('Could not parse existing data:', e);
+        }
+      }
+      
+      // Apply preserved linkings to new data
+      if (preservedLinkings.teams?.size > 0 || preservedLinkings.players?.size > 0) {
+        result.data.teams = result.data.teams.map((team: any) => {
+          const linkedTeamId = preservedLinkings.teams?.get(team.team?.toLowerCase().trim());
+          if (linkedTeamId) {
+            console.log(`  ✅ Restored team linking: ${team.team} -> ${linkedTeamId}`);
+            return { ...team, linked_team_id: linkedTeamId };
+          }
+          return team;
+        });
+        
+        result.data.players = result.data.players.map((player: any) => {
+          const linkedPlayerId = preservedLinkings.players?.get(player.name?.toLowerCase().trim());
+          if (linkedPlayerId) {
+            console.log(`  ✅ Restored player linking: ${player.name} -> ${linkedPlayerId}`);
+            return { ...player, linked_player_id: linkedPlayerId };
+          }
+          return player;
+        });
+        
+        console.log('✅ All linkings restored!');
+      }
+      
+      // Store the parsed data (with preserved linkings) in localStorage for the preview page
       localStorage.setItem('seasonUploadData', JSON.stringify(result.data));
       
       // Redirect to preview page
