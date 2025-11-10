@@ -129,7 +129,21 @@ async function findDuplicates() {
       const distance = levenshteinDistance(p1.name.toLowerCase(), p2.name.toLowerCase());
       const similarity = 1 - (distance / maxLen);
       
-      if (similarity > 0.50) {
+      // Check for similar names with fuzzy matching
+      const name1Lower = p1.name.toLowerCase().trim();
+      const name2Lower = p2.name.toLowerCase().trim();
+      const shorterName = name1Lower.length < name2Lower.length ? name1Lower : name2Lower;
+      const longerName = name1Lower.length >= name2Lower.length ? name1Lower : name2Lower;
+      
+      // Check substring, prefix, or fuzzy prefix match
+      const isSubstring = shorterName.length >= 3 && (
+        longerName.includes(shorterName) || // direct substring
+        longerName.startsWith(shorterName) || // starts with
+        longerName.split(/\s+/).some(word => word.startsWith(shorterName)) || // word starts with
+        longerName.split(/\s+/).some(word => levenshteinDistance(word.substring(0, shorterName.length), shorterName) <= 1) // fuzzy prefix (1 char diff)
+      );
+      
+      if (similarity > 0.50 || isSubstring) {
         processedPairs.add(pairKey);
         
         // Check if either player is already in a similar group

@@ -148,9 +148,64 @@ export default function PreviewHistoricalSeason() {
     });
   }, []);
   
+  // Auto-link players based on exact or high-similarity name match
+  const autoLinkPlayers = useCallback((playersData: PlayerData[], existingPlayersData: ExistingEntities['players']) => {
+    return playersData.map(player => {
+      // Skip if already linked
+      if (player.linked_player_id) {
+        console.log(`ℹ️  Player "${player.name}" already linked, skipping auto-link`);
+        return player;
+      }
+      
+      // Priority 1: Exact name match
+      const exactNameMatch = existingPlayersData.find(
+        ep => ep.name && player.name && ep.name.toLowerCase() === player.name.toLowerCase()
+      );
+      
+      if (exactNameMatch) {
+        console.log(`🔗 Auto-linked player "${player.name}" to existing player "${exactNameMatch.name}" (exact match)`);
+        return { ...player, linked_player_id: exactNameMatch.player_id };
+      }
+      
+      // Priority 2: Normalized name match (removes special characters)
+      const normalizedMatch = existingPlayersData.find(ep => {
+        if (!player.name || !ep.name) return false;
+        const normalized1 = player.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normalized2 = ep.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return normalized1 === normalized2 && normalized1.length > 0;
+      });
+      
+      if (normalizedMatch) {
+        console.log(`🔗 Auto-linked player "${player.name}" to existing player "${normalizedMatch.name}" (normalized match)`);
+        return { ...player, linked_player_id: normalizedMatch.player_id };
+      }
+      
+      // Priority 3: Very high similarity match (>90% for auto-linking)
+      const similarNameMatch = existingPlayersData.find(ep => {
+        if (!player.name || !ep.name) return false;
+        const similarity = calculateSimilarity(player.name.toLowerCase(), ep.name.toLowerCase());
+        return similarity > 0.9; // High threshold for auto-linking
+      });
+      
+      if (similarNameMatch) {
+        console.log(`🔗 Auto-linked player "${player.name}" to existing player "${similarNameMatch.name}" (high similarity: ${(calculateSimilarity(player.name.toLowerCase(), similarNameMatch.name.toLowerCase()) * 100).toFixed(0)}%)`);
+        return { ...player, linked_player_id: similarNameMatch.player_id };
+      }
+      
+      console.log(`ℹ️  Player "${player.name}" not auto-linked - will create as new player unless manually linked`);
+      return player; // No match, keep as new player
+    });
+  }, []);
+  
   // Auto-link teams based on owner name or similar team name
   const autoLinkTeams = useCallback((teamsData: TeamData[], existingTeamsData: ExistingEntities['teams']) => {
     return teamsData.map(team => {
+      // Skip if already linked
+      if (team.linked_team_id) {
+        console.log(`ℹ️  Team "${team.team}" already linked, skipping auto-link`);
+        return team;
+      }
+      
       // Priority 1: Exact name match
       const exactNameMatch = existingTeamsData.find(
         et => et.name && team.team && et.name.toLowerCase() === team.team.toLowerCase()
@@ -306,12 +361,8 @@ export default function PreviewHistoricalSeason() {
         
         // Auto-run validation and duplicate check
         setTimeout(() => {
-          const hasNoErrors = validateAll();
-          if (!hasNoErrors) {
-            setShowValidationDetails(true); // Show errors if validation failed
-          }
-          // Load existing entities and check for duplicates
-          loadExistingEntitiesAndCheckDuplicates();
+          // Load existing entities and check for duplicates, passing transformed data
+          loadExistingEntitiesAndCheckDuplicates(transformedTeams, transformedPlayers);
         }, 100);
       } catch (error) {
         console.error('Error parsing upload data:', error);
@@ -325,7 +376,11 @@ export default function PreviewHistoricalSeason() {
   }, [router]);
 
   // Load existing entities from database and check for duplicates
-  const loadExistingEntitiesAndCheckDuplicates = useCallback(async () => {
+  const loadExistingEntitiesAndCheckDuplicates = useCallback(async (currentTeams?: TeamData[], currentPlayers?: PlayerData[]) => {
+    // Use passed data or fall back to state
+    const teamsToProcess = currentTeams || teams;
+    const playersToProcess = currentPlayers || players;
+    
     setLoadingDuplicates(true);
     try {
       const response = await fetchWithTokenRefresh('/api/seasons/historical/check-duplicates');
@@ -334,47 +389,97 @@ export default function PreviewHistoricalSeason() {
       if (result.success && result.data) {
         setExistingEntities(result.data);
         
+        console.log('\n🔍 Starting auto-linking process...');
+        console.log(`Teams to process: ${teamsToProcess.length}`);
+        console.log(`Players to process: ${playersToProcess.length}`);
+        
         // Auto-link teams based on existing data
-        const autoLinkedTeams = autoLinkTeams(teams, result.data.teams);
-        if (JSON.stringify(autoLinkedTeams) !== JSON.stringify(teams)) {
+        const autoLinkedTeams = autoLinkTeams(teamsToProcess, result.data.teams);
+        const teamsChanged = JSON.stringify(autoLinkedTeams) !== JSON.stringify(teamsToProcess);
+        const teamsLinkedCount = autoLinkedTeams.filter(t => t.linked_team_id).length;
+        
+        // Auto-link players based on existing data  
+        const autoLinkedPlayers = autoLinkPlayers(playersToProcess, result.data.players);
+        const playersChanged = JSON.stringify(autoLinkedPlayers) !== JSON.stringify(playersToProcess);
+        const playersLinkedCount = autoLinkedPlayers.filter(p => p.linked_player_id).length;
+        
+        // Update player team names to match linked teams
+        let finalPlayers = autoLinkedPlayers;
+        if (teamsChanged) {
+          finalPlayers = syncPlayerTeamNames(autoLinkedPlayers, teamsToProcess, autoLinkedTeams, result.data.teams);
+        }
+        
+        // Apply all changes at once
+        if (teamsChanged) {
           setTeams(autoLinkedTeams);
-          console.log('✅ Auto-linked teams based on owner/name matching');
-          
-          // Update player team names to match linked teams
-          const updatedPlayers = syncPlayerTeamNames(players, teams, autoLinkedTeams, result.data.teams);
-          if (JSON.stringify(updatedPlayers) !== JSON.stringify(players)) {
-            setPlayers(updatedPlayers);
-            console.log('✅ Updated player team names to match linked teams');
+        }
+        
+        if (playersChanged || teamsChanged) {
+          setPlayers(finalPlayers);
+        }
+        
+        // Log summary
+        console.log('\n🎯 Auto-linking Summary:');
+        console.log(`  Teams: ${teamsLinkedCount}/${teamsToProcess.length} linked`);
+        console.log(`  Players: ${playersLinkedCount}/${playersToProcess.length} linked`);
+        if (teamsChanged || playersChanged) {
+          console.log('  ✅ Changes applied and saved');
+        } else {
+          console.log('  ℹ️  No new auto-links needed');
+        }
+        
+        // Save auto-linked data to localStorage
+        if (teamsChanged || playersChanged) {
+          const savedData = localStorage.getItem('seasonUploadData');
+          if (savedData) {
+            try {
+              const data = JSON.parse(savedData);
+              const updatedData = {
+                ...data,
+                teams: autoLinkedTeams,
+                players: finalPlayers
+              };
+              localStorage.setItem('seasonUploadData', JSON.stringify(updatedData));
+              console.log('💾 Saved auto-linked data to localStorage');
+            } catch (e) {
+              console.error('Failed to save auto-linked data:', e);
+            }
           }
         }
         
-        // Check for duplicates using fuzzy matching
+        // Check for duplicates using fuzzy matching (only for items not auto-linked)
         const matches: DuplicateMatch[] = [];
         const threshold = 70; // 70% similarity threshold
         
-        // Check players
+        // Check players (only those not auto-linked)
         const existingPlayerNames = result.data.players.map((p: any) => p.name);
-        players.forEach((player) => {
-          const playerMatches = findMatches(player.name, existingPlayerNames, threshold, 3);
-          if (playerMatches.length > 0) {
-            matches.push({
-              inputName: player.name,
-              matches: playerMatches,
-              type: 'player'
-            });
+        finalPlayers.forEach((player) => {
+          // Skip if already linked
+          if (!player.linked_player_id) {
+            const playerMatches = findMatches(player.name, existingPlayerNames, threshold, 3);
+            if (playerMatches.length > 0) {
+              matches.push({
+                inputName: player.name,
+                matches: playerMatches,
+                type: 'player'
+              });
+            }
           }
         });
         
-        // Check teams
+        // Check teams (only those not auto-linked)
         const existingTeamNames = result.data.teams.map((t: any) => t.name);
-        teams.forEach((team) => {
-          const teamMatches = findMatches(team.team, existingTeamNames, threshold, 3);
-          if (teamMatches.length > 0) {
-            matches.push({
-              inputName: team.team,
-              matches: teamMatches,
-              type: 'team'
-            });
+        autoLinkedTeams.forEach((team) => {
+          // Skip if already linked
+          if (!team.linked_team_id) {
+            const teamMatches = findMatches(team.team, existingTeamNames, threshold, 3);
+            if (teamMatches.length > 0) {
+              matches.push({
+                inputName: team.team,
+                matches: teamMatches,
+                type: 'team'
+              });
+            }
           }
         });
         
@@ -385,7 +490,7 @@ export default function PreviewHistoricalSeason() {
     } finally {
       setLoadingDuplicates(false);
     }
-  }, [players, teams, autoLinkTeams, syncPlayerTeamNames]);
+  }, [players, teams, autoLinkTeams, autoLinkPlayers, syncPlayerTeamNames]);
   
   const handleRemoveTeam = useCallback((index: number) => {
     if (confirm('Remove this team from the import?')) {
