@@ -636,19 +636,22 @@ export default function PreviewHistoricalSeason() {
     const errors = new Set<string>();
     
     // Get team names for cross-referential validation
-    // For linked teams, use the actual existing team name; for new teams, use the uploaded name
+    // Accept BOTH the uploaded team name AND the linked team name (for teams with historical name changes)
     const validTeamNames = new Set<string>();
     
     teams.forEach(team => {
+      // Always add the uploaded/current team name (e.g., "Hooligans" from the Excel)
+      if (team.team && team.team.trim()) {
+        validTeamNames.add(team.team.trim().toLowerCase());
+      }
+      
+      // If team is linked, also add the existing team's name (e.g., "Thunder FC" from database)
+      // This allows players to have either the historical name or the current name
       if (team.linked_team_id && existingEntities?.teams) {
-        // Find the actual existing team name for linked teams
         const existingTeam = existingEntities.teams.find(t => t.teamId === team.linked_team_id);
         if (existingTeam?.name) {
           validTeamNames.add(existingTeam.name.trim().toLowerCase());
         }
-      } else {
-        // For new teams (not linked), use the uploaded team name
-        validTeamNames.add(team.team.trim().toLowerCase());
       }
     });
     
@@ -1129,6 +1132,26 @@ export default function PreviewHistoricalSeason() {
           )}
         </div>
         
+        {/* Team Name Changes Information Banner */}
+        <div className="glass rounded-3xl p-4 mb-6 shadow-lg backdrop-blur-md border border-white/20 bg-purple-50/30">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 mr-2 text-purple-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <span className="text-sm font-semibold text-purple-800">📝 Handling Team Name Changes</span>
+              <p className="text-xs text-purple-700 mt-1">
+                <strong>Important:</strong> If a team changed names across seasons (e.g., "Hooligans" in S1-S11, then renamed in S12+), you can:
+              </p>
+              <ul className="text-xs text-purple-700 mt-2 ml-4 space-y-1 list-disc">
+                <li><strong>Link to existing team</strong> in the "Link To" dropdown (this connects the team entity)</li>
+                <li><strong>Keep the historical name</strong> in the "Team" column (e.g., "Hooligans" for S11, new name for S12)</li>
+                <li>The system will store the correct name for each season while maintaining team continuity</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        
         {/* Auto-save Information Banner */}
         <div className="glass rounded-3xl p-4 mb-6 shadow-lg backdrop-blur-md border border-white/20 bg-green-50/30">
           <div className="flex items-start">
@@ -1194,16 +1217,19 @@ export default function PreviewHistoricalSeason() {
                       const playerTeam = player?.team || '(empty)';
                       const playerName = player?.name || 'Unknown';
                       
-                      // Build list of valid team names (including linked teams)
+                      // Build list of valid team names (including both historical and linked team names)
                       const validTeamNames: string[] = [];
                       teams.forEach(team => {
+                        // Add the uploaded team name (historical name)
+                        if (team.team) {
+                          validTeamNames.push(team.team);
+                        }
+                        // Also add the linked team's current name
                         if (team.linked_team_id && existingEntities?.teams) {
                           const existingTeam = existingEntities.teams.find(t => t.teamId === team.linked_team_id);
-                          if (existingTeam?.name) {
-                            validTeamNames.push(existingTeam.name);
+                          if (existingTeam?.name && existingTeam.name !== team.team) {
+                            validTeamNames.push(`${existingTeam.name} (linked)`);
                           }
-                        } else {
-                          validTeamNames.push(team.team);
                         }
                       });
                       
