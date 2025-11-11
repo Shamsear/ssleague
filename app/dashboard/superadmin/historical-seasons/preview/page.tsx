@@ -1608,9 +1608,14 @@ export default function PreviewHistoricalSeason() {
                             onClick={() => setOpenPlayerDropdown(openPlayerDropdown === index ? null : index)}
                           >
                             {player.linked_player_id ? (
-                              <span className="text-gray-800">
-                                {existingEntities?.players.find(p => p.player_id === player.linked_player_id)?.name || 'Unknown Player'}
-                              </span>
+                              <div className="flex justify-between items-center">
+                                <span className="text-gray-800">
+                                  {existingEntities?.players.find(p => p.player_id === player.linked_player_id)?.name || 'Unknown Player'}
+                                </span>
+                                <span className="text-gray-500 text-xs ml-2">
+                                  {player.linked_player_id}
+                                </span>
+                              </div>
                             ) : (
                               <span className="text-gray-500">➕ New Player</span>
                             )}
@@ -1623,7 +1628,7 @@ export default function PreviewHistoricalSeason() {
                               <div className="p-2 border-b border-gray-200">
                                 <input
                                   type="text"
-                                  placeholder="Search players..."
+                                  placeholder="Search by name or ID..."
                                   value={playerSearchQuery.get(index) || ''}
                                   onChange={(e) => {
                                     const newMap = new Map(playerSearchQuery);
@@ -1673,13 +1678,17 @@ export default function PreviewHistoricalSeason() {
                                     );
                                   });
                                   
-                                  // Filter players based on search
+                                  // Filter players based on search (by name or ID)
                                   const filteredSuggested = suggested.filter(p => 
-                                    p.name.toLowerCase().includes(searchQuery)
+                                    p.name.toLowerCase().includes(searchQuery) ||
+                                    (p.player_id && p.player_id.toLowerCase().includes(searchQuery))
                                   );
                                   const filteredOthers = existingEntities.players
                                     .filter(p => !suggested.some(s => s.player_id === p.player_id))
-                                    .filter(p => p.name.toLowerCase().includes(searchQuery))
+                                    .filter(p => 
+                                      p.name.toLowerCase().includes(searchQuery) ||
+                                      (p.player_id && p.player_id.toLowerCase().includes(searchQuery))
+                                    )
                                     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                                   
                                   return (
