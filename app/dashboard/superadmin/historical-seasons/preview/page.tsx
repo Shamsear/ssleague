@@ -1702,7 +1702,10 @@ export default function PreviewHistoricalSeason() {
                                                 setPlayerSearchQuery(newMap);
                                               }}
                                             >
-                                              {existingPlayer.name}
+                                              <div className="flex justify-between items-center">
+                                                <span>{existingPlayer.name}</span>
+                                                <span className="text-gray-500 text-xs ml-2">ID: {existingPlayer.player_id}</span>
+                                              </div>
                                             </div>
                                           ))}
                                         </>
@@ -1726,7 +1729,10 @@ export default function PreviewHistoricalSeason() {
                                                 setPlayerSearchQuery(newMap);
                                               }}
                                             >
-                                              {existingPlayer.name}
+                                              <div className="flex justify-between items-center">
+                                                <span>{existingPlayer.name}</span>
+                                                <span className="text-gray-500 text-xs ml-2">ID: {existingPlayer.player_id}</span>
+                                              </div>
                                             </div>
                                           ))}
                                         </>
