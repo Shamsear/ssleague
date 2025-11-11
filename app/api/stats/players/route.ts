@@ -146,12 +146,24 @@ export async function GET(request: NextRequest) {
             contract_id, contract_start_season, contract_end_season,
             is_auto_registered, registration_date, registration_type,
             auction_value, salary_per_match,
+            prevent_auto_promotion,
             created_at, updated_at
           FROM player_seasons 
           WHERE season_id = ${seasonId}
           ORDER BY registration_date ASC
           LIMIT ${limit}
         `;
+        
+        // Debug: Log first player to check prevent_auto_promotion field
+        if (stats.length > 0) {
+          console.log('[Players API] First player prevent_auto_promotion:', stats[0].prevent_auto_promotion);
+          console.log('[Players API] First player data:', {
+            player_id: stats[0].player_id,
+            player_name: stats[0].player_name,
+            prevent_auto_promotion: stats[0].prevent_auto_promotion,
+            registration_type: stats[0].registration_type
+          });
+        }
       } else {
         stats = await sql`
           SELECT * FROM realplayerstats 

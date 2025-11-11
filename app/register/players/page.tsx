@@ -19,6 +19,7 @@ interface RegisteredPlayer {
   registration_date: Timestamp
   registration_type: string
   additional_info?: string
+  prevent_auto_promotion?: boolean
 }
 
 interface RegistrationStats {
@@ -80,6 +81,7 @@ function PlayersRegistrationPageContent() {
   const [playerSearchQuery, setPlayerSearchQuery] = useState<string>('')
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([])
   const [actioningPlayer, setActioningPlayer] = useState<string | null>(null)
+  const [togglingAutoPromotion, setTogglingAutoPromotion] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'manage' | 'register' | 'phases' | 'registration'>('manage')
   const [totalMasterPlayers, setTotalMasterPlayers] = useState<number>(0)
   const [copiedUrl, setCopiedUrl] = useState(false)
@@ -135,7 +137,8 @@ function PlayersRegistrationPageContent() {
             ? new Timestamp(Math.floor(parseNeonTimestampUTC(player.registration_date) / 1000), 0)
             : Timestamp.now(),
           registration_type: player.registration_type || 'confirmed',
-          additional_info: ''
+          additional_info: '',
+          prevent_auto_promotion: player.prevent_auto_promotion ?? false
         }))
         .sort((a: RegisteredPlayer, b: RegisteredPlayer) => 
           a.registration_date.toMillis() - b.registration_date.toMillis()
@@ -215,18 +218,42 @@ function PlayersRegistrationPageContent() {
         const playersResult = await playersResponse.json()
         const playersData = playersResult.success ? playersResult.data : []
         
+        // Debug: Check raw API data
+        const firstUnconfirmed = playersData.find((p: any) => p.registration_type === 'unconfirmed');
+        if (firstUnconfirmed) {
+          console.log('🔄 [AUTO-REFRESH] Raw API data for first unconfirmed player:', {
+            player_id: firstUnconfirmed.player_id,
+            player_name: firstUnconfirmed.player_name,
+            prevent_auto_promotion: firstUnconfirmed.prevent_auto_promotion,
+            prevent_auto_promotion_type: typeof firstUnconfirmed.prevent_auto_promotion
+          });
+        }
+        
         const mappedPlayers = playersData
           .filter((p: any) => p.registration_type)
-          .map((player: any) => ({
-            id: player.id,
-            player_id: player.player_id,
-            player_name: player.player_name,
-            registration_date: player.registration_date
-              ? new Timestamp(Math.floor(parseNeonTimestampUTC(player.registration_date) / 1000), 0)
-              : Timestamp.now(),
-            registration_type: player.registration_type || 'confirmed',
-            additional_info: ''
-          }))
+          .map((player: any) => {
+            const mapped = {
+              id: player.id,
+              player_id: player.player_id,
+              player_name: player.player_name,
+              registration_date: player.registration_date
+                ? new Timestamp(Math.floor(parseNeonTimestampUTC(player.registration_date) / 1000), 0)
+                : Timestamp.now(),
+              registration_type: player.registration_type || 'confirmed',
+              additional_info: '',
+              prevent_auto_promotion: player.prevent_auto_promotion ?? false
+            };
+            
+            // Debug first unconfirmed player mapping
+            if (player.registration_type === 'unconfirmed' && player.player_id === firstUnconfirmed?.player_id) {
+              console.log('🔄 [AUTO-REFRESH] After mapping:', {
+                player_id: mapped.player_id,
+                prevent_auto_promotion: mapped.prevent_auto_promotion
+              });
+            }
+            
+            return mapped;
+          })
           .sort((a: RegisteredPlayer, b: RegisteredPlayer) => 
             a.registration_date.toMillis() - b.registration_date.toMillis()
           )
@@ -594,6 +621,79 @@ function PlayersRegistrationPageContent() {
       setError('Failed to copy link')
       setTimeout(() => setError(null), 3000)
     })
+  }
+
+  const handleToggleAutoPromotion = async (playerId: string, playerName: string, currentValue: boolean) => {
+    console.log('🔒 [AUTO-PROMOTION TOGGLE] Starting...');
+    console.log('  Player ID:', playerId);
+    console.log('  Player Name:', playerName);
+    console.log('  Current prevent_auto_promotion value:', currentValue);
+    console.log('  Will set prevent to:', !currentValue);
+    console.log('  Season ID:', seasonId);
+
+    if (!seasonId) {
+      console.log('❌ No season ID, aborting');
+      return;
+    }
+
+    try {
+      setTogglingAutoPromotion(playerId)
+      setError(null)
+      setSuccess(null)
+
+      const requestBody = {
+        player_id: playerId,
+        season_id: seasonId,
+        prevent: !currentValue
+      };
+      console.log('📤 Sending request:', requestBody);
+
+      const response = await fetch('/api/admin/players/toggle-auto-promotion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      })
+
+      console.log('📥 Response status:', response.status);
+      const result = await response.json()
+      console.log('📥 Response body:', result);
+
+      if (result.success) {
+        console.log('✅ API call successful');
+        console.log('  Updating local state: prevent_auto_promotion =', !currentValue);
+        
+        // Update local state
+        setRegisteredPlayers(prev => {
+          const updated = prev.map(p => {
+            if (p.player_id === playerId) {
+              console.log('  Found player in state, updating...');
+              console.log('  Before:', { player_id: p.player_id, prevent_auto_promotion: p.prevent_auto_promotion });
+              const updatedPlayer = { ...p, prevent_auto_promotion: !currentValue };
+              console.log('  After:', { player_id: updatedPlayer.player_id, prevent_auto_promotion: updatedPlayer.prevent_auto_promotion });
+              return updatedPlayer;
+            }
+            return p;
+          });
+          return updated;
+        });
+        
+        const message = `${playerName} auto-promotion ${!currentValue ? 'disabled' : 'enabled'}`;
+        console.log('✅ Success message:', message);
+        setSuccess(message);
+        setTimeout(() => setSuccess(null), 3000)
+      } else {
+        console.log('❌ API returned error:', result.error);
+        setError(result.error || 'Failed to toggle auto-promotion')
+        setTimeout(() => setError(null), 3000)
+      }
+    } catch (error) {
+      console.error('❌ Exception caught:', error)
+      setError('Failed to toggle auto-promotion')
+      setTimeout(() => setError(null), 3000)
+    } finally {
+      console.log('🔒 [AUTO-PROMOTION TOGGLE] Finished');
+      setTogglingAutoPromotion(null)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1122,6 +1222,17 @@ function PlayersRegistrationPageContent() {
                     <tbody className="divide-y divide-gray-200">
                       {filteredRegisteredPlayers.map((player, index) => {
                         const isActioning = actioningPlayer === player.player_id
+                        
+                        // Debug log for unconfirmed players
+                        if (player.registration_type === 'unconfirmed' && index === 0) {
+                          console.log('🔍 [RENDER] First unconfirmed player state:', {
+                            player_id: player.player_id,
+                            player_name: player.player_name,
+                            prevent_auto_promotion: player.prevent_auto_promotion,
+                            registration_type: player.registration_type
+                          });
+                        }
+                        
                         return (
                           <tr key={player.id} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3">
@@ -1136,15 +1247,40 @@ function PlayersRegistrationPageContent() {
                             <td className="px-4 py-3 font-medium text-gray-900">{player.player_name || 'Unknown'}</td>
                             <td className="px-4 py-3 text-sm text-gray-600 font-mono hidden sm:table-cell">{player.player_id}</td>
                             <td className="px-4 py-3">
-                              {player.registration_type === 'confirmed' ? (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                  Confirmed
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                                  Waitlist
-                                </span>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {player.registration_type === 'confirmed' ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    Confirmed
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                      Waitlist
+                                    </span>
+                                    <button
+                                      onClick={() => handleToggleAutoPromotion(player.player_id, player.player_name || 'Unknown', player.prevent_auto_promotion ?? false)}
+                                      disabled={togglingAutoPromotion === player.player_id}
+                                      className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+                                      title={player.prevent_auto_promotion ? 'Auto-promotion disabled (click to enable)' : 'Auto-promotion enabled (click to disable)'}
+                                    >
+                                      {togglingAutoPromotion === player.player_id ? (
+                                        <svg className="animate-spin w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                      ) : player.prevent_auto_promotion ? (
+                                        <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                        </svg>
+                                      ) : (
+                                        <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                          <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">
                               {formatDateIST(player.registration_date)}

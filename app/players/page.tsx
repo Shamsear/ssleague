@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import OptimizedImage from '@/components/OptimizedImage';
+import PlayerPhoto from '@/components/PlayerPhoto';
 
 interface Player {
   id: string;
@@ -14,6 +14,14 @@ interface Player {
   team?: string;
   team_name?: string;
   photo_url?: string;
+  photo_position_circle?: string;
+  photo_scale_circle?: number;
+  photo_position_x_circle?: number;
+  photo_position_y_circle?: number;
+  photo_position_square?: string;
+  photo_scale_square?: number;
+  photo_position_x_square?: number;
+  photo_position_y_square?: number;
   current_season_id?: string;
   stats: {
     points: number;
@@ -120,6 +128,14 @@ export default function AllPlayersPage() {
             team: p.team,
             team_name: p.team_name,
             photo_url: p.photo_url,
+            photo_position_circle: p.photo_position_circle,
+            photo_scale_circle: p.photo_scale_circle,
+            photo_position_x_circle: p.photo_position_x_circle,
+            photo_position_y_circle: p.photo_position_y_circle,
+            photo_position_square: p.photo_position_square,
+            photo_scale_square: p.photo_scale_square,
+            photo_position_x_square: p.photo_position_x_square,
+            photo_position_y_square: p.photo_position_y_square,
             current_season_id: p.current_season_id,
             stats: {
               points: p.total_points || 0,
@@ -302,25 +318,16 @@ export default function AllPlayersPage() {
                 <div className="relative flex-shrink-0">
                   <div className="absolute -inset-0.5 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full opacity-75"></div>
                   <div className="relative w-20 h-20 rounded-full overflow-hidden shadow-lg bg-white p-0.5">
-                    {player.photo_url ? (
-                      <OptimizedImage
-                        src={player.photo_url}
-                        alt={player.name}
-                        width={80}
-                        height={80}
-                        quality={85}
-                        className="w-full h-full object-cover rounded-full"
-                        fallback={
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100 rounded-full">
-                            <span className="text-2xl font-bold text-blue-600">{player.name[0]}</span>
-                          </div>
-                        }
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100 rounded-full">
-                        <span className="text-2xl font-bold text-blue-600">{player.name[0]}</span>
-                      </div>
-                    )}
+                    <PlayerPhoto
+                      photoUrl={player.photo_url}
+                      playerName={player.name}
+                      shape="circle"
+                      size={76}
+                      positionCircle={player.photo_position_circle}
+                      scaleCircle={player.photo_scale_circle}
+                      posXCircle={player.photo_position_x_circle}
+                      posYCircle={player.photo_position_y_circle}
+                    />
                   </div>
                   {/* Category Badge */}
                   {player.category && (
@@ -391,25 +398,16 @@ export default function AllPlayersPage() {
                 >
                   {/* Circular Photo */}
                   <div className="w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-md border-2 border-white/50">
-                    {player.photo_url ? (
-                      <OptimizedImage
-                        src={player.photo_url}
-                        alt={player.name}
-                        width={80}
-                        height={80}
-                        quality={85}
-                        className="w-full h-full object-cover"
-                        fallback={
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
-                            <span className="text-2xl font-bold text-blue-600">{player.name[0]}</span>
-                          </div>
-                        }
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
-                        <span className="text-2xl font-bold text-blue-600">{player.name[0]}</span>
-                      </div>
-                    )}
+                    <PlayerPhoto
+                      photoUrl={player.photo_url}
+                      playerName={player.name}
+                      shape="circle"
+                      size={80}
+                      positionCircle={player.photo_position_circle}
+                      scaleCircle={player.photo_scale_circle}
+                      posXCircle={player.photo_position_x_circle}
+                      posYCircle={player.photo_position_y_circle}
+                    />
                   </div>
 
                   {/* Player Info */}

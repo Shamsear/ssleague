@@ -175,6 +175,16 @@ export async function GET(request: NextRequest) {
         team: playerData.team,
         team_name: season?.team_name || playerData.team || null,
         photo_url: playerData.photo_url || null,
+        // Photo positioning for circle shape
+        photo_position_circle: playerData.photo_position_circle || null,
+        photo_scale_circle: playerData.photo_scale_circle || null,
+        photo_position_x_circle: playerData.photo_position_x_circle || null,
+        photo_position_y_circle: playerData.photo_position_y_circle || null,
+        // Photo positioning for square shape
+        photo_position_square: playerData.photo_position_square || null,
+        photo_scale_square: playerData.photo_scale_square || null,
+        photo_position_x_square: playerData.photo_position_x_square || null,
+        photo_position_y_square: playerData.photo_position_y_square || null,
         current_season_id: playerData.current_season_id || null,
         matches_played: parseInt(stats?.matches_played) || 0,
         goals_scored: parseInt(stats?.goals_scored) || 0,

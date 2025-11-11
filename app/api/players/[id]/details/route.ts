@@ -38,6 +38,16 @@ export async function GET(
         name: playerData.name,
         photo_url: playerData.photo_url,
         photo_file_id: playerData.photo_file_id,
+        // Photo positioning for circle shape
+        photo_position_circle: playerData.photo_position_circle,
+        photo_scale_circle: playerData.photo_scale_circle,
+        photo_position_x_circle: playerData.photo_position_x_circle,
+        photo_position_y_circle: playerData.photo_position_y_circle,
+        // Photo positioning for square shape
+        photo_position_square: playerData.photo_position_square,
+        photo_scale_square: playerData.photo_scale_square,
+        photo_position_x_square: playerData.photo_position_x_square,
+        photo_position_y_square: playerData.photo_position_y_square,
         email: playerData.email,
         phone: playerData.phone,
         psn_id: playerData.psn_id,

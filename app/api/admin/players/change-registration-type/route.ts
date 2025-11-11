@@ -124,12 +124,14 @@ export async function POST(request: NextRequest) {
       if (newFilled < confirmedLimit) {
         // Get the earliest unconfirmed player (waitlist)
         // Exclude the player we just demoted to avoid immediate re-promotion
+        // Also exclude players with prevent_auto_promotion flag set
         const waitlistPlayers = await sql`
           SELECT id, player_id, player_name
           FROM player_seasons
           WHERE season_id = ${season_id}
             AND registration_type = 'unconfirmed'
             AND player_id != ${player_id}
+            AND COALESCE(prevent_auto_promotion, false) = false
           ORDER BY registration_date ASC
           LIMIT 1
         `;

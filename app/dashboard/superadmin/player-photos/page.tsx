@@ -15,6 +15,16 @@ interface Player {
   photo_url?: string;
   photo_file_id?: string;
   email?: string;
+  // Circle shape settings
+  photo_position_circle?: string; // Quick presets or custom 'X% Y%'
+  photo_scale_circle?: number;
+  photo_position_x_circle?: number; // 0-100 percentage for fine control
+  photo_position_y_circle?: number; // 0-100 percentage for fine control
+  // Square shape settings
+  photo_position_square?: string;
+  photo_scale_square?: number;
+  photo_position_x_square?: number;
+  photo_position_y_square?: number;
 }
 
 export default function PlayerPhotosManagement() {
@@ -31,6 +41,11 @@ export default function PlayerPhotosManagement() {
   const [success, setSuccess] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'with-photo' | 'without-photo'>('all');
   const [previewShape, setPreviewShape] = useState<'circle' | 'square'>('circle');
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [modalShape, setModalShape] = useState<'circle' | 'square'>('circle');
+  const [isDragging, setIsDragging] = useState(false);
+  const [overlayPosition, setOverlayPosition] = useState({ x: 50, y: 50 });
+  const [overlayScale, setOverlayScale] = useState(1);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -138,6 +153,101 @@ export default function PlayerPhotosManagement() {
     } finally {
       setUploadingPlayerId(null);
     }
+  };
+
+  const openAdjustmentModal = (player: Player, shape: 'circle' | 'square') => {
+    setEditingPlayer(player);
+    setModalShape(shape);
+    
+    // Load existing position
+    const posX = shape === 'circle' ? (player.photo_position_x_circle ?? 50) : (player.photo_position_x_square ?? 50);
+    const posY = shape === 'circle' ? (player.photo_position_y_circle ?? 50) : (player.photo_position_y_square ?? 50);
+    const scale = shape === 'circle' ? (player.photo_scale_circle || 1) : (player.photo_scale_square || 1);
+    
+    console.log('Opening modal - Loading saved settings:', {
+      player: player.player_id,
+      shape,
+      savedData: {
+        posX: shape === 'circle' ? player.photo_position_x_circle : player.photo_position_x_square,
+        posY: shape === 'circle' ? player.photo_position_y_circle : player.photo_position_y_square,
+        scale: shape === 'circle' ? player.photo_scale_circle : player.photo_scale_square
+      },
+      loading: { posX, posY, scale }
+    });
+    
+    setOverlayPosition({ x: posX, y: posY });
+    setOverlayScale(scale);
+  };
+
+  const closeModal = () => {
+    setEditingPlayer(null);
+    setIsDragging(false);
+  };
+
+  const handlePhotoSettings = async (playerId: string, shape: 'circle' | 'square', position: string, scale: number, posX?: number, posY?: number) => {
+    try {
+      const playerDoc = players.find(p => p.player_id === playerId);
+      if (!playerDoc) return;
+
+      const fieldPosition = shape === 'circle' ? 'photo_position_circle' : 'photo_position_square';
+      const fieldScale = shape === 'circle' ? 'photo_scale_circle' : 'photo_scale_square';
+      const fieldPosX = shape === 'circle' ? 'photo_position_x_circle' : 'photo_position_x_square';
+      const fieldPosY = shape === 'circle' ? 'photo_position_y_circle' : 'photo_position_y_square';
+
+      // Update Firestore
+      const updateData: any = {
+        [fieldPosition]: position,
+        [fieldScale]: scale,
+        updated_at: new Date(),
+      };
+      
+      if (posX !== undefined) updateData[fieldPosX] = posX;
+      if (posY !== undefined) updateData[fieldPosY] = posY;
+
+      console.log('Saving to Firestore:', { playerId, shape, updateData });
+
+      await updateDoc(doc(db, 'realplayers', playerDoc.id), updateData);
+
+      // Update local state
+      setPlayers(players.map(p => {
+        if (p.player_id === playerId) {
+          const updated: any = { ...p, [fieldPosition]: position, [fieldScale]: scale };
+          if (posX !== undefined) updated[fieldPosX] = posX;
+          if (posY !== undefined) updated[fieldPosY] = posY;
+          return updated;
+        }
+        return p;
+      }));
+
+      setSuccess(`${shape === 'circle' ? 'Circle' : 'Square'} photo settings updated`);
+      setTimeout(() => setSuccess(null), 2000);
+    } catch (err: any) {
+      console.error('Update error:', err);
+      setError(err.message || 'Failed to update photo settings');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const saveModalSettings = async () => {
+    if (!editingPlayer) return;
+    
+    console.log('Saving modal settings:', {
+      player: editingPlayer.player_id,
+      shape: modalShape,
+      scale: overlayScale,
+      position: overlayPosition
+    });
+    
+    await handlePhotoSettings(
+      editingPlayer.player_id,
+      modalShape,
+      'custom',
+      overlayScale,
+      overlayPosition.x,
+      overlayPosition.y
+    );
+    
+    closeModal();
   };
 
   const handleBulkUpload = async (files: FileList) => {
@@ -403,19 +513,47 @@ export default function PlayerPhotosManagement() {
 
         {/* Players Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredPlayers.map(player => (
+          {filteredPlayers.map(player => {
+            // Get settings based on current preview shape
+            const currentPosition = previewShape === 'circle' 
+              ? (player.photo_position_circle || 'center')
+              : (player.photo_position_square || 'center');
+            const currentScale = previewShape === 'circle'
+              ? (player.photo_scale_circle || 1)
+              : (player.photo_scale_square || 1);
+            const currentPosX = previewShape === 'circle'
+              ? (player.photo_position_x_circle ?? 50)
+              : (player.photo_position_x_square ?? 50);
+            const currentPosY = previewShape === 'circle'
+              ? (player.photo_position_y_circle ?? 50)
+              : (player.photo_position_y_square ?? 50);
+            
+            // Use custom position if available, otherwise use preset
+            const displayPosition = currentPosition === 'custom' 
+              ? `${currentPosX}% ${currentPosY}%`
+              : currentPosition;
+            
+            return (
             <div key={player.id} className="glass rounded-xl p-4 border border-gray-200 hover:shadow-lg transition-all">
               {/* Photo */}
-              <div className={`relative w-full aspect-square mb-3 overflow-hidden bg-gray-100 ${
-                previewShape === 'circle' ? 'rounded-full' : 'rounded-lg'
-              }`}>
+              <div 
+                className={`relative w-full aspect-square mb-3 overflow-hidden bg-gray-100 ${
+                  previewShape === 'circle' ? 'rounded-full' : 'rounded-lg'
+                }`}
+              >
                 {player.photo_url ? (
                   <Image
                     src={player.photo_url}
                     alt={player.name}
                     fill
                     className="object-cover"
+                    style={{
+                      objectPosition: `${currentPosX}% ${currentPosY}%`,
+                      transform: `scale(${currentScale})`,
+                      transformOrigin: `${currentPosX}% ${currentPosY}%`
+                    }}
                     unoptimized
+                    draggable={false}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400">
@@ -431,6 +569,26 @@ export default function PlayerPhotosManagement() {
                 <h3 className="font-bold text-gray-900 truncate">{player.name}</h3>
                 <p className="text-sm text-gray-600 font-mono">{player.player_id}</p>
               </div>
+
+              {/* Photo Adjustment Controls (only show if photo exists) */}
+              {player.photo_url && (
+                <div className="mb-3 grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => openAdjustmentModal(player, 'circle')}
+                    className="px-3 py-2 text-xs font-medium rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <div className="w-3 h-3 rounded-full border-2 border-current"></div>
+                    Circle
+                  </button>
+                  <button
+                    onClick={() => openAdjustmentModal(player, 'square')}
+                    className="px-3 py-2 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <div className="w-3 h-3 rounded border-2 border-current"></div>
+                    Square
+                  </button>
+                </div>
+              )}
 
               {/* Upload Button */}
               <label className="block">
@@ -469,7 +627,7 @@ export default function PlayerPhotosManagement() {
                 </div>
               </label>
             </div>
-          ))}
+          );})}
         </div>
 
         {filteredPlayers.length === 0 && (
@@ -483,6 +641,250 @@ export default function PlayerPhotosManagement() {
           </div>
         )}
       </div>
+
+      {/* Adjustment Modal */}
+      {editingPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeModal}>
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-4 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold">{editingPlayer.name}</h2>
+                  <p className="text-sm opacity-90">
+                    Adjust Photo Position - {modalShape === 'circle' ? '⭕ Circle View' : '⬜ Square View'}
+                  </p>
+                </div>
+                <button
+                  onClick={closeModal}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Left: Image with Draggable Overlay */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900">Preview & Adjust</h3>
+                  <div 
+                    className="relative w-full aspect-square bg-gray-100 rounded-xl overflow-hidden cursor-move border-2 border-gray-200"
+                    onMouseDown={(e) => {
+                      setIsDragging(true);
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = ((e.clientX - rect.left) / rect.width) * 100;
+                      const y = ((e.clientY - rect.top) / rect.height) * 100;
+                      setOverlayPosition({ x, y });
+                    }}
+                    onMouseMove={(e) => {
+                      if (!isDragging) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                      const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                      setOverlayPosition({ x, y });
+                    }}
+                    onMouseUp={() => setIsDragging(false)}
+                    onMouseLeave={() => setIsDragging(false)}
+                  >
+                    {/* Full Image */}
+                    {editingPlayer.photo_url && (
+                      <Image
+                        src={editingPlayer.photo_url}
+                        alt={editingPlayer.name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                        draggable={false}
+                      />
+                    )}
+                    
+                    {/* Draggable Overlay */}
+                    <div 
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        background: `radial-gradient(circle at ${overlayPosition.x}% ${overlayPosition.y}%, transparent 0%, transparent ${(modalShape === 'circle' ? 150 : 200) / overlayScale}px, rgba(0,0,0,0.7) ${(modalShape === 'circle' ? 150 : 200) / overlayScale}px)`
+                      }}
+                    >
+                      {/* Visible Frame */}
+                      <div
+                        className={`absolute border-4 border-purple-500 shadow-2xl ${
+                          modalShape === 'circle' ? 'rounded-full' : 'rounded-lg'
+                        }`}
+                        style={{
+                          width: `${300 / overlayScale}px`,
+                          height: `${300 / overlayScale}px`,
+                          left: `calc(${overlayPosition.x}% - ${150 / overlayScale}px)`,
+                          top: `calc(${overlayPosition.y}% - ${150 / overlayScale}px)`,
+                        }}
+                      >
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-1 h-8 bg-purple-500"></div>
+                          <div className="w-8 h-1 bg-purple-500 absolute"></div>
+                        </div>
+                      </div>
+                      
+                      {/* Instruction Overlay */}
+                      {!isDragging && (
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-full text-sm font-medium pointer-events-auto">
+                          🖱️ Click and drag to position
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Position Info */}
+                  <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 font-medium">Position:</span>
+                      <span className="font-mono text-purple-600">
+                        X: {overlayPosition.x.toFixed(1)}%, Y: {overlayPosition.y.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Preview & Controls */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900">Final Preview</h3>
+                  
+                  {/* Preview */}
+                  <div 
+                    className={`relative w-64 h-64 mx-auto bg-gray-100 overflow-hidden ${
+                      modalShape === 'circle' ? 'rounded-full' : 'rounded-xl'
+                    }`}
+                  >
+                    {editingPlayer.photo_url && (
+                      <Image
+                        src={editingPlayer.photo_url}
+                        alt={editingPlayer.name}
+                        fill
+                        className="object-cover"
+                        style={{
+                          objectPosition: `${overlayPosition.x}% ${overlayPosition.y}%`,
+                          transform: `scale(${overlayScale})`,
+                          transformOrigin: `${overlayPosition.x}% ${overlayPosition.y}%`
+                        }}
+                        unoptimized
+                        draggable={false}
+                      />
+                    )}
+                  </div>
+
+                  {/* Shape Toggle */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Adjust for:</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setModalShape('circle');
+                          // Load circle settings
+                          const posX = editingPlayer.photo_position_x_circle ?? 50;
+                          const posY = editingPlayer.photo_position_y_circle ?? 50;
+                          const scale = editingPlayer.photo_scale_circle || 1;
+                          setOverlayPosition({ x: posX, y: posY });
+                          setOverlayScale(scale);
+                        }}
+                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                          modalShape === 'circle'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        <div className="w-4 h-4 rounded-full border-2 border-current"></div>
+                        Circle
+                      </button>
+                      <button
+                        onClick={() => {
+                          setModalShape('square');
+                          // Load square settings
+                          const posX = editingPlayer.photo_position_x_square ?? 50;
+                          const posY = editingPlayer.photo_position_y_square ?? 50;
+                          const scale = editingPlayer.photo_scale_square || 1;
+                          setOverlayPosition({ x: posX, y: posY });
+                          setOverlayScale(scale);
+                        }}
+                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                          modalShape === 'square'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        <div className="w-4 h-4 rounded border-2 border-current"></div>
+                        Square
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Zoom Control */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Zoom: {(overlayScale * 100).toFixed(0)}%
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setOverlayScale(Math.max(0.5, overlayScale - 0.1))}
+                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2"
+                        step="0.1"
+                        value={overlayScale}
+                        onChange={(e) => setOverlayScale(parseFloat(e.target.value))}
+                        className="flex-1"
+                      />
+                      <button
+                        onClick={() => setOverlayScale(Math.min(2, overlayScale + 0.1))}
+                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Reset Button */}
+                  <button
+                    onClick={() => {
+                      setOverlayPosition({ x: 50, y: 50 });
+                      setOverlayScale(1);
+                    }}
+                    className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-700 transition-colors"
+                  >
+                    Reset to Center
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t">
+              <button
+                onClick={closeModal}
+                className="px-6 py-2 rounded-lg font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveModalSettings}
+                className="px-6 py-2 rounded-lg font-medium bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-colors shadow-lg"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

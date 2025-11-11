@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import Link from 'next/link';
-import OptimizedImage from '@/components/OptimizedImage';
+import PlayerPhoto from '@/components/PlayerPhoto';
 import { usePlayerStats, usePlayerAwards, useTeamTrophies, useTeamSeasonStats, type PlayerAward, type TeamTrophy, type TeamStats } from '@/hooks';
 
 interface PlayerData {
@@ -29,6 +29,14 @@ interface PlayerData {
   is_available?: boolean;
   notes?: string;
   photo_url?: string;
+  photo_position_circle?: string;
+  photo_scale_circle?: number;
+  photo_position_x_circle?: number;
+  photo_position_y_circle?: number;
+  photo_position_square?: string;
+  photo_scale_square?: number;
+  photo_position_x_square?: number;
+  photo_position_y_square?: number;
   nationality?: string;
   age?: number;
   height?: number;
@@ -214,8 +222,19 @@ export default function PlayerDetailPage() {
         const response = await fetch(`/api/players/${playerId}/details`);
         if (response.ok) {
           const data = await response.json();
-          if (data.success) {
-            photoUrl = data.player?.photo_url;
+          if (data.success && data.player) {
+            photoUrl = data.player.photo_url;
+            // Store photo positioning data for later use
+            (window as any).__playerPhotoSettings = {
+              photo_position_circle: data.player.photo_position_circle,
+              photo_scale_circle: data.player.photo_scale_circle,
+              photo_position_x_circle: data.player.photo_position_x_circle,
+              photo_position_y_circle: data.player.photo_position_y_circle,
+              photo_position_square: data.player.photo_position_square,
+              photo_scale_square: data.player.photo_scale_square,
+              photo_position_x_square: data.player.photo_position_x_square,
+              photo_position_y_square: data.player.photo_position_y_square,
+            };
           }
         }
       } catch (error) {
@@ -241,6 +260,8 @@ export default function PlayerDetailPage() {
         team_id: statsData.team_id,
         category: statsData.category,
         photo_url: photoUrl,
+        // Add photo positioning from stored data
+        ...((window as any).__playerPhotoSettings || {}),
         stats: {
           matches_played: matchesPlayed,
           matches_won: wins,
@@ -580,25 +601,17 @@ export default function PlayerDetailPage() {
               <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
                 {/* Player Image */}
                 <div className="relative w-40 h-40 mx-auto mb-4 rounded-xl shadow-md bg-white overflow-hidden">
-                  {player.photo_url ? (
-                    <OptimizedImage
-                      src={player.photo_url}
-                      alt={player.name}
-                      width={160}
-                      height={160}
-                      quality={90}
-                      className="object-cover w-full h-full rounded-xl"
-                      fallback={
-                        <div className="bg-primary/10 w-full h-full flex items-center justify-center">
-                          <span className="text-5xl font-bold text-primary">{player.name?.[0] || 'P'}</span>
-                        </div>
-                      }
-                    />
-                  ) : (
-                    <div className="bg-primary/10 w-full h-full flex items-center justify-center">
-                      <span className="text-5xl font-bold text-primary">{player.name?.[0] || 'P'}</span>
-                    </div>
-                  )}
+                  <PlayerPhoto
+                    photoUrl={player.photo_url}
+                    playerName={player.name}
+                    shape="square"
+                    size={160}
+                    className="rounded-xl"
+                    positionSquare={player.photo_position_square}
+                    scaleSquare={player.photo_scale_square}
+                    posXSquare={player.photo_position_x_square}
+                    posYSquare={player.photo_position_y_square}
+                  />
                   
                   {/* POTM Badge */}
                   {player.is_potm && (

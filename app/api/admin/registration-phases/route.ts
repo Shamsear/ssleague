@@ -61,12 +61,13 @@ export async function POST(request: NextRequest) {
           );
 
           if (slotsToFill > 0) {
-            // Get unconfirmed players sorted by registration_date
+            // Get unconfirmed players sorted by registration_date (exclude players with prevent_auto_promotion flag)
             const unconfirmedPlayers = await sql`
               SELECT id, player_id, player_name, registration_date
               FROM player_seasons
               WHERE season_id = ${season_id}
                 AND registration_type = 'unconfirmed'
+                AND COALESCE(prevent_auto_promotion, false) = false
               ORDER BY registration_date ASC
               LIMIT ${slotsToFill}
             `;
