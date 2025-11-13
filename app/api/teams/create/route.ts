@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
+import { adminDb, adminAuth } from '@/lib/firebase/admin';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { formatId, ID_PREFIXES, ID_PADDING } from '@/lib/id-utils';
@@ -72,6 +72,22 @@ export async function POST(request: NextRequest) {
     });
 
     console.log(`✅ Team document created: ${teamId}`);
+
+    // Set custom claims for the user (enables role-based auth without DB reads)
+    try {
+      const user = await adminAuth.getUser(uid);
+      const currentClaims = user.customClaims || {};
+      
+      await adminAuth.setCustomUserClaims(uid, {
+        ...currentClaims,
+        role: 'team',
+      });
+      
+      console.log(`✅ Custom claims set for user ${uid}: role=team`);
+    } catch (claimsError) {
+      console.error('Error setting custom claims:', claimsError);
+      // Don't fail the request if claims fail - can be set later
+    }
 
     return NextResponse.json({
       success: true,

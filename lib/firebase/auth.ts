@@ -481,13 +481,42 @@ export const getPendingUsers = async (): Promise<User[]> => {
 // Approve user (Super Admin only)
 export const approveUser = async (uid: string, approvedBy: string): Promise<void> => {
   try {
+    // Get user document to retrieve role
+    const userDocRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userDocRef);
+    
+    if (!userDoc.exists()) {
+      throw new Error('User not found');
+    }
+    
+    const userData = userDoc.data();
+    const userRole = userData.role;
+    
     // Update user document
-    await updateDoc(doc(db, 'users', uid), {
+    await updateDoc(userDocRef, {
       isApproved: true,
       approvedBy,
       approvedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    
+    // Set custom claims for JWT token (enables role-based auth without DB reads)
+    try {
+      const response = await fetch('/api/auth/set-custom-claims', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, role: userRole }),
+      });
+      
+      if (response.ok) {
+        console.log(`✅ Custom claims set for user ${uid} with role: ${userRole}`);
+      } else {
+        console.error('Failed to set custom claims:', await response.text());
+      }
+    } catch (claimsError) {
+      console.error('Error setting custom claims:', claimsError);
+      // Don't throw - approval should succeed even if claims fail
+    }
     
     // Also update team document if it exists (teams use snake_case is_approved)
     const teamsRef = collection(db, 'teams');
