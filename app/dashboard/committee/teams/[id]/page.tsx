@@ -220,16 +220,16 @@ export default function TeamDetailPage() {
           {team.dollar_balance !== undefined || team.euro_balance !== undefined ? (
             <>
               <div className="glass rounded-xl p-4 shadow-lg border border-white/30">
-                <div className="text-xs text-gray-500 mb-1">$ Balance (Real)</div>
+                <div className="text-xs text-gray-500 mb-1">SSCoin Balance</div>
                 <div className="text-2xl font-bold text-green-600">
-                  ${team.dollar_balance?.toLocaleString() ?? '0'}
+                  SSCoin {team.dollar_balance?.toLocaleString() ?? '0'}
                 </div>
               </div>
 
               <div className="glass rounded-xl p-4 shadow-lg border border-white/30">
-                <div className="text-xs text-gray-500 mb-1">€ Balance (Football)</div>
+                <div className="text-xs text-gray-500 mb-1">eCoin Balance</div>
                 <div className="text-2xl font-bold text-blue-600">
-                  €{team.euro_balance?.toLocaleString() ?? '0'}
+                  eCoin {team.euro_balance?.toLocaleString() ?? '0'}
                 </div>
               </div>
             </>
@@ -237,7 +237,7 @@ export default function TeamDetailPage() {
             <div className="glass rounded-xl p-4 shadow-lg border border-white/30">
               <div className="text-xs text-gray-500 mb-1">Balance</div>
               <div className="text-2xl font-bold text-[#0066FF]">
-                £{team.balance.toLocaleString()}
+                eCoin {team.balance.toLocaleString()}
               </div>
             </div>
           )}
@@ -445,7 +445,7 @@ export default function TeamDetailPage() {
                     <div className="glass rounded-xl p-4">
                       <div className="text-sm text-gray-600 mb-1">Total Value</div>
                       <div className="text-2xl font-bold text-[#0066FF]">
-                        {teamData.totalValue ? `£${teamData.totalValue.toLocaleString()}` : 'N/A'}
+                        {teamData.totalValue ? `eCoin ${teamData.totalValue.toLocaleString()}` : 'N/A'}
                       </div>
                     </div>
                     <div className="glass rounded-xl p-4">

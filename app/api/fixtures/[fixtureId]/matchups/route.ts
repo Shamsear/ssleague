@@ -2,6 +2,147 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
+/**
+ * Distribute match rewards (eCoin & SSCoin) to teams based on match result
+ */
+async function distributeMatchRewards(params: {
+  fixtureId: string;
+  matchResult: 'home_win' | 'away_win' | 'draw';
+  seasonId: string;
+  roundNumber: number;
+  leg: number;
+}) {
+  const sql = getTournamentDb();
+  const { fixtureId, matchResult, seasonId, roundNumber, leg } = params;
+
+  // Get fixture details
+  const [fixture] = await sql`
+    SELECT home_team_id, away_team_id, tournament_id
+    FROM fixtures
+    WHERE id = ${fixtureId}
+    LIMIT 1
+  `;
+
+  if (!fixture) {
+    console.log('Fixture not found for rewards distribution');
+    return;
+  }
+
+  const { home_team_id, away_team_id, tournament_id } = fixture;
+
+  // Get tournament rewards configuration
+  const [tournament] = await sql`
+    SELECT rewards
+    FROM tournaments
+    WHERE id = ${tournament_id}
+    LIMIT 1
+  `;
+
+  if (!tournament || !tournament.rewards || !tournament.rewards.match_results) {
+    console.log(`No match rewards configured for tournament ${tournament_id}`);
+    return;
+  }
+
+  const matchRewards = tournament.rewards.match_results;
+
+  // Determine rewards for each team
+  let homeECoin = 0, homeSSCoin = 0, awayECoin = 0, awaySSCoin = 0;
+  let homeResult = '', awayResult = '';
+
+  if (matchResult === 'home_win') {
+    homeECoin = matchRewards.win_ecoin || 0;
+    homeSSCoin = matchRewards.win_sscoin || 0;
+    awayECoin = matchRewards.loss_ecoin || 0;
+    awaySSCoin = matchRewards.loss_sscoin || 0;
+    homeResult = 'Win';
+    awayResult = 'Loss';
+  } else if (matchResult === 'away_win') {
+    homeECoin = matchRewards.loss_ecoin || 0;
+    homeSSCoin = matchRewards.loss_sscoin || 0;
+    awayECoin = matchRewards.win_ecoin || 0;
+    awaySSCoin = matchRewards.win_sscoin || 0;
+    homeResult = 'Loss';
+    awayResult = 'Win';
+  } else {
+    homeECoin = matchRewards.draw_ecoin || 0;
+    homeSSCoin = matchRewards.draw_sscoin || 0;
+    awayECoin = matchRewards.draw_ecoin || 0;
+    awaySSCoin = matchRewards.draw_sscoin || 0;
+    homeResult = 'Draw';
+    awayResult = 'Draw';
+  }
+
+  // Distribute rewards to home team
+  if (homeECoin > 0 || homeSSCoin > 0) {
+    await sql`
+      UPDATE teams
+      SET 
+        football_budget = COALESCE(football_budget, 0) + ${homeECoin},
+        real_budget = COALESCE(real_budget, 0) + ${homeSSCoin},
+        updated_at = NOW()
+      WHERE id = ${home_team_id}
+    `;
+
+    // Record transaction
+    await sql`
+      INSERT INTO transactions (
+        team_id,
+        season_id,
+        transaction_type,
+        amount_football,
+        amount_real,
+        description,
+        created_at
+      ) VALUES (
+        ${home_team_id},
+        ${seasonId},
+        'match_reward',
+        ${homeECoin},
+        ${homeSSCoin},
+        ${'Match Reward (' + homeResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '')},
+        NOW()
+      )
+    `;
+
+    console.log(`✅ Distributed match rewards to home team ${home_team_id}: eCoin ${homeECoin}, SSCoin ${homeSSCoin}`);
+  }
+
+  // Distribute rewards to away team
+  if (awayECoin > 0 || awaySSCoin > 0) {
+    await sql`
+      UPDATE teams
+      SET 
+        football_budget = COALESCE(football_budget, 0) + ${awayECoin},
+        real_budget = COALESCE(real_budget, 0) + ${awaySSCoin},
+        updated_at = NOW()
+      WHERE id = ${away_team_id}
+    `;
+
+    // Record transaction
+    await sql`
+      INSERT INTO transactions (
+        team_id,
+        season_id,
+        transaction_type,
+        amount_football,
+        amount_real,
+        description,
+        created_at
+      ) VALUES (
+        ${away_team_id},
+        ${seasonId},
+        'match_reward',
+        ${awayECoin},
+        ${awaySSCoin},
+        ${'Match Reward (' + awayResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '')},
+        NOW()
+      )
+    `;
+
+    console.log(`✅ Distributed match rewards to away team ${away_team_id}: eCoin ${awayECoin}, SSCoin ${awaySSCoin}`);
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ fixtureId: string }> }
@@ -303,6 +444,20 @@ export async function PATCH(
         updated_at = NOW()
       WHERE id = ${fixtureId}
     `;
+
+    // Distribute match rewards based on tournament configuration
+    try {
+      await distributeMatchRewards({
+        fixtureId,
+        matchResult,
+        seasonId: season_id,
+        roundNumber: round_number,
+        leg
+      });
+    } catch (rewardError) {
+      console.error('Failed to distribute match rewards:', rewardError);
+      // Don't fail the entire request if rewards fail
+    }
 
     return NextResponse.json({ 
       success: true, 

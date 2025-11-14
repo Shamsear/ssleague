@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
       playoff_teams,
       direct_semifinal_teams,
       qualification_threshold,
+      enable_category_requirements,
       lineup_category_requirements
     } = body;
 
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
         playoff_teams,
         direct_semifinal_teams,
         qualification_threshold,
+        enable_category_requirements,
         lineup_category_requirements,
         created_at,
         updated_at
@@ -122,6 +124,7 @@ export async function POST(request: NextRequest) {
         ${playoff_teams ?? null},
         ${direct_semifinal_teams ?? null},
         ${qualification_threshold ?? null},
+        ${enable_category_requirements ?? false},
         ${JSON.stringify(lineup_category_requirements || {})},
         NOW(),
         NOW()
@@ -137,6 +140,7 @@ export async function POST(request: NextRequest) {
         playoff_teams = EXCLUDED.playoff_teams,
         direct_semifinal_teams = EXCLUDED.direct_semifinal_teams,
         qualification_threshold = EXCLUDED.qualification_threshold,
+        enable_category_requirements = EXCLUDED.enable_category_requirements,
         lineup_category_requirements = EXCLUDED.lineup_category_requirements,
         updated_at = NOW()
     `;

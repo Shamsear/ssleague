@@ -674,12 +674,12 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             {team.currency_system === 'dual' ? (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 lg:gap-4 w-full lg:w-auto lg:min-w-[400px]">
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
-                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">€ Football</div>
-                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-blue-600">€{(team.football_budget || 0).toLocaleString()}</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">eCoin</div>
+                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-blue-600">{(team.football_budget || 0).toLocaleString()}</div>
                 </div>
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
-                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">$ Real</div>
-                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-green-600">${(team.real_player_budget || 0).toLocaleString()}</div>
+                  <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">SSCoin</div>
+                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-green-600">{(team.real_player_budget || 0).toLocaleString()}</div>
                 </div>
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
                   <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">Squad</div>
@@ -694,7 +694,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:gap-4 w-full lg:w-auto lg:min-w-[300px]">
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
                   <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">Balance</div>
-                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-green-600">£{stats.balance.toLocaleString()}</div>
+                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-green-600">eCoin {stats.balance.toLocaleString()}</div>
                 </div>
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
                   <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">Squad</div>
@@ -924,6 +924,12 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/real-players" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 👥 Real Players
               </Link>
+              <Link href="/dashboard/team/footballplayers" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
+                🏈 Auction Players
+              </Link>
+              <Link href="/dashboard/team/players-database" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
+                📊 My Players
+              </Link>
               <Link href="/dashboard/team/contracts" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 📄 Contracts
               </Link>
@@ -953,12 +959,6 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/player-leaderboard" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 📋 Player Stats
               </Link>
-              <Link href="/dashboard/team/footballplayers" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
-                🏈 Auction Players
-              </Link>
-              <Link href="/dashboard/team/players-database" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
-                📊 My Players
-              </Link>
               <Link href="/dashboard/team/fantasy/my-team" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Fantasy
               </Link>
@@ -978,6 +978,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <div className="space-y-2">
               <Link href="/dashboard/team/budget-planner" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-purple-100 text-purple-700 hover:bg-purple-200 transition-all text-xs sm:text-sm font-medium text-center">
                 💰 Budget Planner
+              </Link>
+              <Link href="/dashboard/team/real-players-planner" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-green-100 text-green-700 hover:bg-green-200 transition-all text-xs sm:text-sm font-medium text-center">
+                👥 Real Players Planner
               </Link>
               <Link href="/dashboard/team/transactions" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all text-xs sm:text-sm font-medium text-center">
                 💳 Transactions
@@ -1215,7 +1218,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                                 <div className="flex items-center gap-3 text-xs sm:text-sm text-gray-600">
                                   <span>{bid.player.nfl_team}</span>
                                   <span>•</span>
-                                  <span className="font-bold text-green-600">£{bid.amount.toLocaleString()}</span>
+                                  <span className="font-bold text-green-600">eCoin {bid.amount.toLocaleString()}</span>
                                 </div>
                               </div>
                               <button
@@ -1291,16 +1294,16 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                         <div className="text-xl sm:text-2xl font-bold text-purple-600">{stats.avgRating.toFixed(1)}</div>
                       </div>
                       <div className="glass-card p-3 sm:p-4 rounded-xl text-center">
-                        <div className="text-xs sm:text-sm text-gray-600 mb-1">€ Spent</div>
-                        <div className="text-xl sm:text-2xl font-bold text-blue-600">€{(team.football_spent || 0).toLocaleString()}</div>
+                        <div className="text-xs sm:text-sm text-gray-600 mb-1">eCoin Spent</div>
+                        <div className="text-xl sm:text-2xl font-bold text-blue-600">{(team.football_spent || 0).toLocaleString()}</div>
                       </div>
                       <div className="glass-card p-3 sm:p-4 rounded-xl text-center">
-                        <div className="text-xs sm:text-sm text-gray-600 mb-1">€ Left</div>
-                        <div className="text-xl sm:text-2xl font-bold text-blue-600">€{(team.football_budget || 0).toLocaleString()}</div>
+                        <div className="text-xs sm:text-sm text-gray-600 mb-1">eCoin Left</div>
+                        <div className="text-xl sm:text-2xl font-bold text-blue-600">{(team.football_budget || 0).toLocaleString()}</div>
                       </div>
                       <div className="glass-card p-3 sm:p-4 rounded-xl text-center">
-                        <div className="text-xs sm:text-sm text-gray-600 mb-1">$ Budget</div>
-                        <div className="text-xl sm:text-2xl font-bold text-green-600">${(team.real_player_budget || 0).toLocaleString()}</div>
+                        <div className="text-xs sm:text-sm text-gray-600 mb-1">SSCoin</div>
+                        <div className="text-xl sm:text-2xl font-bold text-green-600">{(team.real_player_budget || 0).toLocaleString()}</div>
                       </div>
                     </div>
                   ) : (
@@ -1315,11 +1318,11 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                       </div>
                       <div className="glass-card p-3 sm:p-4 rounded-xl text-center">
                         <div className="text-xs sm:text-sm text-gray-600 mb-1">Total Spent</div>
-                        <div className="text-xl sm:text-2xl font-bold text-red-600">£{stats.totalSpent.toLocaleString()}</div>
+                        <div className="text-xl sm:text-2xl font-bold text-red-600">eCoin {stats.totalSpent.toLocaleString()}</div>
                       </div>
                       <div className="glass-card p-3 sm:p-4 rounded-xl text-center">
                         <div className="text-xs sm:text-sm text-gray-600 mb-1">Remaining</div>
-                        <div className="text-xl sm:text-2xl font-bold text-green-600">£{stats.balance.toLocaleString()}</div>
+                        <div className="text-xl sm:text-2xl font-bold text-green-600">eCoin {stats.balance.toLocaleString()}</div>
                       </div>
                     </div>
                   )}
@@ -1354,7 +1357,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                             <div className="pt-3 border-t border-gray-200">
                               <div className="flex justify-between items-center text-xs">
                                 <span className="text-gray-600">Acquisition</span>
-                                <span className="font-bold text-green-600">£{player.acquisition_value.toLocaleString()}</span>
+                                <span className="font-bold text-green-600">eCoin {player.acquisition_value.toLocaleString()}</span>
                               </div>
                             </div>
                           )}
@@ -1395,7 +1398,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                             <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 text-xs">
                               <div>
                                 <div className="text-gray-600">Auction</div>
-                                <div className="font-bold text-gray-900">${player.auctionValue.toLocaleString()}</div>
+                                <div className="font-bold text-gray-900">SSCoin {player.auctionValue.toLocaleString()}</div>
                               </div>
                               <div>
                                 <div className="text-gray-600">Salary/Match</div>
@@ -1569,21 +1572,21 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                       </div>
                     </div>
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
-                      <div className="text-sm text-gray-600 mb-2">€ Spent</div>
-                      <div className="text-3xl font-bold text-blue-600">€{(team.football_spent || 0).toLocaleString()}</div>
+                      <div className="text-sm text-gray-600 mb-2">eCoin Spent</div>
+                      <div className="text-3xl font-bold text-blue-600">{(team.football_spent || 0).toLocaleString()}</div>
                     </div>
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
-                      <div className="text-sm text-gray-600 mb-2">€ Budget Left</div>
-                      <div className="text-3xl font-bold text-blue-600">€{(team.football_budget || 0).toLocaleString()}</div>
+                      <div className="text-sm text-gray-600 mb-2">eCoin Left</div>
+                      <div className="text-3xl font-bold text-blue-600">{(team.football_budget || 0).toLocaleString()}</div>
                     </div>
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
-                      <div className="text-sm text-gray-600 mb-2">$ Real Players</div>
-                      <div className="text-3xl font-bold text-green-600">${(team.real_player_budget || 0).toLocaleString()}</div>
+                      <div className="text-sm text-gray-600 mb-2">SSCoin Budget</div>
+                      <div className="text-3xl font-bold text-green-600">{(team.real_player_budget || 0).toLocaleString()}</div>
                     </div>
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
                       <div className="text-sm text-gray-600 mb-2">Avg Per Player</div>
                       <div className="text-3xl font-bold text-orange-600">
-                        €{players.length > 0 ? Math.round((team.football_spent || 0) / players.length).toLocaleString() : '0'}
+                        {players.length > 0 ? Math.round((team.football_spent || 0) / players.length).toLocaleString() : '0'}
                       </div>
                     </div>
                   </div>
@@ -1604,12 +1607,12 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                     </div>
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
                       <div className="text-sm text-gray-600 mb-2">Total Invested</div>
-                      <div className="text-3xl font-bold text-purple-600">£{stats.totalSpent.toLocaleString()}</div>
+                      <div className="text-3xl font-bold text-purple-600">eCoin {stats.totalSpent.toLocaleString()}</div>
                     </div>
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
                       <div className="text-sm text-gray-600 mb-2">Avg Per Player</div>
                       <div className="text-3xl font-bold text-orange-600">
-                        £{players.length > 0 ? Math.round(stats.totalSpent / players.length).toLocaleString() : '0'}
+                        eCoin {players.length > 0 ? Math.round(stats.totalSpent / players.length).toLocaleString() : '0'}
                       </div>
                     </div>
                   </div>
@@ -1627,6 +1630,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   <Link href="/dashboard/team/budget-planner" className="glass-card p-4 rounded-xl hover:shadow-lg transition-all text-center">
                     <div className="text-2xl mb-2">💰</div>
                     <div className="font-medium text-gray-900">Budget Planner</div>
+                  </Link>
+                  <Link href="/dashboard/team/real-players-planner" className="glass-card p-4 rounded-xl hover:shadow-lg transition-all text-center">
+                    <div className="text-2xl mb-2">👥</div>
+                    <div className="font-medium text-gray-900">Real Players Planner</div>
                   </Link>
                   <Link href="/dashboard/team/matches" className="glass-card p-4 rounded-xl hover:shadow-lg transition-all text-center">
                     <div className="text-2xl mb-2">📅</div>

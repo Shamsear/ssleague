@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const auth = await verifyAuth(['team'], request);
+    const auth = await verifyAuth(['team', 'committee_admin'], request);
     if (!auth.authenticated) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },

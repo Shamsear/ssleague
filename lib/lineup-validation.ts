@@ -115,29 +115,41 @@ export async function validateLineup(
   if (tournamentId) {
     try {
       const settingsResult = await sql`
-        SELECT lineup_category_requirements
+        SELECT enable_category_requirements, lineup_category_requirements
         FROM tournament_settings
         WHERE tournament_id = ${tournamentId}
         LIMIT 1
       `;
 
-      if (settingsResult.length > 0 && settingsResult[0].lineup_category_requirements) {
-        const categoryRequirements = settingsResult[0].lineup_category_requirements as Record<string, number>;
-        console.log('🔍 Tournament category requirements:', categoryRequirements);
+      if (settingsResult.length > 0) {
+        const enableRequirements = settingsResult[0].enable_category_requirements;
+        const categoryRequirements = settingsResult[0].lineup_category_requirements;
+        
+        console.log('🔍 Tournament category settings:', {
+          enable_category_requirements: enableRequirements,
+          categoryRequirements
+        });
 
-        // Validate each category requirement
-        for (const [categoryId, minCount] of Object.entries(categoryRequirements)) {
-          const actualCount = categoryCounts[categoryId] || 0;
-          console.log(`🔍 Checking category requirement:`, {
-            categoryId,
-            minCount,
-            actualCount,
-            categoryCounts,
-            hasCategory: categoryId in categoryCounts
-          });
-          if (actualCount < minCount) {
-            errors.push(`Starting XI must have at least ${minCount} player(s) from ${categoryId} category (currently has ${actualCount})`);
+        // Only validate if category requirements are enabled
+        if (enableRequirements && categoryRequirements && Object.keys(categoryRequirements).length > 0) {
+          console.log('🔍 Category requirements ENABLED - validating...');
+          
+          // Validate each category requirement
+          for (const [categoryId, minCount] of Object.entries(categoryRequirements)) {
+            const actualCount = categoryCounts[categoryId] || 0;
+            console.log(`🔍 Checking category requirement:`, {
+              categoryId,
+              minCount,
+              actualCount,
+              categoryCounts,
+              hasCategory: categoryId in categoryCounts
+            });
+            if (actualCount < minCount) {
+              errors.push(`Starting XI must have at least ${minCount} player(s) from ${categoryId} category (currently has ${actualCount})`);
+            }
           }
+        } else {
+          console.log('✅ Category requirements DISABLED - skipping validation');
         }
       }
     } catch (error) {

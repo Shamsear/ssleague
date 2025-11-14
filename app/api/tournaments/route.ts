@@ -90,6 +90,9 @@ export async function POST(request: NextRequest) {
       away_deadline_time,
       result_day_offset,
       result_deadline_time,
+      // Rewards configuration
+      rewards,
+      number_of_teams,
     } = body;
 
     if (!season_id || !tournament_type || !tournament_name) {
@@ -120,6 +123,9 @@ export async function POST(request: NextRequest) {
     // Use generated ID as tournament_code if not provided
     const finalTournamentCode = tournament_code || tournamentId;
 
+    // Serialize rewards as JSONB
+    const rewardsJson = rewards ? JSON.stringify(rewards) : null;
+
     // Insert tournament
     const result = await sql`
       INSERT INTO tournaments (
@@ -147,6 +153,8 @@ export async function POST(request: NextRequest) {
         direct_semifinal_teams,
         qualification_threshold,
         is_pure_knockout,
+        rewards,
+        number_of_teams,
         created_at,
         updated_at
       ) VALUES (
@@ -174,6 +182,8 @@ export async function POST(request: NextRequest) {
         ${direct_semifinal_teams ?? 2},
         ${qualification_threshold ?? 75},
         ${is_pure_knockout ?? false},
+        ${rewardsJson ? sql`${rewardsJson}::jsonb` : sql`NULL`},
+        ${number_of_teams ?? 16},
         NOW(),
         NOW()
       )
@@ -198,6 +208,8 @@ export async function POST(request: NextRequest) {
         direct_semifinal_teams = EXCLUDED.direct_semifinal_teams,
         qualification_threshold = EXCLUDED.qualification_threshold,
         is_pure_knockout = EXCLUDED.is_pure_knockout,
+        rewards = EXCLUDED.rewards,
+        number_of_teams = EXCLUDED.number_of_teams,
         updated_at = NOW()
       RETURNING *
     `;

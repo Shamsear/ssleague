@@ -491,18 +491,18 @@ export default function TeamContractsManagementPage() {
                         <div className="text-sm">
                           {team.football_budget !== undefined || team.real_player_budget !== undefined ? (
                             <>
-                              <div className="font-medium text-blue-700">€{team.football_budget?.toLocaleString() || '0'}</div>
-                              <div className="text-gray-500 text-xs">${team.real_player_budget?.toLocaleString() || '0'}</div>
+                              <div className="font-medium text-blue-700">eCoin {team.football_budget?.toLocaleString() || '0'}</div>
+                              <div className="text-gray-500 text-xs">SSCoin {team.real_player_budget?.toLocaleString() || '0'}</div>
                             </>
                           ) : (
-                            <div className="font-medium text-gray-900">€{team.budget?.toLocaleString() || '0'}</div>
+                            <div className="font-medium text-gray-900">eCoin {team.budget?.toLocaleString() || '0'}</div>
                           )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {team.penalty_amount && team.penalty_amount > 0 ? (
                           <div className="text-sm">
-                            <div className="font-medium text-red-700">-€{team.penalty_amount.toLocaleString()}</div>
+                            <div className="font-medium text-red-700">-eCoin {team.penalty_amount.toLocaleString()}</div>
                             <div className="text-gray-500 text-xs">{team.skipped_seasons} season{team.skipped_seasons !== 1 ? 's' : ''}</div>
                           </div>
                         ) : (

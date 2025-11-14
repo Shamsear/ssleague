@@ -255,7 +255,7 @@ export default function PlayerRatingsPage() {
 
   const handleRecalculateCategories = async () => {
     if (categories.length === 0) {
-      setError('Please create categories first');
+      setError('No categories available to recalculate. Please create categories first.');
       return;
     }
 
@@ -311,42 +311,49 @@ export default function PlayerRatingsPage() {
   };
 
   const handleSave = async () => {
-    if (categories.length === 0) {
-      setError('Please create categories first');
-      return;
-    }
-
     try {
       setSubmitting(true);
       setError(null);
       setSuccess(null);
 
-      // Sort players by star rating (descending)
-      const sortedPlayers = [...players].sort((a, b) => b.starRating - a.starRating);
-      const playersPerCategory = Math.ceil(sortedPlayers.length / categories.length);
-      
-      // Auto-assign categories based on star rating
-      const playersWithCategories = sortedPlayers.map((player, index) => {
-        const categoryIndex = Math.floor(index / playersPerCategory);
-        const category = categories[Math.min(categoryIndex, categories.length - 1)];
-        return {
-          ...player,
-          categoryId: category.id,
-          categoryName: category.name,
-        };
-      });
+      let playersToSave: Player[];
 
-      // Call API to update player ratings and categories
+      // If categories exist, auto-assign them; otherwise, save ratings only
+      if (categories.length > 0) {
+        // Sort players by star rating (descending)
+        const sortedPlayers = [...players].sort((a, b) => b.starRating - a.starRating);
+        const playersPerCategory = Math.ceil(sortedPlayers.length / categories.length);
+        
+        // Auto-assign categories based on star rating
+        playersToSave = sortedPlayers.map((player, index) => {
+          const categoryIndex = Math.floor(index / playersPerCategory);
+          const category = categories[Math.min(categoryIndex, categories.length - 1)];
+          return {
+            ...player,
+            categoryId: category.id,
+            categoryName: category.name,
+          };
+        });
+      } else {
+        // No categories - save ratings only without category assignment
+        playersToSave = players.map(player => ({
+          ...player,
+          categoryId: '',
+          categoryName: '',
+        }));
+      }
+
+      // Call API to update player ratings (and categories if available)
       const response = await fetchWithTokenRefresh('/api/player-ratings/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           seasonId: userSeasonId,
-          players: playersWithCategories.map(p => ({
+          players: playersToSave.map(p => ({
             id: p.id,
             starRating: p.starRating,
-            categoryId: p.categoryId,
-            categoryName: p.categoryName,
+            categoryId: p.categoryId || null,
+            categoryName: p.categoryName || null,
           })),
         }),
       });
@@ -356,10 +363,15 @@ export default function PlayerRatingsPage() {
       }
 
       const result = await response.json();
-      setSuccess(`Successfully assigned ratings and categories to ${playersWithCategories.length} players`);
+      
+      if (categories.length > 0) {
+        setSuccess(`Successfully assigned ratings and categories to ${playersToSave.length} players`);
+      } else {
+        setSuccess(`Successfully assigned ratings to ${playersToSave.length} players (categories not configured)`);
+      }
       
       // Reload players to show updated data
-      setPlayers(playersWithCategories);
+      setPlayers(playersToSave);
     } catch (error) {
       console.error('Error saving:', error);
       setError(error instanceof Error ? error.message : 'Failed to save player ratings');
@@ -408,33 +420,7 @@ export default function PlayerRatingsPage() {
     );
   }
 
-  // Check if categories exist
-  if (categories.length === 0) {
-    return (
-      <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="container mx-auto max-w-6xl">
-          <div className="glass rounded-3xl p-8 text-center shadow-xl">
-            <div className="inline-flex items-center justify-center p-4 bg-amber-100 rounded-full mb-4">
-              <svg className="w-16 h-16 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Categories Required</h2>
-            <p className="text-amber-600 mb-6">You must create categories before assigning player ratings. Categories will be equally distributed among players based on their points.</p>
-            <Link 
-              href="/dashboard/committee/team-management/categories"
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:shadow-lg transition-all transform hover:scale-105"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Create Categories
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Categories are optional - show warning if not created but allow ratings assignment
 
   // Check if players exist
   if (players.length === 0) {
@@ -559,8 +545,10 @@ export default function PlayerRatingsPage() {
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                               {player.categoryName}
                             </span>
-                          ) : (
+                          ) : categories.length > 0 ? (
                             <span className="text-xs text-gray-500 italic">Assigned on save</span>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">No categories</span>
                           )}
                         </td>
                       </tr>
@@ -572,18 +560,20 @@ export default function PlayerRatingsPage() {
               {/* Action buttons */}
               <div className="mt-6 flex flex-wrap justify-between items-center gap-4">
                 <div className="flex items-center gap-3">
-                  {/* Recalculate button */}
-                  <button
-                    onClick={handleRecalculateCategories}
-                    disabled={recalculating || submitting}
-                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    title="Recalculate categories based on current star ratings without saving"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    {recalculating ? 'Recalculating...' : 'Recalculate Categories'}
-                  </button>
+                  {/* Recalculate button - only show if categories exist */}
+                  {categories.length > 0 && (
+                    <button
+                      onClick={handleRecalculateCategories}
+                      disabled={recalculating || submitting}
+                      className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      title="Recalculate categories based on current star ratings without saving"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {recalculating ? 'Recalculating...' : 'Recalculate Categories'}
+                    </button>
+                  )}
 
                   {/* Export button */}
                   <button
@@ -605,7 +595,7 @@ export default function PlayerRatingsPage() {
                   disabled={submitting || recalculating}
                   className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {submitting ? 'Saving...' : 'Save Ratings & Auto-Assign Categories'}
+                  {submitting ? 'Saving...' : (categories.length > 0 ? 'Save Ratings & Auto-Assign Categories' : 'Save Ratings')}
                 </button>
               </div>
             </div>
@@ -625,16 +615,31 @@ export default function PlayerRatingsPage() {
                   ))}
                 </div>
                 <p>• Players sorted by rating (high to low)</p>
-                <p>• <strong>Categories:</strong> Auto-distributed equally</p>
-                <p className="text-xs text-amber-700 ml-4">
-                  {categories.length} categories → ~{Math.ceil(players.length / categories.length)} players each
-                </p>
-                <div className="mt-3 pt-3 border-t border-amber-200">
-                  <p className="text-xs font-semibold text-amber-900 mb-1">Categories:</p>
-                  {categories.map(cat => (
-                    <p key={cat.id} className="text-xs text-amber-700 ml-2">• {cat.name}</p>
-                  ))}
-                </div>
+                {categories.length > 0 ? (
+                  <>
+                    <p>• <strong>Categories:</strong> Auto-distributed equally</p>
+                    <p className="text-xs text-amber-700 ml-4">
+                      {categories.length} categories → ~{Math.ceil(players.length / categories.length)} players each
+                    </p>
+                    <div className="mt-3 pt-3 border-t border-amber-200">
+                      <p className="text-xs font-semibold text-amber-900 mb-1">Categories:</p>
+                      {categories.map(cat => (
+                        <p key={cat.id} className="text-xs text-amber-700 ml-2">• {cat.name}</p>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-3 pt-3 border-t border-amber-200">
+                    <p className="text-xs font-semibold text-amber-900 mb-1">⚠️ No Categories:</p>
+                    <p className="text-xs text-amber-700 ml-2">Players will be saved without category assignments.</p>
+                    <Link 
+                      href="/dashboard/committee/team-management/categories"
+                      className="inline-flex items-center gap-1 text-xs text-amber-800 hover:text-amber-900 font-semibold mt-2 underline"
+                    >
+                      Create Categories →
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -643,20 +648,31 @@ export default function PlayerRatingsPage() {
               <h3 className="font-semibold text-blue-900 mb-3">➡️ Next Steps</h3>
               <div className="text-sm text-blue-800 space-y-2">
                 <p>1. Assign star ratings to all players</p>
-                <p>2. Click "Recalculate" to preview category distribution</p>
-                <p>3. Click "Save" to persist ratings & categories</p>
+                {categories.length > 0 ? (
+                  <>
+                    <p>2. Click "Recalculate" to preview category distribution</p>
+                    <p>3. Click "Save" to persist ratings & categories</p>
+                  </>
+                ) : (
+                  <>
+                    <p>2. (Optional) <Link href="/dashboard/committee/team-management/categories" className="underline font-semibold">Create categories</Link> for player classification</p>
+                    <p>3. Click "Save" to persist ratings</p>
+                  </>
+                )}
                 <p>4. Go to <Link href="/dashboard/committee/real-players" className="underline font-semibold">SS Members</Link> to assign teams</p>
               </div>
             </div>
             
-            {/* Recalculate info */}
-            <div className="glass rounded-2xl p-5 bg-gradient-to-br from-purple-50 to-pink-50">
-              <h3 className="font-semibold text-purple-900 mb-3">🔄 Recalculate Categories</h3>
-              <div className="text-sm text-purple-800 space-y-2">
-                <p>Use the <strong>Recalculate</strong> button to redistribute categories based on current star ratings without saving changes.</p>
-                <p className="text-xs text-purple-700 mt-2">This is useful if categories were manually edited or if you want to preview the distribution before committing.</p>
+            {/* Recalculate info - only show if categories exist */}
+            {categories.length > 0 && (
+              <div className="glass rounded-2xl p-5 bg-gradient-to-br from-purple-50 to-pink-50">
+                <h3 className="font-semibold text-purple-900 mb-3">🔄 Recalculate Categories</h3>
+                <div className="text-sm text-purple-800 space-y-2">
+                  <p>Use the <strong>Recalculate</strong> button to redistribute categories based on current star ratings without saving changes.</p>
+                  <p className="text-xs text-purple-700 mt-2">This is useful if categories were manually edited or if you want to preview the distribution before committing.</p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

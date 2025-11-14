@@ -408,7 +408,7 @@ export default function CommitteeSalaryTransactionsPage() {
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-purple-500 flex-shrink-0">•</span>
-                    <span>Deducted from Real Player Budget per match</span>
+                    <span>Deducted from SSCoin Budget per match</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-purple-500 flex-shrink-0">•</span>

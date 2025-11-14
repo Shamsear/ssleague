@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { adminDb } from '@/lib/firebase/admin';
 import { verifyAuth } from '@/lib/auth-helper';
+import { formatId, ID_PREFIXES, ID_PADDING } from '@/lib/id-utils';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -106,6 +107,27 @@ export async function POST(request: NextRequest) {
           WHERE id = ${existingOwner[0].id}
         `;
       } else {
+        // Generate proper owner ID
+        const latestOwner = await tournamentSql`
+          SELECT owner_id FROM owners
+          ORDER BY id DESC
+          LIMIT 1
+        `;
+
+        let nextCounter = 1;
+        if (latestOwner.length > 0) {
+          const lastId = latestOwner[0].owner_id;
+          const numericPart = lastId.replace(/\D/g, '');
+          if (numericPart) {
+            const lastCounter = parseInt(numericPart, 10);
+            if (!isNaN(lastCounter)) {
+              nextCounter = lastCounter + 1;
+            }
+          }
+        }
+
+        const ownerId = formatId(ID_PREFIXES.OWNER, nextCounter, ID_PADDING.OWNER);
+
         // Create new owner
         await tournamentSql`
           INSERT INTO owners (
@@ -123,12 +145,14 @@ export async function POST(request: NextRequest) {
             instagram_handle,
             twitter_handle,
             is_active,
+            registered_user_id,
+            created_by,
             created_at,
             updated_at
           ) VALUES (
-            ${userId},
+            ${ownerId},
             ${teamId},
-            ${seasonId || ''},
+            ${seasonId || null},
             ${name || ''},
             ${photo_url || null},
             ${email || null},
@@ -140,6 +164,8 @@ export async function POST(request: NextRequest) {
             ${instagram_handle || null},
             ${twitter_handle || null},
             true,
+            ${userId},
+            ${userId},
             NOW(),
             NOW()
           )
@@ -188,6 +214,27 @@ export async function POST(request: NextRequest) {
           WHERE id = ${existingManager[0].id}
         `;
       } else {
+        // Generate proper manager ID
+        const latestManager = await tournamentSql`
+          SELECT manager_id FROM managers
+          ORDER BY id DESC
+          LIMIT 1
+        `;
+
+        let nextCounter = 1;
+        if (latestManager.length > 0) {
+          const lastId = latestManager[0].manager_id;
+          const numericPart = lastId.replace(/\D/g, '');
+          if (numericPart) {
+            const lastCounter = parseInt(numericPart, 10);
+            if (!isNaN(lastCounter)) {
+              nextCounter = lastCounter + 1;
+            }
+          }
+        }
+
+        const managerId = formatId(ID_PREFIXES.MANAGER, nextCounter, ID_PADDING.MANAGER);
+
         // Create new manager
         await tournamentSql`
           INSERT INTO managers (
@@ -205,10 +252,11 @@ export async function POST(request: NextRequest) {
             is_player,
             player_id,
             is_active,
+            created_by,
             created_at,
             updated_at
           ) VALUES (
-            ${`${userId}_${seasonId}`},
+            ${managerId},
             ${teamId},
             ${seasonId},
             ${name || ''},
@@ -222,6 +270,7 @@ export async function POST(request: NextRequest) {
             ${is_player || false},
             ${player_id || null},
             true,
+            ${userId},
             NOW(),
             NOW()
           )

@@ -78,7 +78,41 @@ export default function TournamentDashboardPage() {
     direct_semifinal_teams: 2,
     qualification_threshold: 75,
     is_pure_knockout: false,
-    lineup_category_requirements: {}
+    enable_category_requirements: false, // Toggle for category requirements
+    lineup_category_requirements: {},
+    number_of_teams: 16, // Total participating teams
+    rewards: {
+      // Match result rewards (for league/group stages)
+      match_results: {
+        win_ecoin: 100,
+        win_sscoin: 10,
+        draw_ecoin: 50,
+        draw_sscoin: 5,
+        loss_ecoin: 20,
+        loss_sscoin: 2
+      },
+      // Position-based rewards (for league stage)
+      league_positions: [
+        { position: 1, ecoin: 5000, sscoin: 500 },  // Champion
+        { position: 2, ecoin: 3000, sscoin: 300 },  // Runner-up
+        { position: 3, ecoin: 2000, sscoin: 200 },  // 3rd place
+        { position: 4, ecoin: 1000, sscoin: 100 }   // 4th place
+      ],
+      // Knockout stage rewards
+      knockout_stages: {
+        winner: { ecoin: 5000, sscoin: 500 },
+        runner_up: { ecoin: 3000, sscoin: 300 },
+        semi_final_loser: { ecoin: 1500, sscoin: 150 },
+        quarter_final_loser: { ecoin: 750, sscoin: 75 },
+        round_of_16_loser: { ecoin: 400, sscoin: 40 },
+        round_of_32_loser: { ecoin: 200, sscoin: 20 }
+      },
+      // Season/Tournament end bonus
+      completion_bonus: {
+        ecoin: 500,
+        sscoin: 50
+      }
+    }
   });
   
   // Teams State
@@ -114,6 +148,64 @@ export default function TournamentDashboardPage() {
     closeConfirm,
     handleConfirm,
   } = useModal();
+
+  // Calculate knockout structure based on tournament settings (league/group → knockout)
+  const calculateKnockoutStructure = (cfg: typeof newTournament) => {
+    const stages: Array<{ name: string; key: keyof typeof newTournament.rewards.knockout_stages; teams: number; emoji: string }> = [];
+
+    // Determine effective knockout entrants
+    const groupAdvancers = cfg.has_group_stage
+      ? (cfg.number_of_groups || 0) * (cfg.teams_advancing_per_group || 0)
+      : 0;
+
+    // If group stage exists, derive entrants from groups; otherwise use configured playoff teams
+    let entrants = cfg.has_group_stage ? groupAdvancers : (cfg.playoff_teams || 0);
+    const directSemis = cfg.direct_semifinal_teams || 0;
+
+    // Guard
+    if (!cfg.has_knockout_stage || entrants <= 0) {
+      // Still show winner/runner-up inputs so values can be set
+      stages.push({ name: 'Winner', key: 'winner', teams: 1, emoji: '🏆' });
+      stages.push({ name: 'Runner-up', key: 'runner_up', teams: 1, emoji: '🥈' });
+      return stages;
+    }
+
+    // If direct semifinals are configured (e.g., 6 teams, top 2 to semis), use quarters → semis → final flow
+    if (!cfg.has_group_stage && directSemis > 0) {
+      const qfTeams = Math.max(entrants - directSemis, 0);
+      if (qfTeams >= 2) {
+        stages.push({ name: 'Quarter-final Loser', key: 'quarter_final_loser', teams: qfTeams / 2, emoji: '🏅' });
+      }
+      // Calculate actual semis: qf winners + direct semis = total in semis
+      const qfWinners = qfTeams > 0 ? qfTeams / 2 : 0;
+      const totalInSemis = qfWinners + directSemis;
+      stages.push({ name: 'Semi-final Loser', key: 'semi_final_loser', teams: totalInSemis / 2, emoji: '🥉' });
+      stages.push({ name: 'Runner-up', key: 'runner_up', teams: 1, emoji: '🥈' });
+      stages.push({ name: 'Winner', key: 'winner', teams: 1, emoji: '🏆' });
+      return stages;
+    }
+
+    // Group-derived (or standard playoff without byes): build from largest standard round down
+    // Normalize entrants to typical rounds: 32, 16, 8, 4
+    const addRound = (roundSize: number, key: keyof typeof newTournament.rewards.knockout_stages, name: string, emoji: string) => {
+      if (entrants >= roundSize) {
+        stages.push({ name, key, teams: roundSize / 2, emoji });
+        entrants = roundSize / 2; // advance to next round size
+      }
+    };
+
+    // From biggest to smaller
+    addRound(32, 'round_of_32_loser', 'Round of 32 Loser', '🎮');
+    addRound(16, 'round_of_16_loser', 'Round of 16 Loser', '🎯');
+    addRound(8,  'quarter_final_loser', 'Quarter-final Loser', '🏅');
+
+    // Semifinal, runner-up, winner are always present after above consolidation
+    stages.push({ name: 'Semi-final Loser', key: 'semi_final_loser', teams: Math.max(entrants / 2, 1), emoji: '🥉' });
+    stages.push({ name: 'Runner-up', key: 'runner_up', teams: 1, emoji: '🥈' });
+    stages.push({ name: 'Winner', key: 'winner', teams: 1, emoji: '🏆' });
+
+    return stages;
+  };
 
   // Auto-generate tournament name and code
   useEffect(() => {
@@ -323,7 +415,36 @@ export default function TournamentDashboardPage() {
           direct_semifinal_teams: 2,
           qualification_threshold: 75,
           is_pure_knockout: false,
-          lineup_category_requirements: {}
+          lineup_category_requirements: {},
+          number_of_teams: 16,
+          rewards: {
+            match_results: {
+              win_ecoin: 100,
+              win_sscoin: 10,
+              draw_ecoin: 50,
+              draw_sscoin: 5,
+              loss_ecoin: 20,
+              loss_sscoin: 2
+            },
+            league_positions: [
+              { position: 1, ecoin: 5000, sscoin: 500 },
+              { position: 2, ecoin: 3000, sscoin: 300 },
+              { position: 3, ecoin: 2000, sscoin: 200 },
+              { position: 4, ecoin: 1000, sscoin: 100 }
+            ],
+            knockout_stages: {
+              winner: { ecoin: 5000, sscoin: 500 },
+              runner_up: { ecoin: 3000, sscoin: 300 },
+              semi_final_loser: { ecoin: 1500, sscoin: 150 },
+              quarter_final_loser: { ecoin: 750, sscoin: 75 },
+              round_of_16_loser: { ecoin: 400, sscoin: 40 },
+              round_of_32_loser: { ecoin: 200, sscoin: 20 }
+            },
+            completion_bonus: {
+              ecoin: 500,
+              sscoin: 50
+            }
+          }
         });
         
         setShowCreateForm(false);
@@ -1538,6 +1659,38 @@ export default function TournamentDashboardPage() {
                       />
                       <p className="text-xs text-gray-500 mt-1">Number of players each team can field (1-18)</p>
                     </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        🏆 Number of Participating Teams
+                      </label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="32"
+                        value={newTournament.number_of_teams}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 16;
+                          setNewTournament({ 
+                            ...newTournament, 
+                            number_of_teams: val,
+                            // Auto-generate league position rewards based on number of teams
+                            rewards: {
+                              ...newTournament.rewards,
+                              league_positions: Array.from({ length: val }, (_, i) => ({
+                                position: i + 1,
+                                ecoin: Math.max(5000 - (i * 200), 100), // Decreasing rewards
+                                sscoin: Math.max(500 - (i * 20), 10)
+                              }))
+                            }
+                          });
+                        }}
+                        className="w-full px-4 py-2.5 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 transition-all"
+                        placeholder="16"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Total teams in the tournament (2-32)</p>
+                    </div>
                   </div>
 
                   <div>
@@ -1683,10 +1836,11 @@ export default function TournamentDashboardPage() {
                         </div>
                       )}
 
-                      {/* Knockout Stage Configuration */}
-                      {newTournament.has_knockout_stage && (
+                      {/* Knockout Stage Configuration - ONLY for League+Knockout (not Group+Knockout) */}
+                      {newTournament.has_knockout_stage && !newTournament.has_group_stage && (
                         <div className="ml-8 p-4 bg-purple-50/50 rounded-xl border border-purple-200 space-y-3">
                           <h4 className="font-semibold text-gray-900 text-sm">Knockout Stage Settings</h4>
+                          <p className="text-xs text-gray-600 mb-2">💡 These settings control the playoff bracket after league stage</p>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Playoff Teams</label>
@@ -1724,6 +1878,27 @@ export default function TournamentDashboardPage() {
                               />
                               <p className="text-xs text-gray-500 mt-1">Min % points to qualify</p>
                             </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Info for Group+Knockout */}
+                      {newTournament.has_knockout_stage && newTournament.has_group_stage && (
+                        <div className="ml-8 p-4 bg-purple-50/50 rounded-xl border border-purple-200">
+                          <h4 className="font-semibold text-gray-900 text-sm mb-2">ℹ️ Knockout Stage (Auto-configured)</h4>
+                          <p className="text-xs text-gray-700">
+                            Knockout bracket is automatically created based on group results:
+                          </p>
+                          <div className="mt-2 bg-white/60 rounded-lg p-3 border border-purple-100">
+                            <p className="text-xs text-purple-900 font-medium">
+                              🎯 {newTournament.number_of_groups} groups × top {newTournament.teams_advancing_per_group} = {' '}
+                              <span className="font-bold text-purple-700">
+                                {newTournament.number_of_groups * newTournament.teams_advancing_per_group} teams in knockout
+                              </span>
+                            </p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              Bracket size and stages are determined automatically (e.g., 8 teams = Quarters, 16 teams = Round of 16)
+                            </p>
                           </div>
                         </div>
                       )}
@@ -1793,12 +1968,656 @@ export default function TournamentDashboardPage() {
                     </div>
                   </div>
 
+                  {/* Tournament Rewards Configuration */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <h3 className="text-lg font-semibold text-gray-800">💰 Tournament Rewards</h3>
+                      <span className="text-xs bg-gradient-to-r from-blue-600 to-purple-600 text-white px-2 py-1 rounded-full font-semibold">eCoin & SSCoin</span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-6">Configure monetary rewards for teams based on match results, positions, and knockout stages</p>
+                    
+                    <div className="space-y-6">
+                      {/* Match Result Rewards - Show for League or Group Stage */}
+                      {(newTournament.has_league_stage || newTournament.has_group_stage) && (
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200">
+                          <div className="flex items-center gap-2 mb-4">
+                            <h4 className="font-bold text-gray-900">⚽ Match Result Rewards</h4>
+                            <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">Per Match</span>
+                          </div>
+                          <p className="text-xs text-gray-600 mb-4">Rewards given to teams after each match result</p>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Win Rewards */}
+                            <div className="bg-white/80 rounded-xl p-4 border border-green-300">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="text-2xl">🏆</span>
+                                <h5 className="font-semibold text-green-700">Win</h5>
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">eCoin Reward</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={newTournament.rewards.match_results.win_ecoin}
+                                    onChange={(e) => setNewTournament({
+                                      ...newTournament,
+                                      rewards: {
+                                        ...newTournament.rewards,
+                                        match_results: {
+                                          ...newTournament.rewards.match_results,
+                                          win_ecoin: parseInt(e.target.value) || 0
+                                        }
+                                      }
+                                    })}
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin Reward</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={newTournament.rewards.match_results.win_sscoin}
+                                    onChange={(e) => setNewTournament({
+                                      ...newTournament,
+                                      rewards: {
+                                        ...newTournament.rewards,
+                                        match_results: {
+                                          ...newTournament.rewards.match_results,
+                                          win_sscoin: parseInt(e.target.value) || 0
+                                        }
+                                      }
+                                    })}
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Draw Rewards */}
+                            <div className="bg-white/80 rounded-xl p-4 border border-yellow-300">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="text-2xl">🤝</span>
+                                <h5 className="font-semibold text-yellow-700">Draw</h5>
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">eCoin Reward</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={newTournament.rewards.match_results.draw_ecoin}
+                                    onChange={(e) => setNewTournament({
+                                      ...newTournament,
+                                      rewards: {
+                                        ...newTournament.rewards,
+                                        match_results: {
+                                          ...newTournament.rewards.match_results,
+                                          draw_ecoin: parseInt(e.target.value) || 0
+                                        }
+                                      }
+                                    })}
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin Reward</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={newTournament.rewards.match_results.draw_sscoin}
+                                    onChange={(e) => setNewTournament({
+                                      ...newTournament,
+                                      rewards: {
+                                        ...newTournament.rewards,
+                                        match_results: {
+                                          ...newTournament.rewards.match_results,
+                                          draw_sscoin: parseInt(e.target.value) || 0
+                                        }
+                                      }
+                                    })}
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Loss Rewards */}
+                            <div className="bg-white/80 rounded-xl p-4 border border-gray-300">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="text-2xl">💔</span>
+                                <h5 className="font-semibold text-gray-700">Loss</h5>
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">eCoin Reward</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={newTournament.rewards.match_results.loss_ecoin}
+                                    onChange={(e) => setNewTournament({
+                                      ...newTournament,
+                                      rewards: {
+                                        ...newTournament.rewards,
+                                        match_results: {
+                                          ...newTournament.rewards.match_results,
+                                          loss_ecoin: parseInt(e.target.value) || 0
+                                        }
+                                      }
+                                    })}
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin Reward</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={newTournament.rewards.match_results.loss_sscoin}
+                                    onChange={(e) => setNewTournament({
+                                      ...newTournament,
+                                      rewards: {
+                                        ...newTournament.rewards,
+                                        match_results: {
+                                          ...newTournament.rewards.match_results,
+                                          loss_sscoin: parseInt(e.target.value) || 0
+                                        }
+                                      }
+                                    })}
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* League Position Rewards - Show for League stage (pure league OR league+knockout) */}
+                      {newTournament.has_league_stage && (
+                        <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-6 border-2 border-purple-200">
+                          <div className="flex items-center gap-2 mb-4">
+                            <h4 className="font-bold text-gray-900">🏆 League Standing Rewards</h4>
+                            <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full">
+                              {newTournament.has_knockout_stage ? 'All Positions' : 'Season End'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600 mb-4">
+                            {newTournament.has_knockout_stage 
+                              ? `Rewards for all ${newTournament.number_of_teams} positions after league stage (before knockout begins)`
+                              : 'Rewards based on final league table positions'}
+                          </p>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {newTournament.rewards.league_positions.map((posReward, index) => (
+                              <div key={index} className="bg-white/80 rounded-xl p-4 border border-purple-300">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <span className="text-xl">{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏅'}</span>
+                                  <h5 className="font-semibold text-purple-700">
+                                    {index === 0 ? 'Champion' : index === 1 ? 'Runner-up' : `${posReward.position}${posReward.position === 3 ? 'rd' : 'th'} Place`}
+                                  </h5>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={posReward.ecoin}
+                                      onChange={(e) => {
+                                        const newPositions = [...newTournament.rewards.league_positions];
+                                        newPositions[index] = { ...newPositions[index], ecoin: parseInt(e.target.value) || 0 };
+                                        setNewTournament({
+                                          ...newTournament,
+                                          rewards: {
+                                            ...newTournament.rewards,
+                                            league_positions: newPositions
+                                          }
+                                        });
+                                      }}
+                                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={posReward.sscoin}
+                                      onChange={(e) => {
+                                        const newPositions = [...newTournament.rewards.league_positions];
+                                        newPositions[index] = { ...newPositions[index], sscoin: parseInt(e.target.value) || 0 };
+                                        setNewTournament({
+                                          ...newTournament,
+                                          rewards: {
+                                            ...newTournament.rewards,
+                                            league_positions: newPositions
+                                          }
+                                        });
+                                      }}
+                                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          
+                          <div className="mt-4 flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const maxPosition = Math.max(...newTournament.rewards.league_positions.map(p => p.position));
+                                setNewTournament({
+                                  ...newTournament,
+                                  rewards: {
+                                    ...newTournament.rewards,
+                                    league_positions: [
+                                      ...newTournament.rewards.league_positions,
+                                      { position: maxPosition + 1, ecoin: 0, sscoin: 0 }
+                                    ]
+                                  }
+                                });
+                              }}
+                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all text-sm font-medium"
+                            >
+                              + Add Position
+                            </button>
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Auto-fill positions based on number of teams
+                                const positions = Array.from({ length: newTournament.number_of_teams }, (_, i) => ({
+                                  position: i + 1,
+                                  ecoin: Math.max(5000 - (i * 200), 100),
+                                  sscoin: Math.max(500 - (i * 20), 10)
+                                }));
+                                setNewTournament({
+                                  ...newTournament,
+                                  rewards: {
+                                    ...newTournament.rewards,
+                                    league_positions: positions
+                                  }
+                                });
+                              }}
+                              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all text-sm font-medium"
+                            >
+                              ✨ Auto-fill All {newTournament.number_of_teams} Positions
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Knockout Stage Rewards - Show when knockout stage is enabled */}
+                      {newTournament.has_knockout_stage && (
+                        <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-2xl p-6 border-2 border-orange-200">
+                          <div className="flex items-center gap-2 mb-4">
+                            <h4 className="font-bold text-gray-900">🏆 Knockout Stage Rewards</h4>
+                            <span className="text-xs bg-orange-600 text-white px-2 py-0.5 rounded-full">Tournament End</span>
+                          </div>
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                            {newTournament.has_group_stage ? (
+                              // Group Stage → Knockout flow
+                              <>
+                                <p className="text-xs text-blue-800">
+                                  <strong>Your Knockout Structure:</strong> 
+                                  {' '}{newTournament.number_of_groups} groups × top {newTournament.teams_advancing_per_group} = {' '}
+                                  <span className="font-bold">
+                                    {newTournament.number_of_groups * newTournament.teams_advancing_per_group} teams advance to knockout
+                                  </span>
+                                </p>
+                                <p className="text-xs text-blue-700 mt-1">
+                                  🎯 Groups complete → Top {newTournament.teams_advancing_per_group} from each group advance → Knockout bracket begins
+                                </p>
+                              </>
+                            ) : (
+                              // League → Knockout flow
+                              <>
+                                <p className="text-xs text-blue-800">
+                                  <strong>Your Playoff Structure:</strong> {newTournament.playoff_teams} teams total
+                                  {newTournament.direct_semifinal_teams > 0 && ` (Top ${newTournament.direct_semifinal_teams} skip to semis)`}
+                                </p>
+                                <p className="text-xs text-blue-700 mt-1">
+                                  {newTournament.playoff_teams - newTournament.direct_semifinal_teams > 0 
+                                    ? `${newTournament.playoff_teams - newTournament.direct_semifinal_teams} teams play quarters → ${(newTournament.playoff_teams - newTournament.direct_semifinal_teams) / 2 + newTournament.direct_semifinal_teams} in semis → 2 in final`
+                                    : `${newTournament.direct_semifinal_teams || Math.ceil(newTournament.playoff_teams / 2)} teams in semis → 2 in final`}
+                                </p>
+                              </>
+                            )}
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {/* Dynamically render knockout stages based on playoff structure */}
+                            {calculateKnockoutStructure(newTournament)
+                              .reverse() // Show winner first, then runner-up, etc.
+                              .map((stage, index) => (
+                              <div 
+                                key={stage.key} 
+                                className={`bg-white/80 rounded-xl p-4 ${
+                                  stage.key === 'winner' ? 'border-2 border-yellow-400' :
+                                  stage.key === 'runner_up' ? 'border-2 border-gray-300' :
+                                  'border border-orange-300'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-2xl">{stage.emoji}</span>
+                                    <h5 className={`font-semibold ${
+                                      stage.key === 'winner' ? 'text-yellow-600' :
+                                      stage.key === 'runner_up' ? 'text-gray-600' :
+                                      'text-orange-600'
+                                    }`}>
+                                      {stage.name}
+                                    </h5>
+                                  </div>
+                                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
+                                    {stage.teams} team{stage.teams > 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                <div className="space-y-2">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={newTournament.rewards.knockout_stages[stage.key]?.ecoin || 0}
+                                      onChange={(e) => setNewTournament({
+                                        ...newTournament,
+                                        rewards: {
+                                          ...newTournament.rewards,
+                                          knockout_stages: {
+                                            ...newTournament.rewards.knockout_stages,
+                                            [stage.key]: { 
+                                              ...newTournament.rewards.knockout_stages[stage.key],
+                                              ecoin: parseInt(e.target.value) || 0 
+                                            }
+                                          }
+                                        }
+                                      })}
+                                      className={`w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 ${
+                                        stage.key === 'winner' ? 'focus:ring-yellow-500' :
+                                        stage.key === 'runner_up' ? 'focus:ring-gray-400' :
+                                        'focus:ring-orange-500'
+                                      }`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={newTournament.rewards.knockout_stages[stage.key]?.sscoin || 0}
+                                      onChange={(e) => setNewTournament({
+                                        ...newTournament,
+                                        rewards: {
+                                          ...newTournament.rewards,
+                                          knockout_stages: {
+                                            ...newTournament.rewards.knockout_stages,
+                                            [stage.key]: { 
+                                              ...newTournament.rewards.knockout_stages[stage.key],
+                                              sscoin: parseInt(e.target.value) || 0 
+                                            }
+                                          }
+                                        }
+                                      })}
+                                      className={`w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 ${
+                                        stage.key === 'winner' ? 'focus:ring-yellow-500' :
+                                        stage.key === 'runner_up' ? 'focus:ring-gray-400' :
+                                        'focus:ring-orange-500'
+                                      }`}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Group Stage Elimination Rewards - Show for Group+Knockout */}
+                      {newTournament.has_group_stage && newTournament.has_knockout_stage && (
+                        <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-6 border-2 border-red-200">
+                          <div className="flex items-center gap-2 mb-4">
+                            <h4 className="font-bold text-gray-900">❌ Group Stage Elimination Rewards</h4>
+                            <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full">Did Not Qualify</span>
+                          </div>
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                            <p className="text-xs text-yellow-800">
+                              <strong>📊 Teams eliminated in group stage:</strong>
+                              {' '}Total teams: {newTournament.number_of_teams || (newTournament.number_of_groups * newTournament.teams_per_group)}
+                              {' '}| Advance: {newTournament.number_of_groups * newTournament.teams_advancing_per_group}
+                              {' '}| <span className="font-bold">Eliminated: {(newTournament.number_of_teams || (newTournament.number_of_groups * newTournament.teams_per_group)) - (newTournament.number_of_groups * newTournament.teams_advancing_per_group)}</span>
+                            </p>
+                            <p className="text-xs text-yellow-700 mt-1">
+                              💡 These teams are ranked by overall group performance (points, goal difference) and receive consolation rewards
+                            </p>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {(() => {
+                              const totalTeams = newTournament.number_of_teams || (newTournament.number_of_groups * newTournament.teams_per_group);
+                              const qualifiedTeams = newTournament.number_of_groups * newTournament.teams_advancing_per_group;
+                              const eliminatedCount = totalTeams - qualifiedTeams;
+                              
+                              if (eliminatedCount <= 0) {
+                                return (
+                                  <p className="col-span-full text-sm text-gray-500 text-center py-4">
+                                    No teams eliminated in group stage (all teams advance)
+                                  </p>
+                                );
+                              }
+                              
+                              // Generate positions for eliminated teams (e.g., 5th, 6th, 7th...)
+                              return Array.from({ length: eliminatedCount }, (_, i) => {
+                                const position = qualifiedTeams + i + 1;
+                                const posReward = newTournament.rewards.league_positions?.find(p => p.position === position) || { position, ecoin: 0, sscoin: 0 };
+                                
+                                return (
+                                  <div key={position} className="bg-white/80 rounded-xl p-4 border border-red-300">
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <span className="text-xl">🚫</span>
+                                      <h5 className="font-semibold text-red-700">
+                                        {position}{position % 10 === 1 && position !== 11 ? 'st' : position % 10 === 2 && position !== 12 ? 'nd' : position % 10 === 3 && position !== 13 ? 'rd' : 'th'} Place
+                                      </h5>
+                                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full ml-auto">Overall</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={posReward.ecoin}
+                                          onChange={(e) => {
+                                            const newPositions = [...(newTournament.rewards.league_positions || [])];
+                                            const existingIndex = newPositions.findIndex(p => p.position === position);
+                                            const updatedReward = { position, ecoin: parseInt(e.target.value) || 0, sscoin: posReward.sscoin };
+                                            
+                                            if (existingIndex >= 0) {
+                                              newPositions[existingIndex] = updatedReward;
+                                            } else {
+                                              newPositions.push(updatedReward);
+                                            }
+                                            
+                                            setNewTournament({
+                                              ...newTournament,
+                                              rewards: {
+                                                ...newTournament.rewards,
+                                                league_positions: newPositions.sort((a, b) => a.position - b.position)
+                                              }
+                                            });
+                                          }}
+                                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={posReward.sscoin}
+                                          onChange={(e) => {
+                                            const newPositions = [...(newTournament.rewards.league_positions || [])];
+                                            const existingIndex = newPositions.findIndex(p => p.position === position);
+                                            const updatedReward = { position, ecoin: posReward.ecoin, sscoin: parseInt(e.target.value) || 0 };
+                                            
+                                            if (existingIndex >= 0) {
+                                              newPositions[existingIndex] = updatedReward;
+                                            } else {
+                                              newPositions.push(updatedReward);
+                                            }
+                                            
+                                            setNewTournament({
+                                              ...newTournament,
+                                              rewards: {
+                                                ...newTournament.rewards,
+                                                league_positions: newPositions.sort((a, b) => a.position - b.position)
+                                              }
+                                            });
+                                          }}
+                                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                          
+                          <div className="mt-4">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const totalTeams = newTournament.number_of_teams || (newTournament.number_of_groups * newTournament.teams_per_group);
+                                const qualifiedTeams = newTournament.number_of_groups * newTournament.teams_advancing_per_group;
+                                const eliminatedCount = totalTeams - qualifiedTeams;
+                                
+                                // Auto-fill eliminated positions with descending rewards
+                                const newPositions = [...(newTournament.rewards.league_positions || [])];
+                                
+                                for (let i = 0; i < eliminatedCount; i++) {
+                                  const position = qualifiedTeams + i + 1;
+                                  const existingIndex = newPositions.findIndex(p => p.position === position);
+                                  const reward = {
+                                    position,
+                                    ecoin: Math.max(500 - (i * 50), 50),
+                                    sscoin: Math.max(50 - (i * 5), 5)
+                                  };
+                                  
+                                  if (existingIndex >= 0) {
+                                    newPositions[existingIndex] = reward;
+                                  } else {
+                                    newPositions.push(reward);
+                                  }
+                                }
+                                
+                                setNewTournament({
+                                  ...newTournament,
+                                  rewards: {
+                                    ...newTournament.rewards,
+                                    league_positions: newPositions.sort((a, b) => a.position - b.position)
+                                  }
+                                });
+                              }}
+                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm font-medium"
+                            >
+                              ✨ Auto-fill Elimination Rewards
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tournament Completion Bonus */}
+                      <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 border-2 border-blue-200">
+                        <div className="flex items-center gap-2 mb-4">
+                          <h4 className="font-bold text-gray-900">🎁 Tournament Completion Bonus</h4>
+                          <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">All Teams</span>
+                        </div>
+                        <p className="text-xs text-gray-600 mb-4">Bonus reward given to all teams that complete the tournament</p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md">
+                          <div className="bg-white/80 rounded-xl p-4 border border-blue-300">
+                            <label className="block text-xs font-medium text-gray-700 mb-2">eCoin Bonus</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={newTournament.rewards.completion_bonus.ecoin}
+                              onChange={(e) => setNewTournament({
+                                ...newTournament,
+                                rewards: {
+                                  ...newTournament.rewards,
+                                  completion_bonus: {
+                                    ...newTournament.rewards.completion_bonus,
+                                    ecoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="bg-white/80 rounded-xl p-4 border border-blue-300">
+                            <label className="block text-xs font-medium text-gray-700 mb-2">SSCoin Bonus</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={newTournament.rewards.completion_bonus.sscoin}
+                              onChange={(e) => setNewTournament({
+                                ...newTournament,
+                                rewards: {
+                                  ...newTournament.rewards,
+                                  completion_bonus: {
+                                    ...newTournament.rewards.completion_bonus,
+                                    sscoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Lineup Category Requirements */}
                   <div className="border-t border-gray-200 pt-6">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">⚔️ Lineup Category Requirements</h3>
-                    <p className="text-sm text-gray-600 mb-4">Set the minimum number of players required from each category in the starting 11</p>
-                    
-                    {categories.length === 0 ? (
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-800 mb-1">⚔️ Lineup Category Requirements</h3>
+                        <p className="text-sm text-gray-600">Set minimum players required from each category in starting XI</p>
+                      </div>
+                      <label className="flex items-center gap-3 bg-white/50 px-4 py-2.5 rounded-xl border-2 border-gray-200 cursor-pointer hover:border-blue-500/50 transition-all">
+                        <span className="text-sm font-medium text-gray-700">Enable Requirements</span>
+                        <div className="relative">
+                          <input
+                            type="checkbox"
+                            checked={newTournament.enable_category_requirements ?? false}
+                            onChange={(e) => {
+                              const enabled = e.target.checked;
+                              setNewTournament({
+                                ...newTournament,
+                                enable_category_requirements: enabled,
+                                // Reset requirements if disabled
+                                lineup_category_requirements: enabled ? (newTournament.lineup_category_requirements || {}) : {}
+                              });
+                            }}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </div>
+                      </label>
+                    </div>
+
+                    {!newTournament.enable_category_requirements ? (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+                        <div className="text-4xl mb-3">✅</div>
+                        <p className="text-gray-700 font-medium mb-1">Category Requirements Disabled</p>
+                        <p className="text-sm text-gray-600">Teams can create lineups without category restrictions</p>
+                      </div>
+                    ) : categories.length === 0 ? (
                       <div className="text-center py-8 bg-gray-50 rounded-xl">
                         <p className="text-gray-500">No categories available</p>
                       </div>
@@ -1938,6 +2757,7 @@ export default function TournamentDashboardPage() {
                         playoff_teams: editingTournament.playoff_teams,
                         direct_semifinal_teams: editingTournament.direct_semifinal_teams,
                         qualification_threshold: editingTournament.qualification_threshold,
+                        enable_category_requirements: editingTournament.enable_category_requirements ?? false,
                         lineup_category_requirements: editingTournament.lineup_category_requirements || {},
                       })
                     });

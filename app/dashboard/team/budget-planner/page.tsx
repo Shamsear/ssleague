@@ -245,7 +245,7 @@ export default function BudgetPlannerPage() {
               : 'glass text-gray-600 hover:bg-gray-50'
           }`}
         >
-          ⚽ Football Players (€)
+          ⚽ Virtual Players (eCoin)
         </button>
         <button
           onClick={() => setActiveTab('real')}
@@ -255,7 +255,7 @@ export default function BudgetPlannerPage() {
               : 'glass text-gray-600 hover:bg-gray-50'
           }`}
         >
-          🎮 Real Players ($)
+          🎮 Real Players (SSCoin)
         </button>
       </div>
 
@@ -274,8 +274,8 @@ export default function BudgetPlannerPage() {
                 <span className="text-xs text-blue-600 font-medium px-2 py-1 bg-blue-100 rounded-full">Total Budget</span>
               </div>
               <h3 className="text-sm text-gray-600 mb-1">Available Budget</h3>
-              <p className="text-3xl font-bold text-blue-600">€{budgetData.footballBudget.toLocaleString()}</p>
-              <div className="mt-3 text-xs text-gray-500">Spent: €{budgetData.footballSpent.toLocaleString()}</div>
+              <p className="text-3xl font-bold text-blue-600">{budgetData.footballBudget.toLocaleString()} eCoin</p>
+              <div className="mt-3 text-xs text-gray-500">Spent: {budgetData.footballSpent.toLocaleString()} eCoin</div>
             </div>
 
             {/* Estimated Total */}
@@ -289,8 +289,8 @@ export default function BudgetPlannerPage() {
                 <span className="text-xs text-purple-600 font-medium px-2 py-1 bg-purple-100 rounded-full">Estimated</span>
               </div>
               <h3 className="text-sm text-gray-600 mb-1">Planned Spending</h3>
-              <p className="text-3xl font-bold text-purple-600">€{currentTotals.total.toLocaleString()}</p>
-              <div className="mt-3 text-xs text-gray-500">Range: €{currentTotals.min.toLocaleString()} - €{currentTotals.max.toLocaleString()}</div>
+              <p className="text-3xl font-bold text-purple-600">{currentTotals.total.toLocaleString()} eCoin</p>
+              <div className="mt-3 text-xs text-gray-500">Range: {currentTotals.min.toLocaleString()} - {currentTotals.max.toLocaleString()} eCoin</div>
             </div>
 
             {/* Remaining Budget */}
@@ -307,7 +307,7 @@ export default function BudgetPlannerPage() {
               <p className={`text-3xl font-bold ${
                 budgetData.footballBudget - currentTotals.total >= 0 ? 'text-green-600' : 'text-red-600'
               }`}>
-                €{(budgetData.footballBudget - currentTotals.total).toLocaleString()}
+                {(budgetData.footballBudget - currentTotals.total).toLocaleString()} eCoin
               </p>
               <div className="mt-3 text-xs text-gray-500">For {budgetData.maxFootballPlayers} player slots max</div>
             </div>
@@ -325,8 +325,8 @@ export default function BudgetPlannerPage() {
                 <span className="text-xs text-green-600 font-medium px-2 py-1 bg-green-100 rounded-full">Total Budget</span>
               </div>
               <h3 className="text-sm text-gray-600 mb-1">Available Budget</h3>
-              <p className="text-3xl font-bold text-green-600">${budgetData.realPlayerBudget.toLocaleString()}</p>
-              <div className="mt-3 text-xs text-gray-500">Spent: ${budgetData.realPlayerSpent.toLocaleString()}</div>
+              <p className="text-3xl font-bold text-green-600">{budgetData.realPlayerBudget.toLocaleString()} SSCoin</p>
+              <div className="mt-3 text-xs text-gray-500">Spent: {budgetData.realPlayerSpent.toLocaleString()} SSCoin</div>
             </div>
 
             {/* Estimated Total */}
@@ -340,8 +340,8 @@ export default function BudgetPlannerPage() {
                 <span className="text-xs text-purple-600 font-medium px-2 py-1 bg-purple-100 rounded-full">Estimated</span>
               </div>
               <h3 className="text-sm text-gray-600 mb-1">Planned Spending</h3>
-              <p className="text-3xl font-bold text-purple-600">${currentTotals.total.toLocaleString()}</p>
-              <div className="mt-3 text-xs text-gray-500">Range: ${currentTotals.min.toLocaleString()} - ${currentTotals.max.toLocaleString()}</div>
+              <p className="text-3xl font-bold text-purple-600">{currentTotals.total.toLocaleString()} SSCoin</p>
+              <div className="mt-3 text-xs text-gray-500">Range: {currentTotals.min.toLocaleString()} - {currentTotals.max.toLocaleString()} SSCoin</div>
             </div>
 
             {/* Remaining Budget */}
@@ -358,7 +358,7 @@ export default function BudgetPlannerPage() {
               <p className={`text-3xl font-bold ${
                 budgetData.realPlayerBudget - currentTotals.total >= 0 ? 'text-blue-600' : 'text-red-600'
               }`}>
-                ${(budgetData.realPlayerBudget - currentTotals.total).toLocaleString()}
+                {(budgetData.realPlayerBudget - currentTotals.total).toLocaleString()} SSCoin
               </p>
               <div className="mt-3 text-xs text-gray-500">Min {budgetData.minRealPlayers}, max {budgetData.maxRealPlayers} member slots</div>
             </div>
@@ -406,7 +406,7 @@ export default function BudgetPlannerPage() {
 
                   {/* Estimated Cost */}
                   <div>
-                    <label className="text-xs text-gray-600 mb-1 block">Estimated Bid (€)</label>
+                    <label className="text-xs text-gray-600 mb-1 block">Estimated Bid (eCoin)</label>
                     <input
                       type="text"
                       value={player.estimatedCost}
@@ -414,14 +414,14 @@ export default function BudgetPlannerPage() {
                       placeholder="e.g., 100-150 or 120"
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Min bid: €100, increment +€10</p>
+                    <p className="text-xs text-gray-500 mt-1">Min bid: eCoin 100, increment +eCoin 10</p>
                   </div>
 
                   {/* Salary Calculation */}
                   <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
                     <label className="text-xs text-gray-600 mb-1 block">Half Season Salary</label>
                     <p className="text-lg font-bold text-blue-600">
-                      €{player.avgCost > 0 ? calculateFootballPlayerSalary(player.avgCost).toFixed(2) : '0.00'}
+                      eCoin {player.avgCost > 0 ? calculateFootballPlayerSalary(player.avgCost).toFixed(2) : '0.00'}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">10% of bid amount</p>
                   </div>
@@ -459,7 +459,7 @@ export default function BudgetPlannerPage() {
 
                     {/* Estimated Cost */}
                     <div>
-                      <label className="text-xs text-gray-600 mb-1 block">Estimated Bid ($)</label>
+                      <label className="text-xs text-gray-600 mb-1 block">Estimated Bid (SSCoin)</label>
                       <input
                         type="text"
                         value={player.estimatedCost}
@@ -467,7 +467,7 @@ export default function BudgetPlannerPage() {
                         placeholder="e.g., 100-200 or 150"
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Min bid: $100, increment +$10</p>
+                      <p className="text-xs text-gray-500 mt-1">Min bid: SSCoin 100, increment +SSCoin 10</p>
                     </div>
 
                     {/* Actions */}
@@ -498,11 +498,11 @@ export default function BudgetPlannerPage() {
                           <label className="text-xs font-semibold text-gray-700">Per Match Salary</label>
                         </div>
                         <p className="text-3xl font-bold text-green-600 mb-2">
-                          ${player.avgCost > 0 && player.stars ? calculateRealPlayerSalary(player.avgCost, player.stars).toFixed(2) : '0.00'}
+                          SSCoin {player.avgCost > 0 && player.stars ? calculateRealPlayerSalary(player.avgCost, player.stars).toFixed(2) : '0.00'}
                         </p>
                         <div className="bg-gray-50 rounded px-2 py-1.5 border border-gray-200">
                           <p className="text-xs text-gray-600">
-                            <span className="font-medium">Formula:</span> (${player.avgCost.toFixed(0)} ÷ 100) × {player.stars || 5}☆ ÷ 10
+                            <span className="font-medium">Formula:</span> (SSCoin {player.avgCost.toFixed(0)} ÷ 100) × {player.stars || 5}☆ ÷ 10
                           </p>
                         </div>
                       </div>
@@ -537,7 +537,7 @@ export default function BudgetPlannerPage() {
                           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg px-3 py-2 border border-blue-200">
                             <p className="text-xs text-gray-600 mb-1">Total Salary</p>
                             <p className="text-2xl font-bold text-blue-600">
-                              ${(calculateRealPlayerSalary(player.avgCost, player.stars) * parseInt(player.customMatches)).toFixed(2)}
+                              SSCoin {(calculateRealPlayerSalary(player.avgCost, player.stars) * parseInt(player.customMatches)).toFixed(2)}
                             </p>
                           </div>
                         ) : (
@@ -598,10 +598,10 @@ export default function BudgetPlannerPage() {
             <div className="flex-1">
               <h3 className="font-medium text-blue-800 mb-2">Slot & Contract Info</h3>
               <ul className="text-sm text-blue-700 space-y-1">
-                <li>• <strong>SS Players (Football):</strong> 25 player slots max, €100 min bid</li>
-                <li>• <strong>SS Members (Real):</strong> 5-7 member slots, $100 min bid</li>
+                <li>• <strong>SS Players (Football):</strong> 25 player slots max, eCoin 100 min bid</li>
+                <li>• <strong>SS Members (Real):</strong> 5-7 member slots, SSCoin 100 min bid</li>
                 <li>• <strong>Contract:</strong> 2 seasons for both player types</li>
-                <li>• <strong>Bid increment:</strong> +€10 or +$10 for each bid</li>
+                <li>• <strong>Bid increment:</strong> +eCoin 10 or +SSCoin 10 for each bid</li>
                 <li>• <strong>Season length:</strong> 38 matches (19 per half)</li>
               </ul>
             </div>

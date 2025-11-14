@@ -46,25 +46,46 @@ export default function LineupSubmission({
   const [deadlineInfo, setDeadlineInfo] = useState<any>(null);
   const [squadSize, setSquadSize] = useState<number>(5); // Default to 5
   const [maxSubstitutes, setMaxSubstitutes] = useState<number>(2); // Default to 2
+  const [enableCategoryRequirements, setEnableCategoryRequirements] = useState<boolean>(true); // Default to enabled
+  const [categoryRequirements, setCategoryRequirements] = useState<Record<string, number>>({});
+  const [tournamentId, setTournamentId] = useState<string>('');
 
   useEffect(() => {
+    fetchFixtureTournamentId();
     fetchRoster();
     checkEditability();
-    fetchTournamentSettings();
     if (existingLineup) {
       setStartingXI(existingLineup.starting_xi);
       setSubstitutes(existingLineup.substitutes);
     }
   }, [fixtureId, teamId, seasonId]);
 
-  const fetchTournamentSettings = async () => {
+  const fetchFixtureTournamentId = async () => {
     try {
-      const response = await fetch(`/api/tournament-settings?season_id=${seasonId}`);
+      const response = await fetch(`/api/fixtures/${fixtureId}`);
       const data = await response.json();
-      if (data.settings && data.settings.squad_size) {
-        setSquadSize(data.settings.squad_size);
-        // For lineup system: squad_size is starting XI, substitutes are always 2
-        setMaxSubstitutes(2);
+      if (data.fixture && data.fixture.tournament_id) {
+        setTournamentId(data.fixture.tournament_id);
+        await fetchTournamentSettings(data.fixture.tournament_id);
+      }
+    } catch (err) {
+      console.error('Error fetching fixture tournament ID:', err);
+    }
+  };
+
+  const fetchTournamentSettings = async (tournamentIdParam: string) => {
+    try {
+      const response = await fetch(`/api/tournament-settings?tournament_id=${tournamentIdParam}`);
+      const data = await response.json();
+      if (data.settings) {
+        if (data.settings.squad_size) {
+          setSquadSize(data.settings.squad_size);
+          // For lineup system: squad_size is starting XI, substitutes are always 2
+          setMaxSubstitutes(2);
+        }
+        // Fetch category requirements settings
+        setEnableCategoryRequirements(data.settings.enable_category_requirements ?? true);
+        setCategoryRequirements(data.settings.lineup_category_requirements || {});
       }
     } catch (err) {
       console.error('Error fetching tournament settings:', err);
@@ -132,14 +153,20 @@ export default function LineupSubmission({
       errors.push('Cannot select the same player multiple times');
     }
 
-    // Check classic players
-    const classicCount = startingXI.filter(playerId => {
-      const player = roster.find(p => p.player_id === playerId);
-      return player?.category?.toLowerCase().includes('classic');
-    }).length;
+    // Only validate category requirements if enabled
+    if (enableCategoryRequirements && Object.keys(categoryRequirements).length > 0) {
+      // Check each category requirement
+      for (const [categoryId, minCount] of Object.entries(categoryRequirements)) {
+        const count = startingXI.filter(playerId => {
+          const player = roster.find(p => p.player_id === playerId);
+          return player?.category === categoryId || player?.category?.toLowerCase().includes(categoryId.replace('cat_', ''));
+        }).length;
 
-    if (classicCount < 2) {
-      errors.push('Must have at least 2 classic category players in starting XI');
+        if (count < minCount) {
+          const categoryName = categoryId.replace('cat_', '').replace('_', ' ');
+          errors.push(`Must have at least ${minCount} ${categoryName} category player(s) in starting XI (currently ${count})`);
+        }
+      }
     }
 
     setValidationErrors(errors);
@@ -301,6 +328,16 @@ export default function LineupSubmission({
         </div>
       )}
 
+      {/* Category Requirements Info */}
+      {!enableCategoryRequirements && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <p className="text-xs sm:text-sm text-green-800 flex items-center gap-2">
+            <span className="text-lg">✅</span>
+            <span><strong>No Category Restrictions:</strong> You can select any players for your lineup without category requirements.</span>
+          </p>
+        </div>
+      )}
+
       {/* Validation Summary */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className={`rounded-lg p-3 sm:p-4 border ${(startingXI?.length || 0) === squadSize ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-white'}`}>
@@ -311,10 +348,31 @@ export default function LineupSubmission({
           <div className="text-xl sm:text-2xl font-bold text-center">{substitutes?.length || 0}/{maxSubstitutes}</div>
           <div className="text-[10px] sm:text-xs text-center text-gray-600 mt-1">Subs</div>
         </div>
-        <div className={`rounded-lg p-3 sm:p-4 border ${classicCount >= 2 ? 'border-green-400 bg-green-50' : 'border-orange-400 bg-orange-50'}`}>
-          <div className="text-xl sm:text-2xl font-bold text-center">{classicCount}/2</div>
-          <div className="text-[10px] sm:text-xs text-center text-gray-600 mt-1">Classic</div>
-        </div>
+        {enableCategoryRequirements && Object.keys(categoryRequirements).length > 0 ? (
+          <div className="rounded-lg p-3 sm:p-4 border border-purple-400 bg-purple-50">
+            <div className="text-xs sm:text-sm text-center text-gray-700">
+              <div className="font-semibold mb-1">Category Requirements</div>
+              {Object.entries(categoryRequirements).map(([catId, minCount]) => {
+                const catName = catId.replace('cat_', '').replace('_', ' ');
+                const count = startingXI.filter(playerId => {
+                  const player = getPlayerById(playerId);
+                  return player?.category === catId || player?.category?.toLowerCase().includes(catId.replace('cat_', ''));
+                }).length;
+                const isValid = count >= minCount;
+                return (
+                  <div key={catId} className={`text-[10px] sm:text-xs ${isValid ? 'text-green-600' : 'text-orange-600'} font-medium`}>
+                    {catName}: {count}/{minCount} {isValid ? '✓' : '✗'}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg p-3 sm:p-4 border border-gray-300 bg-gray-50">
+            <div className="text-xl sm:text-2xl font-bold text-center text-gray-400">—</div>
+            <div className="text-[10px] sm:text-xs text-center text-gray-500 mt-1">No Restrictions</div>
+          </div>
+        )}
       </div>
 
       {/* Validation Errors */}

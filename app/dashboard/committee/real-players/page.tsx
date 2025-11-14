@@ -52,6 +52,12 @@ export default function RealPlayersPage() {
   const [dropdownSearchTerms, setDropdownSearchTerms] = useState<Map<string, string>>(new Map());
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
   const dropdownRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  
+  // Quick assign state
+  const [quickAssignPlayer, setQuickAssignPlayer] = useState<Player | null>(null);
+  const [quickAssignTeam, setQuickAssignTeam] = useState<string>('');
+  const [quickAssignAuction, setQuickAssignAuction] = useState<string>('');
+  const [isQuickAssigning, setIsQuickAssigning] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -384,6 +390,79 @@ export default function RealPlayersPage() {
     };
   };
 
+  const handleQuickAssign = async () => {
+    if (!quickAssignPlayer || !quickAssignTeam || !quickAssignAuction) {
+      setError('Please select a player, team, and enter auction value');
+      return;
+    }
+
+    const auctionValue = parseInt(quickAssignAuction);
+    if (isNaN(auctionValue) || auctionValue <= 0) {
+      setError('Please enter a valid auction value');
+      return;
+    }
+
+    try {
+      setIsQuickAssigning(true);
+      setError(null);
+      setSuccess(null);
+
+      const { start: startSeason, end: endSeason } = getContractSeasons();
+      const salaryPerMatch = calculateRealPlayerSalary(auctionValue, quickAssignPlayer.starRating);
+
+      // Assign player immediately
+      const response = await fetchWithTokenRefresh('/api/contracts/assign-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seasonId: userSeasonId,
+          startSeason,
+          endSeason,
+          players: [{
+            id: quickAssignPlayer.id,
+            teamId: quickAssignTeam,
+            playerName: quickAssignPlayer.playerName,
+            auctionValue: auctionValue,
+            salaryPerMatch: salaryPerMatch,
+            contractStartSeason: startSeason,
+            contractEndSeason: endSeason,
+          }],
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to assign player');
+      }
+
+      // Update local state
+      addPlayerToTeam(quickAssignTeam, {
+        ...quickAssignPlayer,
+        auctionValue: auctionValue,
+        salaryPerMatch: salaryPerMatch,
+        contractStartSeason: startSeason,
+        contractEndSeason: endSeason,
+      });
+
+      const teamName = teams.find(t => t.id === quickAssignTeam)?.name || 'Team';
+      setSuccess(`✅ ${quickAssignPlayer.playerName} assigned to ${teamName} for SSCoin ${auctionValue.toLocaleString()}!`);
+      
+      // Reset form
+      setQuickAssignPlayer(null);
+      setQuickAssignTeam('');
+      setQuickAssignAuction('');
+      
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to assign player');
+    } finally {
+      setIsQuickAssigning(false);
+    }
+  };
+
   const saveTeam = async (teamId: string) => {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
@@ -553,6 +632,160 @@ export default function RealPlayersPage() {
             <p className="text-red-800 font-medium">{error}</p>
           </div>
         )}
+
+        {/* Quick Assign - Live Auction Mode */}
+        <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl shadow-sm border-2 border-green-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center">
+                  <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Quick Assign - Live Auction
+                </h2>
+                <p className="text-green-100 text-sm mt-1">Assign players instantly as WhatsApp auction happens</p>
+              </div>
+              <div className="px-3 py-1 bg-green-500 rounded-full">
+                <span className="text-white font-bold text-sm">🔴 LIVE</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Player Selection */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">1. Select Player</label>
+                <select
+                  value={quickAssignPlayer?.id || ''}
+                  onChange={(e) => {
+                    const player = availablePlayers.find(p => p.id === e.target.value);
+                    setQuickAssignPlayer(player || null);
+                    if (player) {
+                      // Auto-fill minimum auction value
+                      const minValue = starRatingConfig.get(player.starRating) || player.auctionValue;
+                      setQuickAssignAuction(minValue.toString());
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-medium"
+                >
+                  <option value="">Choose player...</option>
+                  {availablePlayers
+                    .sort((a, b) => a.playerName.localeCompare(b.playerName))
+                    .map(player => (
+                      <option key={player.id} value={player.id}>
+                        {player.playerName} ({player.starRating}⭐) - Min SSCoin {starRatingConfig.get(player.starRating) || player.auctionValue}
+                      </option>
+                    ))}
+                </select>
+                {quickAssignPlayer && (
+                  <div className="mt-2 p-2 bg-white rounded border border-green-200">
+                    <div className="flex items-center gap-2">
+                      {quickAssignPlayer.categoryName && (
+                        <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-medium">
+                          {quickAssignPlayer.categoryName}
+                        </span>
+                      )}
+                      <span className="text-xs text-amber-600 font-semibold">{quickAssignPlayer.starRating}⭐</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Team Selection */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">2. Select Team</label>
+                <select
+                  value={quickAssignTeam}
+                  onChange={(e) => setQuickAssignTeam(e.target.value)}
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-medium"
+                >
+                  <option value="">Choose team...</option>
+                  {teams
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(team => {
+                      const slots = maxPlayers - team.assignedPlayers.length;
+                      return (
+                        <option 
+                          key={team.id} 
+                          value={team.id}
+                          disabled={slots <= 0}
+                        >
+                          {team.name} ({team.assignedPlayers.length}/{maxPlayers}) {slots > 0 ? `- ${slots} slots` : '- FULL'}
+                        </option>
+                      );
+                    })}
+                </select>
+                {quickAssignTeam && (
+                  <div className="mt-2 p-2 bg-white rounded border border-green-200">
+                    {(() => {
+                      const team = teams.find(t => t.id === quickAssignTeam);
+                      if (!team) return null;
+                      const remaining = team.originalBudget - team.assignedPlayers.reduce((sum, p) => sum + p.auctionValue, 0);
+                      return (
+                        <p className="text-xs font-semibold text-gray-700">
+                          Budget: SSCoin {remaining.toLocaleString()} left
+                        </p>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* Auction Value Input */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">3. Auction Value</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">SSCoin</span>
+                  <input
+                    type="number"
+                    value={quickAssignAuction}
+                    onChange={(e) => setQuickAssignAuction(e.target.value)}
+                    placeholder="0"
+                    min={quickAssignPlayer ? (starRatingConfig.get(quickAssignPlayer.starRating) || quickAssignPlayer.auctionValue) : 0}
+                    step="10"
+                    className="w-full pl-20 pr-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-bold text-right"
+                  />
+                </div>
+                {quickAssignPlayer && quickAssignAuction && (
+                  <div className="mt-2 p-2 bg-white rounded border border-green-200">
+                    <p className="text-xs text-gray-600">
+                      Salary: <span className="font-semibold text-green-600">SSCoin {calculateRealPlayerSalary(parseInt(quickAssignAuction) || 0, quickAssignPlayer.starRating).toFixed(2)}/match</span>
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Assign Button */}
+              <div className="flex items-end">
+                <button
+                  onClick={handleQuickAssign}
+                  disabled={!quickAssignPlayer || !quickAssignTeam || !quickAssignAuction || isQuickAssigning}
+                  className={`w-full py-3 px-4 rounded-lg font-bold text-white transition-all transform hover:scale-105 ${
+                    !quickAssignPlayer || !quickAssignTeam || !quickAssignAuction || isQuickAssigning
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:shadow-lg'
+                  }`}
+                >
+                  {isQuickAssigning ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Assigning...
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Assign Now!
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Available Players Panel */}

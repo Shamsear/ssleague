@@ -1034,11 +1034,11 @@ export default function TeamDashboard() {
                               <h4 className="font-semibold text-gray-900">{team.team_name}</h4>
                               {team.dollar_balance !== undefined || team.euro_balance !== undefined ? (
                                 <p className="text-sm text-gray-600">
-                                  <span className="text-green-700 font-semibold">${team.dollar_balance?.toLocaleString() || 0}</span> / 
-                                  <span className="text-blue-700 font-semibold">€{team.euro_balance?.toLocaleString() || 0}</span>
+                                  <span className="text-green-700 font-semibold">SSCoin {team.dollar_balance?.toLocaleString() || 0}</span> / 
+                                  <span className="text-blue-700 font-semibold">eCoin {team.euro_balance?.toLocaleString() || 0}</span>
                                 </p>
                               ) : (
-                                <p className="text-sm text-gray-600">Balance: £{team.balance?.toLocaleString() || 0}</p>
+                                <p className="text-sm text-gray-600">Balance: eCoin {team.balance?.toLocaleString() || 0}</p>
                               )}
                             </div>
                           </div>

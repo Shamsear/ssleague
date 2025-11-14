@@ -124,13 +124,16 @@ export default function TransactionsPage() {
       case 'auction': return '🔨';
       case 'real_player_fee': return '👤';
       case 'bonus': return '🎁';
+      case 'match_reward': return '🏆'; // Match reward for Win/Draw/Loss
+      case 'position_reward': return '🥇'; // League position reward
+      case 'completion_bonus': return '🎉'; // Tournament completion bonus
       case 'adjustment': return '🔧';
       case 'transfer_payment': return '➡️';
       case 'transfer_compensation': return '⬅️';
       case 'swap_fee_paid': return '🔄';
       case 'swap_fee_received': return '🔁';
       case 'player_release_refund': return '↩️';
-      case 'initial_balance': return '🏦';
+      case 'initial_balance': return '🏬';
       default: return '📝';
     }
   };
@@ -138,6 +141,26 @@ export default function TransactionsPage() {
 
   const getTransactionColor = (amount: number) => {
     return amount < 0 ? 'text-red-600' : 'text-green-600';
+  };
+
+  const formatTransactionType = (type: string) => {
+    // Special formatting for specific types
+    const typeMap: Record<string, string> = {
+      'match_reward': 'Match Reward',
+      'position_reward': 'Position Reward',
+      'completion_bonus': 'Completion Bonus',
+      'real_player_fee': 'Real Player Fee',
+      'initial_balance': 'Initial Balance',
+      'transfer_payment': 'Transfer Payment',
+      'transfer_compensation': 'Transfer Compensation',
+      'swap_fee_paid': 'Swap Fee Paid',
+      'swap_fee_received': 'Swap Fee Received',
+      'player_release_refund': 'Player Release Refund'
+    };
+    
+    return typeMap[type] || type.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
   };
 
   const formatDate = (dateString: string) => {
@@ -250,8 +273,8 @@ export default function TransactionsPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">{getTransactionIcon(transaction.type)}</span>
                     <div>
-                      <div className="text-sm font-medium text-gray-900 capitalize">
-                        {transaction.type.replace('_', ' ')}
+                      <div className="text-sm font-medium text-gray-900">
+                        {formatTransactionType(transaction.type)}
                       </div>
                       <div className="text-xs text-gray-500">
                         {formatDate(transaction.date)}
@@ -315,8 +338,8 @@ export default function TransactionsPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="flex items-center gap-2">
                           <span className="text-xl">{getTransactionIcon(transaction.type)}</span>
-                          <span className="text-sm font-medium text-gray-900 capitalize">
-                            {transaction.type.replace('_', ' ')}
+                          <span className="text-sm font-medium text-gray-900">
+                            {formatTransactionType(transaction.type)}
                           </span>
                         </span>
                       </td>
@@ -396,7 +419,7 @@ export default function TransactionsPage() {
             >
               <div className="flex items-center justify-center gap-2">
                 <span className="text-2xl">⚽</span>
-                <span>Football Budget (Coins)</span>
+                <span>eCoin Budget</span>
               </div>
             </button>
             <button
@@ -409,7 +432,7 @@ export default function TransactionsPage() {
             >
               <div className="flex items-center justify-center gap-2">
                 <span className="text-2xl">💎</span>
-                <span>Real Player Budget (Credits)</span>
+                <span>SSCoin Budget</span>
               </div>
             </button>
           </div>
@@ -417,16 +440,17 @@ export default function TransactionsPage() {
 
         {/* Tab Content */}
         <div className="bg-gray-50 rounded-b-xl shadow-lg border border-gray-200 border-t-0 p-6">
-          {activeTab === 'football' && renderCurrencySection(footballData, 'Football Budget', 'football')}
-          {activeTab === 'real_player' && renderCurrencySection(realPlayerData, 'Real Player Budget', 'real_player')}
+          {activeTab === 'football' && renderCurrencySection(footballData, 'eCoin Budget', 'football')}
+          {activeTab === 'real_player' && renderCurrencySection(realPlayerData, 'SSCoin Budget', 'real_player')}
         </div>
 
         {/* Info Box */}
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h4 className="font-semibold text-blue-900 mb-2">💡 About Your Budgets:</h4>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• <strong>Football Budget (Coins):</strong> Used for player auctions, salaries, and match-related expenses</li>
-            <li>• <strong>Real Player Budget (Credits):</strong> Used for registering real players and special fees</li>
+            <li>• <strong>eCoin Budget:</strong> Used for player auctions, salaries, and match-related expenses</li>
+            <li>• <strong>SSCoin Budget:</strong> Used for registering real players and special fees</li>
+            <li>• <strong>🏆 Match Rewards:</strong> Earned automatically after each match based on result (Win/Draw/Loss)</li>
             <li>• Negative amounts (in red) are deductions from your balance</li>
             <li>• Positive amounts (in green) are additions to your balance</li>
           </ul>

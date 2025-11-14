@@ -314,20 +314,18 @@ export default function CommitteeTeamsPage() {
                       <>
                         <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
                           <span className="text-gray-700 font-medium flex items-center">
-                            <span className="text-green-600 font-bold mr-1">$</span>
-                            Balance
+                            SSCoin Balance
                           </span>
                           <span className="font-bold text-green-700">
-                            ${teamData.team.dollar_balance?.toLocaleString() ?? '0'}
+                            SSCoin {teamData.team.dollar_balance?.toLocaleString() ?? '0'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
                           <span className="text-gray-700 font-medium flex items-center">
-                            <span className="text-blue-600 font-bold mr-1">€</span>
-                            Balance
+                            eCoin Balance
                           </span>
                           <span className="font-bold text-blue-700">
-                            €{teamData.team.euro_balance?.toLocaleString() ?? '0'}
+                            eCoin {teamData.team.euro_balance?.toLocaleString() ?? '0'}
                           </span>
                         </div>
                       </>
@@ -335,7 +333,7 @@ export default function CommitteeTeamsPage() {
                       <div className="flex items-center justify-between text-sm glass rounded-lg p-2.5">
                         <span className="text-gray-700 font-medium">Balance</span>
                         <span className="font-bold text-[#0066FF]">
-                          £{teamData.team.balance.toLocaleString()}
+                          eCoin {teamData.team.balance.toLocaleString()}
                         </span>
                       </div>
                     )}
