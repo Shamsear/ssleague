@@ -42,16 +42,23 @@ export async function POST(request: NextRequest) {
 
     const sql = getTournamentDb();
 
-    // Check if owner already exists for this team
+    // Check if owner already exists for this team OR this registered user
     const existingOwner = await sql`
-      SELECT owner_id FROM owners
-      WHERE team_id = ${teamId}
+      SELECT owner_id, team_id FROM owners
+      WHERE team_id = ${teamId} 
+         OR (registered_user_id = ${registeredUserId} AND registered_user_id IS NOT NULL)
       LIMIT 1
     `;
 
     if (existingOwner.length > 0) {
       return NextResponse.json(
-        { success: false, message: 'Owner already registered for this team' },
+        { 
+          success: false, 
+          message: existingOwner[0].team_id === teamId 
+            ? 'Owner already registered for this team'
+            : 'This user is already registered as an owner for another team',
+          existingOwnerId: existingOwner[0].owner_id
+        },
         { status: 400 }
       );
     }

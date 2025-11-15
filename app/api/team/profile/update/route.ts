@@ -83,9 +83,12 @@ export async function POST(request: NextRequest) {
         twitter_handle
       } = owner;
 
-      // Check if owner exists
+      // Check if owner exists for this team OR this user
       const existingOwner = await tournamentSql`
-        SELECT id FROM owners WHERE team_id = ${teamId} LIMIT 1
+        SELECT id, team_id FROM owners 
+        WHERE team_id = ${teamId} 
+           OR (registered_user_id = ${userId} AND registered_user_id IS NOT NULL)
+        LIMIT 1
       `;
 
       if (existingOwner.length > 0) {
