@@ -349,9 +349,12 @@ export default function EditTeamProfilePage() {
       });
 
       const result = await response.json();
+      console.log('📦 Update response:', result);
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to update profile');
+        const errorMessage = result.error || 'Failed to update profile';
+        const errorDetails = result.details ? `\n\nDetails: ${result.details}` : '';
+        throw new Error(errorMessage + errorDetails);
       }
 
       setSuccess('Profile updated successfully!');
@@ -359,7 +362,8 @@ export default function EditTeamProfilePage() {
         router.push('/dashboard/team/profile');
       }, 2000);
     } catch (err: any) {
-      console.error('Error updating profile:', err);
+      console.error('❌ Error updating profile:', err);
+      console.error('❌ Error stack:', err.stack);
       setError(err.message || 'Failed to update profile');
     } finally {
       setIsSubmitting(false);

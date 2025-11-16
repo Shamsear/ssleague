@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useResolvedTeamData } from '@/hooks/useResolveTeamNames';
 
 interface Season {
   id: string;
@@ -78,6 +79,16 @@ export default function SeasonDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'awards' | 'trophies'>('teams');
+
+  // Resolve team names to current names (for historical seasons)
+  const { data: resolvedTeams, isLoading: teamsResolving } = useResolvedTeamData(teams, 'team_id', 'team_name');
+  const { data: resolvedPlayers, isLoading: playersResolving } = useResolvedTeamData(players, 'team_id', 'team_name');
+  const { data: resolvedTrophies, isLoading: trophiesResolving } = useResolvedTeamData(trophies, 'team_id', 'team_name');
+
+  // Use resolved data or fall back to original if still loading
+  const displayTeams = resolvedTeams || teams;
+  const displayPlayers = resolvedPlayers || players;
+  const displayTrophies = resolvedTrophies || trophies;
 
   useEffect(() => {
     fetchSeasonData();
@@ -248,76 +259,76 @@ export default function SeasonDetailPage() {
       </div>
 
       {/* Top 3 Podium */}
-      {teams.length >= 3 && (
+      {displayTeams.length >= 3 && (
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-6 text-gray-900 text-center">🏆 Top 3 Teams</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
             {/* Second Place */}
             <Link
-              href={`/teams/${teams[1].team_id}?season=${seasonId}`}
+              href={`/teams/${displayTeams[1].team_id}?season=${seasonId}`}
               className="glass rounded-2xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-105 sm:order-1"
             >
               <div className="text-center">
                 <div className="text-4xl mb-3">🥈</div>
-                {teams[1].logo_url && (
+                {displayTeams[1].logo_url && (
                   <div className="w-20 h-20 mx-auto mb-4 rounded-lg bg-white p-2 flex items-center justify-center">
                     <Image
-                      src={teams[1].logo_url}
-                      alt={teams[1].team_name}
+                      src={displayTeams[1].logo_url}
+                      alt={displayTeams[1].team_name}
                       width={80}
                       height={80}
                       className="object-contain max-w-full max-h-full"
                     />
                   </div>
                 )}
-                <h3 className="font-bold text-lg text-gray-900 mb-1">{teams[1].team_name}</h3>
-                <p className="text-2xl font-bold text-gray-600">{teams[1].points} pts</p>
+                <h3 className="font-bold text-lg text-gray-900 mb-1">{displayTeams[1].team_name}</h3>
+                <p className="text-2xl font-bold text-gray-600">{displayTeams[1].points} pts</p>
               </div>
             </Link>
 
             {/* First Place */}
             <Link
-              href={`/teams/${teams[0].team_id}?season=${seasonId}`}
+              href={`/teams/${displayTeams[0].team_id}?season=${seasonId}`}
               className="glass rounded-2xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-105 sm:order-2 sm:transform sm:scale-110"
             >
               <div className="text-center">
                 <div className="text-5xl mb-3">🥇</div>
-                {teams[0].logo_url && (
+                {displayTeams[0].logo_url && (
                   <div className="w-24 h-24 mx-auto mb-4 rounded-lg bg-white p-2 flex items-center justify-center">
                     <Image
-                      src={teams[0].logo_url}
-                      alt={teams[0].team_name}
+                      src={displayTeams[0].logo_url}
+                      alt={displayTeams[0].team_name}
                       width={96}
                       height={96}
                       className="object-contain max-w-full max-h-full"
                     />
                   </div>
                 )}
-                <h3 className="font-bold text-xl text-gray-900 mb-1">{teams[0].team_name}</h3>
-                <p className="text-3xl font-bold text-amber-600">{teams[0].points} pts</p>
+                <h3 className="font-bold text-xl text-gray-900 mb-1">{displayTeams[0].team_name}</h3>
+                <p className="text-3xl font-bold text-amber-600">{displayTeams[0].points} pts</p>
               </div>
             </Link>
 
             {/* Third Place */}
             <Link
-              href={`/teams/${teams[2].team_id}?season=${seasonId}`}
+              href={`/teams/${displayTeams[2].team_id}?season=${seasonId}`}
               className="glass rounded-2xl p-6 hover:shadow-lg transition-all duration-200 hover:scale-105 sm:order-3"
             >
               <div className="text-center">
                 <div className="text-4xl mb-3">🥉</div>
-                {teams[2].logo_url && (
+                {displayTeams[2].logo_url && (
                   <div className="w-20 h-20 mx-auto mb-4 rounded-lg bg-white p-2 flex items-center justify-center">
                     <Image
-                      src={teams[2].logo_url}
-                      alt={teams[2].team_name}
+                      src={displayTeams[2].logo_url}
+                      alt={displayTeams[2].team_name}
                       width={80}
                       height={80}
                       className="object-contain max-w-full max-h-full"
                     />
                   </div>
                 )}
-                <h3 className="font-bold text-lg text-gray-900 mb-1">{teams[2].team_name}</h3>
-                <p className="text-2xl font-bold text-gray-600">{teams[2].points} pts</p>
+                <h3 className="font-bold text-lg text-gray-900 mb-1">{displayTeams[2].team_name}</h3>
+                <p className="text-2xl font-bold text-gray-600">{displayTeams[2].points} pts</p>
               </div>
             </Link>
           </div>
@@ -334,7 +345,7 @@ export default function SeasonDetailPage() {
               : 'glass text-gray-700 hover:bg-gray-100'
           }`}
         >
-          🏆 Teams ({teams.length})
+          🏆 Teams ({displayTeams.length})
         </button>
         <button
           onClick={() => setActiveTab('players')}
@@ -344,7 +355,7 @@ export default function SeasonDetailPage() {
               : 'glass text-gray-700 hover:bg-gray-100'
           }`}
         >
-          ⚽ Players ({players.length})
+          ⚽ Players ({displayPlayers.length})
         </button>
         <button
           onClick={() => setActiveTab('awards')}
@@ -364,12 +375,12 @@ export default function SeasonDetailPage() {
               : 'glass text-gray-700 hover:bg-gray-100'
           }`}
         >
-          🏆 Trophies ({trophies.length})
+          🏆 Trophies ({displayTrophies.length})
         </button>
       </div>
 
       {/* Team Standings */}
-      {activeTab === 'teams' && teams.length > 0 && (
+      {activeTab === 'teams' && displayTeams.length > 0 && (
         <div className="glass rounded-2xl p-6 sm:p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Full Standings</h2>
 
@@ -391,7 +402,7 @@ export default function SeasonDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {teams.map((team, index) => (
+                {displayTeams.map((team, index) => (
                   <tr key={team.team_id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
                     <td className="py-3 px-4">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${getRankBadgeClass(team.rank || index + 1)}`}>
@@ -433,7 +444,7 @@ export default function SeasonDetailPage() {
 
           {/* Mobile Cards */}
           <div className="lg:hidden space-y-4">
-            {teams.map((team, index) => (
+            {displayTeams.map((team, index) => (
               <Link
                 key={team.team_id}
                 href={`/teams/${team.team_id}?season=${seasonId}`}
@@ -487,7 +498,7 @@ export default function SeasonDetailPage() {
       )}
 
       {/* Players Leaderboard */}
-      {activeTab === 'players' && players.length > 0 && (
+      {activeTab === 'players' && displayPlayers.length > 0 && (
         <div className="glass rounded-2xl p-6 sm:p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Player Leaderboard</h2>
 
@@ -507,7 +518,7 @@ export default function SeasonDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {players.map((player, index) => (
+                {displayPlayers.map((player, index) => (
                   <tr key={player.player_id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
                     <td className="py-3 px-4">
                       <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
@@ -545,7 +556,7 @@ export default function SeasonDetailPage() {
 
           {/* Mobile Cards */}
           <div className="lg:hidden space-y-4">
-            {players.map((player, index) => (
+            {displayPlayers.map((player, index) => (
               <Link
                 key={player.player_id}
                 href={`/players/${player.player_id}`}
@@ -658,11 +669,11 @@ export default function SeasonDetailPage() {
       )}
 
       {/* Trophies */}
-      {activeTab === 'trophies' && trophies.length > 0 && (
+      {activeTab === 'trophies' && displayTrophies.length > 0 && (
         <div className="glass rounded-2xl p-6 sm:p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">🏆 Trophies</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {trophies.map((trophy) => {
+            {displayTrophies.map((trophy) => {
               const isChampion = trophy.position === 1 || trophy.trophy_position?.toLowerCase().includes('champion');
               const isRunnerUp = trophy.position === 2 || trophy.trophy_position?.toLowerCase().includes('runner');
               const isThird = trophy.position === 3 || trophy.trophy_position?.toLowerCase().includes('third');

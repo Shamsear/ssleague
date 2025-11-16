@@ -9,8 +9,11 @@ const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🔄 Profile update request received');
+    
     const auth = await verifyAuth(['team'], request);
     if (!auth.authenticated) {
+      console.error('❌ Authentication failed:', auth.error);
       return NextResponse.json({
         success: false,
         error: auth.error || 'Unauthorized',
@@ -18,15 +21,20 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = auth.userId!;
+    console.log('✅ User authenticated:', userId);
+    
     const body = await request.json();
     const { teamName, logoUrl, owner, manager, seasonId } = body;
+    console.log('📦 Request data:', { teamName, logoUrl, hasOwner: !!owner, hasManager: !!manager, seasonId });
 
     // Get team ID from Neon
+    console.log('🔍 Fetching team for userId:', userId);
     const teamResult = await sql`
       SELECT id FROM teams WHERE firebase_uid = ${userId} LIMIT 1
     `;
     
     if (teamResult.length === 0) {
+      console.error('❌ Team not found for userId:', userId);
       return NextResponse.json({
         success: false,
         error: 'Team not found',
@@ -34,25 +42,15 @@ export async function POST(request: NextRequest) {
     }
 
     const teamId = teamResult[0].id;
+    console.log('✅ Team found:', teamId);
 
     // Update team name/logo in Neon teams table
-    if (teamName || logoUrl) {
-      const updates: string[] = [];
-      const values: any[] = [];
-      
-      if (teamName) {
-        updates.push(`name = $${values.length + 1}`);
-        values.push(teamName);
-      }
-      if (logoUrl) {
-        updates.push(`logo_url = $${values.length + 1}`);
-        values.push(logoUrl);
-      }
-      
-      if (updates.length > 0) {
-        updates.push(`updated_at = NOW()`);
-        await sql`UPDATE teams SET ${sql(updates.join(', '))} WHERE id = ${teamId}`;
-      }
+    if (teamName && logoUrl) {
+      await sql`UPDATE teams SET name = ${teamName}, logo_url = ${logoUrl}, updated_at = NOW() WHERE id = ${teamId}`;
+    } else if (teamName) {
+      await sql`UPDATE teams SET name = ${teamName}, updated_at = NOW() WHERE id = ${teamId}`;
+    } else if (logoUrl) {
+      await sql`UPDATE teams SET logo_url = ${logoUrl}, updated_at = NOW() WHERE id = ${teamId}`;
     }
 
     // Update team_seasons in Firebase
@@ -281,15 +279,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.log('✅ Profile updated successfully');
     return NextResponse.json({
       success: true,
       message: 'Profile updated successfully',
     });
-  } catch (error) {
-    console.error('Error updating profile:', error);
+  } catch (error: any) {
+    console.error('❌ Error updating profile:', error);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error message:', error.message);
     return NextResponse.json({
       success: false,
-      error: 'Failed to update profile',
+      error: error.message || 'Failed to update profile',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     }, { status: 500 });
   }
 }

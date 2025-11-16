@@ -4,6 +4,7 @@ import Link from 'next/link';
 import HeroSection from './components/HeroSection';
 import HallOfFameSelector from './components/HallOfFameSelector';
 import { useEffect, useState } from 'react';
+import { useResolvedTeamData } from '@/hooks/useResolveTeamNames';
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
@@ -16,6 +17,11 @@ export default function Home() {
   const [awardWinners, setAwardWinners] = useState<any>({});
   const [currentSeason, setCurrentSeason] = useState<any>(null);
   const [topTeams, setTopTeams] = useState<any[]>([]);
+
+  // Resolve team names for display
+  const displayTopTeams = useResolvedTeamData(topTeams, 'team_id');
+  const displayChampions = useResolvedTeamData(champions, 'team_id');
+  const displayCupWinners = useResolvedTeamData(cupWinners, 'team_id');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -238,13 +244,13 @@ export default function Home() {
               </Link>
             </div>
 
-            {topTeams.length > 0 && (
+            {displayTopTeams.length > 0 && (
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
                   🏆 <span>Current Standings - Top 3</span>
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  {topTeams.map((team, index) => (
+                  {displayTopTeams.map((team, index) => (
                     <Link
                       key={team.team_id}
                       href={`/teams/${team.team_id}`}
@@ -380,7 +386,7 @@ export default function Home() {
       )}
 
       {/* Trophy Cabinet - Champions */}
-      {champions.length > 0 && (
+      {displayChampions.length > 0 && (
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 p-8 sm:p-10 mb-8 border border-yellow-200/50 shadow-xl">
           {/* Decorative Elements */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-yellow-200/20 to-transparent rounded-full blur-3xl"></div>
@@ -401,7 +407,7 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {champions.slice(0, 6).map((champion: any, index: number) => (
+              {displayChampions.slice(0, 6).map((champion: any, index: number) => (
                 <div
                   key={champion.team_id}
                   className="group relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-yellow-100 hover:border-yellow-300"
@@ -474,13 +480,13 @@ export default function Home() {
       )}
 
       {/* Cup Winners */}
-      {cupWinners && cupWinners.length > 0 && (
+      {displayCupWinners && displayCupWinners.length > 0 && (
         <div className="glass rounded-2xl p-6 sm:p-8 mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 flex items-center">
             🏆 Cup Winners
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {cupWinners.slice(0, 6).map((team: any) => (
+            {displayCupWinners.slice(0, 6).map((team: any) => (
               <div
                 key={team.team_id}
                 className="glass rounded-xl p-4 hover:shadow-lg transition-all border-2 border-blue-300"

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import InstagramEmbed from '@/components/InstagramEmbed';
+import { useResolvedTeamData } from '@/hooks/useResolveTeamNames';
 
 interface Award {
   id: string;
@@ -62,8 +63,9 @@ export default function PublicAwardsPage() {
   const [activeTab, setActiveTab] = useState<'awards' | 'trophies'>('awards');
   const [selectedSeason, setSelectedSeason] = useState<string>('all');
   
-
-
+  // Resolve team names for player awards and trophies
+  const displayPlayerAwards = useResolvedTeamData(playerAwards, 'team_id');
+  const displayTrophies = useResolvedTeamData(trophies, 'team_id');
 
   // Fetch all data on mount
   useEffect(() => {
@@ -138,8 +140,8 @@ export default function PublicAwardsPage() {
   // Extract unique seasons from all data
   const getUniqueSeasons = () => {
     const safeAwards = Array.isArray(awards) ? awards : [];
-    const safePlayerAwards = Array.isArray(playerAwards) ? playerAwards : [];
-    const safeTrophies = Array.isArray(trophies) ? trophies : [];
+    const safePlayerAwards = Array.isArray(displayPlayerAwards) ? displayPlayerAwards : [];
+    const safeTrophies = Array.isArray(displayTrophies) ? displayTrophies : [];
     
     const allSeasons = new Set<string>();
     [...safeAwards, ...safePlayerAwards, ...safeTrophies].forEach(item => {
@@ -152,8 +154,8 @@ export default function PublicAwardsPage() {
   // Get filtered data based on active tab and selected season
   const getFilteredData = () => {
     const safeAwards = Array.isArray(awards) ? awards : [];
-    const safePlayerAwards = Array.isArray(playerAwards) ? playerAwards : [];
-    const safeTrophies = Array.isArray(trophies) ? trophies : [];
+    const safePlayerAwards = Array.isArray(displayPlayerAwards) ? displayPlayerAwards : [];
+    const safeTrophies = Array.isArray(displayTrophies) ? displayTrophies : [];
     
     // Apply season filter
     const filterBySeason = (items: any[]) => {
@@ -193,11 +195,11 @@ export default function PublicAwardsPage() {
           <div className="mt-4 sm:mt-6 flex flex-wrap gap-2 sm:gap-3 justify-center lg:justify-start">
             <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white/80 backdrop-blur-sm rounded-full border border-gray-200 shadow-sm">
               <span className="text-lg sm:text-xl">⭐</span>
-              <span className="text-xs sm:text-sm font-semibold text-gray-900">{(Array.isArray(awards) ? awards.length : 0) + (Array.isArray(playerAwards) ? playerAwards.length : 0)} Awards</span>
+              <span className="text-xs sm:text-sm font-semibold text-gray-900">{(Array.isArray(awards) ? awards.length : 0) + (Array.isArray(displayPlayerAwards) ? displayPlayerAwards.length : 0)} Awards</span>
             </div>
             <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white/80 backdrop-blur-sm rounded-full border border-gray-200 shadow-sm">
               <span className="text-lg sm:text-xl">🏆</span>
-              <span className="text-xs sm:text-sm font-semibold text-gray-900">{Array.isArray(trophies) ? trophies.length : 0} Trophies</span>
+              <span className="text-xs sm:text-sm font-semibold text-gray-900">{Array.isArray(displayTrophies) ? displayTrophies.length : 0} Trophies</span>
             </div>
           </div>
         </header>
