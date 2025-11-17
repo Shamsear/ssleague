@@ -212,8 +212,16 @@ export default function PlayerDetailPage() {
           return startDate <= now;
         }
         
-        // If no start_date field, include it (for backward compatibility with old seasons)
-        return true;
+        // If no start_date field, check status (for backward compatibility)
+        // Only include if status is 'active' or 'completed', NOT if it's 'upcoming'
+        if (fbSeason.status === 'active' || fbSeason.status === 'completed') {
+          return true;
+        }
+        
+        // For very old seasons without start_date or status, include them
+        // (This handles seasons created before these fields existed)
+        const seasonNum = parseInt(seasonId.replace(/\D/g, '')) || 0;
+        return seasonNum < 16; // Only auto-include pre-S16 seasons
       });
       
       // Fetch photo_url from API (single read instead of query)

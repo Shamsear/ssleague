@@ -42,20 +42,42 @@ export async function GET(
       console.error('Error fetching team from Firebase:', error);
     }
 
-    // Fetch team name from Neon
-    const teamInfo = await sql`
-      SELECT team_name
-      FROM teamstats
-      WHERE team_id = ${teamId}
-      LIMIT 1
-    `;
-
-    const teamName = teamInfo.length > 0 ? teamInfo[0].team_name : teamId;
+    // Fetch active seasons from Firebase to know which seasons have actually started
+    const firebaseSeasons = await adminDb.collection('seasons').get();
+    const activeSeasonIds = new Set();
+    const seasonStatuses: Record<string, {is_active: boolean; status: string}> = {};
+    
+    firebaseSeasons.docs.forEach(doc => {
+      const data = doc.data();
+      seasonStatuses[doc.id] = {
+        is_active: data.is_active === true,
+        status: data.status
+      };
+      
+      // Check if season has actually started
+      let hasStarted = false;
+      if (data.start_date) {
+        const startDate = data.start_date.toDate ? data.start_date.toDate() : new Date(data.start_date);
+        const now = new Date();
+        hasStarted = startDate <= now;
+      } else {
+        // If no start_date, check status (backward compatibility)
+        hasStarted = data.status === 'completed' || data.status === 'active';
+      }
+      
+      // Include seasons that have started (based on start_date or status)
+      if (hasStarted) {
+        activeSeasonIds.add(doc.id);
+      }
+    });
 
     // Fetch all seasons for this team from Neon
+    // NOTE: team_name is fetched per season to get historical team names
+    // (e.g., "Hooligans" for S11, "Skill 555" for S12+)
     const seasonStats = await sql`
       SELECT 
         team_id,
+        team_name,
         season_id,
         matches_played,
         wins,
@@ -80,9 +102,15 @@ export async function GET(
 
     const seasons: any[] = [];
 
-    // Process each season
+    // Process each season (only those that have started)
     for (const seasonData of seasonStats) {
       const seasonId = seasonData.season_id;
+      
+      // Skip seasons that haven't started yet (future contract seasons)
+      if (!activeSeasonIds.has(seasonId)) {
+        console.log(`Skipping future season ${seasonId} for team ${teamId}`);
+        continue;
+      }
 
       // Fetch players for this team and season
       let players: any[] = [];
@@ -147,7 +175,7 @@ export async function GET(
       seasons.push({
         id: `${teamId}_${seasonId}`,
         team_id: teamId,
-        team_name: teamName,
+        team_name: seasonData.team_name || teamId,
         team_code: teamId,
         season_id: seasonId,
         season_name: seasonId,

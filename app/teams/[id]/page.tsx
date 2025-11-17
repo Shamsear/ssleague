@@ -301,7 +301,7 @@ export default function TeamDetailPage() {
 
                 {/* Team Basic Info */}
                 <div className="text-center">
-                  <h1 className="text-2xl font-bold text-dark mb-1">{team.team_name}</h1>
+                  <h1 className="text-2xl font-bold text-dark mb-1">{currentSeasonData.team_name}</h1>
                   <p className="text-sm text-gray-500 mb-4">{team.team_code}</p>
                   
                   {currentSeasonData.manager_name && (

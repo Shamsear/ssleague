@@ -73,6 +73,19 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Team document created: ${teamId}`);
 
+    // CRITICAL: Update user document with teamId so season registration can find the team
+    try {
+      await adminDb.collection('users').doc(uid).update({
+        teamId: teamId,
+        updated_at: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      console.log(`✅ User document updated with teamId: ${teamId}`);
+    } catch (userUpdateError) {
+      console.error('Error updating user document with teamId:', userUpdateError);
+      // This is critical but we'll log and continue
+    }
+
     // Set custom claims for the user (enables role-based auth without DB reads)
     try {
       const user = await adminAuth.getUser(uid);

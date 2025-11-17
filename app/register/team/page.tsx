@@ -493,7 +493,7 @@ function SeasonRegistrationContent() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">Register Team Owner</h3>
                   
                   <OwnerRegistrationForm
-                    teamId={user.uid}
+                    teamId={user.teamId || user.uid}
                     userId={user.uid}
                     userName={user.displayName || user.teamName || ''}
                     userEmail={user.email || ''}
