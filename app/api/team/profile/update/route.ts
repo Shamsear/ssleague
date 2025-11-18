@@ -44,13 +44,9 @@ export async function POST(request: NextRequest) {
     const teamId = teamResult[0].id;
     console.log('✅ Team found:', teamId);
 
-    // Update team name/logo in Neon teams table
-    if (teamName && logoUrl) {
-      await sql`UPDATE teams SET name = ${teamName}, logo_url = ${logoUrl}, updated_at = NOW() WHERE id = ${teamId}`;
-    } else if (teamName) {
+    // Update team name in Neon teams table (logo is stored in Firebase only)
+    if (teamName) {
       await sql`UPDATE teams SET name = ${teamName}, updated_at = NOW() WHERE id = ${teamId}`;
-    } else if (logoUrl) {
-      await sql`UPDATE teams SET logo_url = ${logoUrl}, updated_at = NOW() WHERE id = ${teamId}`;
     }
 
     // Update team_seasons in Firebase
