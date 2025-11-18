@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadPlayerPhoto } from '@/lib/imagekit/playerPhotos';
+import { uploadPlayerPhotoServer } from '@/lib/imagekit/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Upload to ImageKit
-    const result = await uploadPlayerPhoto(playerId, file);
+    // Upload to ImageKit (server-side)
+    const result = await uploadPlayerPhotoServer(playerId, file);
 
     return NextResponse.json({ 
       url: result.url,
@@ -23,10 +23,10 @@ export async function POST(request: NextRequest) {
       playerId,
       fileName: file.name
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error uploading photo:', error);
     return NextResponse.json(
-      { error: 'Failed to upload photo' },
+      { error: error.message || 'Failed to upload photo' },
       { status: 500 }
     );
   }

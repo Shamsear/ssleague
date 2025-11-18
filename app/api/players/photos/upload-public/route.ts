@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bulkUploadPlayerPhotos } from '@/lib/imagekit/playerPhotos';
+import { bulkUploadPlayerPhotosServer } from '@/lib/imagekit/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,8 +19,8 @@ export async function POST(request: NextRequest) {
       return { playerId, file };
     });
 
-    // Upload to ImageKit
-    const results = await bulkUploadPlayerPhotos(uploads);
+    // Upload to ImageKit (server-side)
+    const results = await bulkUploadPlayerPhotosServer(uploads);
 
     const successCount = results.filter(r => !r.error).length;
     const errorCount = results.filter(r => r.error).length;
