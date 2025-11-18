@@ -467,14 +467,8 @@ export default function RealPlayersPage() {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
 
-    // Validate min/max players
-    const minPlayers = currentSeason?.min_real_players || 5;
+    // Validate max players only
     const maxPlayers = currentSeason?.max_real_players || 7;
-    
-    if (team.assignedPlayers.length < minPlayers) {
-      setError(`${team.name} needs at least ${minPlayers} players (currently ${team.assignedPlayers.length})`);
-      return;
-    }
     
     if (team.assignedPlayers.length > maxPlayers) {
       setError(`${team.name} can have maximum ${maxPlayers} players (currently ${team.assignedPlayers.length})`);
@@ -867,7 +861,7 @@ export default function RealPlayersPage() {
               const remainingBudget = team.originalBudget - totalCost;
               const isOverBudget = remainingBudget < 0;
               const playerCount = team.assignedPlayers.length;
-              const isValidCount = playerCount >= minPlayers && playerCount <= maxPlayers;
+              const isValidCount = playerCount <= maxPlayers; // Only check max, not min
               const currencySymbol = team.currencySystem === 'dual' ? '$' : '£';
 
               return (
@@ -895,7 +889,7 @@ export default function RealPlayersPage() {
                           <h3 className="font-bold text-gray-900 text-lg">{team.name}</h3>
                           <div className="flex items-center gap-3 mt-1 text-xs">
                             <span className={`font-semibold ${
-                              isValidCount ? 'text-green-600' : 'text-orange-600'
+                              playerCount > maxPlayers ? 'text-red-600' : 'text-gray-700'
                             }`}>
                               {playerCount}/{maxPlayers} players
                             </span>
@@ -1144,14 +1138,13 @@ export default function RealPlayersPage() {
                           onClick={() => saveTeam(team.id)}
                           disabled={
                             savingTeamId === team.id || 
-                            playerCount < minPlayers || 
                             playerCount > maxPlayers ||
                             isOverBudget
                           }
                           className={`w-full py-3 px-4 rounded-xl font-semibold transition-all ${
                             savingTeamId === team.id
                               ? 'bg-gray-400 text-white cursor-wait'
-                              : playerCount < minPlayers || playerCount > maxPlayers || isOverBudget
+                              : playerCount > maxPlayers || isOverBudget
                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                               : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:shadow-lg'
                           }`}
@@ -1161,8 +1154,6 @@ export default function RealPlayersPage() {
                               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                               Saving...
                             </span>
-                          ) : playerCount < minPlayers ? (
-                            `Need ${minPlayers - playerCount} more player${minPlayers - playerCount > 1 ? 's' : ''}`
                           ) : playerCount > maxPlayers ? (
                             `Remove ${playerCount - maxPlayers} player${playerCount - maxPlayers > 1 ? 's' : ''}`
                           ) : isOverBudget ? (

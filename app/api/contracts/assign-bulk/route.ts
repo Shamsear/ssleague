@@ -394,15 +394,37 @@ export async function POST(request: NextRequest) {
       
       if (currentTeamSeasonDoc.exists) {
         const currentTeamData = currentTeamSeasonDoc.data();
-        const newBalance = (currentTeamData?.real_player_starting_balance || 0) - data.totalSpent;
+        const currencySystem = currentTeamData?.currency_system || 'single';
         
-        await currentTeamSeasonRef.update({
+        // Handle both single and dual currency systems
+        const updateData: any = {
           players_count: data.count,
-          real_player_spent: data.totalSpent,
-          real_player_budget: newBalance,
           updated_at: FieldValue.serverTimestamp(),
-        });
-        console.log(`Updated team_seasons ${currentSeasonDocId}: ${data.count} players, $${data.totalSpent} spent`);
+        };
+        
+        if (currencySystem === 'dual') {
+          // Dual currency system - update real player budget fields
+          const startingBalance = currentTeamData?.initial_real_player_budget || 
+                                  currentTeamData?.real_player_budget_initial ||
+                                  currentTeamData?.real_player_starting_balance || 
+                                  1000;
+          const newBalance = startingBalance - data.totalSpent;
+          
+          updateData.real_player_spent = data.totalSpent;
+          updateData.real_player_budget = newBalance;
+        } else {
+          // Single currency system - update main budget fields
+          const startingBalance = currentTeamData?.initial_budget || 
+                                  currentTeamData?.budget_initial || 
+                                  10000;
+          const newBalance = startingBalance - data.totalSpent;
+          
+          updateData.total_spent = data.totalSpent;
+          updateData.budget = newBalance;
+        }
+        
+        await currentTeamSeasonRef.update(updateData);
+        console.log(`Updated team_seasons ${currentSeasonDocId} (${currencySystem}): ${data.count} players, $${data.totalSpent} spent`);
         
         // Delete old real_player_fee transactions for this team
         const oldTransactionsQuery = await adminDb
