@@ -49,6 +49,30 @@ export async function POST(request: NextRequest) {
       await sql`UPDATE teams SET name = ${teamName}, updated_at = NOW() WHERE id = ${teamId}`;
     }
 
+    // Update Firebase users collection (for global team info)
+    if (teamName || logoUrl) {
+      const userRef = adminDb.collection('users').doc(userId);
+      const userUpdateData: any = {};
+      
+      if (teamName) userUpdateData.teamName = teamName;
+      if (logoUrl) userUpdateData.logoUrl = logoUrl;
+      
+      await userRef.update(userUpdateData);
+      console.log('✅ Updated users collection:', userUpdateData);
+    }
+
+    // Update Firebase teams collection
+    if (teamName || logoUrl) {
+      const teamRef = adminDb.collection('teams').doc(teamId);
+      const teamUpdateData: any = {};
+      
+      if (teamName) teamUpdateData.name = teamName;
+      if (logoUrl) teamUpdateData.logo_url = logoUrl;
+      
+      await teamRef.update(teamUpdateData);
+      console.log('✅ Updated teams collection:', teamUpdateData);
+    }
+
     // Update team_seasons in Firebase
     if (seasonId && (teamName || logoUrl)) {
       const teamSeasonRef = adminDb.collection('team_seasons').doc(`${teamId}_${seasonId}`);
@@ -58,6 +82,7 @@ export async function POST(request: NextRequest) {
       if (logoUrl) updateData.team_logo = logoUrl;
       
       await teamSeasonRef.update(updateData);
+      console.log('✅ Updated team_seasons collection:', updateData);
     }
 
     const tournamentSql = getTournamentDb();
