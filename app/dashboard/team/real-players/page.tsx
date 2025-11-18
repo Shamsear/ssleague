@@ -33,7 +33,7 @@ export default function RealPlayersPage() {
   const [players, setPlayers] = useState<RealPlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [starFilter, setStarFilter] = useState('all');
   const [teamFilter, setTeamFilter] = useState('all');
   const [sortBy, setSortBy] = useState<'name' | 'points' | 'rating' | 'matches' | 'goals'>('points');
   const [activeSeason, setActiveSeason] = useState<any>(null);
@@ -144,14 +144,18 @@ export default function RealPlayersPage() {
     fetchData();
   }, [user]);
 
+  // Extract unique star ratings from players for filter options
+  const uniqueStarRatings = Array.from(new Set(players.map(p => p.star_rating).filter(Boolean)))
+    .sort((a, b) => b - a); // Sort in descending order
+
   const filteredPlayers = players
     .filter(player => {
       const matchesSearch = player.player_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (player.display_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                           player.team.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = categoryFilter === 'all' || player.category?.toLowerCase() === categoryFilter.toLowerCase();
+                           (player.team?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+      const matchesStar = starFilter === 'all' || (player.star_rating === parseInt(starFilter));
       const matchesTeam = teamFilter === 'all' || player.team === teamFilter;
-      return matchesSearch && matchesCategory && matchesTeam;
+      return matchesSearch && matchesStar && matchesTeam;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -236,17 +240,18 @@ export default function RealPlayersPage() {
               />
             </div>
 
-            {/* Category Filter */}
+            {/* Star Rating Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Star Rating</label>
               <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                value={starFilter}
+                onChange={(e) => setStarFilter(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="all">All Categories</option>
-                <option value="legend">Legend</option>
-                <option value="classic">Classic</option>
+                <option value="all">All Stars</option>
+                {uniqueStarRatings.map(rating => (
+                  <option key={rating} value={rating}>{rating} ⭐</option>
+                ))}
               </select>
             </div>
 
@@ -295,7 +300,7 @@ export default function RealPlayersPage() {
               <div className="text-6xl mb-4">👥</div>
               <h3 className="text-2xl font-bold text-gray-900 mb-2">No Players Found</h3>
               <p className="text-gray-600">
-                {searchTerm || categoryFilter !== 'all' || teamFilter !== 'all'
+                {searchTerm || starFilter !== 'all' || teamFilter !== 'all'
                   ? 'Try adjusting your filters'
                   : 'No players available'}
               </p>
@@ -388,7 +393,7 @@ export default function RealPlayersPage() {
               <div className="text-6xl mb-4">👥</div>
               <h3 className="text-2xl font-bold text-gray-900 mb-2">No Players Found</h3>
               <p className="text-gray-600">
-                {searchTerm || categoryFilter !== 'all' || teamFilter !== 'all'
+                {searchTerm || starFilter !== 'all' || teamFilter !== 'all'
                   ? 'Try adjusting your filters'
                   : 'No players available'}
               </p>
