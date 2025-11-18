@@ -10,6 +10,28 @@ import { useCachedSeasons } from '@/hooks/useCachedFirebase';
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'LWF', 'RWF', 'SS', 'CF'];
 const MAX_PLAYERS_PER_TEAM = 25;
 
+interface Owner {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  photo_url?: string;
+  bio?: string;
+  place?: string;
+  nationality?: string;
+}
+
+interface Manager {
+  id: string;
+  name: string;
+  is_player: boolean;
+  photo_url?: string;
+  email?: string;
+  phone?: string;
+  place?: string;
+  nationality?: string;
+}
+
 interface TeamProfile {
   name: string;
   logoUrl?: string;
@@ -42,6 +64,8 @@ export default function TeamProfilePage() {
   const [profileData, setProfileData] = useState<TeamProfile | null>(null);
   const [recentPlayers, setRecentPlayers] = useState<Player[]>([]);
   const [topPlayers, setTopPlayers] = useState<Player[]>([]);
+  const [owner, setOwner] = useState<Owner | null>(null);
+  const [manager, setManager] = useState<Manager | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,6 +138,10 @@ export default function TeamProfilePage() {
             .sort((a: Player, b: Player) => b.overall_rating - a.overall_rating)
             .slice(0, 5);
           setTopPlayers(topPlayersList);
+
+          // Set owner and manager data
+          setOwner(data.owner);
+          setManager(data.manager);
         }
       } catch (error: any) {
         console.error('Error fetching profile:', error);
@@ -215,16 +243,16 @@ export default function TeamProfilePage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="bg-white/50 rounded-xl p-3">
+                <p className="text-xs text-gray-600 mb-1">Owner</p>
+                <p className="text-lg font-semibold text-dark">{owner?.name || 'Not set'}</p>
+              </div>
+              <div className="bg-white/50 rounded-xl p-3">
                 <p className="text-xs text-gray-600 mb-1">Manager</p>
-                <p className="text-lg font-semibold text-dark">{profileData.managerName}</p>
+                <p className="text-lg font-semibold text-dark">{manager?.name || 'Not set'}</p>
               </div>
               <div className="bg-white/50 rounded-xl p-3">
                 <p className="text-xs text-gray-600 mb-1">Players</p>
                 <p className="text-lg font-semibold text-dark">{profileData.playerCount}/{MAX_PLAYERS_PER_TEAM}</p>
-              </div>
-              <div className="bg-white/50 rounded-xl p-3">
-                <p className="text-xs text-gray-600 mb-1">Total Bids</p>
-                <p className="text-lg font-semibold text-dark">{profileData.totalBids}</p>
               </div>
               <div className="bg-white/50 rounded-xl p-3">
                 <p className="text-xs text-gray-600 mb-1">Won Bids</p>
@@ -348,6 +376,145 @@ export default function TeamProfilePage() {
           })}
         </div>
       </div>
+
+      {/* Owner & Manager Section */}
+      {(owner || manager) && (
+        <div className="glass rounded-3xl p-6 sm:p-8 mb-6 sm:mb-8 hover:shadow-lg transition-all duration-300">
+          <div className="flex items-center mb-6">
+            <svg className="w-6 h-6 text-primary mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <h2 className="text-2xl font-bold text-dark">Team Management</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Owner Card */}
+            {owner && (
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6">
+                <div className="flex items-center mb-4">
+                  {owner.photo_url ? (
+                    <img
+                      src={owner.photo_url}
+                      alt={owner.name}
+                      className="w-16 h-16 rounded-full object-cover border-2 border-blue-500"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-xl border-2 border-blue-600">
+                      {owner.name?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-4">
+                    <p className="text-sm text-blue-600 font-medium mb-1">Team Owner</p>
+                    <p className="text-xl font-bold text-dark">{owner.name}</p>
+                  </div>
+                </div>
+                {(owner.email || owner.phone || owner.place || owner.nationality) && (
+                  <div className="space-y-2 text-sm">
+                    {owner.email && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <span>{owner.email}</span>
+                      </div>
+                    )}
+                    {owner.phone && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        <span>{owner.phone}</span>
+                      </div>
+                    )}
+                    {owner.place && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>{owner.place}</span>
+                      </div>
+                    )}
+                    {owner.nationality && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                        </svg>
+                        <span>{owner.nationality}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {owner.bio && (
+                  <p className="mt-4 text-sm text-gray-600 italic">"{owner.bio}"</p>
+                )}
+              </div>
+            )}
+
+            {/* Manager Card */}
+            {manager && (
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6">
+                <div className="flex items-center mb-4">
+                  {manager.photo_url ? (
+                    <img
+                      src={manager.photo_url}
+                      alt={manager.name}
+                      className="w-16 h-16 rounded-full object-cover border-2 border-green-500"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white font-bold text-xl border-2 border-green-600">
+                      {manager.name?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-4">
+                    <p className="text-sm text-green-600 font-medium mb-1">
+                      {manager.is_player ? 'Playing Manager' : 'Team Manager'}
+                    </p>
+                    <p className="text-xl font-bold text-dark">{manager.name}</p>
+                  </div>
+                </div>
+                {(manager.email || manager.phone || manager.place || manager.nationality) && (
+                  <div className="space-y-2 text-sm">
+                    {manager.email && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <span>{manager.email}</span>
+                      </div>
+                    )}
+                    {manager.phone && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        <span>{manager.phone}</span>
+                      </div>
+                    )}
+                    {manager.place && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>{manager.place}</span>
+                      </div>
+                    )}
+                    {manager.nationality && (
+                      <div className="flex items-center text-gray-700">
+                        <svg className="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                        </svg>
+                        <span>{manager.nationality}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Recent Acquisitions and Top Players */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
