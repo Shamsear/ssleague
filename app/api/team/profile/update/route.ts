@@ -125,12 +125,11 @@ export async function POST(request: NextRequest) {
 
         const ownerId = formatId(ID_PREFIXES.OWNER, nextCounter, ID_PADDING.OWNER);
 
-        // Create new owner
+        // Create new owner (note: season_id removed - owners are team-level)
         await tournamentSql`
           INSERT INTO owners (
             owner_id,
             team_id,
-            season_id,
             name,
             photo_url,
             email,
@@ -149,7 +148,6 @@ export async function POST(request: NextRequest) {
           ) VALUES (
             ${ownerId},
             ${teamId},
-            ${seasonId || null},
             ${name || ''},
             ${photo_url || null},
             ${email || null},

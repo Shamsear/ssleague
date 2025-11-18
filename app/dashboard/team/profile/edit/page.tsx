@@ -176,12 +176,15 @@ export default function EditTeamProfilePage() {
             console.log('⚠️ No manager data in response');
           }
           
-          // Real Players list
+          // Real Players list - filter out any players with null/undefined critical fields
           console.log('🔄 Setting real players list...');
           console.log('👥 Real players count:', data.realPlayers?.length || 0);
           console.log('👥 Real players data:', data.realPlayers);
-          setRealPlayers(data.realPlayers || []);
-          console.log('✅ Real players state updated');
+          const validPlayers = (data.realPlayers || []).filter((p: any) => 
+            p && p.id && p.player_id && p.name
+          );
+          setRealPlayers(validPlayers);
+          console.log('✅ Real players state updated, valid players:', validPlayers.length);
         } else {
           console.log('❌ API returned error:', result.error);
         }
@@ -686,8 +689,8 @@ export default function EditTeamProfilePage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm text-blue-600 font-medium mb-1">Current Manager</p>
-                          <p className="font-bold text-gray-900">{selectedPlayer.name}</p>
-                          <p className="text-sm text-gray-600">{selectedPlayer.position} • {selectedPlayer.overall_rating} OVR</p>
+                          <p className="font-bold text-gray-900">{selectedPlayer.name || 'Unknown'}</p>
+                          <p className="text-sm text-gray-600">{selectedPlayer.position || 'Player'} • {selectedPlayer.overall_rating || 0} OVR</p>
                         </div>
                         <button
                           type="button"
@@ -710,7 +713,7 @@ export default function EditTeamProfilePage() {
                             onClick={() => setSelectedPlayer(player)}
                             className="p-4 rounded-xl border-2 text-left transition-all border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                           >
-                            <div className="font-bold text-gray-900">{player.name}</div>
+                            <div className="font-bold text-gray-900">{player.name || 'Unknown'}</div>
                             <div className="text-sm text-gray-600">{player.position || 'Player'}</div>
                           </button>
                         ))}
