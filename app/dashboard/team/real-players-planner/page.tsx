@@ -60,6 +60,18 @@ const TOTAL_BUDGET = 1000;
 const MIN_BID = 100;
 const DEFAULT_MATCHES = 38;
 
+// Points based on star rating
+const STAR_RATING_POINTS: Record<number, number> = {
+  3: 100,
+  4: 120,
+  5: 145,
+  6: 175,
+  7: 210,
+  8: 250,
+  9: 300,
+  10: 375
+};
+
 // Calculate minimum bid based on star rating (base price to maintain that rating)
 const getMinimumBidForStars = (stars: number): number => {
   const baseValues: Record<number, number> = {
@@ -369,6 +381,38 @@ export default function RealPlayersPlannerPage() {
     }
     
     return null;
+  };
+
+  // Generate bid increments with points preview
+  const getBidIncrements = (initialStars: number, currentBid: number): Array<{ bid: number; stars: number; points: number; isUpgrade: boolean }> => {
+    const increments: Array<{ bid: number; stars: number; points: number; isUpgrade: boolean }> = [];
+    const upgrades = UPGRADE_MATRIX[initialStars];
+    
+    if (!upgrades) return increments;
+    
+    // Get all upgrade thresholds
+    const thresholds = Object.keys(upgrades).map(Number).sort((a, b) => a - b);
+    
+    // Start from current bid or minimum, go up to highest upgrade + 20
+    const minBid = starRatingConfig[initialStars] || getMinimumBidForStars(initialStars);
+    const startBid = Math.max(currentBid, minBid);
+    const maxThreshold = Math.max(...thresholds);
+    const maxBid = maxThreshold + 20;
+    
+    // Generate increments in steps of 5
+    for (let bid = startBid; bid <= maxBid && increments.length < 10; bid += 5) {
+      const stars = calculateFinalStars(initialStars, bid);
+      const points = STAR_RATING_POINTS[stars] || 100;
+      const isUpgrade = stars > initialStars;
+      
+      // Check if this bid crosses an upgrade threshold
+      const prevStars = bid >= 5 ? calculateFinalStars(initialStars, bid - 5) : initialStars;
+      const justUpgraded = stars > prevStars;
+      
+      increments.push({ bid, stars, points, isUpgrade: justUpgraded });
+    }
+    
+    return increments;
   };
 
   if (loading || isLoadingBudget || isLoadingPlayers) {
@@ -778,6 +822,60 @@ export default function RealPlayersPlannerPage() {
                       SSCoin {player.totalSalary.toFixed(2)}
                     </div>
                   </div>
+
+                  {/* Bid Increments with Points Preview */}
+                  {player.player_id && player.bidAmount > 0 && (
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
+                      <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <span>🎯 Bid Increments (+5)</span>
+                        <span className="text-xs text-gray-500">(Stars & Points)</span>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {getBidIncrements(player.initialStars, player.bidAmount).map((increment, idx) => {
+                          const isCurrentBid = increment.bid === player.bidAmount;
+                          return (
+                            <div 
+                              key={idx}
+                              className={`flex items-center justify-between text-xs py-1.5 px-2 rounded-lg ${
+                                isCurrentBid 
+                                  ? 'bg-blue-100 border border-blue-300 font-semibold' 
+                                  : increment.isUpgrade
+                                  ? 'bg-green-100 border border-green-300 font-semibold'
+                                  : 'bg-white/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={isCurrentBid ? 'text-blue-700' : 'text-gray-700'}>
+                                  ${increment.bid}
+                                </span>
+                                {isCurrentBid && (
+                                  <span className="text-xs px-1.5 py-0.5 bg-blue-200 text-blue-700 rounded">Current</span>
+                                )}
+                                {increment.isUpgrade && !isCurrentBid && (
+                                  <span className="text-xs px-1.5 py-0.5 bg-green-200 text-green-700 rounded">⬆ Upgrade!</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={`font-semibold ${
+                                  isCurrentBid ? 'text-blue-700' : increment.isUpgrade ? 'text-green-700' : 'text-gray-600'
+                                }`}>
+                                  {increment.stars}⭐
+                                </span>
+                                <span className={`font-bold ${
+                                  isCurrentBid ? 'text-blue-700' : increment.isUpgrade ? 'text-green-700' : 'text-gray-700'
+                                }`}>
+                                  {increment.points} pts
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        Current: {player.finalStars}⭐ = {STAR_RATING_POINTS[player.finalStars] || 100} points
+                      </p>
+                    </div>
+                  )}
                 </div>
                 </div>
               </div>
