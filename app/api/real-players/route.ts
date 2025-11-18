@@ -52,6 +52,10 @@ export async function GET(request: NextRequest) {
             name: data.name,
             display_name: data.display_name,
             photo_url: data.photo_url,
+            photo_position_circle: data.photo_position_circle,
+            photo_position_x_circle: data.photo_position_x_circle,
+            photo_position_y_circle: data.photo_position_y_circle,
+            photo_scale_circle: data.photo_scale_circle,
             team: data.team,
             category: data.category,
           });

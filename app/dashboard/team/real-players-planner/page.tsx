@@ -12,6 +12,9 @@ interface RealPlayer {
   player_name: string;
   display_name?: string;
   photo_url?: string;
+  photo_position_x_circle?: number;
+  photo_position_y_circle?: number;
+  photo_scale_circle?: number;
   team: string;
   team_id: string;
   category: string;
@@ -28,6 +31,9 @@ interface PlayerPlan {
   player_id?: string;
   name: string;
   photo_url?: string;
+  photo_position_x_circle?: number;
+  photo_position_y_circle?: number;
+  photo_scale_circle?: number;
   category?: string;
   initialStars: number;
   bidAmount: number;
@@ -67,6 +73,19 @@ const getMinimumBidForStars = (stars: number): number => {
     10: 710  // Minimum to stay at 10★
   };
   return baseValues[stars] || 100;
+};
+
+// Generate photo transform style based on custom positioning (matching PlayerPhoto component)
+const getPhotoStyle = (x?: number, y?: number, scale?: number) => {
+  const posX = x ?? 50;
+  const posY = y ?? 50;
+  const scaleValue = scale ?? 1;
+  
+  return {
+    objectPosition: `${posX}% ${posY}%`,
+    transform: `scale(${scaleValue})`,
+    transformOrigin: `${posX}% ${posY}%`,
+  };
 };
 
 export default function RealPlayersPlannerPage() {
@@ -149,11 +168,25 @@ export default function RealPlayersPlannerPage() {
                       const photosData = await photosResponse.json();
                       if (photosData.success && photosData.players) {
                         const photoMap = new Map(
-                          photosData.players.map((p: any) => [p.player_id, p.photo_url])
+                          photosData.players.map((p: any) => [
+                            p.player_id, 
+                            { 
+                              photo_url: p.photo_url,
+                              photo_position_x_circle: p.photo_position_x_circle,
+                              photo_position_y_circle: p.photo_position_y_circle,
+                              photo_scale_circle: p.photo_scale_circle
+                            }
+                          ])
                         );
                         
                         realPlayers.forEach((player: any) => {
-                          player.photo_url = photoMap.get(player.player_id) || null;
+                          const photoData = photoMap.get(player.player_id);
+                          if (photoData) {
+                            player.photo_url = photoData.photo_url;
+                            player.photo_position_x_circle = photoData.photo_position_x_circle;
+                            player.photo_position_y_circle = photoData.photo_position_y_circle;
+                            player.photo_scale_circle = photoData.photo_scale_circle;
+                          }
                         });
                       }
                     }
@@ -214,6 +247,9 @@ export default function RealPlayersPlannerPage() {
         player_id: realPlayer.player_id,
         name: realPlayer.display_name || realPlayer.player_name,
         photo_url: realPlayer.photo_url,
+        photo_position_x_circle: realPlayer.photo_position_x_circle,
+        photo_position_y_circle: realPlayer.photo_position_y_circle,
+        photo_scale_circle: realPlayer.photo_scale_circle,
         category: realPlayer.category,
         initialStars: initialStars,
         bidAmount: minimumBid
@@ -466,7 +502,11 @@ export default function RealPlayersPlannerPage() {
             const nextUpgrade = getNextUpgrade(player.initialStars, player.bidAmount);
             
             return (
-              <div key={player.id} className="glass rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-5 hover:shadow-lg transition-all duration-300 border border-white/20">
+              <div 
+                key={player.id} 
+                className="glass rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-5 hover:shadow-lg transition-all duration-300 border border-white/20"
+                style={{ position: 'relative', zIndex: openDropdownIndex === index ? 100 : 1 }}
+              >
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <h3 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2">
                     <span className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center text-xs sm:text-sm font-bold">{index + 1}</span>
@@ -487,20 +527,22 @@ export default function RealPlayersPlannerPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                 {/* Left Column - Input */}
                 <div className="space-y-4">
-                  <div className="relative" style={{ zIndex: openDropdownIndex === index ? 100 : 'auto' }}>
+                  <div className="relative" style={{ zIndex: openDropdownIndex === index ? 50 : 'auto' }}>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Player Selection</label>
                     <button
                       onClick={() => toggleDropdown(index)}
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:bg-gray-50 transition-colors text-left flex items-center gap-3"
                     >
                       {player.photo_url ? (
-                        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+                        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white/50 shadow-md relative">
                           <OptimizedImage
                             src={player.photo_url}
                             alt={player.name}
-                            width={40}
-                            height={40}
+                            width={80}
+                            height={80}
+                            quality={85}
                             className="w-full h-full object-cover"
+                            style={getPhotoStyle(player.photo_position_x_circle, player.photo_position_y_circle, player.photo_scale_circle)}
                             fallback={
                               <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
                                 <span className="text-sm font-bold text-blue-600">{player.name[0]}</span>
@@ -528,7 +570,7 @@ export default function RealPlayersPlannerPage() {
                     
                     {/* Dropdown */}
                     {openDropdownIndex === index && (
-                      <div className="absolute z-50 w-full mt-2 bg-white rounded-lg shadow-xl border border-gray-200 max-h-96 overflow-hidden flex flex-col">
+                      <div className="absolute w-full mt-2 bg-white rounded-lg shadow-xl border border-gray-200 max-h-96 overflow-hidden flex flex-col" style={{ zIndex: 50 }}>
                         {/* Search */}
                         <div 
                           className="p-3 border-b border-gray-200"
@@ -572,14 +614,16 @@ export default function RealPlayersPlannerPage() {
                                 className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 transition-colors text-left border-b border-gray-100 last:border-b-0"
                               >
                                 {/* Player Photo */}
-                                <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0">
+                                <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 border-white/50 shadow-md relative">
                                   {realPlayer.photo_url ? (
                                     <OptimizedImage
                                       src={realPlayer.photo_url}
                                       alt={realPlayer.player_name}
-                                      width={48}
-                                      height={48}
+                                      width={80}
+                                      height={80}
+                                      quality={85}
                                       className="w-full h-full object-cover"
+                                      style={getPhotoStyle(realPlayer.photo_position_x_circle, realPlayer.photo_position_y_circle, realPlayer.photo_scale_circle)}
                                       fallback={
                                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
                                           <span className="text-lg font-bold text-blue-600">{realPlayer.player_name[0]}</span>
