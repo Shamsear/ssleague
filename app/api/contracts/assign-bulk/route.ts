@@ -79,11 +79,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // STEP 1: Unassign all existing players for these teams first
-    // This ensures we don't have old assignments lingering
-    if (isModernSeason) {
+    // STEP 1: For bulk assignment (multiple players or explicit clear request), 
+    // unassign existing players first. For single player assignment (quick assign), 
+    // just update the specific player
+    const isBulkAssignment = players.length > 1 || body.clearExisting === true;
+    
+    if (isModernSeason && isBulkAssignment) {
       for (const teamId of uniqueTeamIds) {
-        console.log(`Unassigning all players from team ${teamId} in season ${startSeason}...`);
+        console.log(`[BULK] Unassigning all players from team ${teamId} in season ${startSeason}...`);
         
         // Clear team_id for all players currently assigned to this team
         await sql`
@@ -119,8 +122,10 @@ export async function POST(request: NextRequest) {
             AND season_id = ${endSeason}
         `;
         
-        console.log(`✅ Cleared existing assignments for team ${teamId}`);
+        console.log(`✅ [BULK] Cleared existing assignments for team ${teamId}`);
       }
+    } else if (isModernSeason && !isBulkAssignment) {
+      console.log(`[QUICK ASSIGN] Processing single player assignment without clearing team roster`);
     }
 
     // STEP 2: Process all players - update both season documents for each player
@@ -371,16 +376,53 @@ export async function POST(request: NextRequest) {
     }
 
     // Update team_seasons documents with player counts and spending
-    // Group players by team
+    // For bulk assignments, we cleared everything first so just count these players
+    // For quick assign, we need to get current totals from database
     const teamPlayerMap = new Map<string, { count: number; totalSpent: number }>();
     
-    for (const player of players) {
-      if (!teamPlayerMap.has(player.teamId)) {
-        teamPlayerMap.set(player.teamId, { count: 0, totalSpent: 0 });
+    if (isBulkAssignment) {
+      // Bulk assignment - count only the players being assigned (team was cleared first)
+      for (const player of players) {
+        if (!teamPlayerMap.has(player.teamId)) {
+          teamPlayerMap.set(player.teamId, { count: 0, totalSpent: 0 });
+        }
+        const teamData = teamPlayerMap.get(player.teamId)!;
+        teamData.count++;
+        teamData.totalSpent += player.auctionValue || 0;
       }
-      const teamData = teamPlayerMap.get(player.teamId)!;
-      teamData.count++;
-      teamData.totalSpent += player.auctionValue || 0;
+    } else {
+      // Quick assign - need to calculate totals including existing players
+      for (const teamId of uniqueTeamIds) {
+        if (isModernSeason) {
+          // Get all players currently assigned to this team from database
+          const currentPlayers = await sql`
+            SELECT auction_value FROM player_seasons
+            WHERE team_id = ${teamId}
+              AND season_id = ${startSeason}
+              AND auction_value IS NOT NULL
+          `;
+          
+          const currentCount = currentPlayers.length;
+          const currentSpent = currentPlayers.reduce((sum: number, p: any) => sum + (p.auction_value || 0), 0);
+          
+          teamPlayerMap.set(teamId, {
+            count: currentCount,
+            totalSpent: currentSpent
+          });
+        } else {
+          // For historical seasons, calculate from Firebase documents
+          // This is more complex, but for now we'll use the original logic
+          // since historical seasons don't have the clearing issue
+          for (const player of players) {
+            if (!teamPlayerMap.has(player.teamId)) {
+              teamPlayerMap.set(player.teamId, { count: 0, totalSpent: 0 });
+            }
+            const teamData = teamPlayerMap.get(player.teamId)!;
+            teamData.count++;
+            teamData.totalSpent += player.auctionValue || 0;
+          }
+        }
+      }
     }
 
     // Update each team's team_seasons document for CURRENT season only
