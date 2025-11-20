@@ -216,7 +216,9 @@ export default function TeamPlayersPage() {
   const statuses = Array.from(new Set(tournamentPlayers.filter(p => p.status).map(p => p.status!))).sort();
   const starRatings = Array.from(new Set(tournamentPlayers.map(p => p.star_rating))).sort((a, b) => b - a);
   
-  // Auction filters - positions don't exist in this system, removing position filters
+  // Auction filters - get positions from actual auction players data (football positions)
+  const positions = Array.from(new Set(auctionPlayers.filter(p => p.position).map(p => p.position!))).sort();
+  const positionGroups = Array.from(new Set(auctionPlayers.filter(p => p.position_group).map(p => p.position_group!))).sort();
 
   const getPositionColor = (position: string) => {
     switch (position) {

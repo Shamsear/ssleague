@@ -10,8 +10,7 @@ import AlertModal from '@/components/modals/AlertModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 // Position constants
-const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST'];
-const POSITION_GROUPS = ['Offense', 'Defense', 'Special Teams'];
+// Dynamic positions and position groups will be generated from actual player data
 
 interface Player {
   id: number;
@@ -101,6 +100,10 @@ export default function PlayerStatisticsPage() {
     fetchPlayers();
   }, [user, currentPage]);
 
+  // Generate dynamic positions and position groups from actual player data
+  const positions = Array.from(new Set(players.filter(p => p.position).map(p => p.position!))).sort();
+  const positionGroups = Array.from(new Set(players.filter(p => p.position_group).map(p => p.position_group!))).sort();
+
   // Filter players based on all criteria
   useEffect(() => {
     let filtered = [...players];
@@ -115,9 +118,9 @@ export default function PlayerStatisticsPage() {
     // Position filter
     if (positionFilter) {
       // Check if it's a position or position group
-      if (POSITIONS.includes(positionFilter)) {
+      if (positions.includes(positionFilter)) {
         filtered = filtered.filter(player => player.position === positionFilter);
-      } else if (POSITION_GROUPS.includes(positionFilter)) {
+      } else if (positionGroups.includes(positionFilter)) {
         filtered = filtered.filter(player => player.position_group === positionFilter);
       }
     }
@@ -176,12 +179,19 @@ export default function PlayerStatisticsPage() {
 
   const getPositionColor = (position: string) => {
     switch (position) {
-      case 'QB': return 'bg-red-100 text-red-800';
-      case 'RB': return 'bg-blue-100 text-blue-800';
-      case 'WR': return 'bg-green-100 text-green-800';
-      case 'TE': return 'bg-purple-100 text-purple-800';
-      case 'K': return 'bg-yellow-100 text-yellow-800';
-      case 'DST': return 'bg-gray-100 text-gray-800';
+      case 'GK': return 'bg-yellow-100 text-yellow-800';  // Goalkeeper
+      case 'CB': return 'bg-red-100 text-red-800';        // Center Back
+      case 'LB': 
+      case 'RB': return 'bg-blue-100 text-blue-800';      // Fullbacks
+      case 'DMF': return 'bg-purple-100 text-purple-800'; // Defensive Midfielder
+      case 'CMF': return 'bg-green-100 text-green-800';   // Central Midfielder
+      case 'LMF':
+      case 'RMF': return 'bg-cyan-100 text-cyan-800';     // Side Midfielders
+      case 'AMF': return 'bg-orange-100 text-orange-800'; // Attacking Midfielder
+      case 'LWF':
+      case 'RWF': return 'bg-pink-100 text-pink-800';     // Wing Forwards
+      case 'CF': return 'bg-red-200 text-red-900';        // Center Forward
+      case 'SS': return 'bg-indigo-100 text-indigo-800';  // Second Striker
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -226,7 +236,7 @@ export default function PlayerStatisticsPage() {
           </div>
         </>
       );
-    } else if (['RB', 'WR', 'TE'].includes(player.position)) {
+    } else if (['LMF', 'RMF', 'LWF', 'RWF', 'AMF', 'CF', 'SS'].includes(player.position)) {
       return (
         <>
           <div className="text-center">
@@ -317,12 +327,12 @@ export default function PlayerStatisticsPage() {
               >
                 <option value="">All Positions</option>
                 <optgroup label="Positions">
-                  {POSITIONS.map(position => (
+                  {positions.map(position => (
                     <option key={position} value={position}>{position}</option>
                   ))}
                 </optgroup>
                 <optgroup label="Position Groups">
-                  {POSITION_GROUPS.map(group => (
+                  {positionGroups.map(group => (
                     <option key={group} value={group}>{group}</option>
                   ))}
                 </optgroup>
