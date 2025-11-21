@@ -354,6 +354,68 @@ export async function getTotalPlayerCount(): Promise<number> {
 }
 
 /**
+ * Get total player count with filters
+ */
+export async function getTotalPlayerCountWithFilters(filters?: {
+  position?: string;
+  team_id?: string;
+  season_id?: string;
+  is_auction_eligible?: boolean;
+  is_sold?: boolean;
+}): Promise<number> {
+  try {
+    // If no filters, return all players count
+    if (!filters || Object.keys(filters).filter(k => filters[k as keyof typeof filters] !== undefined).length === 0) {
+      const result = await sql`SELECT COUNT(*) as count FROM footballplayers`;
+      return parseInt(result[0].count);
+    }
+    
+    // For filtered queries, we need to use Pool for parameterized queries
+    const { Pool } = await import('@neondatabase/serverless');
+    const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+    
+    try {
+      // Build WHERE conditions dynamically
+      let query = 'SELECT COUNT(*) as count FROM footballplayers WHERE 1=1';
+      const params: any[] = [];
+      let paramIndex = 1;
+      
+      if (filters?.position) {
+        query += ` AND position = $${paramIndex++}`;
+        params.push(filters.position);
+      }
+      if (filters?.team_id) {
+        query += ` AND team_id = $${paramIndex++}`;
+        params.push(filters.team_id);
+      }
+      if (filters?.season_id) {
+        query += ` AND season_id = $${paramIndex++}`;
+        params.push(filters.season_id);
+      }
+      if (filters?.is_auction_eligible !== undefined) {
+        query += ` AND is_auction_eligible = $${paramIndex++}`;
+        params.push(filters.is_auction_eligible);
+      }
+      if (filters?.is_sold !== undefined) {
+        query += ` AND is_sold = $${paramIndex++}`;
+        params.push(filters.is_sold);
+      }
+      
+      console.log('📝 Count Query:', query);
+      console.log('📝 Count Params:', params);
+      
+      const result = await pool.query(query, params);
+      return parseInt(result.rows[0].count);
+    } finally {
+      await pool.end();
+    }
+  } catch (error) {
+    console.error('❌ Error in getTotalPlayerCountWithFilters:', error);
+    throw error;
+  }
+}
+
+/**
  * Search players by name
  */
 export async function searchPlayers(searchTerm: string, limit: number = 50): Promise<FootballPlayer[]> {

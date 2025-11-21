@@ -44,6 +44,7 @@ export default function CommitteePlayersPage() {
   const [teamsCache, setTeamsCache] = useState<Map<string, { id: string; name: string }>>(new Map())
   const [initialLoad, setInitialLoad] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Modal system
   const {
@@ -87,19 +88,15 @@ export default function CommitteePlayersPage() {
         fetch(`/api/players?${params}`)
       ])
       
-      const { data: playersData, success, pagination } = await playersResponse.json()
+      const { data: playersData, success, pagination, totalCount } = await playersResponse.json()
       if (!success) {
         throw new Error('Failed to fetch players')
       }
       
       console.log(`✅ Fetched ${playersData.length} players from Neon, ${teamsSnapshot.size} teams from Firestore`)
       
-      // Estimate total - if we got a full page, there's likely more
-      if (pagination?.hasMore) {
-        setTotalPlayers((currentPage + 1) * PLAYERS_PER_PAGE + 1); // Assume at least 1 more page
-      } else {
-        setTotalPlayers(playersData.length + (currentPage - 1) * PLAYERS_PER_PAGE); // Last page
-      }
+      // Use the actual total count from API
+      setTotalPlayers(totalCount || 0)
         
         // Build teams cache
         const teamsMap = new Map<string, { id: string; name: string }>()
@@ -199,6 +196,318 @@ export default function CommitteePlayersPage() {
     }
   }
 
+  // Excel export function - export ALL footballplayer data
+  const handleExportToExcel = async () => {
+    try {
+      setIsExporting(true)
+      
+      console.log('📊 Starting full footballplayer database export...')
+      
+      // Fetch ALL players without pagination or filters to get complete database
+      const response = await fetch('/api/players?limit=10000') // Get all players
+      const { data: allPlayers, success } = await response.json()
+      
+      if (!success || !allPlayers || allPlayers.length === 0) {
+        showAlert({
+          type: 'info',
+          title: 'No Data',
+          message: 'No players found in database for export'
+        })
+        return
+      }
+
+      // Dynamically import ExcelJS
+      const ExcelJS = (await import('exceljs')).default
+      
+      // Create workbook
+      const workbook = new ExcelJS.Workbook()
+      
+      // Define column structure for reuse across sheets
+      const getColumnsDefinition = () => [
+        // Basic Info
+        { header: 'Player ID', key: 'player_id', width: 15 },
+        { header: 'Name', key: 'name', width: 25 },
+        { header: 'Position', key: 'position', width: 12 },
+        { header: 'Position Group', key: 'position_group', width: 15 },
+        { header: 'Overall Rating', key: 'overall_rating', width: 15 },
+        { header: 'Age', key: 'age', width: 10 },
+        { header: 'Nationality', key: 'nationality', width: 15 },
+        { header: 'Club', key: 'club', width: 20 },
+        { header: 'Team Name', key: 'team_name', width: 20 },
+        { header: 'Auction Eligible', key: 'is_auction_eligible', width: 15 },
+        { header: 'Is Sold', key: 'is_sold', width: 10 },
+        { header: 'Acquisition Value', key: 'acquisition_value', width: 15 },
+        { header: 'Playing Style', key: 'playing_style', width: 15 },
+        
+        // Offensive Attributes
+        { header: 'Offensive Awareness', key: 'offensive_awareness', width: 18 },
+        { header: 'Ball Control', key: 'ball_control', width: 15 },
+        { header: 'Dribbling', key: 'dribbling', width: 12 },
+        { header: 'Tight Possession', key: 'tight_possession', width: 15 },
+        { header: 'Low Pass', key: 'low_pass', width: 12 },
+        { header: 'Lofted Pass', key: 'lofted_pass', width: 12 },
+        { header: 'Finishing', key: 'finishing', width: 12 },
+        { header: 'Heading', key: 'heading', width: 12 },
+        { header: 'Set Piece Taking', key: 'set_piece_taking', width: 15 },
+        { header: 'Curl', key: 'curl', width: 10 },
+        
+        // Physical Attributes
+        { header: 'Speed', key: 'speed', width: 10 },
+        { header: 'Acceleration', key: 'acceleration', width: 12 },
+        { header: 'Kicking Power', key: 'kicking_power', width: 12 },
+        { header: 'Jumping', key: 'jumping', width: 12 },
+        { header: 'Physical Contact', key: 'physical_contact', width: 15 },
+        { header: 'Balance', key: 'balance', width: 12 },
+        { header: 'Stamina', key: 'stamina', width: 12 },
+        
+        // Defensive Attributes
+        { header: 'Defensive Awareness', key: 'defensive_awareness', width: 18 },
+        { header: 'Tackling', key: 'tackling', width: 12 },
+        { header: 'Aggression', key: 'aggression', width: 12 },
+        { header: 'Defensive Engagement', key: 'defensive_engagement', width: 18 },
+        
+        // Goalkeeper Attributes
+        { header: 'GK Awareness', key: 'gk_awareness', width: 12 },
+        { header: 'GK Catching', key: 'gk_catching', width: 12 },
+        { header: 'GK Parrying', key: 'gk_parrying', width: 12 },
+        { header: 'GK Reflexes', key: 'gk_reflexes', width: 12 },
+        { header: 'GK Reach', key: 'gk_reach', width: 12 },
+      ]
+      
+      // Function to get player row data
+      const getPlayerRowData = (player: any) => ({
+        // Basic Info
+        player_id: player.player_id || '',
+        name: player.name || '',
+        position: player.position || '',
+        position_group: player.position_group || '',
+        overall_rating: player.overall_rating || 0,
+        age: player.age || 0,
+        nationality: player.nationality || '',
+        club: player.club || '',
+        team_name: player.team_name || '',
+        is_auction_eligible: player.is_auction_eligible ? 'Yes' : 'No',
+        is_sold: player.is_sold ? 'Yes' : 'No',
+        acquisition_value: player.acquisition_value || 0,
+        playing_style: player.playing_style || '',
+        
+        // Offensive Attributes
+        offensive_awareness: player.offensive_awareness || 0,
+        ball_control: player.ball_control || 0,
+        dribbling: player.dribbling || 0,
+        tight_possession: player.tight_possession || 0,
+        low_pass: player.low_pass || 0,
+        lofted_pass: player.lofted_pass || 0,
+        finishing: player.finishing || 0,
+        heading: player.heading || 0,
+        set_piece_taking: player.set_piece_taking || 0,
+        curl: player.curl || 0,
+        
+        // Physical Attributes
+        speed: player.speed || 0,
+        acceleration: player.acceleration || 0,
+        kicking_power: player.kicking_power || 0,
+        jumping: player.jumping || 0,
+        physical_contact: player.physical_contact || 0,
+        balance: player.balance || 0,
+        stamina: player.stamina || 0,
+        
+        // Defensive Attributes
+        defensive_awareness: player.defensive_awareness || 0,
+        tackling: player.tackling || 0,
+        aggression: player.aggression || 0,
+        defensive_engagement: player.defensive_engagement || 0,
+        
+        // Goalkeeper Attributes
+        gk_awareness: player.gk_awareness || 0,
+        gk_catching: player.gk_catching || 0,
+        gk_parrying: player.gk_parrying || 0,
+        gk_reflexes: player.gk_reflexes || 0,
+        gk_reach: player.gk_reach || 0,
+      })
+      
+      // Function to style a worksheet
+      const styleWorksheet = (worksheet: any, players: any[]) => {
+        // Set columns
+        worksheet.columns = getColumnsDefinition()
+        
+        // Style header row
+        worksheet.getRow(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } }
+        worksheet.getRow(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF0066FF' }
+        }
+        worksheet.getRow(1).height = 25
+        
+        // Add data rows
+        players.forEach((player, index) => {
+          const rowData = getPlayerRowData(player)
+          const row = worksheet.addRow(rowData)
+          
+          // Alternate row colors
+          if (index % 2 === 1) {
+            row.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFF8F9FA' }
+            }
+          }
+          
+          // Style auction eligible column
+          const eligibleCell = row.getCell('is_auction_eligible')
+          if (player.is_auction_eligible) {
+            eligibleCell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFD4EDDA' }
+            }
+            eligibleCell.font = { color: { argb: 'FF155724' } }
+          } else {
+            eligibleCell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFF8D7DA' }
+            }
+            eligibleCell.font = { color: { argb: 'FF721C24' } }
+          }
+        })
+      }
+      
+      // Group players by position
+      const playersByPosition = allPlayers.reduce((acc: any, player: any) => {
+        const position = player.position || 'Unknown'
+        if (!acc[position]) acc[position] = []
+        acc[position].push(player)
+        return acc
+      }, {})
+      
+      // Group players by position group  
+      const playersByPositionGroup = allPlayers.reduce((acc: any, player: any) => {
+        const group = player.position_group || 'Unknown'
+        if (!acc[group]) acc[group] = []
+        acc[group].push(player)
+        return acc
+      }, {})
+      
+      console.log(`📋 Creating sheets for ${Object.keys(playersByPosition).length} positions and ${Object.keys(playersByPositionGroup).length} position groups`)
+      
+      // Create position-specific sheets
+      Object.entries(playersByPosition).forEach(([position, players]: [string, any]) => {
+        const sheetName = `${position} (${players.length})`
+        const worksheet = workbook.addWorksheet(sheetName)
+        styleWorksheet(worksheet, players)
+        console.log(`✅ Created sheet: ${sheetName}`)
+      })
+      
+      // Create position group sheets
+      Object.entries(playersByPositionGroup).forEach(([group, players]: [string, any]) => {
+        const sheetName = `${group} Group (${players.length})`
+        const worksheet = workbook.addWorksheet(sheetName)
+        styleWorksheet(worksheet, players)
+        console.log(`✅ Created sheet: ${sheetName}`)
+      })
+      
+      // Create "All Players" overview sheet
+      const allPlayersSheet = workbook.addWorksheet(`All Players (${allPlayers.length})`)
+      styleWorksheet(allPlayersSheet, allPlayers)
+      
+      // Add summary sheet
+      const summarySheet = workbook.addWorksheet('Summary')
+      summarySheet.columns = [
+        { header: 'Metric', key: 'metric', width: 30 },
+        { header: 'Value', key: 'value', width: 20 }
+      ]
+      
+      // Summary data
+      const totalPlayers = allPlayers.length
+      const eligiblePlayers = allPlayers.filter((p: any) => p.is_auction_eligible).length
+      const soldPlayers = allPlayers.filter((p: any) => p.is_sold).length
+      const positionCounts = Object.entries(playersByPosition).map(([pos, players]) => ({
+        position: pos,
+        count: players.length
+      })).sort((a, b) => b.count - a.count)
+      
+      const positionGroupCounts = Object.entries(playersByPositionGroup).map(([group, players]) => ({
+        group: group,
+        count: players.length
+      })).sort((a, b) => b.count - a.count)
+      
+      const summaryData = [
+        { metric: 'Total Players', value: totalPlayers },
+        { metric: 'Auction Eligible', value: eligiblePlayers },
+        { metric: 'Sold Players', value: soldPlayers },
+        { metric: 'Available Players', value: eligiblePlayers - soldPlayers },
+        { metric: '', value: '' }, // Empty row
+        { metric: 'WORKSHEETS CREATED', value: '' },
+        { metric: 'Position Sheets', value: Object.keys(playersByPosition).length },
+        { metric: 'Position Group Sheets', value: Object.keys(playersByPositionGroup).length },
+        { metric: 'Total Sheets', value: Object.keys(playersByPosition).length + Object.keys(playersByPositionGroup).length + 2 },
+        { metric: '', value: '' }, // Empty row
+        { metric: 'POSITION BREAKDOWN', value: '' },
+        ...positionCounts.map(({ position, count }) => ({
+          metric: `${position} Players`,
+          value: count
+        })),
+        { metric: '', value: '' }, // Empty row
+        { metric: 'POSITION GROUP BREAKDOWN', value: '' },
+        ...positionGroupCounts.map(({ group, count }) => ({
+          metric: `${group} Group`,
+          value: count
+        }))
+      ]
+      
+      summaryData.forEach((item, index) => {
+        const row = summarySheet.addRow(item)
+        // Style section headers
+        if (item.metric.includes('BREAKDOWN') || item.metric === 'WORKSHEETS CREATED') {
+          row.font = { bold: true, color: { argb: 'FF0066FF' } }
+        }
+      })
+      
+      // Style summary sheet
+      summarySheet.getRow(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } }
+      summarySheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0066FF' }
+      }
+      
+      // Generate Excel file buffer
+      const buffer = await workbook.xlsx.writeBuffer()
+      
+      // Download
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Football-Players-Database-${new Date().toISOString().split('T')[0]}.xlsx`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      
+      const totalSheets = Object.keys(playersByPosition).length + Object.keys(playersByPositionGroup).length + 2
+      const positionSheetNames = Object.entries(playersByPosition).map(([pos, players]) => `${pos} (${players.length})`).join(', ')
+      const groupSheetNames = Object.entries(playersByPositionGroup).map(([group, players]) => `${group} Group (${players.length})`).join(', ')
+      
+      showAlert({
+        type: 'success',
+        title: 'Export Successful',
+        message: `✅ Exported complete footballplayer database to Excel!\n\n📊 ORGANIZED INTO ${totalSheets} WORKSHEETS:\n\n🏃 POSITION SHEETS (${Object.keys(playersByPosition).length}):\n${positionSheetNames}\n\n📋 POSITION GROUP SHEETS (${Object.keys(playersByPositionGroup).length}):\n${groupSheetNames}\n\n📈 OVERVIEW SHEETS:\n• All Players (${totalPlayers})\n• Summary & Statistics\n\n💫 FEATURES:\n• All player attributes (40+ data fields)\n• Color-coded auction eligibility\n• Professional formatting\n• Easy navigation between positions\n\nPerfect for analyzing 2000+ players by position!`
+      })
+    } catch (err) {
+      console.error('Error exporting:', err)
+      showAlert({
+        type: 'error',
+        title: 'Export Failed',
+        message: 'Failed to export data. Please try again.'
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   // Memoized calculations for performance
   const positions = useMemo(() => 
     ['', ...new Set(players.map(p => p.position).filter(Boolean))],
@@ -290,15 +599,36 @@ export default function CommitteePlayersPage() {
             <h2 className="text-xl font-bold gradient-text">
               {eligibilityFilter === 'eligible' ? 'Auction Eligible Players' : 'All Players'}
             </h2>
-            <Link
-              href="/dashboard/committee"
-              className="px-4 py-2.5 text-sm glass rounded-xl hover:bg-white/90 transition-all duration-300 flex items-center"
-            >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Dashboard
-            </Link>
+            <div className="flex gap-2">
+              <button
+                onClick={handleExportToExcel}
+                disabled={isExporting}
+                className="px-4 py-2.5 text-sm bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export to Excel
+                  </>
+                )}
+              </button>
+              <Link
+                href="/dashboard/committee"
+                className="px-4 py-2.5 text-sm glass rounded-xl hover:bg-white/90 transition-all duration-300 flex items-center"
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Dashboard
+              </Link>
+            </div>
           </div>
 
           {/* Search and Filter */}
@@ -354,7 +684,7 @@ export default function CommitteePlayersPage() {
         <div className="mb-4 p-3 bg-white/50 rounded-xl">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">
-              Showing <strong>{((currentPage - 1) * PLAYERS_PER_PAGE) + 1}</strong> to <strong>{Math.min(currentPage * PLAYERS_PER_PAGE, filteredPlayers.length)}</strong> of <strong>{filteredPlayers.length}</strong> players
+              Showing <strong>{((currentPage - 1) * PLAYERS_PER_PAGE) + 1}</strong> to <strong>{Math.min(currentPage * PLAYERS_PER_PAGE, (currentPage - 1) * PLAYERS_PER_PAGE + filteredPlayers.length)}</strong> of <strong>{totalPlayers}</strong> players
             </span>
             {totalPages > 1 && (
               <span className="text-gray-500">Page {currentPage} of {totalPages}</span>
@@ -532,7 +862,7 @@ export default function CommitteePlayersPage() {
         {totalPages > 1 && (
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-gray-600">
-              Showing <strong>{((currentPage - 1) * PLAYERS_PER_PAGE) + 1}</strong> to <strong>{Math.min(currentPage * PLAYERS_PER_PAGE, filteredPlayers.length)}</strong> of <strong>{filteredPlayers.length}</strong> players
+              Showing <strong>{((currentPage - 1) * PLAYERS_PER_PAGE) + 1}</strong> to <strong>{Math.min(currentPage * PLAYERS_PER_PAGE, (currentPage - 1) * PLAYERS_PER_PAGE + filteredPlayers.length)}</strong> of <strong>{totalPlayers}</strong> players
             </div>
             <div className="flex gap-2">
               <button

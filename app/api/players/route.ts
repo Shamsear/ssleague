@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllPlayers } from '@/lib/neon/players';
+import { getAllPlayers, getTotalPlayerCountWithFilters } from '@/lib/neon/players';
 
 export const maxDuration = 30;
 
@@ -22,13 +22,26 @@ export async function GET(request: NextRequest) {
     
     console.log('[Players API] Fetching with filters:', filters);
 
-    // Just fetch players - no count query (too slow)
-    const players = await getAllPlayers(filters);
+    // Get total count with same filters (excluding limit/offset)
+    const countFilters = {
+      position: filters.position,
+      team_id: filters.team_id,
+      season_id: filters.season_id,
+      is_auction_eligible: filters.is_auction_eligible,
+      is_sold: filters.is_sold
+    };
+
+    // Fetch both players and total count
+    const [players, totalCount] = await Promise.all([
+      getAllPlayers(filters),
+      getTotalPlayerCountWithFilters(countFilters)
+    ]);
     
     return NextResponse.json({
       success: true,
       data: players,
       count: players.length,
+      totalCount: totalCount,
       pagination: {
         limit: filters.limit || 1000,
         offset: filters.offset || 0,
