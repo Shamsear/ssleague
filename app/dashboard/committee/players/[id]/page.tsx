@@ -2,8 +2,6 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { db } from '@/lib/firebase/config'
-import { doc, getDoc } from 'firebase/firestore'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -112,49 +110,77 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
   useEffect(() => {
     const fetchPlayer = async () => {
       try {
-        const playerRef = doc(db, 'footballplayers', resolvedParams.id)
-        const playerSnap = await getDoc(playerRef)
+        // Fetch from Neon database via API
+        const response = await fetch(`/api/players/${resolvedParams.id}`, {
+          headers: { 'Cache-Control': 'no-cache' },
+        });
 
-        if (playerSnap.exists()) {
-          const data = playerSnap.data()
-          let teamData = null
+        if (!response.ok) {
+          throw new Error('Failed to fetch player details');
+        }
 
-          // Fetch team data if team_id exists
-          if (data.team_id) {
-            try {
-              const teamRef = doc(db, 'teams', data.team_id)
-              const teamSnap = await getDoc(teamRef)
-              if (teamSnap.exists()) {
-                teamData = {
-                  id: teamSnap.id,
-                  name: teamSnap.data().team_name || teamSnap.data().name
-                }
-              }
-            } catch (err) {
-              console.error('Error fetching team:', err)
-            }
-          }
+        const result = await response.json();
 
+        if (result.success && result.data.player) {
+          const data = result.data.player;
           setPlayer({
-            id: playerSnap.id,
-            player_id: data.player_id || playerSnap.id,
-            team: teamData,
-            ...data
-          } as FootballPlayer)
+            id: data.id.toString(),
+            player_id: data.player_id || data.id.toString(),
+            name: data.name,
+            position: data.position,
+            overall_rating: data.overall_rating,
+            nationality: data.nationality,
+            playing_style: data.playing_style,
+            foot: data.foot,
+            age: data.age,
+            nfl_team: data.nfl_team,
+            club: data.club || data.team_name,
+            team: data.team ? {
+              id: data.team.id.toString(),
+              name: data.team.name
+            } : undefined,
+            team_id: data.team_id?.toString(),
+            acquisition_value: data.acquisition_value,
+            acquired_at: data.acquired_at,
+            round_id: data.round_id,
+            is_auction_eligible: data.is_auction_eligible,
+            // Stats
+            speed: data.speed,
+            acceleration: data.acceleration,
+            ball_control: data.ball_control,
+            dribbling: data.dribbling,
+            tight_possession: data.tight_possession,
+            offensive_awareness: data.offensive_awareness,
+            defensive_awareness: data.defensive_awareness,
+            tackling: data.tackling,
+            defensive_engagement: data.defensive_engagement,
+            low_pass: data.low_pass,
+            lofted_pass: data.lofted_pass,
+            finishing: data.finishing,
+            heading: data.heading,
+            stamina: data.stamina,
+            physical_contact: data.physical_contact,
+            kicking_power: data.kicking_power,
+            gk_awareness: data.gk_awareness,
+            gk_catching: data.gk_catching,
+            gk_parrying: data.gk_parrying,
+            gk_reflexes: data.gk_reflexes,
+            gk_reach: data.gk_reach,
+          } as FootballPlayer);
         } else {
-          alert('Player not found')
-          router.push('/dashboard/committee/players')
+          alert('Player not found');
+          router.push('/dashboard/committee/players');
         }
       } catch (err) {
-        console.error('Error fetching player:', err)
-        alert('Failed to load player details')
+        console.error('Error fetching player:', err);
+        alert('Failed to load player details');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
     if (user?.role === 'committee_admin') {
-      fetchPlayer()
+      fetchPlayer();
     }
   }, [user, resolvedParams.id, router])
 

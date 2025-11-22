@@ -45,7 +45,8 @@ firebase-adminsdk*.json
 next-env.d.ts
 
 # player photos (uploaded images)
-/public/images/players/
-!public/images/players/.gitkeep
+# Commented out to allow images to be committed to Git for Vercel deployment
+# /public/images/players/
+# !public/images/players/.gitkeep
 
 /lib/generated/prisma

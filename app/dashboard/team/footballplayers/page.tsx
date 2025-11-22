@@ -63,80 +63,105 @@ export default function PlayerStatisticsPage() {
     }
   }, [user, loading, router]);
 
+  // Debounce search to avoid too many API calls
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     const fetchPlayers = async () => {
       if (!user) return;
 
       setIsLoading(true);
       try {
-        const response = await fetchWithTokenRefresh(`/api/players/database?page=${currentPage}&limit=${itemsPerPage}`,
+        // Build query params with filters
+        const params = new URLSearchParams({
+          page: currentPage.toString(),
+          limit: itemsPerPage.toString(),
+        });
+        
+        if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
+        if (positionFilter) {
+          // Check if it's a position group or regular position by checking the value itself
+          // Position groups typically have spaces or are longer descriptive names
+          const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+          if (allPositions.includes(positionFilter)) {
+            params.append('position', positionFilter);
+          } else {
+            params.append('position_group', positionFilter);
+          }
+        }
+        if (playingStyleFilter) params.append('playing_style', playingStyleFilter);
+        if (showStarredOnly) params.append('starred_only', 'true');
+        
+        const response = await fetchWithTokenRefresh(`/api/players/database?${params.toString()}`,
           { headers: { 'Cache-Control': 'no-cache' } }
         );
         const { success, data } = await response.json();
 
-        if (success) {
-          setPlayers(data.players || []);
+        if (success && data && data.players) {
+          setPlayers(data.players);
+          setFilteredPlayers(data.players); // Set filtered players same as players since filtering is server-side
           
           if (data.pagination) {
             setTotalPages(data.pagination.totalPages);
             setTotalPlayers(data.pagination.total);
           }
-          
-          // Extract unique playing styles
-          const styles = Array.from(new Set(
-            data.players
-              .map((p: Player) => p.playing_style)
-              .filter((s: string | undefined) => s)
-          )) as string[];
-          setPlayingStyles(styles);
+        } else {
+          // If fetch fails, reset to empty arrays
+          setPlayers([]);
+          setFilteredPlayers([]);
+          setTotalPages(1);
+          setTotalPlayers(0);
         }
       } catch (err) {
         console.error('Error fetching players:', err);
+        // Reset to empty arrays on error
+        setPlayers([]);
+        setFilteredPlayers([]);
+        setTotalPages(1);
+        setTotalPlayers(0);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchPlayers();
-  }, [user, currentPage]);
+  }, [user, currentPage, debouncedSearchTerm, positionFilter, playingStyleFilter, showStarredOnly]);
 
-  // Generate dynamic positions and position groups from actual player data
-  const positions = Array.from(new Set(players.filter(p => p.position).map(p => p.position!))).sort();
-  const positionGroups = Array.from(new Set(players.filter(p => p.position_group).map(p => p.position_group!))).sort();
-
-  // Filter players based on all criteria
+  // Fetch all positions and position groups for filter dropdowns
+  const [positions, setPositions] = useState<string[]>([]);
+  const [positionGroups, setPositionGroups] = useState<string[]>([]);
+  
   useEffect(() => {
-    let filtered = [...players];
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(player =>
-        player.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Position filter
-    if (positionFilter) {
-      // Check if it's a position or position group
-      if (positions.includes(positionFilter)) {
-        filtered = filtered.filter(player => player.position === positionFilter);
-      } else if (positionGroups.includes(positionFilter)) {
-        filtered = filtered.filter(player => player.position_group === positionFilter);
+    // Fetch all unique positions and position groups for filter dropdowns
+    const fetchFilterOptions = async () => {
+      try {
+        const response = await fetchWithTokenRefresh('/api/players/filter-options');
+        const { success, data } = await response.json();
+        if (success) {
+          setPositions(data.positions || []);
+          setPositionGroups(data.positionGroups || []);
+          // Update playing styles from filter options too
+          if (data.playingStyles) {
+            setPlayingStyles(data.playingStyles);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching filter options:', err);
       }
+    };
+    
+    if (user) {
+      fetchFilterOptions();
     }
-
-    // Playing style filter
-    if (playingStyleFilter) {
-      filtered = filtered.filter(player => player.playing_style === playingStyleFilter);
-    }
-
-    // Starred filter
-    if (showStarredOnly) {
-      filtered = filtered.filter(player => player.is_starred);
-    }
-
-    setFilteredPlayers(filtered);
-  }, [players, searchTerm, positionFilter, playingStyleFilter, showStarredOnly]);
+  }, [user]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -368,14 +393,14 @@ export default function PlayerStatisticsPage() {
             </label>
           </div>
           <div className="text-sm text-gray-600">
-            Showing {filteredPlayers.length} of {totalPlayers} players
+            Showing {Array.isArray(filteredPlayers) ? filteredPlayers.length : 0} {totalPages > 1 ? `of ${totalPlayers}` : ''} players {(searchTerm || positionFilter || playingStyleFilter || showStarredOnly) ? '(filtered)' : ''}
           </div>
         </div>
       </div>
 
       {/* Mobile Card View */}
       <div className="grid grid-cols-1 gap-4 md:hidden">
-        {filteredPlayers.map(player => (
+        {Array.isArray(filteredPlayers) && filteredPlayers.map(player => (
           <div key={player.id} className="bg-white/20 backdrop-blur-lg p-4 rounded-2xl shadow-sm border border-white/20 hover:bg-white/30 transition-all duration-200">
             <div className="flex items-start justify-between">
               <div className="flex items-center">
@@ -396,7 +421,10 @@ export default function PlayerStatisticsPage() {
                   <h3 className="text-base font-semibold text-gray-800">{player.name}</h3>
                   <div className="flex items-center space-x-2">
                     <span className={`px-2 py-1 text-xs rounded-full ${getPositionColor(player.position)}`}>
-                      {player.position}
+                      {(() => {
+                        const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+                        return positionFilter && !allPositions.includes(positionFilter) ? player.position_group : player.position;
+                      })()}
                     </span>
                     <span className="text-xs text-gray-500">{player.playing_style || 'None'}</span>
                   </div>
@@ -449,7 +477,7 @@ export default function PlayerStatisticsPage() {
               </tr>
             </thead>
             <tbody className="bg-white/20 backdrop-blur-sm divide-y divide-gray-200/30">
-              {filteredPlayers.map(player => (
+              {Array.isArray(filteredPlayers) && filteredPlayers.map(player => (
                 <tr key={player.id} className="hover:bg-white/40 transition-all duration-200">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button
@@ -476,7 +504,12 @@ export default function PlayerStatisticsPage() {
                     </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-700">{player.position}</div>
+                    <div className="text-sm text-gray-700">
+                      {(() => {
+                        const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+                        return positionFilter && !allPositions.includes(positionFilter) ? player.position_group : player.position;
+                      })()}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-700">{player.playing_style || 'None'}</div>
@@ -515,7 +548,7 @@ export default function PlayerStatisticsPage() {
       </div>
 
       {/* Pagination Controls */}
-      {!showStarredOnly && totalPages > 1 && (
+      {totalPages > 1 && (
         <div className="flex justify-center items-center gap-2 mt-6">
           <button
             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}

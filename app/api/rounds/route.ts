@@ -156,31 +156,119 @@ export async function POST(request: NextRequest) {
     if (round_type === 'bulk') {
       console.log('🔄 Bulk round created - adding all auction-eligible players...');
       
-      // Fetch all auction-eligible players from footballplayers table
-      const eligiblePlayers = await sql`
-        SELECT id, name, position, position_group
-        FROM footballplayers
-        WHERE is_auction_eligible = true
-        AND is_sold = false
-        ORDER BY position, name
-      `;
-
-      console.log(`📊 Found ${eligiblePlayers.length} auction-eligible players`);
-
-      // Insert all eligible players into round_players
-      for (const player of eligiblePlayers) {
-        await sql`
-          INSERT INTO round_players (
-            round_id, player_id, player_name, position, position_group, base_price, status
-          )
-          VALUES (
-            ${round.id}, ${player.id}, ${player.name}, ${player.position}, 
-            ${player.position_group}, ${base_price}, 'pending'
-          );
+      try {
+        // Fetch all auction-eligible players from footballplayers table
+        const eligiblePlayers = await sql`
+          SELECT id, name, position, position_group
+          FROM footballplayers
+          WHERE is_auction_eligible = true
+          AND is_sold = false
+          ORDER BY position, name
         `;
-      }
 
-      console.log(`✅ Added ${eligiblePlayers.length} players to bulk round ${round.round_number}`);
+        console.log(`📊 Found ${eligiblePlayers.length} auction-eligible players`);
+
+        // Handle edge case: no eligible players found
+        if (eligiblePlayers.length === 0) {
+          console.warn(`⚠️ No eligible players found for season ${season_id}`);
+          return NextResponse.json({
+            success: true,
+            data: round,
+            message: 'Bulk round created successfully. 0 players added (no eligible players found)',
+            player_count: 0,
+          }, { status: 201 });
+        }
+
+        // Check for existing players in this round to prevent duplicates
+        const existingPlayers = await sql`
+          SELECT player_id
+          FROM round_players
+          WHERE round_id = ${round.id}
+        `;
+
+        const existingPlayerIds = new Set(existingPlayers.map((p: any) => p.player_id));
+        
+        if (existingPlayerIds.size > 0) {
+          console.log(`🔍 Found ${existingPlayerIds.size} existing players in round ${round.id}`);
+        }
+
+        // Track successful, failed, and skipped insertions
+        let successCount = 0;
+        let failureCount = 0;
+        let skippedCount = 0;
+        const failedPlayers: string[] = [];
+        const skippedPlayers: string[] = [];
+
+        // Insert all eligible players into round_players with error handling and duplicate prevention
+        for (const player of eligiblePlayers) {
+          // Skip if player already exists in this round
+          if (existingPlayerIds.has(player.id)) {
+            skippedCount++;
+            skippedPlayers.push(player.name);
+            console.log(`⏭️ Skipping duplicate player ${player.id} (${player.name}) - already in round`);
+            continue;
+          }
+
+          try {
+            await sql`
+              INSERT INTO round_players (
+                round_id, player_id, player_name, position, position_group, base_price, status, season_id
+              )
+              VALUES (
+                ${round.id}, ${player.id}, ${player.name}, ${player.position}, 
+                ${player.position_group}, ${base_price}, 'pending', ${season_id}
+              );
+            `;
+            successCount++;
+          } catch (playerError: any) {
+            failureCount++;
+            failedPlayers.push(player.name);
+            console.error(`❌ Failed to insert player ${player.id} (${player.name}):`, playerError.message);
+          }
+        }
+
+        // Log final results
+        if (skippedCount > 0) {
+          console.log(`⏭️ Skipped ${skippedCount} duplicate players: ${skippedPlayers.join(', ')}`);
+        }
+        
+        if (failureCount > 0) {
+          console.warn(`⚠️ Added ${successCount} players to bulk round ${round.round_number}, ${failureCount} failed, ${skippedCount} skipped`);
+          console.warn(`Failed players: ${failedPlayers.join(', ')}`);
+        } else {
+          console.log(`✅ Successfully added ${successCount} players to bulk round ${round.round_number}${skippedCount > 0 ? ` (${skippedCount} duplicates skipped)` : ''}`);
+        }
+
+        return NextResponse.json({
+          success: true,
+          data: round,
+          message: `Bulk round created successfully. ${successCount} player${successCount !== 1 ? 's' : ''} added to the round${skippedCount > 0 ? ` (${skippedCount} duplicate${skippedCount !== 1 ? 's' : ''} skipped)` : ''}${failureCount > 0 ? ` (${failureCount} failed)` : ''}`,
+          player_count: successCount,
+          failed_count: failureCount,
+          skipped_count: skippedCount,
+        }, { status: 201 });
+
+      } catch (bulkError: any) {
+        // Critical error during bulk player population
+        console.error(`❌ Critical error during bulk player population for round ${round.id}:`, bulkError);
+        
+        // Attempt to clean up the round since player population failed
+        try {
+          await sql`DELETE FROM rounds WHERE id = ${round.id}`;
+          console.log(`🧹 Rolled back round ${round.id} due to critical error`);
+        } catch (cleanupError: any) {
+          console.error(`❌ Failed to rollback round ${round.id}:`, cleanupError.message);
+        }
+
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Failed to populate bulk round with players',
+            details: bulkError.message 
+          },
+          { status: 500 }
+        );
+      }
     }
     // For NORMAL rounds, add manually selected players if provided
     else if (player_ids.length > 0) {
@@ -191,24 +279,33 @@ export async function POST(request: NextRequest) {
         WHERE id = ANY(${player_ids});
       `;
 
-      // Insert players into round_players
+      // Insert players into round_players with season_id
       for (const player of players) {
         await sql`
           INSERT INTO round_players (
-            round_id, player_id, player_name, position, position_group, base_price, status
+            round_id, player_id, player_name, position, position_group, base_price, status, season_id
           )
           VALUES (
             ${round.id}, ${player.id}, ${player.name}, ${player.position}, 
-            ${player.position_group}, ${base_price}, 'pending'
+            ${player.position_group}, ${base_price}, 'pending', ${season_id}
           );
         `;
       }
+
+      return NextResponse.json({
+        success: true,
+        data: round,
+        message: `Round created successfully. ${players.length} player${players.length !== 1 ? 's' : ''} added to the round`,
+        player_count: players.length,
+      }, { status: 201 });
     }
 
+    // Return for normal rounds with no players
     return NextResponse.json({
       success: true,
       data: round,
-      message: 'Round created successfully',
+      message: 'Round created successfully. 0 players added to the round',
+      player_count: 0,
     }, { status: 201 });
 
   } catch (error: any) {
