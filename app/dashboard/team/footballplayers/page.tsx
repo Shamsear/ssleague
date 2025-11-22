@@ -44,6 +44,7 @@ export default function PlayerStatisticsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false); // For filter/search changes
   const [searchTerm, setSearchTerm] = useState('');
   const [positionFilter, setPositionFilter] = useState('');
   const [playingStyleFilter, setPlayingStyleFilter] = useState('');
@@ -52,7 +53,7 @@ export default function PlayerStatisticsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalPlayers, setTotalPlayers] = useState(0);
-  const itemsPerPage = 50; // Show 50 players per page
+  const itemsPerPage = 25; // Show 25 players per page for faster loading
 
   useEffect(() => {
     if (!loading && !user) {
@@ -78,7 +79,13 @@ export default function PlayerStatisticsPage() {
     const fetchPlayers = async () => {
       if (!user) return;
 
-      setIsLoading(true);
+      // Use isFetching for subsequent loads, isLoading only for initial load
+      if (players.length > 0) {
+        setIsFetching(true);
+      } else {
+        setIsLoading(true);
+      }
+      
       try {
         // Build query params with filters
         const params = new URLSearchParams({
@@ -129,6 +136,7 @@ export default function PlayerStatisticsPage() {
         setTotalPlayers(0);
       } finally {
         setIsLoading(false);
+        setIsFetching(false);
       }
     };
 
@@ -136,7 +144,8 @@ export default function PlayerStatisticsPage() {
   }, [user, currentPage, debouncedSearchTerm, positionFilter, playingStyleFilter, showStarredOnly]);
 
   // Fetch all positions and position groups for filter dropdowns
-  const [positions, setPositions] = useState<string[]>([]);
+  // Start with common positions so dropdowns work immediately
+  const [positions, setPositions] = useState<string[]>(['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS']);
   const [positionGroups, setPositionGroups] = useState<string[]>([]);
   
   useEffect(() => {
@@ -310,7 +319,8 @@ export default function PlayerStatisticsPage() {
     }
   };
 
-  if (loading || isLoading) {
+  // Only show full-page loading on initial load
+  if (loading || (isLoading && players.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -326,7 +336,13 @@ export default function PlayerStatisticsPage() {
   }
 
   return (
-    <div className="container mx-auto space-y-6 px-4 py-4 sm:py-6">
+    <div className="container mx-auto space-y-6 px-4 py-4 sm:py-6 relative">
+      {/* Subtle loading overlay for filter changes */}
+      {isFetching && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-gray-200">
+          <div className="h-full bg-[#0066FF] animate-pulse" style={{ width: '50%' }}></div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold gradient-text">Football Players Database</h1>
