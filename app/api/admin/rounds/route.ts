@@ -90,7 +90,8 @@ export async function GET(request: NextRequest) {
           CASE 
             WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
             ELSE 0
-          END as player_count
+          END as player_count,
+          EXISTS(SELECT 1 FROM pending_allocations pa WHERE pa.round_id = r.id) as has_pending_allocations
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         WHERE r.season_id = ${seasonId} AND r.status = ${status}
@@ -106,7 +107,8 @@ export async function GET(request: NextRequest) {
           CASE 
             WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
             ELSE 0
-          END as player_count
+          END as player_count,
+          EXISTS(SELECT 1 FROM pending_allocations pa WHERE pa.round_id = r.id) as has_pending_allocations
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         WHERE r.season_id = ${seasonId}
@@ -122,7 +124,8 @@ export async function GET(request: NextRequest) {
           CASE 
             WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
             ELSE 0
-          END as player_count
+          END as player_count,
+          EXISTS(SELECT 1 FROM pending_allocations pa WHERE pa.round_id = r.id) as has_pending_allocations
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         GROUP BY r.id
