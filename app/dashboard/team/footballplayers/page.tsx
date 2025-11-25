@@ -183,6 +183,13 @@ export default function PlayerStatisticsPage() {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
 
+    // Optimistic update - update UI immediately
+    const updatePlayer = (p: Player) =>
+      p.id === playerId ? { ...p, is_starred: !p.is_starred } : p;
+    
+    setPlayers(prevPlayers => prevPlayers.map(updatePlayer));
+    setFilteredPlayers(prevFiltered => prevFiltered.map(updatePlayer));
+
     const endpoint = player.is_starred 
       ? `/api/players/unstar/${playerId}` 
       : `/api/players/star/${playerId}`;
@@ -193,16 +200,30 @@ export default function PlayerStatisticsPage() {
         headers: { 'Content-Type': 'application/json' },
       });
 
-      if (response.ok) {
-        // Update local state
-        setPlayers(prevPlayers =>
-          prevPlayers.map(p =>
-            p.id === playerId ? { ...p, is_starred: !p.is_starred } : p
-          )
-        );
+      if (!response.ok) {
+        // Revert on failure
+        const revertPlayer = (p: Player) =>
+          p.id === playerId ? { ...p, is_starred: !p.is_starred } : p;
+        
+        setPlayers(prevPlayers => prevPlayers.map(revertPlayer));
+        setFilteredPlayers(prevFiltered => prevFiltered.map(revertPlayer));
+        
+        showAlert({
+          type: 'error',
+          title: 'Update Failed',
+          message: 'Failed to update starred status. Please try again.'
+        });
       }
     } catch (err) {
       console.error('Error toggling star:', err);
+      
+      // Revert on error
+      const revertPlayer = (p: Player) =>
+        p.id === playerId ? { ...p, is_starred: !p.is_starred } : p;
+      
+      setPlayers(prevPlayers => prevPlayers.map(revertPlayer));
+      setFilteredPlayers(prevFiltered => prevFiltered.map(revertPlayer));
+      
       showAlert({
         type: 'error',
         title: 'Update Failed',
