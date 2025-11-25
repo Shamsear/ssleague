@@ -124,6 +124,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
   const { timeRemaining, isFinalizing } = useAutoFinalize({
     roundId,
     endTime: round?.end_time || null,
+    finalizationMode: round?.finalization_mode || 'auto',
     enabled: round?.status === 'active',
     onFinalizationStart: () => {
       console.log('🔄 Auto-finalization started');

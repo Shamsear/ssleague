@@ -31,6 +31,7 @@ interface Round {
   start_time?: string;
   player_count?: number;
   finalization_mode?: string;
+  has_pending_allocations?: boolean;
 }
 
 interface Tiebreaker {
@@ -1917,7 +1918,8 @@ export default function RoundsManagementPage() {
                       
                       <div className="flex flex-wrap gap-2">
                         {/* For expired_pending_finalization status (manual mode, timer expired, not yet previewed) */}
-                        {round.status === 'expired_pending_finalization' && (
+                        {/* For expired rounds with manual finalization - show preview/finalize immediately options */}
+                        {round.status === 'expired' && round.finalization_mode === 'manual' && !round.has_pending_allocations && (
                           <>
                             <button
                               onClick={() => handlePreviewFinalization(round.id)}
@@ -1941,8 +1943,8 @@ export default function RoundsManagementPage() {
                           </>
                         )}
                         
-                        {/* For pending_finalization status (preview created, waiting for approval) */}
-                        {round.status === 'pending_finalization' && (
+                        {/* For expired rounds with pending allocations (preview created, waiting for approval) */}
+                        {round.status === 'expired' && round.finalization_mode === 'manual' && round.has_pending_allocations && (
                           <>
                             <button
                               onClick={() => handleViewPendingResults(round.id)}
@@ -1974,8 +1976,8 @@ export default function RoundsManagementPage() {
                           </>
                         )}
                         
-                        {/* For regular expired status (auto mode or old rounds) */}
-                        {round.status === 'expired' && (
+                        {/* For regular expired status (auto mode or old rounds without manual finalization) */}
+                        {round.status === 'expired' && round.finalization_mode !== 'manual' && (
                           <button
                             onClick={() => handleFinalizeRound(round.id)}
                             className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all duration-200 text-sm flex items-center"
