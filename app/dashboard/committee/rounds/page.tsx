@@ -30,6 +30,7 @@ interface Round {
   teams_bid: number;
   start_time?: string;
   player_count?: number;
+  finalization_mode?: string;
 }
 
 interface Tiebreaker {
@@ -84,6 +85,7 @@ export default function RoundsManagementPage() {
     duration_hours: '2',
     duration_minutes: '0',
     max_bids_per_team: '5',
+    finalization_mode: 'auto',
   });
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
 
@@ -660,6 +662,7 @@ export default function RoundsManagementPage() {
           position: combinedPosition,
           max_bids_per_team: parseInt(formData.max_bids_per_team),
           duration_hours: (parseFloat(formData.duration_hours) + (parseFloat(formData.duration_minutes) / 60)).toString(),
+          finalization_mode: formData.finalization_mode,
         }),
       });
 
@@ -676,6 +679,7 @@ export default function RoundsManagementPage() {
           duration_hours: '2',
           duration_minutes: '0',
           max_bids_per_team: '5',
+          finalization_mode: 'auto',
         });
         setSelectedPositions([]);
         
@@ -895,6 +899,191 @@ export default function RoundsManagementPage() {
     });
     
     return byPlayer;
+  };
+
+  const handlePreviewFinalization = async (roundId: string) => {
+    try {
+      const response = await fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/preview-finalization`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showAlert({
+          type: 'success',
+          title: 'Preview Created',
+          message: `Preview finalization created successfully. ${result.data?.allocations?.length || 0} players allocated.`
+        });
+        
+        // Refresh rounds to update status
+        fetchRounds(false);
+      } else if (result.tieDetected) {
+        showAlert({
+          type: 'warning',
+          title: 'Tiebreaker Detected',
+          message: 'A tiebreaker was detected and must be resolved before finalization can proceed.'
+        });
+        
+        // Refresh to show tiebreaker
+        fetchRounds(false);
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Preview Failed',
+          message: result.error || 'Failed to create preview'
+        });
+      }
+    } catch (err) {
+      console.error('Error previewing finalization:', err);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to preview finalization'
+      });
+    }
+  };
+
+  const handleFinalizeImmediately = async (roundId: string) => {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Finalize Immediately',
+      message: 'This will skip the preview and finalize the round immediately. Results will be published to teams right away. Continue?',
+      confirmText: 'Finalize Now',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
+      return;
+    }
+
+    // Use the existing finalization flow
+    setFinalizingRoundId(roundId);
+    setShowFinalizationProgress(true);
+  };
+
+  const handleViewPendingResults = async (roundId: string) => {
+    try {
+      const response = await fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/pending-allocations`);
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        // TODO: Open PendingAllocationsModal with the data
+        // For now, show an alert with summary
+        showAlert({
+          type: 'info',
+          title: 'Pending Results',
+          message: `${result.data.allocations?.length || 0} players allocated. Total spent: £${result.data.summary?.total_spent?.toLocaleString() || 0}. Modal component coming soon.`
+        });
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to fetch pending results'
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching pending results:', err);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to fetch pending results'
+      });
+    }
+  };
+
+  const handleApplyPendingAllocations = async (roundId: string) => {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Finalize for Real',
+      message: 'This will apply the pending allocations and publish results to all teams. This action cannot be undone. Continue?',
+      confirmText: 'Finalize for Real',
+      cancelText: 'Cancel'
+    });
+    
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/apply-pending-allocations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showAlert({
+          type: 'success',
+          title: 'Round Finalized',
+          message: 'Pending allocations applied successfully. Results are now visible to teams.'
+        });
+        
+        // Refresh rounds to update status
+        fetchRounds(false);
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Finalization Failed',
+          message: result.error || 'Failed to apply pending allocations'
+        });
+      }
+    } catch (err) {
+      console.error('Error applying pending allocations:', err);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to apply pending allocations'
+      });
+    }
+  };
+
+  const handleCancelPending = async (roundId: string) => {
+    const confirmed = await showConfirm({
+      type: 'warning',
+      title: 'Cancel Pending Results',
+      message: 'This will delete the pending allocations. You can preview finalization again afterwards. Continue?',
+      confirmText: 'Cancel Pending',
+      cancelText: 'Keep Pending'
+    });
+    
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/pending-allocations`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showAlert({
+          type: 'success',
+          title: 'Pending Results Canceled',
+          message: 'Pending allocations have been deleted. You can preview finalization again.'
+        });
+        
+        // Refresh rounds to update status
+        fetchRounds(false);
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Cancellation Failed',
+          message: result.error || 'Failed to cancel pending allocations'
+        });
+      }
+    } catch (err) {
+      console.error('Error canceling pending allocations:', err);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to cancel pending allocations'
+      });
+    }
   };
 
   const handleDeleteRound = async (roundId: string) => {
@@ -1177,6 +1366,35 @@ export default function RoundsManagementPage() {
                   <p className="mt-1 text-xs text-gray-500">Teams must bid exactly this many players</p>
                 </div>
               </div>
+
+              {/* Finalization Mode Selector */}
+              <div className="mt-4">
+                <label htmlFor="finalization_mode" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Finalization Mode
+                  <span className="ml-2 text-xs text-gray-500">(How results are published)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </span>
+                  <select
+                    id="finalization_mode"
+                    value={formData.finalization_mode}
+                    onChange={(e) => setFormData({ ...formData, finalization_mode: e.target.value })}
+                    className="pl-10 w-full py-3 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none transition-all duration-200 text-base shadow-sm"
+                  >
+                    <option value="auto">Auto-Finalize (when timer ends)</option>
+                    <option value="manual">Manual Finalization (preview first)</option>
+                  </select>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {formData.finalization_mode === 'auto' 
+                    ? 'Round will automatically finalize when timer expires' 
+                    : 'Round will wait for committee approval before publishing results'}
+                </p>
+              </div>
               
               <div className="flex justify-end mt-2">
                 <button
@@ -1237,28 +1455,39 @@ export default function RoundsManagementPage() {
                             <h3 className="text-base sm:text-lg font-semibold">
                               {round.position} Round #{round.round_number || extractIdNumberAsInt(round.id)}
                             </h3>
-                            {(() => {
-                              // Determine phase based on round number and auction settings
-                              const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
-                              if (!settings || !round.round_number) return null;
-                              
-                              let phase = 'Phase 3';
-                              let phaseColor = 'bg-purple-100 text-purple-700';
-                              
-                              if (round.round_number <= settings.phase_1_end_round) {
-                                phase = 'Phase 1';
-                                phaseColor = 'bg-blue-100 text-blue-700';
-                              } else if (round.round_number <= settings.phase_2_end_round) {
-                                phase = 'Phase 2';
-                                phaseColor = 'bg-orange-100 text-orange-700';
-                              }
-                              
-                              return (
-                                <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>
-                                  {phase}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {(() => {
+                                // Determine phase based on round number and auction settings
+                                const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
+                                if (!settings || !round.round_number) return null;
+                                
+                                let phase = 'Phase 3';
+                                let phaseColor = 'bg-purple-100 text-purple-700';
+                                
+                                if (round.round_number <= settings.phase_1_end_round) {
+                                  phase = 'Phase 1';
+                                  phaseColor = 'bg-blue-100 text-blue-700';
+                                } else if (round.round_number <= settings.phase_2_end_round) {
+                                  phase = 'Phase 2';
+                                  phaseColor = 'bg-orange-100 text-orange-700';
+                                }
+                                
+                                return (
+                                  <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>
+                                    {phase}
+                                  </span>
+                                );
+                              })()}
+                              {round.finalization_mode === 'manual' && (
+                                <span className="inline-block px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                  Manual Finalization
                                 </span>
-                              );
-                            })()}
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="text-sm font-medium px-4 py-2 rounded-xl bg-white/80 backdrop-blur-sm shadow-sm flex items-center">
@@ -1528,20 +1757,31 @@ export default function RoundsManagementPage() {
                             <h3 className="text-base sm:text-lg font-semibold">
                               {round.position} Round #{round.round_number || extractIdNumberAsInt(round.id)}
                             </h3>
-                            {(() => {
-                              const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
-                              if (!settings || !round.round_number) return null;
-                              let phase = 'Phase 3';
-                              let phaseColor = 'bg-purple-100 text-purple-700';
-                              if (round.round_number <= settings.phase_1_end_round) {
-                                phase = 'Phase 1';
-                                phaseColor = 'bg-blue-100 text-blue-700';
-                              } else if (round.round_number <= settings.phase_2_end_round) {
-                                phase = 'Phase 2';
-                                phaseColor = 'bg-orange-100 text-orange-700';
-                              }
-                              return <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>{phase}</span>;
-                            })()}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {(() => {
+                                const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
+                                if (!settings || !round.round_number) return null;
+                                let phase = 'Phase 3';
+                                let phaseColor = 'bg-purple-100 text-purple-700';
+                                if (round.round_number <= settings.phase_1_end_round) {
+                                  phase = 'Phase 1';
+                                  phaseColor = 'bg-blue-100 text-blue-700';
+                                } else if (round.round_number <= settings.phase_2_end_round) {
+                                  phase = 'Phase 2';
+                                  phaseColor = 'bg-orange-100 text-orange-700';
+                                }
+                                return <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>{phase}</span>;
+                              })()}
+                              {round.finalization_mode === 'manual' && (
+                                <span className="inline-block px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                  Manual Finalization
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium">
@@ -1636,37 +1876,118 @@ export default function RoundsManagementPage() {
                             <h3 className="text-base sm:text-lg font-semibold">
                               {round.position} Round #{round.round_number || extractIdNumberAsInt(round.id)}
                             </h3>
-                            {(() => {
-                              const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
-                              if (!settings || !round.round_number) return null;
-                              let phase = 'Phase 3';
-                              let phaseColor = 'bg-purple-100 text-purple-700';
-                              if (round.round_number <= settings.phase_1_end_round) {
-                                phase = 'Phase 1';
-                                phaseColor = 'bg-blue-100 text-blue-700';
-                              } else if (round.round_number <= settings.phase_2_end_round) {
-                                phase = 'Phase 2';
-                                phaseColor = 'bg-orange-100 text-orange-700';
-                              }
-                              return <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>{phase}</span>;
-                            })()}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {(() => {
+                                const settings = auctionSettings.find(s => String(s.id) === String(selectedAuctionSettingsId));
+                                if (!settings || !round.round_number) return null;
+                                let phase = 'Phase 3';
+                                let phaseColor = 'bg-purple-100 text-purple-700';
+                                if (round.round_number <= settings.phase_1_end_round) {
+                                  phase = 'Phase 1';
+                                  phaseColor = 'bg-blue-100 text-blue-700';
+                                } else if (round.round_number <= settings.phase_2_end_round) {
+                                  phase = 'Phase 2';
+                                  phaseColor = 'bg-orange-100 text-orange-700';
+                                }
+                                return <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${phaseColor}`}>{phase}</span>;
+                              })()}
+                              {round.finalization_mode === 'manual' && (
+                                <span className="inline-block px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                  Manual Finalization
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-medium">
-                          Expired
-                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-medium">
+                            {round.status === 'expired_pending_finalization' ? 'Awaiting Preview' : 'Expired'}
+                          </span>
+                          {round.status === 'pending_finalization' && (
+                            <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">
+                              Results Pending
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleFinalizeRound(round.id)}
-                          className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all duration-200 text-sm flex items-center"
-                        >
-                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                          </svg>
-                          Finalize Round
-                        </button>
+                      <div className="flex flex-wrap gap-2">
+                        {/* For expired_pending_finalization status (manual mode, timer expired, not yet previewed) */}
+                        {round.status === 'expired_pending_finalization' && (
+                          <>
+                            <button
+                              onClick={() => handlePreviewFinalization(round.id)}
+                              className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition-all duration-200 text-sm flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              Preview Results
+                            </button>
+                            <button
+                              onClick={() => handleFinalizeImmediately(round.id)}
+                              className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all duration-200 text-sm flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              Finalize Immediately
+                            </button>
+                          </>
+                        )}
+                        
+                        {/* For pending_finalization status (preview created, waiting for approval) */}
+                        {round.status === 'pending_finalization' && (
+                          <>
+                            <button
+                              onClick={() => handleViewPendingResults(round.id)}
+                              className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition-all duration-200 text-sm flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              View Pending Results
+                            </button>
+                            <button
+                              onClick={() => handleApplyPendingAllocations(round.id)}
+                              className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all duration-200 text-sm flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                              </svg>
+                              Finalize for Real
+                            </button>
+                            <button
+                              onClick={() => handleCancelPending(round.id)}
+                              className="bg-orange-500/10 text-orange-600 px-4 py-2 rounded-xl hover:bg-orange-500/20 transition-all duration-200 text-sm flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              Cancel Pending
+                            </button>
+                          </>
+                        )}
+                        
+                        {/* For regular expired status (auto mode or old rounds) */}
+                        {round.status === 'expired' && (
+                          <button
+                            onClick={() => handleFinalizeRound(round.id)}
+                            className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all duration-200 text-sm flex items-center"
+                          >
+                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Finalize Round
+                          </button>
+                        )}
+                        
+                        {/* Delete button always available */}
                         <button
                           onClick={() => handleDeleteRound(round.id)}
                           className="bg-red-500/10 text-red-500 px-4 py-2 rounded-xl hover:bg-red-500/20 transition-all duration-200 text-sm flex items-center"

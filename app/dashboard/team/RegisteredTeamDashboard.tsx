@@ -187,6 +187,7 @@ interface DashboardData {
   owner?: Owner | null;
   manager?: Manager | null;
   activeRounds: Round[];
+  pendingRounds: Round[];
   activeBids: Bid[];
   players: Player[];
   tiebreakers: Tiebreaker[];
@@ -330,6 +331,31 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     const unsubRounds = listenToSeasonRoundUpdates(seasonStatus.seasonId, (message: any) => {
       console.log('🔴 [Team Dashboard] Round update:', message.type, message);
       
+      // Handle finalization completion event
+      if (message.event_type === 'finalization_complete' && message.finalized) {
+        console.log('🎉 [Team Dashboard] Round finalization completed:', message.round_id);
+        
+        // Show notification to user
+        showAlert({
+          type: 'success',
+          title: 'Round Finalized! 🎉',
+          message: `Auction results are now available. ${message.allocations_count || 0} player(s) have been allocated. Check your dashboard for updates!`,
+        });
+        
+        // Also try browser notification if available
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('Round Finalized! 🎉', {
+            body: `Auction results are now available. Check your dashboard for updates!`,
+            icon: '/logo.png',
+            tag: `round-finalized-${message.round_id}`,
+          });
+        }
+        
+        // Refetch dashboard to show new results
+        fetchDashboard(false, true); // Bust cache for fresh data
+        return;
+      }
+      
       // Refetch dashboard immediately without loader for any round event
       if (message.type === 'round_started' ||
           message.type === 'round_finalized' ||
@@ -366,7 +392,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
       unsubSquads();
       unsubWallets();
     };
-  }, [seasonStatus?.seasonId, dashboardData?.team?.id, fetchDashboard]);
+  }, [seasonStatus?.seasonId, dashboardData?.team?.id, fetchDashboard, showAlert]);
 
   // Timer effect for active rounds - optimized with requestAnimationFrame
   useEffect(() => {
@@ -591,7 +617,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     );
   }
 
-  const { team, activeRounds, players, tiebreakers, bulkTiebreakers, activeBulkRounds, stats, activeBids, roundResults, seasonParticipation } = dashboardData;
+  const { team, activeRounds, pendingRounds, players, tiebreakers, bulkTiebreakers, activeBulkRounds, stats, activeBids, roundResults, seasonParticipation } = dashboardData;
 
   // Filter players
   const filteredPlayers = players.filter(player => {
@@ -855,6 +881,16 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 </Link>
               ))}
               
+              {/* Pending Rounds - Not clickable, just informational */}
+              {pendingRounds && pendingRounds.length > 0 && pendingRounds.map(round => (
+                <div 
+                  key={round.id}
+                  className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-yellow-100 text-yellow-700 text-xs sm:text-sm font-medium text-center cursor-not-allowed"
+                >
+                  ⏳ Round #{round.round_number} - Results Pending
+                </div>
+              ))}
+              
               {activeBulkRounds.map(bulkRound => (
                 <Link 
                   key={bulkRound.id}
@@ -891,7 +927,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 </button>
               )}
               
-              {activeRounds.length === 0 && activeBulkRounds.length === 0 && tiebreakers.length === 0 && activeBids.length === 0 && (
+              {activeRounds.length === 0 && activeBulkRounds.length === 0 && tiebreakers.length === 0 && activeBids.length === 0 && (!pendingRounds || pendingRounds.length === 0) && (
                 <div className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-500 text-xs sm:text-sm text-center">No active auctions</div>
               )}
               
@@ -1062,9 +1098,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             >
               <span className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
                 🔥 Auctions
-                {(activeRounds.length > 0 || activeBids.length > 0) && (
+                {(activeRounds.length > 0 || activeBids.length > 0 || (pendingRounds && pendingRounds.length > 0)) && (
                   <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] sm:text-xs font-bold">
-                    {activeRounds.length + activeBids.length}
+                    {activeRounds.length + activeBids.length + (pendingRounds?.length || 0)}
                   </span>
                 )}
               </span>
@@ -1134,7 +1170,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
           {/* Auctions Tab */}
           {activeTab === 'auctions' && (
             <div className="space-y-4 sm:space-y-6">
-              {activeRounds.length === 0 && activeBids.length === 0 ? (
+              {activeRounds.length === 0 && activeBids.length === 0 && (!pendingRounds || pendingRounds.length === 0) ? (
                 <div className="text-center py-12">
                   <div className="inline-flex items-center justify-center p-4 bg-gray-100 rounded-full mb-4">
                     <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1190,6 +1226,35 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                     </div>
                   );
                   })}
+
+                  {/* Pending Rounds - Results Not Yet Available */}
+                  {pendingRounds && pendingRounds.length > 0 && pendingRounds.map(round => (
+                    <div key={round.id} className="glass-card rounded-xl sm:rounded-2xl p-4 sm:p-6 border-l-4 border-yellow-500 bg-yellow-50/30">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+                              Round #{round.round_number}{round.position ? ` - ${round.position.includes(',') ? round.position.split(',').join(' + ') : round.position}` : ''}
+                            </h3>
+                            <span className="px-2 py-1 rounded-lg bg-yellow-100 text-yellow-700 text-xs font-bold">
+                              ⏳ PENDING
+                            </span>
+                          </div>
+                          <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                            {round.player_count || 0} players • Results are being finalized
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-100 border border-yellow-200">
+                        <svg className="w-5 h-5 text-yellow-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-sm text-yellow-800">
+                          <span className="font-semibold">Results Pending:</span> The committee is reviewing the auction results. They will be published soon.
+                        </p>
+                      </div>
+                    </div>
+                  ))}
 
                   {/* Active Bids */}
                   {activeBids.length > 0 && (

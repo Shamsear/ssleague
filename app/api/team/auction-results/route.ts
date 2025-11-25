@@ -44,11 +44,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch completed rounds for this season
+    // Exclude rounds with pending allocations (pending_finalization or expired_pending_finalization)
+    // Only show rounds that are fully completed and finalized
     const roundsQuery = roundId 
       ? sql`
           SELECT id, season_id, position, round_number, round_type, status, end_time, created_at
           FROM rounds
-          WHERE id = ${roundId} AND season_id = ${seasonId}
+          WHERE id = ${roundId} 
+          AND season_id = ${seasonId}
+          AND status = 'completed'
+          AND status NOT IN ('pending_finalization', 'expired_pending_finalization')
           ORDER BY created_at DESC
         `
       : sql`

@@ -210,7 +210,41 @@ export async function GET(request: NextRequest) {
         await checkAndFinalizeExpiredRound(round.id);
       }
     }
+
+    // Fetch rounds with pending allocations (for display purposes only)
+    const pendingRoundsResult = await sql`
+      SELECT 
+        r.*,
+        0 as total_bids,
+        0 as teams_bid,
+        CASE 
+          WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
+          ELSE 0
+        END as player_count
+      FROM rounds r
+      WHERE r.season_id = ${seasonId}
+      AND r.status IN ('pending_finalization', 'expired_pending_finalization')
+      GROUP BY r.id
+      ORDER BY r.created_at DESC
+    `;
+    console.log('✅ Found pending rounds:', pendingRoundsResult.length);
     
+    // Format pending rounds (no tiebreakers needed, just basic info)
+    const pendingRounds = pendingRoundsResult.map(round => ({
+      id: round.id,
+      season_id: round.season_id,
+      round_number: round.round_number,
+      position: round.position,
+      status: round.status,
+      end_time: round.end_time,
+      max_bids_per_team: round.max_bids_per_team,
+      total_bids: 0,
+      teams_bid: 0,
+      player_count: round.player_count,
+      round_type: round.round_type,
+      tiebreakers: [],
+    }));
+
     // For each active round, fetch tiebreaker information
     const activeRounds = await Promise.all(activeRoundsResult.map(async (round) => {
       // Fetch tiebreakers for this round
@@ -698,6 +732,7 @@ export async function GET(request: NextRequest) {
         owner: ownerData,
         manager: managerData,
         activeRounds,
+        pendingRounds,
         activeBids,
         players, // Football players for auction
         realPlayers, // Real players assigned to team (for manager selection)

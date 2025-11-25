@@ -20,7 +20,7 @@ interface Bid {
   round_id: string;
 }
 
-interface AllocationResult {
+export interface AllocationResult {
   team_id: string;
   team_name: string;
   player_id: string;

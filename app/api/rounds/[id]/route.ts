@@ -406,6 +406,22 @@ export async function DELETE(
         AND b.status = 'won'
       `;
 
+      // ALSO get players allocated without bids (random allocations from Phase 3)
+      const randomAllocations = await sql`
+        SELECT tp.team_id, tp.player_id, tp.purchase_price
+        FROM team_players tp
+        WHERE tp.round_id = ${roundId}
+          AND NOT EXISTS (
+            SELECT 1 FROM bids b 
+            WHERE b.round_id = ${roundId} 
+              AND b.team_id = tp.team_id 
+              AND b.player_id = tp.player_id
+          )
+      `;
+
+      console.log(`📊 Found ${wonBids.length} won bids and ${randomAllocations.length} random allocations to reverse`);
+
+      // Process won bids
       for (const bid of wonBids) {
         // Get the purchase price from team_players (this is what they actually paid)
         const purchasePriceResult = await sql`
@@ -560,6 +576,133 @@ export async function DELETE(
         console.log(`✅ Deleted ${newsSnapshot.size} news article(s) for round ${roundId}`);
       } catch (error) {
         console.error(`❌ Error deleting news for round ${roundId}:`, error);
+      }
+
+      // Process random allocations (players without bids)
+      for (const allocation of randomAllocations) {
+        const amount = parseInt(allocation.purchase_price);
+        console.log(`🎲 Reversing random allocation: £${amount} for player ${allocation.player_id} to team ${allocation.team_id}`);
+        
+        // 1. Remove player from team (team_players)
+        await sql`
+          DELETE FROM team_players
+          WHERE player_id = ${allocation.player_id}
+          AND team_id = ${allocation.team_id}
+        `;
+        console.log(`✅ Removed ${allocation.player_id} from team_players`);
+
+        // 2. Reset player status
+        await sql`
+          UPDATE footballplayers
+          SET 
+            is_sold = false,
+            team_id = NULL,
+            acquisition_value = NULL,
+            season_id = NULL,
+            round_id = NULL,
+            status = 'available',
+            contract_id = NULL,
+            contract_start_season = NULL,
+            contract_end_season = NULL,
+            contract_length = NULL,
+            updated_at = NOW()
+          WHERE id = ${allocation.player_id}
+        `;
+        console.log(`✅ Reset player ${allocation.player_id} status`);
+
+        // 3. Refund team budget (Firebase team_seasons)
+        try {
+          const teamSeasonId = `${allocation.team_id}_${round.season_id}`;
+          const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
+          const teamSeasonDoc = await teamSeasonRef.get();
+          
+          if (teamSeasonDoc.exists) {
+            const teamSeasonData = teamSeasonDoc.data();
+            const curr = teamSeasonData?.currency_system || 'single';
+            const currentBudget = curr === 'dual' ? (teamSeasonData?.football_budget || 0) : (teamSeasonData?.budget || 0);
+            const currentSpent = teamSeasonData?.total_spent || 0;
+            const totalSpent = Math.max(0, currentSpent - amount);
+            const playersCount = Math.max(0, (teamSeasonData?.players_count || 0) - 1);
+            
+            console.log(`📊 Team ${allocation.team_id} before: budget=£${currentBudget}, spent=£${currentSpent}, players=${teamSeasonData?.players_count || 0}`);
+            
+            // Get player position for position_counts update
+            const playerResult = await sql`SELECT position FROM footballplayers WHERE id = ${allocation.player_id}`;
+            const playerPosition = playerResult[0]?.position;
+            
+            const positionCounts = { ...(teamSeasonData?.position_counts || {}) };
+            if (playerPosition) {
+              const currentCount = positionCounts[playerPosition] || 0;
+              positionCounts[playerPosition] = Math.max(0, currentCount - 1);
+              console.log(`📉 Position ${playerPosition}: ${currentCount} → ${positionCounts[playerPosition]}`);
+            }
+            
+            const upd: any = {
+              total_spent: totalSpent,
+              players_count: playersCount,
+              position_counts: positionCounts,
+              updated_at: new Date()
+            };
+            
+            if (curr === 'dual') {
+              upd.football_budget = currentBudget + amount;
+              upd.football_spent = Math.max(0, (teamSeasonData?.football_spent || 0) - amount);
+            } else {
+              upd.budget = currentBudget + amount;
+            }
+            
+            await teamSeasonRef.update(upd);
+            console.log(`✅ Refunded team_seasons ${allocation.team_id}: £${amount}`);
+            console.log(`📊 Team ${allocation.team_id} after: budget=£${curr === 'dual' ? upd.football_budget : upd.budget}, spent=£${totalSpent}, players=${playersCount}`);
+            console.log(`📋 Position counts:`, positionCounts);
+            
+            // Broadcast squad and wallet updates
+            await broadcastSquadUpdate(round.season_id, allocation.team_id, {
+              type: 'player_removed',
+              player_id: allocation.player_id,
+              refund: amount,
+            });
+            
+            await broadcastWalletUpdate(round.season_id, allocation.team_id, {
+              type: 'refund',
+              new_balance: curr === 'dual' ? upd.football_budget : upd.budget,
+              amount: amount,
+              currency_type: curr === 'dual' ? 'football' : 'single',
+            });
+          }
+        } catch (error) {
+          console.error(`❌ Error refunding team_seasons ${allocation.team_id}:`, error);
+        }
+
+        // 4. Refund team budget (SQL teams table)
+        try {
+          await sql`UPDATE teams SET 
+            football_spent = GREATEST(0, football_spent - ${amount}), 
+            football_budget = football_budget + ${amount},
+            football_players_count = GREATEST(0, football_players_count - 1),
+            updated_at = NOW() 
+          WHERE id = ${allocation.team_id}
+          AND season_id = ${round.season_id}`;
+          console.log(`✅ Refunded SQL teams table ${allocation.team_id}: £${amount}`);
+        } catch (teamUpdateError) {
+          console.error(`❌ Failed to refund SQL teams ${allocation.team_id}:`, teamUpdateError);
+        }
+
+        // 5. Delete transaction logs (Firestore) - random allocations also create transactions
+        try {
+          const transactionsSnapshot = await adminDb.collection('transactions')
+            .where('metadata.round_id', '==', roundId)
+            .where('metadata.player_id', '==', allocation.player_id)
+            .where('team_id', '==', allocation.team_id)
+            .where('transaction_type', '==', 'auction_win')
+            .get();
+          
+          const deletePromises = transactionsSnapshot.docs.map(doc => doc.ref.delete());
+          await Promise.all(deletePromises);
+          console.log(`✅ Deleted ${transactionsSnapshot.size} transaction(s) for player ${allocation.player_id}`);
+        } catch (error) {
+          console.error(`❌ Error deleting transactions for player ${allocation.player_id}:`, error);
+        }
       }
 
       console.log(`✅ Finalization fully reversed for round ${roundId}`);
