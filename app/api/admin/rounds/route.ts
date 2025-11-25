@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
             WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
             ELSE 0
           END as player_count,
-          EXISTS(SELECT 1 FROM pending_allocations pa WHERE pa.round_id = r.id) as has_pending_allocations
+          false as has_pending_allocations
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         WHERE r.season_id = ${seasonId} AND r.status = ${status}
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
             WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
             ELSE 0
           END as player_count,
-          EXISTS(SELECT 1 FROM pending_allocations pa WHERE pa.round_id = r.id) as has_pending_allocations
+          false as has_pending_allocations
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         WHERE r.season_id = ${seasonId}
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
             WHEN r.round_type = 'bulk' THEN (SELECT COUNT(*) FROM round_players WHERE round_id = r.id)
             ELSE 0
           END as player_count,
-          EXISTS(SELECT 1 FROM pending_allocations pa WHERE pa.round_id = r.id) as has_pending_allocations
+          false as has_pending_allocations
         FROM rounds r
         LEFT JOIN bids b ON r.id = b.round_id
         GROUP BY r.id
@@ -184,6 +184,7 @@ export async function POST(request: NextRequest) {
       position,
       max_bids_per_team,
       duration_hours,
+      finalization_mode,
     } = body;
 
     // Validate required fields
@@ -276,6 +277,7 @@ export async function POST(request: NextRequest) {
         round_number,
         end_time,
         status,
+        finalization_mode,
         created_at,
         updated_at
       ) VALUES (
@@ -287,6 +289,7 @@ export async function POST(request: NextRequest) {
         ${roundNumber},
         ${endTime.toISOString()},
         'active',
+        ${finalization_mode || 'auto'},
         ${now.toISOString()},
         ${now.toISOString()}
       )
