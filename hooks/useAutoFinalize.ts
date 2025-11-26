@@ -4,6 +4,7 @@ import { fetchWithTokenRefresh, refreshAuthToken } from '@/lib/token-refresh';
 interface UseAutoFinalizeOptions {
   roundId: string;
   endTime: string | null;
+  finalizationMode?: 'auto' | 'manual';
   enabled?: boolean;
   onFinalizationStart?: () => void;
   onFinalizationComplete?: () => void;
@@ -17,6 +18,7 @@ interface UseAutoFinalizeOptions {
 export function useAutoFinalize({
   roundId,
   endTime,
+  finalizationMode = 'auto',
   enabled = true,
   onFinalizationStart,
   onFinalizationComplete,
@@ -63,13 +65,31 @@ export function useAutoFinalize({
   const triggerFinalization = async () => {
     if (hasTriggered || isFinalizing) return;
 
-    console.log('⏰ Time reached! Auto-triggering finalization for round:', roundId);
     setIsFinalizing(true);
     setHasTriggered(true);
 
     onFinalizationStart?.();
 
     try {
+      // Check finalization mode
+      if (finalizationMode === 'manual') {
+        // Manual finalization - just mark as expired and let committee handle it
+        console.log('⏰ Time reached! Round has manual finalization - marking as expired:', roundId);
+        
+        await fetch(`/api/rounds/${roundId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'expired' }),
+        });
+        
+        console.log('✅ Round marked as expired. Committee can now preview and finalize manually.');
+        onFinalizationComplete?.(); // Refresh to show expired status
+        return;
+      }
+
+      // Auto finalization mode - trigger finalization API
+      console.log('⏰ Time reached! Auto-triggering finalization for round:', roundId);
+      
       // Proactively refresh token to avoid 401 errors
       console.log('🔄 Refreshing auth token before finalization...');
       await refreshAuthToken();

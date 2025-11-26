@@ -1123,7 +1123,7 @@ export default function RoundsManagementPage() {
 
   const activeRounds = rounds.filter(r => r.status === 'active');
   const finalizingRounds = rounds.filter(r => r.status === 'tiebreaker_pending');
-  const expiredRounds = rounds.filter(r => r.status === 'expired' || r.status === 'pending_finalization');
+  const expiredRounds = rounds.filter(r => r.status === 'expired' || r.status === 'expired_pending_finalization' || r.status === 'pending_finalization');
   const completedRounds = rounds.filter(r => r.status === 'completed');
 
   if (loading || !user || user.role !== 'committee_admin' || isLoading) {
@@ -1918,7 +1918,7 @@ export default function RoundsManagementPage() {
                       <div className="flex flex-wrap gap-2">
                         {/* For expired_pending_finalization status (manual mode, timer expired, not yet previewed) */}
                         {/* For expired rounds with manual finalization - show preview/finalize immediately options */}
-                        {round.status === 'expired' && round.finalization_mode === 'manual' && (
+                        {(round.status === 'expired' || round.status === 'expired_pending_finalization') && round.finalization_mode === 'manual' && (
                           <>
                             <button
                               onClick={() => handlePreviewFinalization(round.id)}

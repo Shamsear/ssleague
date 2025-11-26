@@ -14,7 +14,7 @@ COMMENT ON COLUMN rounds.finalization_mode IS 'Controls finalization behavior: "
 -- This table stores preview finalization results before they are applied
 CREATE TABLE IF NOT EXISTS pending_allocations (
     id SERIAL PRIMARY KEY,
-    round_id INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
+    round_id VARCHAR(255) NOT NULL,
     team_id VARCHAR(255) NOT NULL,
     team_name VARCHAR(255) NOT NULL,
     player_id VARCHAR(255) NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS pending_allocations (
     bid_id VARCHAR(255),
     phase VARCHAR(20) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(round_id, team_id)
+    UNIQUE(round_id, player_id)
 );
 
 -- Step 3: Create indexes for performance

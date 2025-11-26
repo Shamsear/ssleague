@@ -78,7 +78,7 @@ export async function POST(
       );
     }
 
-    // Validate round status - must be expired or active (but expired)
+    // Validate round status - must be expired_pending_finalization, expired, or active (but expired)
     const now = new Date();
     const endTime = new Date(round.end_time);
     const isExpired = now > endTime;
@@ -105,9 +105,15 @@ export async function POST(
       );
     }
 
-    if (!isExpired && round.status === 'active') {
+    // Allow preview if status is expired_pending_finalization (expected status for manual mode)
+    // OR if status is active but timer has expired
+    // OR if status is expired (legacy status)
+    const validStatuses = ['expired_pending_finalization', 'expired'];
+    const isValidStatus = validStatuses.includes(round.status) || (round.status === 'active' && isExpired);
+    
+    if (!isValidStatus) {
       return NextResponse.json(
-        { success: false, error: 'Round has not expired yet' },
+        { success: false, error: `Round status must be expired or expired_pending_finalization. Current status: ${round.status}` },
         { status: 400 }
       );
     }

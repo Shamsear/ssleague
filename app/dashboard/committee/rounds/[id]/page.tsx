@@ -285,13 +285,159 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
     return 'bg-gray-100 text-gray-800';
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setShowLoadingOverlay(true);
-    // Simulate export - replace with actual export logic
-    setTimeout(() => {
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const workbook = new ExcelJS.Workbook();
+      
+      // Sheet 1: Round Summary
+      const summarySheet = workbook.addWorksheet('Round Summary');
+      summarySheet.columns = [
+        { header: 'Field', key: 'field', width: 20 },
+        { header: 'Value', key: 'value', width: 40 }
+      ];
+      
+      summarySheet.addRows([
+        { field: 'Round ID', value: round.id },
+        { field: 'Position', value: round.position },
+        { field: 'Status', value: round.status },
+        { field: 'Max Bids Per Team', value: round.max_bids_per_team },
+        { field: 'Start Time', value: round.start_time ? new Date(round.start_time).toLocaleString() : 'N/A' },
+        { field: 'End Time', value: round.end_time ? new Date(round.end_time).toLocaleString() : 'N/A' },
+        { field: 'Created At', value: round.created_at ? new Date(round.created_at).toLocaleString() : 'N/A' },
+        { field: 'Total Bids', value: round.bids?.length || 0 }
+      ]);
+      
+      // Style the summary sheet
+      summarySheet.getRow(1).font = { bold: true };
+      summarySheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' }
+      };
+      
+      // Sheet 2: Winning Bids (if completed)
+      if (isCompleted && winningBids.length > 0) {
+        const winningSheet = workbook.addWorksheet('Winning Bids');
+        winningSheet.columns = [
+          { header: 'Player Name', key: 'playerName', width: 25 },
+          { header: 'Position', key: 'position', width: 12 },
+          { header: 'Overall Rating', key: 'rating', width: 15 },
+          { header: 'Team Name', key: 'teamName', width: 25 },
+          { header: 'Bid Amount', key: 'amount', width: 15 },
+          { header: 'Status', key: 'status', width: 12 },
+          { header: 'Phase', key: 'phase', width: 12 },
+          { header: 'Actual Bid Amount', key: 'actualAmount', width: 18 }
+        ];
+        
+        winningBids.forEach(playerData => {
+          const bid = playerData.winningBid!;
+          winningSheet.addRow({
+            playerName: playerData.player.name,
+            position: playerData.player.position,
+            rating: playerData.player.overall_rating,
+            teamName: bid.team_name,
+            amount: bid.amount,
+            status: 'Won',
+            phase: bid.phase || 'regular',
+            actualAmount: bid.actual_bid_amount || bid.amount
+          });
+        });
+        
+        // Style the winning bids sheet
+        winningSheet.getRow(1).font = { bold: true };
+        winningSheet.getRow(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFD1FAE5' }
+        };
+      }
+      
+      // Sheet 3: All Bids by Team
+      const allBidsSheet = workbook.addWorksheet('All Bids by Team');
+      allBidsSheet.columns = [
+        { header: 'Team Name', key: 'teamName', width: 25 },
+        { header: 'Player Name', key: 'playerName', width: 25 },
+        { header: 'Position', key: 'position', width: 12 },
+        { header: 'Overall Rating', key: 'rating', width: 15 },
+        { header: 'Bid Amount', key: 'amount', width: 15 },
+        { header: 'Status', key: 'status', width: 12 },
+        { header: 'Timestamp', key: 'timestamp', width: 20 },
+        { header: 'Loss Reason', key: 'lossReason', width: 40 }
+      ];
+      
+      Object.entries(teamBids).forEach(([teamId, teamData]) => {
+        teamData.bids.forEach(bid => {
+          allBidsSheet.addRow({
+            teamName: teamData.team.name,
+            playerName: bid.player.name,
+            position: bid.player.position,
+            rating: bid.player.overall_rating,
+            amount: bid.amount,
+            status: bid.won ? 'Won' : 'Lost',
+            timestamp: new Date(bid.timestamp).toLocaleString(),
+            lossReason: bid.lossReason || ''
+          });
+        });
+      });
+      
+      // Style the all bids sheet
+      allBidsSheet.getRow(1).font = { bold: true };
+      allBidsSheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFEF3C7' }
+      };
+      
+      // Sheet 4: Team Bid Counts
+      const bidCountsSheet = workbook.addWorksheet('Team Bid Counts');
+      bidCountsSheet.columns = [
+        { header: 'Team Name', key: 'teamName', width: 25 },
+        { header: 'Bids Submitted', key: 'bidCount', width: 18 },
+        { header: 'Required Bids', key: 'requiredBids', width: 18 },
+        { header: 'Complete', key: 'complete', width: 12 }
+      ];
+      
+      teamBidCounts.forEach(teamCount => {
+        bidCountsSheet.addRow({
+          teamName: teamCount.team_name,
+          bidCount: teamCount.bid_count,
+          requiredBids: teamCount.required_bids,
+          complete: teamCount.bid_count >= teamCount.required_bids ? 'Yes' : 'No'
+        });
+      });
+      
+      // Style the bid counts sheet
+      bidCountsSheet.getRow(1).font = { bold: true };
+      bidCountsSheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFBFDBFE' }
+      };
+      
+      // Generate Excel file
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
+      // Download file
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `round_${round.id.substring(0, 8)}_${round.position}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export data. Please try again.');
+    } finally {
       setShowLoadingOverlay(false);
-      alert('Export functionality coming soon!');
-    }, 1500);
+    }
   };
 
   if (loading || isLoading || !round) {

@@ -1415,23 +1415,71 @@ export async function executeTransferV2(
 // ============================================================================
 
 /**
- * Update team balances for swap operation
+ * Update team budgets for swap operation with budget-specific fields
+ * 
+ * This function updates the correct budget fields based on player types for both teams.
+ * It handles:
+ * - Same-type swaps (real for real, football for football)
+ * - Mixed swaps (real for football, football for real)
+ * - Cash payments between teams
+ * - Does NOT update dollar_balance field
+ * 
+ * @param teamAId - ID of Team A
+ * @param teamBId - ID of Team B
+ * @param seasonId - Season ID for the swap
+ * @param playerAType - Type of player A ('real' or 'football')
+ * @param playerBType - Type of player B ('real' or 'football')
+ * @param playerANewValue - New value of player A after swap
+ * @param playerBNewValue - New value of player B after swap
+ * @param playerAOriginalValue - Original value of player A
+ * @param playerBOriginalValue - Original value of player B
+ * @param teamAPays - Total amount Team A pays (committee fee + cash)
+ * @param teamBPays - Total amount Team B pays (committee fee + cash)
+ * 
+ * @example
+ * // Real player for real player swap
+ * await updateSwapBalances(
+ *   'SSPSLT0001', 'SSPSLT0002', 'SSPSLS16',
+ *   'real', 'real',
+ *   281.25, 390.00,
+ *   225, 300,
+ *   60, 50
+ * );
+ * 
+ * @example
+ * // Mixed swap: real player for football player
+ * await updateSwapBalances(
+ *   'SSPSLT0001', 'SSPSLT0002', 'SSPSLS16',
+ *   'real', 'football',
+ *   281.25, 57.50,
+ *   225, 46,
+ *   40, 50
+ * );
  */
 async function updateSwapBalances(
   teamAId: string,
   teamBId: string,
   seasonId: string,
+  playerAType: PlayerType,
+  playerBType: PlayerType,
+  playerANewValue: number,
+  playerBNewValue: number,
+  playerAOriginalValue: number,
+  playerBOriginalValue: number,
   teamAPays: number,
   teamBPays: number
 ): Promise<void> {
   try {
+    console.log(`💰 Updating team budgets for swap...`);
+    console.log(`   Player A type: ${playerAType}, Player B type: ${playerBType}`);
+    
     const teamASeasonId = `${teamAId}_${seasonId}`;
     const teamBSeasonId = `${teamBId}_${seasonId}`;
     
     const teamARef = adminDb.collection('team_seasons').doc(teamASeasonId);
     const teamBRef = adminDb.collection('team_seasons').doc(teamBSeasonId);
     
-    // Get current balances
+    // Verify documents exist
     const [teamADoc, teamBDoc] = await Promise.all([
       teamARef.get(),
       teamBRef.get()
@@ -1445,20 +1493,66 @@ async function updateSwapBalances(
       throw new Error(`Team B season document not found: ${teamBSeasonId}`);
     }
     
-    const teamABalance = teamADoc.data()?.dollar_balance || 0;
-    const teamBBalance = teamBDoc.data()?.dollar_balance || 0;
+    // Team A is giving away Player A (playerAType) and receiving Player B (playerBType)
+    // Team B is giving away Player B (playerBType) and receiving Player A (playerAType)
     
-    // Update balances
+    // Determine which budget fields Team A needs to update
+    // Team A loses playerAType budget and gains playerBType budget
+    const teamAGivingBudgetField = playerAType === 'real' ? 'real_player_budget' : 'football_budget';
+    const teamAGivingSpentField = playerAType === 'real' ? 'real_player_spent' : 'football_spent';
+    const teamAReceivingBudgetField = playerBType === 'real' ? 'real_player_budget' : 'football_budget';
+    const teamAReceivingSpentField = playerBType === 'real' ? 'real_player_spent' : 'football_spent';
+    
+    // Determine which budget fields Team B needs to update
+    // Team B loses playerBType budget and gains playerAType budget
+    const teamBGivingBudgetField = playerBType === 'real' ? 'real_player_budget' : 'football_budget';
+    const teamBGivingSpentField = playerBType === 'real' ? 'real_player_spent' : 'football_spent';
+    const teamBReceivingBudgetField = playerAType === 'real' ? 'real_player_budget' : 'football_budget';
+    const teamBReceivingSpentField = playerAType === 'real' ? 'real_player_spent' : 'football_spent';
+    
+    console.log(`   Team A: Giving ${playerAType} player, receiving ${playerBType} player`);
+    console.log(`   Team B: Giving ${playerBType} player, receiving ${playerAType} player`);
+    
+    // Build Team A update object
+    const teamAUpdate: any = {
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    // Team A releases Player A (playerAType)
+    // Add back original value to budget, remove from spent
+    teamAUpdate[teamAGivingBudgetField] = admin.firestore.FieldValue.increment(playerAOriginalValue);
+    teamAUpdate[teamAGivingSpentField] = admin.firestore.FieldValue.increment(-playerAOriginalValue);
+    
+    // Team A receives Player B (playerBType)
+    // Deduct payment (fee + cash) from budget, add new value to spent
+    teamAUpdate[teamAReceivingBudgetField] = admin.firestore.FieldValue.increment(-teamAPays);
+    teamAUpdate[teamAReceivingSpentField] = admin.firestore.FieldValue.increment(playerBNewValue);
+    
+    // Build Team B update object
+    const teamBUpdate: any = {
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    // Team B releases Player B (playerBType)
+    // Add back original value to budget, remove from spent
+    teamBUpdate[teamBGivingBudgetField] = admin.firestore.FieldValue.increment(playerBOriginalValue);
+    teamBUpdate[teamBGivingSpentField] = admin.firestore.FieldValue.increment(-playerBOriginalValue);
+    
+    // Team B receives Player A (playerAType)
+    // Deduct payment (fee + cash) from budget, add new value to spent
+    teamBUpdate[teamBReceivingBudgetField] = admin.firestore.FieldValue.increment(-teamBPays);
+    teamBUpdate[teamBReceivingSpentField] = admin.firestore.FieldValue.increment(playerANewValue);
+    
+    console.log(`   Team A updates:`, teamAUpdate);
+    console.log(`   Team B updates:`, teamBUpdate);
+    
+    // Update both teams atomically
     await Promise.all([
-      teamARef.update({
-        dollar_balance: teamABalance - teamAPays,
-        updated_at: admin.firestore.FieldValue.serverTimestamp()
-      }),
-      teamBRef.update({
-        dollar_balance: teamBBalance - teamBPays,
-        updated_at: admin.firestore.FieldValue.serverTimestamp()
-      })
+      teamARef.update(teamAUpdate),
+      teamBRef.update(teamBUpdate)
     ]);
+    
+    console.log(`✅ Team budgets updated successfully for swap`);
     
   } catch (error) {
     console.error('Error updating swap balances:', error);
@@ -1753,6 +1847,7 @@ export async function executeSwapV2(
   let teamBOriginalBalance = 0;
   let teamAId: string = '';
   let teamBId: string = '';
+  let calculation: SwapCalculation | null = null;
   
   try {
     // Step 1: Fetch both player data
@@ -1811,7 +1906,7 @@ export async function executeSwapV2(
     
     // Step 3: Calculate swap details
     console.log('💰 Calculating swap details...');
-    const calculation = calculateSwapDetails(
+    calculation = calculateSwapDetails(
       {
         value: playerAData.auction_value,
         starRating: playerAData.star_rating,
@@ -1883,12 +1978,18 @@ export async function executeSwapV2(
     }, []); // Empty array for now - will be populated with future seasons in task 11
     playerBUpdated = true;
     
-    // Step 7: Update team balances in Firestore
-    console.log('💸 Updating team balances...');
+    // Step 7: Update team budgets in Firestore
+    console.log('💸 Updating team budgets...');
     await updateSwapBalances(
       teamAId,
       teamBId,
       seasonId,
+      playerAType,
+      playerBType,
+      calculation.playerA.newValue,
+      calculation.playerB.newValue,
+      calculation.playerA.originalValue,
+      calculation.playerB.originalValue,
       calculation.teamAPays,
       calculation.teamBPays
     );
@@ -1940,18 +2041,26 @@ export async function executeSwapV2(
     console.error('❌ Swap failed:', error);
     
     // Rollback logic
-    if (balancesUpdated) {
-      console.log('🔄 Rolling back team balances...');
+    if (balancesUpdated && originalPlayerAData && originalPlayerBData && calculation) {
+      console.log('🔄 Rolling back team budgets...');
       try {
+        // Reverse the swap by swapping back with original values
+        // This effectively undoes the budget changes
         await updateSwapBalances(
+          teamBId, // Swap team order
           teamAId,
-          teamBId,
           seasonId,
-          -request.cashAmount || 0, // Reverse the amounts
-          -request.cashAmount || 0
+          playerBType, // Swap player types
+          playerAType,
+          originalPlayerBData.auction_value, // Use original values
+          originalPlayerAData.auction_value,
+          calculation.playerB.newValue, // What was "new" is now "original"
+          calculation.playerA.newValue,
+          calculation.teamBPays, // Reverse payments
+          calculation.teamAPays
         );
       } catch (rollbackError) {
-        console.error('Failed to rollback balances:', rollbackError);
+        console.error('Failed to rollback budgets:', rollbackError);
       }
     }
     
