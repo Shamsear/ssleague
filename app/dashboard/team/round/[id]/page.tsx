@@ -581,8 +581,10 @@ export default function TeamRoundPage() {
                     <p className="font-medium">{totalRounds - completedRounds}</p>
                   </div>
                   <div>
-                    <span className="text-xs text-blue-500">Min balance per round:</span>
-                    <p className="font-medium">£1,000</p>
+                    <span className="text-xs text-blue-500">Max bid this round:</span>
+                    <p className="font-medium">
+                      £{Math.max(0, teamBalance - ((totalRounds - completedRounds - 1) * 1000)).toLocaleString()}
+                    </p>
                   </div>
                   <div>
                     <span className="text-xs text-blue-500">Your balance:</span>

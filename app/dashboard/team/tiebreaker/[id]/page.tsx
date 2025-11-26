@@ -600,11 +600,6 @@ export default function TeamTiebreakerPage({ params }: { params: Promise<{ id: s
                                   </svg>
                                   Bid Submitted
                                 </span>
-                                {team.new_bid_amount && (
-                                  <span className="text-xs text-gray-500">
-                                    £{team.new_bid_amount.toLocaleString()}
-                                  </span>
-                                )}
                               </>
                             ) : (
                               <span className="text-xs text-gray-500 font-medium flex items-center">

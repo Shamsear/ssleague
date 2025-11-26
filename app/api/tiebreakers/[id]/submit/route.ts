@@ -307,39 +307,29 @@ export async function POST(
       
       // If status is 'resolved' (not tied_again), trigger finalization
       if (resolutionResult.data?.status === 'resolved' && roundId) {
-        console.log(`🚀 Tiebreaker resolved - auto-triggering round finalization...`);
+        console.log(`🚀 Tiebreaker resolved - checking round finalization mode...`);
         
-        // Automatically finalize the round
-        const finalizationResult = await finalizeRound(roundId);
+        // Check round's finalization mode
+        const roundInfo = await sql`
+          SELECT finalization_mode, status
+          FROM rounds
+          WHERE id = ${roundId}
+        `;
         
-        if (finalizationResult.success) {
-          console.log('✅ Round finalized automatically!');
+        const finalizationMode = roundInfo[0]?.finalization_mode || 'auto';
+        
+        if (finalizationMode === 'manual') {
+          console.log('📋 Manual finalization mode - creating preview instead of auto-finalizing');
           
-          // Apply results to database
-          const applyResult = await applyFinalizationResults(
-            roundId,
-            finalizationResult.allocations
-          );
+          // For manual mode, just run finalization to create pending allocations (preview)
+          const finalizationResult = await finalizeRound(roundId);
           
-          if (applyResult.success) {
+          if (finalizationResult.success) {
+            console.log('✅ Preview created - waiting for committee approval');
+            
             return NextResponse.json({
               success: true,
-              message: 'Tiebreaker resolved and round finalized automatically!',
-              data: {
-                tiebreakerId,
-                newBidAmount,
-                submittedAt: new Date().toISOString(),
-                autoResolved: true,
-                resolution: resolutionResult.data,
-                roundFinalized: true,
-                allocations: finalizationResult.allocations.length,
-              },
-            });
-          } else {
-            console.error('⚠️ Failed to apply finalization results:', applyResult.error);
-            return NextResponse.json({
-              success: true,
-              message: 'Tiebreaker resolved but finalization failed',
+              message: 'Tiebreaker resolved! Preview created - awaiting committee approval.',
               data: {
                 tiebreakerId,
                 newBidAmount,
@@ -347,27 +337,74 @@ export async function POST(
                 autoResolved: true,
                 resolution: resolutionResult.data,
                 roundFinalized: false,
-                finalizationError: applyResult.error,
+                previewCreated: true,
+                allocations: finalizationResult.allocations.length,
               },
             });
           }
-        } else if (finalizationResult.tieDetected) {
-          // Another tie detected - new tiebreaker created
-          console.log('⚠️ Another tie detected - new tiebreaker created');
-          return NextResponse.json({
-            success: true,
-            message: 'Tiebreaker resolved but another tie detected',
-            data: {
-              tiebreakerId,
-              newBidAmount,
-              submittedAt: new Date().toISOString(),
-              autoResolved: true,
-              resolution: resolutionResult.data,
-              roundFinalized: false,
-              newTiebreakerId: finalizationResult.tiebreakerId,
-              message: 'Another tie detected - resolve new tiebreaker',
-            },
-          });
+        } else {
+          console.log('🚀 Auto finalization mode - finalizing round automatically');
+          
+          // Automatically finalize the round
+          const finalizationResult = await finalizeRound(roundId);
+          
+          if (finalizationResult.success) {
+            console.log('✅ Round finalized automatically!');
+            
+            // Apply results to database
+            const applyResult = await applyFinalizationResults(
+              roundId,
+              finalizationResult.allocations
+            );
+            
+            if (applyResult.success) {
+              return NextResponse.json({
+                success: true,
+                message: 'Tiebreaker resolved and round finalized automatically!',
+                data: {
+                  tiebreakerId,
+                  newBidAmount,
+                  submittedAt: new Date().toISOString(),
+                  autoResolved: true,
+                  resolution: resolutionResult.data,
+                  roundFinalized: true,
+                  allocations: finalizationResult.allocations.length,
+                },
+              });
+            } else {
+              console.error('⚠️ Failed to apply finalization results:', applyResult.error);
+              return NextResponse.json({
+                success: true,
+                message: 'Tiebreaker resolved but finalization failed',
+                data: {
+                  tiebreakerId,
+                  newBidAmount,
+                  submittedAt: new Date().toISOString(),
+                  autoResolved: true,
+                  resolution: resolutionResult.data,
+                  roundFinalized: false,
+                  finalizationError: applyResult.error,
+                },
+              });
+            }
+          } else if (finalizationResult.tieDetected) {
+            // Another tie detected - new tiebreaker created
+            console.log('⚠️ Another tie detected - new tiebreaker created');
+            return NextResponse.json({
+              success: true,
+              message: 'Tiebreaker resolved but another tie detected',
+              data: {
+                tiebreakerId,
+                newBidAmount,
+                submittedAt: new Date().toISOString(),
+                autoResolved: true,
+                resolution: resolutionResult.data,
+                roundFinalized: false,
+                newTiebreakerId: finalizationResult.tiebreakerId,
+                message: 'Another tie detected - resolve new tiebreaker',
+              },
+            });
+          }
         }
       }
       
