@@ -903,6 +903,13 @@ export default function RoundsManagementPage() {
   };
 
   const handlePreviewFinalization = async (roundId: string) => {
+    // Prevent multiple clicks
+    if (loadingSubmissions[roundId]) {
+      return;
+    }
+    
+    setLoadingSubmissions({ ...loadingSubmissions, [roundId]: true });
+    
     try {
       const response = await fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/preview-finalization`, {
         method: 'POST',
@@ -943,6 +950,8 @@ export default function RoundsManagementPage() {
         title: 'Error',
         message: 'Failed to preview finalization'
       });
+    } finally {
+      setLoadingSubmissions(prev => ({ ...prev, [roundId]: false }));
     }
   };
 
@@ -964,34 +973,9 @@ export default function RoundsManagementPage() {
     setShowFinalizationProgress(true);
   };
 
-  const handleViewPendingResults = async (roundId: string) => {
-    try {
-      const response = await fetchWithTokenRefresh(`/api/admin/rounds/${roundId}/pending-allocations`);
-      const result = await response.json();
-
-      if (result.success && result.data) {
-        // TODO: Open PendingAllocationsModal with the data
-        // For now, show an alert with summary
-        showAlert({
-          type: 'info',
-          title: 'Pending Results',
-          message: `${result.data.allocations?.length || 0} players allocated. Total spent: £${result.data.summary?.total_spent?.toLocaleString() || 0}. Modal component coming soon.`
-        });
-      } else {
-        showAlert({
-          type: 'error',
-          title: 'Error',
-          message: result.error || 'Failed to fetch pending results'
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching pending results:', err);
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: 'Failed to fetch pending results'
-      });
-    }
+  const handleViewPendingResults = (roundId: string) => {
+    // Navigate to the dedicated pending results page
+    router.push(`/dashboard/committee/rounds/${roundId}/pending-results`);
   };
 
   const handleApplyPendingAllocations = async (roundId: string) => {
@@ -1139,7 +1123,7 @@ export default function RoundsManagementPage() {
 
   const activeRounds = rounds.filter(r => r.status === 'active');
   const finalizingRounds = rounds.filter(r => r.status === 'tiebreaker_pending');
-  const expiredRounds = rounds.filter(r => r.status === 'expired');
+  const expiredRounds = rounds.filter(r => r.status === 'expired' || r.status === 'pending_finalization');
   const completedRounds = rounds.filter(r => r.status === 'completed');
 
   if (loading || !user || user.role !== 'committee_admin' || isLoading) {
@@ -1522,15 +1506,30 @@ export default function RoundsManagementPage() {
                           </button>
                         </div>
                         
-                        <button
-                          onClick={() => handleFinalizeRound(round.id)}
-                          className="bg-green-500 text-white px-4 py-3 rounded-xl hover:bg-green-600 transition-all duration-200 font-medium flex items-center justify-center"
-                        >
-                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                          </svg>
-                          Finalize Round
-                        </button>
+                        {/* Only show Finalize Round button for auto-finalize mode */}
+                        {round.finalization_mode !== 'manual' && (
+                          <button
+                            onClick={() => handleFinalizeRound(round.id)}
+                            className="bg-green-500 text-white px-4 py-3 rounded-xl hover:bg-green-600 transition-all duration-200 font-medium flex items-center justify-center"
+                          >
+                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Finalize Round
+                          </button>
+                        )}
+                        {/* For manual finalization, show early finalize option */}
+                        {round.finalization_mode === 'manual' && (
+                          <button
+                            onClick={() => handleFinalizeImmediately(round.id)}
+                            className="bg-orange-500 text-white px-4 py-3 rounded-xl hover:bg-orange-600 transition-all duration-200 font-medium flex items-center justify-center"
+                          >
+                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Finalize Early (Skip Preview)
+                          </button>
+                        )}
                       </div>
                       
                       {/* Submission Status */}
@@ -1919,17 +1918,18 @@ export default function RoundsManagementPage() {
                       <div className="flex flex-wrap gap-2">
                         {/* For expired_pending_finalization status (manual mode, timer expired, not yet previewed) */}
                         {/* For expired rounds with manual finalization - show preview/finalize immediately options */}
-                        {round.status === 'expired' && round.finalization_mode === 'manual' && !round.has_pending_allocations && (
+                        {round.status === 'expired' && round.finalization_mode === 'manual' && (
                           <>
                             <button
                               onClick={() => handlePreviewFinalization(round.id)}
-                              className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition-all duration-200 text-sm flex items-center"
+                              disabled={loadingSubmissions[round.id]}
+                              className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition-all duration-200 text-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                               </svg>
-                              Preview Results
+                              {loadingSubmissions[round.id] ? 'Creating Preview...' : 'Preview Results'}
                             </button>
                             <button
                               onClick={() => handleFinalizeImmediately(round.id)}
@@ -1943,8 +1943,8 @@ export default function RoundsManagementPage() {
                           </>
                         )}
                         
-                        {/* For expired rounds with pending allocations (preview created, waiting for approval) */}
-                        {round.status === 'expired' && round.finalization_mode === 'manual' && round.has_pending_allocations && (
+                        {/* For pending_finalization status (preview created, waiting for approval) */}
+                        {round.status === 'pending_finalization' && (
                           <>
                             <button
                               onClick={() => handleViewPendingResults(round.id)}

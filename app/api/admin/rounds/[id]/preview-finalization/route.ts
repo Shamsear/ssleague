@@ -90,7 +90,12 @@ export async function POST(
       );
     }
 
-    if (round.status === 'pending_finalization') {
+    // Check if preview already exists
+    const existingPending = await sql`
+      SELECT COUNT(*) as count FROM pending_allocations WHERE round_id = ${roundId}
+    `;
+    
+    if (existingPending[0]?.count > 0) {
       return NextResponse.json(
         { 
           success: false, 
