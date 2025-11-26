@@ -452,8 +452,16 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
       const playerNum = i + 1;
       
       try {
-        // Generate ID if not provided
-        const playerId = p.id || randomUUID();
+        // Look up existing player by player_id to get their database id
+        const existingPlayerResult = await pool.query(
+          'SELECT id FROM footballplayers WHERE player_id = $1',
+          [p.player_id]
+        );
+        
+        // Use existing id if player exists, otherwise generate new UUID
+        const playerId = existingPlayerResult.rows.length > 0 
+          ? existingPlayerResult.rows[0].id 
+          : randomUUID();
         
         // This query will:
         // - INSERT new players with all provided data
@@ -469,7 +477,7 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
             defensive_awareness, tackling, aggression, defensive_engagement,
             gk_awareness, gk_catching, gk_parrying, gk_reflexes, gk_reach
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
-          ON CONFLICT (player_id) DO UPDATE SET
+          ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             position = EXCLUDED.position,
             position_group = EXCLUDED.position_group,
@@ -558,12 +566,8 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
           p.gk_reach || null
         ];
         
-        // Check if player exists first to track updated vs inserted
-        const checkResult = await pool.query(
-          'SELECT COUNT(*) as count FROM footballplayers WHERE player_id = $1',
-          [p.player_id]
-        );
-        const exists = parseInt(checkResult.rows[0].count) > 0;
+        // Track if this is an update or insert based on earlier lookup
+        const exists = existingPlayerResult.rows.length > 0;
         
         await pool.query(query, values);
         
