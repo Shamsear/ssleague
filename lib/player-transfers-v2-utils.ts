@@ -45,14 +45,14 @@ export const SWAP_FEES: Record<number, number> = {
  * Players upgrade their star rating when their points reach these thresholds
  */
 export const STAR_POINT_THRESHOLDS: Record<number, { min: number; max: number }> = {
-  3: { min: 100, max: 149 },
-  4: { min: 150, max: 179 },
-  5: { min: 180, max: 209 },
-  6: { min: 210, max: 239 },
-  7: { min: 240, max: 269 },
-  8: { min: 270, max: 299 },
-  9: { min: 300, max: 329 },
-  10: { min: 330, max: Infinity }
+  3: { min: 100, max: 119 },
+  4: { min: 120, max: 144 },
+  5: { min: 145, max: 174 },
+  6: { min: 175, max: 209 },
+  7: { min: 210, max: 249 },
+  8: { min: 250, max: 299 },
+  9: { min: 300, max: 399 },
+  10: { min: 400, max: Infinity }
 };
 
 /**
@@ -70,8 +70,9 @@ export const TRANSFER_FEE_PERCENTAGE = 0.10;
 
 /**
  * Points per value ratio for star rating upgrades
+ * 1 point for every $5 increase in value = 0.2 ratio
  */
-export const POINTS_PER_VALUE_RATIO = 0.6;
+export const POINTS_PER_VALUE_RATIO = 0.2;
 
 // ============================================================================
 // CALCULATION FUNCTIONS
@@ -123,14 +124,17 @@ export function calculateCommitteeFee(newValue: number): number {
 /**
  * Calculate new star rating based on points accumulated from value increases
  * 
+ * Formula: 1 point for every $5 increase in value (ratio = 0.2)
+ * 
  * @param currentPoints - The player's current points
  * @param valueIncrease - The increase in player value
- * @param pointsPerValueRatio - Ratio for converting value to points (default: 0.6)
+ * @param pointsPerValueRatio - Ratio for converting value to points (default: 0.2)
  * @returns Object containing new points and new star rating
  * 
  * @example
- * calculateNewStarRating(192, 90, 0.6)
- * // Returns { newPoints: 246, newStarRating: 7 }
+ * calculateNewStarRating(180, 100, 0.2)
+ * // Returns { newPoints: 200, newStarRating: 5 }
+ * // Explanation: 100 / 5 = 20 points added, 180 + 20 = 200 points
  */
 export function calculateNewStarRating(
   currentPoints: number,

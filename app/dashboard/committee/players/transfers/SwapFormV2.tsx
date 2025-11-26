@@ -662,6 +662,12 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Points:</span>
+                    <span className="font-semibold text-gray-900">
+                      {selectedPlayerA.points} → {selectedPlayerA.points + calculation.playerA.pointsAdded}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">New Salary:</span>
                     <span className="font-semibold text-gray-900">${calculation.playerA.newSalary.toFixed(2)}/match</span>
                   </div>
@@ -671,7 +677,7 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
                   </div>
                   {calculation.playerA.pointsAdded > 0 && (
                     <div className="bg-yellow-50 rounded p-2 mt-2">
-                      <span className="text-xs text-yellow-800">+{calculation.playerA.pointsAdded} points added</span>
+                      <span className="text-xs text-yellow-800 font-semibold">+{calculation.playerA.pointsAdded} points added</span>
                     </div>
                   )}
                 </div>
@@ -707,6 +713,12 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Points:</span>
+                    <span className="font-semibold text-gray-900">
+                      {selectedPlayerB.points} → {selectedPlayerB.points + calculation.playerB.pointsAdded}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">New Salary:</span>
                     <span className="font-semibold text-gray-900">${calculation.playerB.newSalary.toFixed(2)}/match</span>
                   </div>
@@ -716,7 +728,7 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
                   </div>
                   {calculation.playerB.pointsAdded > 0 && (
                     <div className="bg-yellow-50 rounded p-2 mt-2">
-                      <span className="text-xs text-yellow-800">+{calculation.playerB.pointsAdded} points added</span>
+                      <span className="text-xs text-yellow-800 font-semibold">+{calculation.playerB.pointsAdded} points added</span>
                     </div>
                   )}
                 </div>
@@ -819,24 +831,58 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
               {(calculation.playerA.newStarRating > selectedPlayerA.star_rating || 
                 calculation.playerB.newStarRating > selectedPlayerB.star_rating) && (
                 <div className="bg-yellow-50 rounded-lg p-4 shadow-sm border border-yellow-200">
-                  <h4 className="font-semibold text-yellow-800 mb-2 text-sm flex items-center gap-2">
+                  <h4 className="font-semibold text-yellow-800 mb-3 text-sm flex items-center gap-2">
                     ⭐ Star Rating Upgrades!
                   </h4>
-                  <div className="space-y-1 text-sm">
+                  <div className="space-y-3">
                     {calculation.playerA.newStarRating > selectedPlayerA.star_rating && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700">{selectedPlayerA.player_name}:</span>
-                        <span className="font-semibold text-yellow-700">
-                          {selectedPlayerA.star_rating}⭐ → {calculation.playerA.newStarRating}⭐
-                        </span>
+                      <div className="bg-white rounded-lg p-3 border border-yellow-200">
+                        <p className="text-xs text-gray-600 mb-2 font-semibold">{selectedPlayerA.player_name}</p>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">Star Rating:</span>
+                            <span className="font-semibold text-gray-900">
+                              {selectedPlayerA.star_rating}⭐ → {calculation.playerA.newStarRating}⭐
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">Points:</span>
+                            <span className="font-semibold text-gray-900">
+                              {selectedPlayerA.points} → {selectedPlayerA.points + calculation.playerA.pointsAdded}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center pt-1 border-t border-yellow-100">
+                            <span className="text-xs text-gray-500">Points Added:</span>
+                            <span className="text-sm font-bold text-green-600">
+                              +{calculation.playerA.pointsAdded}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     )}
                     {calculation.playerB.newStarRating > selectedPlayerB.star_rating && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700">{selectedPlayerB.player_name}:</span>
-                        <span className="font-semibold text-yellow-700">
-                          {selectedPlayerB.star_rating}⭐ → {calculation.playerB.newStarRating}⭐
-                        </span>
+                      <div className="bg-white rounded-lg p-3 border border-yellow-200">
+                        <p className="text-xs text-gray-600 mb-2 font-semibold">{selectedPlayerB.player_name}</p>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">Star Rating:</span>
+                            <span className="font-semibold text-gray-900">
+                              {selectedPlayerB.star_rating}⭐ → {calculation.playerB.newStarRating}⭐
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">Points:</span>
+                            <span className="font-semibold text-gray-900">
+                              {selectedPlayerB.points} → {selectedPlayerB.points + calculation.playerB.pointsAdded}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center pt-1 border-t border-yellow-100">
+                            <span className="text-xs text-gray-500">Points Added:</span>
+                            <span className="text-sm font-bold text-green-600">
+                              +{calculation.playerB.pointsAdded}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

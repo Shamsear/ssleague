@@ -31,12 +31,12 @@ import { getAuctionDb } from '@/lib/neon/auction-config';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { 
-      player_id, 
+    const {
+      player_id,
       player_type = 'real',
       new_team_id,
       season_id,
-      transferred_by, 
+      transferred_by,
       transferred_by_name,
       preview_only = false
     } = body;
@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
     // Validate required fields
     if (!player_id || !new_team_id || !season_id || !transferred_by || !transferred_by_name) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Missing required fields: player_id, new_team_id, season_id, transferred_by, transferred_by_name',
           errorCode: 'MISSING_FIELDS'
         },
@@ -56,8 +56,8 @@ export async function POST(request: NextRequest) {
     // Validate player type
     if (player_type !== 'real' && player_type !== 'football') {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Invalid player_type. Must be "real" or "football"',
           errorCode: 'INVALID_PLAYER_TYPE'
         },
@@ -70,10 +70,10 @@ export async function POST(request: NextRequest) {
       try {
         const sql = player_type === 'real' ? getTournamentDb() : getAuctionDb();
         const tableName = player_type === 'real' ? 'player_seasons' : 'footballplayers';
-        
+
         let query: string;
         let result: any[];
-        
+
         if (player_type === 'real') {
           query = `
             SELECT 
@@ -103,20 +103,20 @@ export async function POST(request: NextRequest) {
           `;
           result = await sql(query, [player_id, season_id]);
         }
-        
+
         if (result.length === 0) {
           return NextResponse.json(
-            { 
-              success: false, 
+            {
+              success: false,
               error: 'Player not found',
               errorCode: 'PLAYER_NOT_FOUND'
             },
             { status: 404 }
           );
         }
-        
+
         const playerData = result[0];
-        
+
         // Calculate transfer details
         const calculation = calculateTransferDetails(
           parseFloat(playerData.auction_value),
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
           parseInt(playerData.points) || 180,
           player_type
         );
-        
+
         return NextResponse.json({
           success: true,
           preview: true,
@@ -137,12 +137,12 @@ export async function POST(request: NextRequest) {
             current_star_rating: parseInt(playerData.star_rating) || 5
           }
         });
-        
+
       } catch (error: any) {
         console.error('Error in transfer preview:', error);
         return NextResponse.json(
-          { 
-            success: false, 
+          {
+            success: false,
             error: error.message || 'Failed to calculate transfer preview',
             errorCode: 'PREVIEW_ERROR'
           },
@@ -165,8 +165,8 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: result.error || result.message,
           errorCode: result.errorCode,
           calculation: result.calculation
@@ -185,8 +185,8 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error in transfer-v2 API:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message || 'Failed to transfer player',
         errorCode: 'SYSTEM_ERROR'
       },

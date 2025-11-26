@@ -527,13 +527,25 @@ export default function TransferFormV2({ playerType, onSuccess }: TransferFormV2
                   <h4 className="font-semibold text-yellow-800 mb-2 text-sm flex items-center gap-2">
                     ⭐ Star Rating Upgrade!
                   </h4>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-700">
-                      {selectedPlayer.star_rating}⭐ → {calculation.newStarRating}⭐
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      +{calculation.pointsAdded} points
-                    </span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">Star Rating:</span>
+                      <span className="font-semibold text-gray-900">
+                        {selectedPlayer.star_rating}⭐ → {calculation.newStarRating}⭐
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">Points:</span>
+                      <span className="font-semibold text-gray-900">
+                        {selectedPlayer.points} → {selectedPlayer.points + calculation.pointsAdded}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-yellow-200">
+                      <span className="text-xs text-gray-600">Points Added:</span>
+                      <span className="text-sm font-bold text-green-600">
+                        +{calculation.pointsAdded} points
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}

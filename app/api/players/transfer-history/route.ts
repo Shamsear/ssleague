@@ -1,259 +1,202 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/auth-helper';
 import { adminDb } from '@/lib/firebase/admin';
 
 /**
  * GET /api/players/transfer-history
- * Get transaction history for transfers, swaps, and releases
- * 
- * This endpoint returns a paginated list of player transactions with filtering options.
- * Includes all transaction details including committee fees, star rating changes, and
- * financial information.
+ * Fetch transfer transaction history from Firebase
  * 
  * Query Parameters:
- * - season_id: string (required)
- * - team_id: string (optional) - Filter by team involvement
- * - transaction_type: string (optional) - Filter by type: 'transfer', 'swap', 'release'
- * - limit: number (optional, default: 50) - Number of results per page
- * - offset: number (optional, default: 0) - Pagination offset
- * - order_by: string (optional, default: 'created_at') - Field to order by
- * - order_direction: string (optional, default: 'desc') - 'asc' or 'desc'
- * 
- * Examples:
- * - All transactions: /api/players/transfer-history?season_id=SSPSLS16
- * - Team specific: /api/players/transfer-history?season_id=SSPSLS16&team_id=SSPSLT0001
- * - Transfers only: /api/players/transfer-history?season_id=SSPSLS16&transaction_type=transfer
- * - Paginated: /api/players/transfer-history?season_id=SSPSLS16&limit=20&offset=20
- * 
- * Requirements: 9.1, 9.2
+ * - season_id: Filter by season (required)
+ * - team_id: Filter by team (optional)
+ * - transaction_type: Filter by type (transfer, swap, release) (optional)
+ * - limit: Number of records per page (default: 20)
+ * - offset: Pagination offset (default: 0)
+ * - order_by: Field to order by (default: created_at)
+ * - order_direction: asc or desc (default: desc)
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const season_id = searchParams.get('season_id');
-    const team_id = searchParams.get('team_id');
-    const transaction_type = searchParams.get('transaction_type');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    // Verify authentication
+    const auth = await verifyAuth(['admin', 'committee_admin'], request);
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { success: false, error: auth.error || 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Get query parameters
+    const searchParams = request.nextUrl.searchParams;
+    const seasonId = searchParams.get('season_id');
+    const teamId = searchParams.get('team_id');
+    const transactionType = searchParams.get('transaction_type');
+    const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
-    const order_by = searchParams.get('order_by') || 'created_at';
-    const order_direction = searchParams.get('order_direction') || 'desc';
+    const orderBy = searchParams.get('order_by') || 'created_at';
+    const orderDirection = searchParams.get('order_direction') || 'desc';
 
-    // Validate required fields
-    if (!season_id) {
+    if (!seasonId) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Missing required parameter: season_id',
-          errorCode: 'MISSING_SEASON_ID'
-        },
+        { success: false, error: 'season_id is required' },
         { status: 400 }
       );
     }
 
-    // Validate limit and offset
-    if (limit < 1 || limit > 100) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Limit must be between 1 and 100',
-          errorCode: 'INVALID_LIMIT'
-        },
-        { status: 400 }
-      );
-    }
-
-    if (offset < 0) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Offset must be non-negative',
-          errorCode: 'INVALID_OFFSET'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate transaction type
-    if (transaction_type && !['transfer', 'swap', 'release'].includes(transaction_type)) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid transaction_type. Must be "transfer", "swap", or "release"',
-          errorCode: 'INVALID_TRANSACTION_TYPE'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate order direction
-    if (!['asc', 'desc'].includes(order_direction)) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid order_direction. Must be "asc" or "desc"',
-          errorCode: 'INVALID_ORDER_DIRECTION'
-        },
-        { status: 400 }
-      );
-    }
-
-    // Build query
-    let query = adminDb.collection('player_transactions')
-      .where('season_id', '==', season_id);
-
-    // Apply filters
-    if (transaction_type) {
-      query = query.where('transaction_type', '==', transaction_type);
-    }
-
-    // Order by
-    query = query.orderBy(order_by, order_direction as 'asc' | 'desc');
+    // Build Firestore query - keep it simple to avoid index requirements
+    // Just filter by season_id and do the rest in memory
+    console.log(`[Transfer History] Querying collection: player_transactions, season_id: ${seasonId}`);
+    
+    const query = adminDb
+      .collection('player_transactions')
+      .where('season_id', '==', seasonId);
 
     // Execute query
     const snapshot = await query.get();
+    
+    console.log(`[Transfer History] Query for season ${seasonId}: Found ${snapshot.docs.length} documents`);
 
-    // Filter by team if specified (done in memory since we need OR logic)
-    let transactions = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      created_at: doc.data().created_at?.toDate?.()?.toISOString() || null
-    }));
+    // Convert to array and transform data structure
+    let transactions = snapshot.docs.map(doc => {
+      const data = doc.data();
+      const transformed: any = {
+        id: doc.id,
+        transaction_type: data.transaction_type,
+        season_id: data.season_id,
+        processed_by: data.processed_by,
+        processed_by_name: data.processed_by_name,
+        created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at,
+        updated_at: data.updated_at?.toDate?.()?.toISOString() || data.updated_at,
+      };
 
-    // Filter by team involvement if team_id is specified
-    if (team_id) {
+      // Transform based on transaction type
+      if (data.transaction_type === 'swap') {
+        transformed.player_a = {
+          id: data.player_a_id,
+          name: data.player_a_name,
+          type: data.player_a_type,
+          old_value: data.player_a_old_value,
+          new_value: data.player_a_new_value,
+          old_star: data.player_a_old_star,
+          new_star: data.player_a_new_star,
+          points_added: data.player_a_points_added,
+          new_salary: data.player_a_new_salary,
+        };
+        transformed.player_b = {
+          id: data.player_b_id,
+          name: data.player_b_name,
+          type: data.player_b_type,
+          old_value: data.player_b_old_value,
+          new_value: data.player_b_new_value,
+          old_star: data.player_b_old_star,
+          new_star: data.player_b_new_star,
+          points_added: data.player_b_points_added,
+          new_salary: data.player_b_new_salary,
+        };
+        transformed.teams = {
+          team_a_id: data.team_a_id,
+          team_b_id: data.team_b_id,
+          team_a_pays: data.team_a_pays,
+          team_b_pays: data.team_b_pays,
+        };
+        transformed.financial = {
+          team_a_fee: data.team_a_fee,
+          team_b_fee: data.team_b_fee,
+          total_committee_fees: data.total_committee_fees,
+          cash_amount: data.cash_amount,
+          cash_direction: data.cash_direction,
+        };
+      } else if (data.transaction_type === 'transfer') {
+        transformed.player = {
+          id: data.player_id,
+          name: data.player_name,
+          type: data.player_type,
+        };
+        transformed.old_team_id = data.old_team_id;
+        transformed.new_team_id = data.new_team_id;
+        transformed.values = {
+          old_value: data.old_value,
+          new_value: data.new_value,
+        };
+        transformed.star_rating = {
+          old: data.old_star,
+          new: data.new_star,
+          points_added: data.points_added,
+        };
+        transformed.financial = {
+          committee_fee: data.committee_fee,
+          buying_team_paid: data.buying_team_paid,
+          selling_team_received: data.selling_team_received,
+        };
+        transformed.new_salary = data.new_salary;
+      } else if (data.transaction_type === 'release') {
+        transformed.player = {
+          id: data.player_id,
+          name: data.player_name,
+          type: data.player_type,
+        };
+        transformed.old_team_id = data.old_team_id;
+        transformed.financial = {
+          refund_amount: data.refund_amount,
+        };
+      }
+
+      return transformed;
+    });
+
+    // Apply in-memory filters
+    if (transactionType) {
+      transactions = transactions.filter(tx => tx.transaction_type === transactionType);
+    }
+    
+    if (teamId) {
       transactions = transactions.filter(tx => {
-        if (tx.transaction_type === 'transfer' || tx.transaction_type === 'release') {
-          return tx.old_team_id === team_id || tx.new_team_id === team_id;
+        if (tx.transaction_type === 'transfer') {
+          return tx.old_team_id === teamId || tx.new_team_id === teamId;
         } else if (tx.transaction_type === 'swap') {
-          return tx.team_a_id === team_id || tx.team_b_id === team_id;
+          return tx.teams?.team_a_id === teamId || tx.teams?.team_b_id === teamId;
         }
         return false;
       });
     }
+    
+    // Sort in memory
+    transactions.sort((a, b) => {
+      const aValue = a[orderBy];
+      const bValue = b[orderBy];
+      if (orderDirection === 'desc') {
+        return bValue > aValue ? 1 : -1;
+      }
+      return aValue > bValue ? 1 : -1;
+    });
 
-    // Get total count before pagination
-    const total = transactions.length;
+    // Get total count
+    const totalCount = transactions.length;
+    
+    console.log(`[Transfer History] After filtering: ${totalCount} transactions`);
+    console.log(`[Transfer History] Sample transaction:`, transactions[0]);
 
     // Apply pagination
     const paginatedTransactions = transactions.slice(offset, offset + limit);
-
-    // Format response
-    const formattedTransactions = paginatedTransactions.map(tx => {
-      const base = {
-        id: tx.id,
-        transaction_type: tx.transaction_type,
-        season_id: tx.season_id,
-        processed_by: tx.processed_by,
-        processed_by_name: tx.processed_by_name,
-        created_at: tx.created_at
-      };
-
-      if (tx.transaction_type === 'transfer') {
-        return {
-          ...base,
-          player: {
-            id: tx.player_id,
-            name: tx.player_name,
-            type: tx.player_type
-          },
-          old_team_id: tx.old_team_id,
-          new_team_id: tx.new_team_id,
-          values: {
-            old_value: tx.old_value,
-            new_value: tx.new_value
-          },
-          star_rating: {
-            old: tx.old_star_rating,
-            new: tx.new_star_rating,
-            points_added: tx.points_added
-          },
-          financial: {
-            committee_fee: tx.committee_fee,
-            buying_team_paid: tx.buying_team_paid,
-            selling_team_received: tx.selling_team_received
-          },
-          new_salary: tx.new_salary
-        };
-      } else if (tx.transaction_type === 'swap') {
-        return {
-          ...base,
-          player_a: {
-            id: tx.player_a_id,
-            name: tx.player_a_name,
-            type: tx.player_a_type,
-            old_value: tx.player_a_old_value,
-            new_value: tx.player_a_new_value,
-            old_star: tx.player_a_old_star,
-            new_star: tx.player_a_new_star,
-            points_added: tx.player_a_points_added,
-            new_salary: tx.player_a_new_salary
-          },
-          player_b: {
-            id: tx.player_b_id,
-            name: tx.player_b_name,
-            type: tx.player_b_type,
-            old_value: tx.player_b_old_value,
-            new_value: tx.player_b_new_value,
-            old_star: tx.player_b_old_star,
-            new_star: tx.player_b_new_star,
-            points_added: tx.player_b_points_added,
-            new_salary: tx.player_b_new_salary
-          },
-          teams: {
-            team_a_id: tx.team_a_id,
-            team_b_id: tx.team_b_id,
-            team_a_pays: tx.team_a_pays,
-            team_b_pays: tx.team_b_pays
-          },
-          financial: {
-            team_a_fee: tx.team_a_fee,
-            team_b_fee: tx.team_b_fee,
-            total_committee_fees: tx.total_committee_fees,
-            cash_amount: tx.cash_amount,
-            cash_direction: tx.cash_direction
-          }
-        };
-      } else if (tx.transaction_type === 'release') {
-        return {
-          ...base,
-          player: {
-            id: tx.player_id,
-            name: tx.player_name,
-            type: tx.player_type
-          },
-          old_team_id: tx.old_team_id,
-          financial: {
-            refund_amount: tx.refund_amount
-          }
-        };
-      }
-
-      return base;
-    });
+    const hasMore = offset + limit < totalCount;
 
     return NextResponse.json({
       success: true,
-      season_id,
-      filters: {
-        team_id: team_id || null,
-        transaction_type: transaction_type || null
-      },
+      transactions: paginatedTransactions,
       pagination: {
+        total: totalCount,
         limit,
         offset,
-        total,
-        has_more: offset + limit < total
-      },
-      transactions: formattedTransactions
+        has_more: hasMore,
+        current_page: Math.floor(offset / limit),
+        total_pages: Math.ceil(totalCount / limit)
+      }
     });
 
-  } catch (error: any) {
-    console.error('Error in transfer-history API:', error);
+  } catch (error) {
+    console.error('Error fetching transfer history:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message || 'Failed to get transfer history',
-        errorCode: 'SYSTEM_ERROR'
-      },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }
