@@ -7,6 +7,7 @@ interface Round {
   position: string;
   end_time: string;
   status: string;
+  finalization_mode?: 'auto' | 'manual';
 }
 
 interface MultiRoundAutoFinalizeProps {
@@ -25,6 +26,7 @@ export function MultiRoundAutoFinalize({ rounds, onFinalizationComplete }: Multi
   useAutoFinalize({
     roundId: activeRounds[0]?.id || '',
     endTime: activeRounds[0]?.end_time || null,
+    finalizationMode: activeRounds[0]?.finalization_mode || 'auto',
     enabled: !!activeRounds[0],
     onFinalizationComplete,
   });
@@ -33,6 +35,7 @@ export function MultiRoundAutoFinalize({ rounds, onFinalizationComplete }: Multi
   useAutoFinalize({
     roundId: activeRounds[1]?.id || '',
     endTime: activeRounds[1]?.end_time || null,
+    finalizationMode: activeRounds[1]?.finalization_mode || 'auto',
     enabled: !!activeRounds[1],
     onFinalizationComplete,
   });
@@ -41,6 +44,7 @@ export function MultiRoundAutoFinalize({ rounds, onFinalizationComplete }: Multi
   useAutoFinalize({
     roundId: activeRounds[2]?.id || '',
     endTime: activeRounds[2]?.end_time || null,
+    finalizationMode: activeRounds[2]?.finalization_mode || 'auto',
     enabled: !!activeRounds[2],
     onFinalizationComplete,
   });
@@ -49,6 +53,7 @@ export function MultiRoundAutoFinalize({ rounds, onFinalizationComplete }: Multi
   useAutoFinalize({
     roundId: activeRounds[3]?.id || '',
     endTime: activeRounds[3]?.end_time || null,
+    finalizationMode: activeRounds[3]?.finalization_mode || 'auto',
     enabled: !!activeRounds[3],
     onFinalizationComplete,
   });
@@ -57,6 +62,7 @@ export function MultiRoundAutoFinalize({ rounds, onFinalizationComplete }: Multi
   useAutoFinalize({
     roundId: activeRounds[4]?.id || '',
     endTime: activeRounds[4]?.end_time || null,
+    finalizationMode: activeRounds[4]?.finalization_mode || 'auto',
     enabled: !!activeRounds[4],
     onFinalizationComplete,
   });
