@@ -46,8 +46,13 @@ export async function logAuditAction(data: AuditLogData): Promise<void> {
         Object.entries(data.metadata).filter(([_, v]) => v !== undefined)
       ) : {};
     
+    // Filter out undefined values from main data object
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([key, value]) => key !== 'metadata' && value !== undefined)
+    );
+    
     await db.collection('audit_logs').add({
-      ...data,
+      ...cleanData,
       metadata: Object.keys(cleanMetadata).length > 0 ? cleanMetadata : undefined,
       timestamp: new Date(),
       created_at: new Date(),

@@ -140,7 +140,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
       return { success: true, allocations: [], tieDetected: false };
     }
 
-    // Fetch team names
+    // Fetch team names for teams that submitted bids
     const uniqueTeamIds = [...new Set(decryptedBids.map(b => b.team_id))];
     const teamNamesMap = new Map<string, string>();
     
@@ -168,6 +168,18 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
     
     // Separate submitted vs non-submitted teams
     const nonSubmittedTeams = allTeamIds.filter((teamId: string) => !submittedTeams.has(teamId));
+    
+    // Fetch team names for non-submitted teams (they won't be in teamNamesMap yet)
+    await Promise.all(nonSubmittedTeams.map(async (teamId) => {
+      if (!teamNamesMap.has(teamId)) {
+        try {
+          const doc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
+          teamNamesMap.set(teamId, doc.exists ? doc.data()?.team_name || teamId : teamId);
+        } catch {
+          teamNamesMap.set(teamId, teamId);
+        }
+      }
+    }));
     
     console.log(`📊 ${submittedTeams.size} teams submitted bids, ${nonSubmittedTeams.length} teams didn't submit`);
 
@@ -479,7 +491,7 @@ export async function applyFinalizationResults(
     
     const roundStatus = roundDetails[0]?.status;
     if (roundStatus === 'completed') return { success: true };
-    if (roundStatus !== 'active' && roundStatus !== 'expired' && roundStatus !== 'tiebreaker_pending') {
+    if (roundStatus !== 'active' && roundStatus !== 'expired' && roundStatus !== 'tiebreaker_pending' && roundStatus !== 'pending_finalization') {
       return { success: false, error: `Invalid status: ${roundStatus}` };
     }
     
