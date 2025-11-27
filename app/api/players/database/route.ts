@@ -100,15 +100,15 @@ export async function GET(request: Request) {
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
 
     // Add teamId for the JOIN
-    const teamIdParam = `$${paramIndex++}`;
+    const teamIdParam = paramIndex++;
     queryParams.push(teamId);
 
     // Add limit and offset
-    const limitParam = `$${paramIndex++}`;
-    const offsetParam = `$${paramIndex++}`;
+    const limitParam = paramIndex++;
+    const offsetParam = paramIndex++;
     queryParams.push(limit, offset);
 
-    // Build the query
+    // Build the query with proper $1, $2, etc. placeholders
     const queryText = `
       SELECT 
         fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
@@ -116,24 +116,24 @@ export async function GET(request: Request) {
         fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
         CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
       FROM footballplayers fp
-      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamIdParam}
+      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = $${teamIdParam}
       ${whereClause}
       ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-      LIMIT ${limitParam} OFFSET ${offsetParam}
+      LIMIT $${limitParam} OFFSET $${offsetParam}
     `;
 
-    players = await sql(queryText, queryParams);
+    players = await sql.query(queryText, queryParams);
 
     // Count query (reuse params without limit/offset)
     const countParams = queryParams.slice(0, -2);
     const countQueryText = `
       SELECT COUNT(*) as total 
       FROM footballplayers fp
-      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamIdParam}
+      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = $${teamIdParam}
       ${whereClause}
     `;
 
-    countResult = await sql(countQueryText, countParams);
+    countResult = await sql.query(countQueryText, countParams);
 
     const total = parseInt(countResult[0]?.total || '0');
     const totalPages = Math.ceil(total / limit);
