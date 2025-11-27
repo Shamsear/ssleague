@@ -274,6 +274,7 @@ export default function CleanupPlayerUsersPage() {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Display Name</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matched By</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                         </tr>
                       </thead>
@@ -294,6 +295,11 @@ export default function CleanupPlayerUsersPage() {
                             <td className="px-4 py-3 text-sm">
                               <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">
                                 {playerUser.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                {playerUser.matchedBy || 'uid'}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">

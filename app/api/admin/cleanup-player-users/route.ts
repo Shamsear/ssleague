@@ -20,38 +20,51 @@ export async function GET(request: NextRequest) {
 
     console.log('🔍 Scanning for user accounts linked to real players...');
 
-    // Step 1: Get all real players with registered_user_id
+    // Step 1: Get all real players with registered_user_id or registered_email
     const realPlayersSnapshot = await adminDb.collection('realplayers').get();
     const registeredUserIds = new Set<string>();
+    const registeredEmails = new Set<string>();
     
     realPlayersSnapshot.forEach(doc => {
       const data = doc.data();
       if (data.registered_user_id) {
         registeredUserIds.add(data.registered_user_id);
       }
+      if (data.registered_email || data.email) {
+        const email = data.registered_email || data.email;
+        registeredEmails.add(email.toLowerCase());
+      }
     });
 
     console.log(`Found ${registeredUserIds.size} real players with registered_user_id`);
+    console.log(`Found ${registeredEmails.size} real players with email addresses`);
 
     // Step 2: Get all users from Firestore
     const usersSnapshot = await adminDb.collection('users').get();
     
     const playerUsers: any[] = [];
+    const playerUserIds = new Set<string>(); // To avoid duplicates
     let totalUsers = 0;
 
     usersSnapshot.forEach(doc => {
       totalUsers++;
       const uid = doc.id;
       const data = doc.data();
+      const userEmail = data.email?.toLowerCase();
       
-      // Check if this user ID is linked to a real player
-      if (registeredUserIds.has(uid)) {
+      // Check if this user is linked to a real player by UID or email
+      const isLinkedByUid = registeredUserIds.has(uid);
+      const isLinkedByEmail = userEmail && registeredEmails.has(userEmail);
+      
+      if ((isLinkedByUid || isLinkedByEmail) && !playerUserIds.has(uid)) {
+        playerUserIds.add(uid);
         playerUsers.push({
           uid: uid,
           email: data.email,
           displayName: data.displayName || data.name,
           role: data.role,
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          matchedBy: isLinkedByUid ? 'registered_user_id' : 'email'
         });
       }
     });
@@ -109,15 +122,31 @@ export async function DELETE(request: NextRequest) {
       // Delete all users linked to real players
       const realPlayersSnapshot = await adminDb.collection('realplayers').get();
       const registeredUserIds = new Set<string>();
+      const registeredEmails = new Set<string>();
       
       realPlayersSnapshot.forEach(doc => {
         const data = doc.data();
         if (data.registered_user_id) {
           registeredUserIds.add(data.registered_user_id);
         }
+        if (data.registered_email || data.email) {
+          const email = data.registered_email || data.email;
+          registeredEmails.add(email.toLowerCase());
+        }
       });
       
-      usersToDelete = Array.from(registeredUserIds);
+      // Get all users and match by UID or email
+      const usersSnapshot = await adminDb.collection('users').get();
+      usersSnapshot.forEach(doc => {
+        const uid = doc.id;
+        const data = doc.data();
+        const userEmail = data.email?.toLowerCase();
+        
+        if (registeredUserIds.has(uid) || (userEmail && registeredEmails.has(userEmail))) {
+          usersToDelete.push(uid);
+        }
+      });
+      
       console.log(`Deleting all ${usersToDelete.length} user accounts linked to real players`);
     }
 
