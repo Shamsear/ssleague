@@ -18,9 +18,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('🔍 Scanning users collection for player accounts...');
+    console.log('🔍 Scanning for user accounts linked to real players...');
 
-    // Get all users from Firestore
+    // Step 1: Get all real players with registered_user_id
+    const realPlayersSnapshot = await adminDb.collection('realplayers').get();
+    const registeredUserIds = new Set<string>();
+    
+    realPlayersSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.registered_user_id) {
+        registeredUserIds.add(data.registered_user_id);
+      }
+    });
+
+    console.log(`Found ${registeredUserIds.size} real players with registered_user_id`);
+
+    // Step 2: Get all users from Firestore
     const usersSnapshot = await adminDb.collection('users').get();
     
     const playerUsers: any[] = [];
@@ -28,12 +41,13 @@ export async function GET(request: NextRequest) {
 
     usersSnapshot.forEach(doc => {
       totalUsers++;
+      const uid = doc.id;
       const data = doc.data();
       
-      // Check if user has role = "player"
-      if (data.role === 'player') {
+      // Check if this user ID is linked to a real player
+      if (registeredUserIds.has(uid)) {
         playerUsers.push({
-          uid: doc.id,
+          uid: uid,
           email: data.email,
           displayName: data.displayName || data.name,
           role: data.role,
@@ -42,7 +56,7 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    console.log(`Found ${playerUsers.length} player user accounts out of ${totalUsers} total users`);
+    console.log(`Found ${playerUsers.length} user accounts linked to real players out of ${totalUsers} total users`);
 
     return NextResponse.json({
       success: true,
@@ -51,7 +65,7 @@ export async function GET(request: NextRequest) {
         player_users_count: playerUsers.length,
         player_users: playerUsers,
       },
-      message: `Found ${playerUsers.length} player user accounts`
+      message: `Found ${playerUsers.length} user accounts linked to real players`
     });
   } catch (error: any) {
     console.error('Error scanning users:', error);
@@ -92,13 +106,19 @@ export async function DELETE(request: NextRequest) {
       usersToDelete = user_ids;
       console.log(`Deleting ${user_ids.length} specific user accounts`);
     } else {
-      // Delete all player users
-      const usersSnapshot = await adminDb.collection('users')
-        .where('role', '==', 'player')
-        .get();
+      // Delete all users linked to real players
+      const realPlayersSnapshot = await adminDb.collection('realplayers').get();
+      const registeredUserIds = new Set<string>();
       
-      usersToDelete = usersSnapshot.docs.map(doc => doc.id);
-      console.log(`Deleting all ${usersToDelete.length} player user accounts`);
+      realPlayersSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.registered_user_id) {
+          registeredUserIds.add(data.registered_user_id);
+        }
+      });
+      
+      usersToDelete = Array.from(registeredUserIds);
+      console.log(`Deleting all ${usersToDelete.length} user accounts linked to real players`);
     }
 
     let deletedCount = 0;

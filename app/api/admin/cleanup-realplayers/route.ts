@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { verifyAuth } from '@/lib/auth-helper';
+import * as admin from 'firebase-admin';
 
 /**
  * GET - List all real players with unnecessary user fields
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest) {
       // Check which fields need to be removed
       UNNECESSARY_FIELDS.forEach(field => {
         if (data[field] !== undefined) {
-          fieldsToRemove[field] = adminDb.FieldValue.delete();
+          fieldsToRemove[field] = admin.firestore.FieldValue.delete();
           hasFieldsToRemove = true;
         }
       });

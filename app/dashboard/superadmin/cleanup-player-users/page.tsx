@@ -167,9 +167,9 @@ export default function CleanupPlayerUsersPage() {
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
           <h3 className="font-semibold text-blue-900 mb-2">What this tool does:</h3>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Scans the <code className="bg-blue-100 px-1 rounded">users</code> collection for accounts with role = "player"</li>
-            <li>• These are user accounts that were mistakenly created for real players</li>
-            <li>• Real players should only exist in the <code className="bg-blue-100 px-1 rounded">realplayers</code> collection</li>
+            <li>• Finds user accounts linked to real players via <code className="bg-blue-100 px-1 rounded">registered_user_id</code></li>
+            <li>• These are user accounts that were mistakenly created when registering real players</li>
+            <li>• Real players should only exist in the <code className="bg-blue-100 px-1 rounded">realplayers</code> collection, not <code className="bg-blue-100 px-1 rounded">users</code></li>
             <li>• Deleting these accounts will NOT affect player stats or team rosters</li>
           </ul>
         </div>
