@@ -147,6 +147,7 @@ export default function PlayerStatisticsPage() {
   // Start with common positions so dropdowns work immediately
   const [positions, setPositions] = useState<string[]>(['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS']);
   const [positionGroups, setPositionGroups] = useState<string[]>([]);
+  const [allPlayingStyles, setAllPlayingStyles] = useState<string[]>([]); // Store all playing styles
   
   useEffect(() => {
     // Fetch all unique positions and position groups for filter dropdowns
@@ -157,8 +158,9 @@ export default function PlayerStatisticsPage() {
         if (success) {
           setPositions(data.positions || []);
           setPositionGroups(data.positionGroups || []);
-          // Update playing styles from filter options too
+          // Store all playing styles
           if (data.playingStyles) {
+            setAllPlayingStyles(data.playingStyles);
             setPlayingStyles(data.playingStyles);
           }
         }
@@ -171,6 +173,40 @@ export default function PlayerStatisticsPage() {
       fetchFilterOptions();
     }
   }, [user]);
+
+  // Fetch playing styles when position changes
+  useEffect(() => {
+    const fetchPositionPlayingStyles = async () => {
+      if (!positionFilter) {
+        // No position selected, show all playing styles
+        setPlayingStyles(allPlayingStyles);
+        return;
+      }
+
+      try {
+        const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+        const param = allPositions.includes(positionFilter) ? 'position' : 'position_group';
+        
+        const response = await fetchWithTokenRefresh(`/api/players/filter-options?${param}=${positionFilter}`);
+        const { success, data } = await response.json();
+        
+        if (success && data.playingStyles) {
+          setPlayingStyles(data.playingStyles);
+          
+          // Reset playing style filter if current selection is not available for this position
+          if (playingStyleFilter && !data.playingStyles.includes(playingStyleFilter)) {
+            setPlayingStyleFilter('');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching position-specific playing styles:', err);
+        // Fallback to all playing styles on error
+        setPlayingStyles(allPlayingStyles);
+      }
+    };
+
+    fetchPositionPlayingStyles();
+  }, [positionFilter, allPlayingStyles]);
 
   // Reset to page 1 when filters change
   useEffect(() => {

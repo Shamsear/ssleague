@@ -6,9 +6,42 @@ let cachedData: any = null;
 let cacheTime: number = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Return cached data if still valid
+    const { searchParams } = new URL(request.url);
+    const position = searchParams.get('position') || '';
+    const positionGroup = searchParams.get('position_group') || '';
+    
+    // If requesting position-specific playing styles, don't use cache
+    if (position || positionGroup) {
+      let playingStyles;
+      
+      if (position) {
+        const result = await sql`
+          SELECT DISTINCT playing_style
+          FROM footballplayers
+          WHERE position = ${position} AND playing_style IS NOT NULL
+          ORDER BY playing_style
+        `;
+        playingStyles = result.map(r => r.playing_style);
+      } else if (positionGroup) {
+        const result = await sql`
+          SELECT DISTINCT playing_style
+          FROM footballplayers
+          WHERE position_group = ${positionGroup} AND playing_style IS NOT NULL
+          ORDER BY playing_style
+        `;
+        playingStyles = result.map(r => r.playing_style);
+      }
+      
+      return NextResponse.json({
+        success: true,
+        data: { playingStyles },
+        cached: false
+      });
+    }
+    
+    // Return cached data if still valid (for general filter options)
     const now = Date.now();
     if (cachedData && (now - cacheTime) < CACHE_DURATION) {
       return NextResponse.json({

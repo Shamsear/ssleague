@@ -1327,7 +1327,36 @@ export default function RoundsManagementPage() {
                       </div>
                     </div>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">Recommended: 2-3 hours</p>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs text-gray-500">Recommended: 2-3 hours</p>
+                    {(() => {
+                      const hours = parseFloat(formData.duration_hours) || 0;
+                      const minutes = parseFloat(formData.duration_minutes) || 0;
+                      if (hours > 0 || minutes > 0) {
+                        const now = new Date();
+                        const endTime = new Date(now.getTime() + (hours * 60 + minutes) * 60 * 1000);
+                        return (
+                          <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-xs font-medium text-blue-900">
+                              Round will end at: <span className="font-bold">{endTime.toLocaleString('en-US', { 
+                                weekday: 'short',
+                                month: 'short', 
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit', 
+                                minute: '2-digit',
+                                hour12: true 
+                              })}</span>
+                            </p>
+                            <p className="text-xs text-blue-700 mt-0.5">
+                              ({endTime.toLocaleString('en-US', { timeZoneName: 'short' })})
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 </div>
                 
                 <div>
