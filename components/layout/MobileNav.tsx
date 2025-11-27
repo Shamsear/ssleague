@@ -612,18 +612,6 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  <div className="border-b border-black/10">
-                    <Link 
-                      href="/register" 
-                      className="block py-4"
-                      onClick={() => toggleMenu(false)}
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-2xl font-normal text-gray-900">Join Now</span>
-                        <span className="text-sm text-gray-700 mt-1">Create new account</span>
-                      </div>
-                    </Link>
-                  </div>
                 </>
               )}
               

@@ -64,7 +64,10 @@ function UsersManagementContent() {
           const roleOrder = { super_admin: 0, committee_admin: 1, team: 2 };
           return roleOrder[a.role] - roleOrder[b.role];
         }
-        return a.username.localeCompare(b.username);
+        // Handle undefined/null usernames
+        const usernameA = a.username || '';
+        const usernameB = b.username || '';
+        return usernameA.localeCompare(usernameB);
       });
       setUsers(sortedUsers);
       setError(null);

@@ -93,16 +93,6 @@ export default function Footer() {
                   Login
                 </Link>
               </li>
-              <li>
-                <Link href="/register" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Register
-                </Link>
-              </li>
-              <li>
-                <Link href="/register" className="text-gray-600 hover:text-blue-600 text-xs transition-colors duration-150 inline-block">
-                  Join League
-                </Link>
-              </li>
             </ul>
           </div>
         </div>

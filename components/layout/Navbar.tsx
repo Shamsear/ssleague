@@ -593,14 +593,6 @@ export default function Navbar() {
               >
                 Login
               </Link>
-              <Link 
-                href="/register" 
-                className="px-6 py-2.5 rounded-xl text-white hover:scale-105 transition-all duration-300 vision-button font-semibold text-sm shadow-lg hover:shadow-xl relative overflow-hidden group"
-                style={{background: 'linear-gradient(135deg, #0066FF, #9580FF)'}}
-              >
-                <span className="relative z-10">Register</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-              </Link>
             </>
           )}
         </div>

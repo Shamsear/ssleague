@@ -160,6 +160,40 @@ export async function GET(request: Request) {
         SELECT COUNT(*) as total FROM footballplayers fp
         WHERE fp.name ILIKE ${`%${search}%`}
       `;
+    } else if (hasPosition && hasPlayingStyle) {
+      players = await sql`
+        SELECT 
+          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
+          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
+          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
+          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
+        FROM footballplayers fp
+        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
+        WHERE fp.position = ${position} AND fp.playing_style = ${playingStyle}
+        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+      countResult = await sql`
+        SELECT COUNT(*) as total FROM footballplayers fp
+        WHERE fp.position = ${position} AND fp.playing_style = ${playingStyle}
+      `;
+    } else if (hasPositionGroup && hasPlayingStyle) {
+      players = await sql`
+        SELECT 
+          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
+          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
+          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
+          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
+        FROM footballplayers fp
+        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
+        WHERE fp.position_group = ${positionGroup} AND fp.playing_style = ${playingStyle}
+        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+      countResult = await sql`
+        SELECT COUNT(*) as total FROM footballplayers fp
+        WHERE fp.position_group = ${positionGroup} AND fp.playing_style = ${playingStyle}
+      `;
     } else if (hasPosition) {
       players = await sql`
         SELECT 
