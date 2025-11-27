@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const positionGroup = searchParams.get('position_group') || '';
     const playingStyle = searchParams.get('playing_style') || '';
     const starredOnly = searchParams.get('starred_only') === 'true';
-    
+
     // Get Neon team_id from Firebase token (if authenticated)
     let teamId: string | null = null;
     try {
@@ -42,15 +42,15 @@ export async function GET(request: Request) {
       if (token) {
         try {
           const firebaseUid = getFirebaseUidFromToken(token);
-          
+
           if (firebaseUid) {
             teamId = getCachedTeamId(firebaseUid);
-            
+
             if (!teamId) {
               const teamResult = await sql`
                 SELECT id FROM teams WHERE firebase_uid = ${firebaseUid} LIMIT 1
               `;
-              
+
               if (teamResult.length > 0) {
                 teamId = teamResult[0].id;
                 setCachedTeamId(firebaseUid, teamId);
@@ -64,65 +64,83 @@ export async function GET(request: Request) {
     } catch (authError) {
       console.log('Auth check skipped for database request:', authError);
     }
-    
+
     // Build query with filters - use conditional queries
     let players, countResult;
-    
+
     // Build WHERE conditions dynamically
-    const conditions = [];
-    
+    const whereParts: string[] = [];
+    const queryParams: any[] = [];
+    let paramIndex = 1;
+
     if (search) {
-      conditions.push(sql`fp.name ILIKE ${`%${search}%`}`);
+      whereParts.push(`fp.name ILIKE $${paramIndex++}`);
+      queryParams.push(`%${search}%`);
     }
-    
+
     if (position) {
-      conditions.push(sql`fp.position = ${position}`);
+      whereParts.push(`fp.position = $${paramIndex++}`);
+      queryParams.push(position);
     }
-    
+
     if (positionGroup) {
-      conditions.push(sql`fp.position_group = ${positionGroup}`);
+      whereParts.push(`fp.position_group = $${paramIndex++}`);
+      queryParams.push(positionGroup);
     }
-    
+
     if (playingStyle) {
-      conditions.push(sql`fp.playing_style = ${playingStyle}`);
+      whereParts.push(`fp.playing_style = $${paramIndex++}`);
+      queryParams.push(playingStyle);
     }
-    
+
     if (starredOnly && teamId) {
-      conditions.push(sql`sp.id IS NOT NULL`);
+      whereParts.push('sp.id IS NOT NULL');
     }
-    
-    const whereClause = conditions.length > 0 
-      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
-      : sql``;
-    
+
+    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+    // Add teamId for the JOIN
+    const teamIdParam = `$${paramIndex++}`;
+    queryParams.push(teamId);
+
+    // Add limit and offset
+    const limitParam = `$${paramIndex++}`;
+    const offsetParam = `$${paramIndex++}`;
+    queryParams.push(limit, offset);
+
     // Build the query
-    players = await sql`
+    const queryText = `
       SELECT 
         fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
         fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
         fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
         CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
       FROM footballplayers fp
-      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
+      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamIdParam}
       ${whereClause}
       ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-      LIMIT ${limit} OFFSET ${offset}
+      LIMIT ${limitParam} OFFSET ${offsetParam}
     `;
-    
-    // Count query
-    countResult = await sql`
+
+    players = await sql(queryText, queryParams);
+
+    // Count query (reuse params without limit/offset)
+    const countParams = queryParams.slice(0, -2);
+    const countQueryText = `
       SELECT COUNT(*) as total 
       FROM footballplayers fp
-      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
+      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamIdParam}
       ${whereClause}
     `;
-    
+
+    countResult = await sql(countQueryText, countParams);
+
     const total = parseInt(countResult[0]?.total || '0');
     const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json({
       success: true,
-      data: { 
+      data: {
         players,
         pagination: {
           page,
