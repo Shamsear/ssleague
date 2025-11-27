@@ -327,6 +327,49 @@ export async function POST(
           if (finalizationResult.success) {
             console.log('✅ Preview created - waiting for committee approval');
             
+            // Store allocations in pending_allocations table
+            console.log(`💾 Storing ${finalizationResult.allocations.length} pending allocations`);
+            
+            // Clear any existing pending allocations for this round
+            await sql`DELETE FROM pending_allocations WHERE round_id = ${roundId}`;
+            
+            // Insert new pending allocations
+            for (const allocation of finalizationResult.allocations) {
+              await sql`
+                INSERT INTO pending_allocations (
+                  round_id,
+                  team_id,
+                  team_name,
+                  player_id,
+                  player_name,
+                  amount,
+                  bid_id,
+                  phase,
+                  created_at
+                ) VALUES (
+                  ${roundId},
+                  ${allocation.team_id},
+                  ${allocation.team_name},
+                  ${allocation.player_id},
+                  ${allocation.player_name},
+                  ${allocation.amount},
+                  ${allocation.bid_id},
+                  ${allocation.phase},
+                  NOW()
+                )
+              `;
+            }
+            
+            // Update round status from tiebreaker_pending to pending_finalization
+            await sql`
+              UPDATE rounds
+              SET status = 'pending_finalization',
+                  updated_at = NOW()
+              WHERE id = ${roundId}
+            `;
+            
+            console.log(`✅ Round status updated: tiebreaker_pending -> pending_finalization`);
+            
             return NextResponse.json({
               success: true,
               message: 'Tiebreaker resolved! Preview created - awaiting committee approval.',
