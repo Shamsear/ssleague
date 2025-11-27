@@ -64,7 +64,8 @@ export async function GET(request: NextRequest) {
           displayName: data.displayName || data.name,
           role: data.role,
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          matchedBy: isLinkedByUid ? 'registered_user_id' : 'email'
+          matchedBy: isLinkedByUid ? 'registered_user_id' : 'email',
+          allFields: data // Include all user data for inspection
         });
       }
     });

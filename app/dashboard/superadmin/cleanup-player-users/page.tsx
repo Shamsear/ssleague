@@ -11,6 +11,8 @@ interface PlayerUser {
   displayName?: string;
   role: string;
   createdAt?: string;
+  matchedBy?: string;
+  allFields?: any;
 }
 
 export default function CleanupPlayerUsersPage() {
@@ -20,6 +22,7 @@ export default function CleanupPlayerUsersPage() {
   const [deleting, setDeleting] = useState(false);
   const [scanResults, setScanResults] = useState<any>(null);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -106,6 +109,16 @@ export default function CleanupPlayerUsersPage() {
     } else {
       setSelectedUsers(new Set(scanResults?.player_users.map((u: PlayerUser) => u.uid)));
     }
+  };
+
+  const toggleUserExpand = (uid: string) => {
+    const newExpanded = new Set(expandedUsers);
+    if (newExpanded.has(uid)) {
+      newExpanded.delete(uid);
+    } else {
+      newExpanded.add(uid);
+    }
+    setExpandedUsers(newExpanded);
   };
 
   if (loading) {
@@ -276,36 +289,59 @@ export default function CleanupPlayerUsersPage() {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matched By</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {scanResults.player_users.map((playerUser: PlayerUser) => (
-                          <tr key={playerUser.uid} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">
-                              <input
-                                type="checkbox"
-                                checked={selectedUsers.has(playerUser.uid)}
-                                onChange={() => toggleUserSelection(playerUser.uid)}
-                                className="rounded"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-sm font-mono text-gray-900">{playerUser.uid}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{playerUser.email}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{playerUser.displayName || '-'}</td>
-                            <td className="px-4 py-3 text-sm">
-                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">
-                                {playerUser.role}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm">
-                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                                {playerUser.matchedBy || 'uid'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {playerUser.createdAt ? new Date(playerUser.createdAt).toLocaleDateString() : '-'}
-                            </td>
-                          </tr>
+                          <>
+                            <tr key={playerUser.uid} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedUsers.has(playerUser.uid)}
+                                  onChange={() => toggleUserSelection(playerUser.uid)}
+                                  className="rounded"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm font-mono text-gray-900">{playerUser.uid}</td>
+                              <td className="px-4 py-3 text-sm text-gray-900">{playerUser.email}</td>
+                              <td className="px-4 py-3 text-sm text-gray-900">{playerUser.displayName || '-'}</td>
+                              <td className="px-4 py-3 text-sm">
+                                <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">
+                                  {playerUser.role}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                  {playerUser.matchedBy || 'uid'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                {playerUser.createdAt ? new Date(playerUser.createdAt).toLocaleDateString() : '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <button
+                                  onClick={() => toggleUserExpand(playerUser.uid)}
+                                  className="text-[#0066FF] hover:text-[#0052CC] font-medium"
+                                >
+                                  {expandedUsers.has(playerUser.uid) ? 'Hide' : 'Show'} All Fields
+                                </button>
+                              </td>
+                            </tr>
+                            {expandedUsers.has(playerUser.uid) && playerUser.allFields && (
+                              <tr key={`${playerUser.uid}-details`} className="bg-gray-50">
+                                <td colSpan={8} className="px-4 py-4">
+                                  <div className="bg-white rounded-lg p-4 border border-gray-200">
+                                    <h4 className="text-sm font-semibold text-gray-900 mb-3">All User Fields:</h4>
+                                    <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto max-h-96 overflow-y-auto">
+                                      {JSON.stringify(playerUser.allFields, null, 2)}
+                                    </pre>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </>
                         ))}
                       </tbody>
                     </table>
