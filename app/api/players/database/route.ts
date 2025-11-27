@@ -68,218 +68,54 @@ export async function GET(request: Request) {
     // Build query with filters - use conditional queries
     let players, countResult;
     
-    const hasSearch = search.length > 0;
-    const hasPosition = position.length > 0;
-    const hasPositionGroup = positionGroup.length > 0;
-    const hasPlayingStyle = playingStyle.length > 0;
-    const hasStarred = starredOnly && teamId;
+    // Build WHERE conditions dynamically
+    const conditions = [];
     
-    // Build queries based on filter combinations
-    if (hasSearch && hasPosition && hasPlayingStyle) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.position = ${position} AND fp.playing_style = ${playingStyle}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.position = ${position} AND fp.playing_style = ${playingStyle}
-      `;
-    } else if (hasSearch && hasPosition) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.position = ${position}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.position = ${position}
-      `;
-    } else if (hasSearch && hasPositionGroup) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.position_group = ${positionGroup}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.position_group = ${positionGroup}
-      `;
-    } else if (hasSearch && hasPlayingStyle) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.playing_style = ${playingStyle}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.name ILIKE ${`%${search}%`} AND fp.playing_style = ${playingStyle}
-      `;
-    } else if (hasSearch) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.name ILIKE ${`%${search}%`}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.name ILIKE ${`%${search}%`}
-      `;
-    } else if (hasPosition && hasPlayingStyle) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.position = ${position} AND fp.playing_style = ${playingStyle}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.position = ${position} AND fp.playing_style = ${playingStyle}
-      `;
-    } else if (hasPositionGroup && hasPlayingStyle) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.position_group = ${positionGroup} AND fp.playing_style = ${playingStyle}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.position_group = ${positionGroup} AND fp.playing_style = ${playingStyle}
-      `;
-    } else if (hasPosition) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.position = ${position}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.position = ${position}
-      `;
-    } else if (hasPositionGroup) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.position_group = ${positionGroup}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.position_group = ${positionGroup}
-      `;
-    } else if (hasPlayingStyle) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE fp.playing_style = ${playingStyle}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        WHERE fp.playing_style = ${playingStyle}
-      `;
-    } else if (hasStarred) {
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE sp.id IS NOT NULL
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        WHERE sp.id IS NOT NULL
-      `;
-    } else {
-      // No filters
-      players = await sql`
-        SELECT 
-          fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
-          fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-          fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
-          CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
-        FROM footballplayers fp
-        LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
-        ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
-      countResult = await sql`
-        SELECT COUNT(*) as total FROM footballplayers
-      `;
+    if (search) {
+      conditions.push(sql`fp.name ILIKE ${`%${search}%`}`);
     }
+    
+    if (position) {
+      conditions.push(sql`fp.position = ${position}`);
+    }
+    
+    if (positionGroup) {
+      conditions.push(sql`fp.position_group = ${positionGroup}`);
+    }
+    
+    if (playingStyle) {
+      conditions.push(sql`fp.playing_style = ${playingStyle}`);
+    }
+    
+    if (starredOnly && teamId) {
+      conditions.push(sql`sp.id IS NOT NULL`);
+    }
+    
+    const whereClause = conditions.length > 0 
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
+    
+    // Build the query
+    players = await sql`
+      SELECT 
+        fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
+        fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
+        fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
+        CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
+      FROM footballplayers fp
+      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
+      ${whereClause}
+      ORDER BY fp.overall_rating DESC NULLS LAST, fp.name ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+    
+    // Count query
+    countResult = await sql`
+      SELECT COUNT(*) as total 
+      FROM footballplayers fp
+      LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = ${teamId}
+      ${whereClause}
+    `;
     
     const total = parseInt(countResult[0]?.total || '0');
     const totalPages = Math.ceil(total / limit);
