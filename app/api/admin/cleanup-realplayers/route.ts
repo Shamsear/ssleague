@@ -17,8 +17,8 @@ const UNNECESSARY_FIELDS = [
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify admin authorization
-    const auth = await verifyAuth(['admin'], request);
+    // Verify super admin authorization
+    const auth = await verifyAuth(['super_admin'], request);
     if (!auth.authenticated) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },
@@ -87,8 +87,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify admin authorization
-    const auth = await verifyAuth(['admin'], request);
+    // Verify super admin authorization
+    const auth = await verifyAuth(['super_admin'], request);
     if (!auth.authenticated) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },
