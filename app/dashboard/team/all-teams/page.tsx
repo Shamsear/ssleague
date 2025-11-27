@@ -33,6 +33,8 @@ interface Team {
 interface TeamStats {
   team: Team;
   totalPlayers: number;
+  footballPlayersCount: number;
+  realPlayersCount: number;
   totalValue: number;
   avgRating: number;
   positionBreakdown: { [key: string]: number };
@@ -151,7 +153,9 @@ export default function AllTeamsPage() {
           !ts.is_auto_registered // Exclude auto-registered teams (next season entries)
         )
         .map((teamSeasonData: any) => {
-          const totalPlayers = teamSeasonData.players_count || 0;
+          const footballPlayersCount = teamSeasonData.football_players_count || 0;
+          const realPlayersCount = teamSeasonData.real_players_count || 0;
+          const totalPlayers = footballPlayersCount + realPlayersCount;
           const avgRating = teamSeasonData.average_rating || 0;
 
           return {
@@ -176,6 +180,8 @@ export default function AllTeamsPage() {
               is_auto_registered: teamSeasonData.is_auto_registered,
             },
             totalPlayers,
+            footballPlayersCount,
+            realPlayersCount,
             totalValue: teamSeasonData.total_spent || 0,
             avgRating: Math.round(avgRating * 10) / 10,
             positionBreakdown: teamSeasonData.position_counts || {},
@@ -316,8 +322,17 @@ export default function AllTeamsPage() {
                       <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
-                      {teamData.totalPlayers}/{maxPlayers}
+                      ⚽ {teamData.footballPlayersCount}/{maxPlayers}
                     </span>
+                    
+                    {seasonType === 'multi' && teamData.realPlayersCount > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        👤 {teamData.realPlayersCount}
+                      </span>
+                    )}
                     
                     {seasonType === 'multi' || teamData.team.currencySystem === 'dual' ? (
                       <>
