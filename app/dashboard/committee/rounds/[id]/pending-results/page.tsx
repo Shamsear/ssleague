@@ -50,6 +50,7 @@ export default function PendingResultsPage({ params }: { params: Promise<{ id: s
   const [isLoading, setIsLoading] = useState(true);
   const [isApplying, setIsApplying] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
 
@@ -243,6 +244,181 @@ export default function PendingResultsPage({ params }: { params: Promise<{ id: s
     return `£${amount.toLocaleString()}`;
   };
 
+  const handleExport = async () => {
+    if (!round || !pendingData) return;
+
+    setIsExporting(true);
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const workbook = new ExcelJS.Workbook();
+      
+      // Sheet 1: Round Summary
+      const summarySheet = workbook.addWorksheet('Round Summary');
+      summarySheet.columns = [
+        { header: 'Field', key: 'field', width: 25 },
+        { header: 'Value', key: 'value', width: 40 }
+      ];
+      
+      summarySheet.addRows([
+        { field: 'Round ID', value: round.id },
+        { field: 'Position', value: round.position },
+        { field: 'Round Number', value: round.round_number },
+        { field: 'Status', value: 'Pending Finalization' },
+        { field: 'Finalization Mode', value: round.finalization_mode || 'auto' },
+        { field: 'Max Bids Per Team', value: round.max_bids_per_team },
+        { field: 'Total Players', value: pendingData.summary.total_players },
+        { field: 'Total Spent', value: `£${pendingData.summary.total_spent.toLocaleString()}` },
+        { field: 'Average Bid', value: `£${Math.round(pendingData.summary.average_bid).toLocaleString()}` },
+        { field: 'Created At', value: round.created_at ? new Date(round.created_at).toLocaleString() : 'N/A' }
+      ]);
+      
+      // Style the summary sheet
+      summarySheet.getRow(1).font = { bold: true };
+      summarySheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' }
+      };
+      
+      // Sheet 2: All Allocations (Sorted by Amount)
+      const allocationsSheet = workbook.addWorksheet('All Allocations');
+      allocationsSheet.columns = [
+        { header: 'Player Name', key: 'playerName', width: 25 },
+        { header: 'Team Name', key: 'teamName', width: 25 },
+        { header: 'Bid Amount', key: 'amount', width: 15 },
+        { header: 'Type', key: 'type', width: 12 },
+        { header: 'Created At', key: 'createdAt', width: 20 }
+      ];
+      
+      const sortedAllocations = [...pendingData.allocations].sort((a, b) => b.amount - a.amount);
+      sortedAllocations.forEach(allocation => {
+        allocationsSheet.addRow({
+          playerName: allocation.player_name,
+          teamName: allocation.team_name,
+          amount: allocation.amount,
+          type: allocation.phase === 'incomplete' ? 'Incomplete' : 'Regular',
+          createdAt: new Date(allocation.created_at).toLocaleString()
+        });
+      });
+      
+      // Style the allocations sheet
+      allocationsSheet.getRow(1).font = { bold: true };
+      allocationsSheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFEF3C7' }
+      };
+      
+      // Highlight incomplete bids
+      allocationsSheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1 && row.getCell(4).value === 'Incomplete') {
+          row.eachCell((cell) => {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFED7AA' }
+            };
+          });
+        }
+      });
+      
+      // Sheet 3: Allocations by Team
+      const byTeamSheet = workbook.addWorksheet('By Team');
+      byTeamSheet.columns = [
+        { header: 'Team Name', key: 'teamName', width: 25 },
+        { header: 'Player Name', key: 'playerName', width: 25 },
+        { header: 'Bid Amount', key: 'amount', width: 15 },
+        { header: 'Type', key: 'type', width: 12 }
+      ];
+      
+      const allocationsByTeam = pendingData.allocations.reduce((acc, allocation) => {
+        if (!acc[allocation.team_id]) {
+          acc[allocation.team_id] = {
+            team_id: allocation.team_id,
+            team_name: allocation.team_name,
+            allocations: []
+          };
+        }
+        acc[allocation.team_id].allocations.push(allocation);
+        return acc;
+      }, {} as Record<string, { team_id: string; team_name: string; allocations: PendingAllocation[] }>);
+      
+      Object.values(allocationsByTeam).forEach(teamData => {
+        teamData.allocations.forEach(allocation => {
+          byTeamSheet.addRow({
+            teamName: teamData.team_name,
+            playerName: allocation.player_name,
+            amount: allocation.amount,
+            type: allocation.phase === 'incomplete' ? 'Incomplete' : 'Regular'
+          });
+        });
+      });
+      
+      // Style the by team sheet
+      byTeamSheet.getRow(1).font = { bold: true };
+      byTeamSheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFBFDBFE' }
+      };
+      
+      // Sheet 4: Team Summary
+      const teamSummarySheet = workbook.addWorksheet('Team Summary');
+      teamSummarySheet.columns = [
+        { header: 'Team Name', key: 'teamName', width: 25 },
+        { header: 'Players', key: 'players', width: 12 },
+        { header: 'Total Spent', key: 'totalSpent', width: 15 },
+        { header: 'Has Incomplete', key: 'hasIncomplete', width: 15 }
+      ];
+      
+      Object.values(allocationsByTeam).forEach(teamData => {
+        const totalSpent = teamData.allocations.reduce((sum, a) => sum + a.amount, 0);
+        const hasIncomplete = teamData.allocations.some(a => a.phase === 'incomplete');
+        
+        teamSummarySheet.addRow({
+          teamName: teamData.team_name,
+          players: teamData.allocations.length,
+          totalSpent: totalSpent,
+          hasIncomplete: hasIncomplete ? 'Yes' : 'No'
+        });
+      });
+      
+      // Style the team summary sheet
+      teamSummarySheet.getRow(1).font = { bold: true };
+      teamSummarySheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD1FAE5' }
+      };
+      
+      // Generate Excel file
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
+      // Download file
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pending_results_${round.id.substring(0, 8)}_${round.position}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Export error:', error);
+      showAlert({
+        type: 'error',
+        title: 'Export Failed',
+        message: 'Failed to export data to Excel. Please try again.'
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (authLoading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -337,6 +513,29 @@ export default function PendingResultsPage({ params }: { params: Promise<{ id: s
                 </svg>
                 Back to Rounds
               </Link>
+
+              <button
+                onClick={handleExport}
+                disabled={isExporting}
+                className="inline-flex items-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isExporting ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export to Excel
+                  </>
+                )}
+              </button>
             </div>
           </div>
 

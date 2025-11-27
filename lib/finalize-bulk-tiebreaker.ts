@@ -193,6 +193,42 @@ export async function finalizeBulkTiebreaker(
     console.log(`✅ Bulk tiebreaker ${tiebreakerId} finalized. Winner: Team ${tiebreaker.current_highest_team_id}, Amount: £${winningAmount}`);
     console.log(`✅ Updated both bulk_tiebreakers and tiebreakers tables`);
     
+    // Check if all tiebreakers for this round are now resolved
+    const unresolvedTiebreakers = await sql`
+      SELECT COUNT(*) as count
+      FROM bulk_tiebreakers
+      WHERE bulk_round_id = ${tiebreaker.round_id}
+      AND status NOT IN ('resolved', 'finalized')
+    `;
+    
+    const unresolvedCount = parseInt(unresolvedTiebreakers[0]?.count || '0');
+    console.log(`📊 Unresolved tiebreakers remaining for round: ${unresolvedCount}`);
+    
+    // If all tiebreakers are resolved, update round status to completed
+    if (unresolvedCount === 0) {
+      await sql`
+        UPDATE rounds
+        SET 
+          status = 'completed',
+          pending_tiebreaker = false,
+          updated_at = NOW()
+        WHERE id = ${tiebreaker.round_id}
+        AND status = 'finalizing'
+      `;
+      console.log(`✅ All tiebreakers resolved - Round ${tiebreaker.round_id} marked as completed`);
+      console.log(`✅ Cleared pending_tiebreaker flag`);
+    } else {
+      // Still have unresolved tiebreakers, ensure pending_tiebreaker is true
+      await sql`
+        UPDATE rounds
+        SET 
+          pending_tiebreaker = true,
+          updated_at = NOW()
+        WHERE id = ${tiebreaker.round_id}
+      `;
+      console.log(`⏳ ${unresolvedCount} tiebreaker(s) still pending for round ${tiebreaker.round_id}`);
+    }
+    
     // Update Neon teams table - deduct from football_budget, increase football_spent
     try {
       await sql`
