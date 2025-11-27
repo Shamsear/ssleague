@@ -51,6 +51,7 @@ export default function AllTeamsPage() {
   const [maxPlayers, setMaxPlayers] = useState(25); // Default to 25
   const [seasonType, setSeasonType] = useState<'single' | 'multi'>('single');
   const [error, setError] = useState('');
+  const [playerCounts, setPlayerCounts] = useState<{ [key: string]: { footballPlayersCount: number; realPlayersCount: number } }>({});
 
   // Fetch all team seasons for the season (cached, only after we have seasonId)
   const { data: allTeamSeasons, loading: allTeamsLoading } = useCachedTeamSeasons(
@@ -142,6 +143,26 @@ export default function AllTeamsPage() {
     fetchActiveSeason();
   }, [user]);
 
+  // Fetch player counts from Neon databases
+  useEffect(() => {
+    const fetchPlayerCounts = async () => {
+      if (!seasonId) return;
+
+      try {
+        const response = await fetch(`/api/team/player-counts?seasonId=${seasonId}`);
+        const result = await response.json();
+
+        if (result.success) {
+          setPlayerCounts(result.data);
+        }
+      } catch (error) {
+        console.error('Error fetching player counts:', error);
+      }
+    };
+
+    fetchPlayerCounts();
+  }, [seasonId]);
+
   // Process all team seasons into TeamStats
   useEffect(() => {
     if (!allTeamSeasons || allTeamsLoading || !seasonId) return;
@@ -153,14 +174,16 @@ export default function AllTeamsPage() {
           !ts.is_auto_registered // Exclude auto-registered teams (next season entries)
         )
         .map((teamSeasonData: any) => {
-          const footballPlayersCount = teamSeasonData.football_players_count || 0;
-          const realPlayersCount = teamSeasonData.real_players_count || 0;
+          const teamId = teamSeasonData.team_id;
+          // Get actual player counts from Neon databases
+          const footballPlayersCount = playerCounts[teamId]?.footballPlayersCount || 0;
+          const realPlayersCount = playerCounts[teamId]?.realPlayersCount || 0;
           const totalPlayers = footballPlayersCount + realPlayersCount;
           const avgRating = teamSeasonData.average_rating || 0;
 
           return {
             team: {
-              id: teamSeasonData.team_id,
+              id: teamId,
               name: teamSeasonData.team_name || 'Unknown Team',
               logoUrl: teamSeasonData.team_logo || undefined,
               balance: teamSeasonData.budget || 0,
@@ -196,7 +219,7 @@ export default function AllTeamsPage() {
       console.error('Error processing teams:', err);
       setError('An error occurred while loading teams');
     }
-  }, [allTeamSeasons, allTeamsLoading, seasonId]);
+  }, [allTeamSeasons, allTeamsLoading, seasonId, playerCounts]);
 
   const getPositionColor = (position: string) => {
     const colors: { [key: string]: string } = {

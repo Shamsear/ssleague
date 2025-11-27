@@ -5,20 +5,21 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-interface PlayerIssue {
-  player_id: string;
-  name: string;
-  unnecessary_fields: string[];
-  field_values: { [key: string]: any };
+interface PlayerUser {
+  uid: string;
+  email: string;
+  displayName?: string;
+  role: string;
+  createdAt?: string;
 }
 
-export default function CleanupRealPlayersPage() {
+export default function CleanupPlayerUsersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [scanning, setScanning] = useState(false);
-  const [cleaning, setCleaning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [scanResults, setScanResults] = useState<any>(null);
-  const [selectedPlayers, setSelectedPlayers] = useState<Set<string>>(new Set());
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -37,37 +38,38 @@ export default function CleanupRealPlayersPage() {
     setScanResults(null);
 
     try {
-      const response = await fetch('/api/admin/cleanup-realplayers');
+      const response = await fetch('/api/admin/cleanup-player-users');
       const result = await response.json();
 
       if (result.success) {
         setScanResults(result.data);
       } else {
-        setError(result.error || 'Failed to scan players');
+        setError(result.error || 'Failed to scan users');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to scan players');
+      setError(err.message || 'Failed to scan users');
     } finally {
       setScanning(false);
     }
   };
 
-  const handleCleanup = async (playerIds?: string[]) => {
-    if (!confirm(`Are you sure you want to remove unnecessary fields from ${playerIds ? playerIds.length : 'all'} players? This cannot be undone.`)) {
+  const handleDelete = async (userIds?: string[]) => {
+    const count = userIds ? userIds.length : scanResults?.player_users.length || 0;
+    if (!confirm(`Are you sure you want to DELETE ${count} user account(s)? This will permanently remove them from Firebase Auth and the users collection. This CANNOT be undone!`)) {
       return;
     }
 
-    setCleaning(true);
+    setDeleting(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/admin/cleanup-realplayers', {
-        method: 'POST',
+      const response = await fetch('/api/admin/cleanup-player-users', {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           confirm: true,
-          player_ids: playerIds
+          user_ids: userIds
         })
       });
 
@@ -77,32 +79,32 @@ export default function CleanupRealPlayersPage() {
         setSuccess(result.message);
         // Refresh scan results
         await handleScan();
-        setSelectedPlayers(new Set());
+        setSelectedUsers(new Set());
       } else {
-        setError(result.error || 'Failed to clean up players');
+        setError(result.error || 'Failed to delete users');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to clean up players');
+      setError(err.message || 'Failed to delete users');
     } finally {
-      setCleaning(false);
+      setDeleting(false);
     }
   };
 
-  const togglePlayerSelection = (playerId: string) => {
-    const newSelection = new Set(selectedPlayers);
-    if (newSelection.has(playerId)) {
-      newSelection.delete(playerId);
+  const toggleUserSelection = (uid: string) => {
+    const newSelection = new Set(selectedUsers);
+    if (newSelection.has(uid)) {
+      newSelection.delete(uid);
     } else {
-      newSelection.add(playerId);
+      newSelection.add(uid);
     }
-    setSelectedPlayers(newSelection);
+    setSelectedUsers(newSelection);
   };
 
   const toggleSelectAll = () => {
-    if (selectedPlayers.size === scanResults?.players.length) {
-      setSelectedPlayers(new Set());
+    if (selectedUsers.size === scanResults?.player_users.length) {
+      setSelectedUsers(new Set());
     } else {
-      setSelectedPlayers(new Set(scanResults?.players.map((p: PlayerIssue) => p.player_id)));
+      setSelectedUsers(new Set(scanResults?.player_users.map((u: PlayerUser) => u.uid)));
     }
   };
 
@@ -127,9 +129,9 @@ export default function CleanupRealPlayersPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-dark">Cleanup Real Players</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-dark">Cleanup Player User Accounts</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Remove unnecessary user fields from real player documents
+              Delete unwanted user accounts created for real players
             </p>
           </div>
           <Link 
@@ -143,13 +145,32 @@ export default function CleanupRealPlayersPage() {
           </Link>
         </div>
 
+        {/* Warning Box */}
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+          <div className="flex items-start">
+            <svg className="w-6 h-6 text-red-600 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <h3 className="font-semibold text-red-900 mb-2">⚠️ DANGER ZONE - Permanent Deletion</h3>
+              <ul className="text-sm text-red-800 space-y-1">
+                <li>• This tool DELETES user accounts from Firebase Auth AND Firestore</li>
+                <li>• Real players should NOT have user accounts - they don't need to log in</li>
+                <li>• Only team owners, managers, and committee members need user accounts</li>
+                <li>• Deletion is PERMANENT and CANNOT be undone</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         {/* Info Box */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
           <h3 className="font-semibold text-blue-900 mb-2">What this tool does:</h3>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Scans all real players for unnecessary fields: <code className="bg-blue-100 px-1 rounded">user_id</code>, <code className="bg-blue-100 px-1 rounded">registered_user_id</code>, <code className="bg-blue-100 px-1 rounded">isActive</code>, <code className="bg-blue-100 px-1 rounded">createdAt</code>, <code className="bg-blue-100 px-1 rounded">updatedAt</code></li>
-            <li>• These fields are from the users collection and don't belong on real players</li>
-            <li>• Removing them won't affect any functionality (player stats, team rosters remain intact)</li>
+            <li>• Scans the <code className="bg-blue-100 px-1 rounded">users</code> collection for accounts with role = "player"</li>
+            <li>• These are user accounts that were mistakenly created for real players</li>
+            <li>• Real players should only exist in the <code className="bg-blue-100 px-1 rounded">realplayers</code> collection</li>
+            <li>• Deleting these accounts will NOT affect player stats or team rosters</li>
           </ul>
         </div>
 
@@ -173,7 +194,7 @@ export default function CleanupRealPlayersPage() {
             disabled={scanning}
             className="px-6 py-3 bg-[#0066FF] text-white rounded-xl hover:bg-[#0052CC] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {scanning ? 'Scanning...' : 'Scan Real Players'}
+            {scanning ? 'Scanning...' : 'Scan User Accounts'}
           </button>
         </div>
 
@@ -183,36 +204,23 @@ export default function CleanupRealPlayersPage() {
             {/* Summary */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white/60 rounded-xl p-4 border border-gray-200">
-                <div className="text-sm text-gray-600">Total Players</div>
-                <div className="text-2xl font-bold text-gray-900">{scanResults.total_players}</div>
+                <div className="text-sm text-gray-600">Total Users</div>
+                <div className="text-2xl font-bold text-gray-900">{scanResults.total_users}</div>
               </div>
               <div className="bg-white/60 rounded-xl p-4 border border-gray-200">
-                <div className="text-sm text-gray-600">Players with Issues</div>
-                <div className="text-2xl font-bold text-orange-600">{scanResults.players_with_issues}</div>
+                <div className="text-sm text-gray-600">Player User Accounts</div>
+                <div className="text-2xl font-bold text-red-600">{scanResults.player_users_count}</div>
               </div>
               <div className="bg-white/60 rounded-xl p-4 border border-gray-200">
-                <div className="text-sm text-gray-600">Clean Players</div>
+                <div className="text-sm text-gray-600">Valid Users</div>
                 <div className="text-2xl font-bold text-green-600">
-                  {scanResults.total_players - scanResults.players_with_issues}
+                  {scanResults.total_users - scanResults.player_users_count}
                 </div>
               </div>
             </div>
 
-            {/* Field Counts */}
-            {scanResults.players_with_issues > 0 && (
+            {scanResults.player_users_count > 0 && (
               <>
-                <div className="bg-white/60 rounded-xl p-4 border border-gray-200">
-                  <h3 className="font-semibold text-gray-900 mb-3">Field Occurrences:</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {Object.entries(scanResults.field_counts).map(([field, count]: [string, any]) => (
-                      <div key={field} className="text-sm">
-                        <code className="bg-gray-100 px-2 py-1 rounded">{field}</code>
-                        <span className="ml-2 text-gray-600">({count})</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Bulk Actions */}
                 <div className="flex items-center justify-between bg-white/60 rounded-xl p-4 border border-gray-200">
                   <div className="flex items-center gap-4">
@@ -220,35 +228,35 @@ export default function CleanupRealPlayersPage() {
                       onClick={toggleSelectAll}
                       className="text-sm text-[#0066FF] hover:underline"
                     >
-                      {selectedPlayers.size === scanResults.players.length ? 'Deselect All' : 'Select All'}
+                      {selectedUsers.size === scanResults.player_users.length ? 'Deselect All' : 'Select All'}
                     </button>
-                    {selectedPlayers.size > 0 && (
+                    {selectedUsers.size > 0 && (
                       <span className="text-sm text-gray-600">
-                        {selectedPlayers.size} selected
+                        {selectedUsers.size} selected
                       </span>
                     )}
                   </div>
                   <div className="flex gap-2">
-                    {selectedPlayers.size > 0 && (
+                    {selectedUsers.size > 0 && (
                       <button
-                        onClick={() => handleCleanup(Array.from(selectedPlayers))}
-                        disabled={cleaning}
+                        onClick={() => handleDelete(Array.from(selectedUsers))}
+                        disabled={deleting}
                         className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                       >
-                        {cleaning ? 'Cleaning...' : `Clean Selected (${selectedPlayers.size})`}
+                        {deleting ? 'Deleting...' : `Delete Selected (${selectedUsers.size})`}
                       </button>
                     )}
                     <button
-                      onClick={() => handleCleanup()}
-                      disabled={cleaning}
+                      onClick={() => handleDelete()}
+                      disabled={deleting}
                       className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                     >
-                      {cleaning ? 'Cleaning...' : 'Clean All'}
+                      {deleting ? 'Deleting...' : 'Delete All'}
                     </button>
                   </div>
                 </div>
 
-                {/* Players List */}
+                {/* Users List */}
                 <div className="bg-white/60 rounded-xl border border-gray-200 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
@@ -257,46 +265,39 @@ export default function CleanupRealPlayersPage() {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                             <input
                               type="checkbox"
-                              checked={selectedPlayers.size === scanResults.players.length}
+                              checked={selectedUsers.size === scanResults.player_users.length}
                               onChange={toggleSelectAll}
                               className="rounded"
                             />
                           </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player ID</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unnecessary Fields</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Values</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Display Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {scanResults.players.map((player: PlayerIssue) => (
-                          <tr key={player.player_id} className="hover:bg-gray-50">
+                        {scanResults.player_users.map((playerUser: PlayerUser) => (
+                          <tr key={playerUser.uid} className="hover:bg-gray-50">
                             <td className="px-4 py-3">
                               <input
                                 type="checkbox"
-                                checked={selectedPlayers.has(player.player_id)}
-                                onChange={() => togglePlayerSelection(player.player_id)}
+                                checked={selectedUsers.has(playerUser.uid)}
+                                onChange={() => toggleUserSelection(playerUser.uid)}
                                 className="rounded"
                               />
                             </td>
-                            <td className="px-4 py-3 text-sm font-mono text-gray-900">{player.player_id}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{player.name}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-gray-900">{playerUser.uid}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{playerUser.email}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{playerUser.displayName || '-'}</td>
                             <td className="px-4 py-3 text-sm">
-                              <div className="flex flex-wrap gap-1">
-                                {player.unnecessary_fields.map(field => (
-                                  <code key={field} className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs">
-                                    {field}
-                                  </code>
-                                ))}
-                              </div>
+                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">
+                                {playerUser.role}
+                              </span>
                             </td>
-                            <td className="px-4 py-3 text-sm">
-                              <details className="cursor-pointer">
-                                <summary className="text-[#0066FF] hover:underline">View values</summary>
-                                <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-x-auto">
-                                  {JSON.stringify(player.field_values, null, 2)}
-                                </pre>
-                              </details>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {playerUser.createdAt ? new Date(playerUser.createdAt).toLocaleDateString() : '-'}
                             </td>
                           </tr>
                         ))}
@@ -307,7 +308,7 @@ export default function CleanupRealPlayersPage() {
               </>
             )}
 
-            {scanResults.players_with_issues === 0 && (
+            {scanResults.player_users_count === 0 && (
               <div className="text-center py-12">
                 <div className="text-green-600 mb-4">
                   <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -315,7 +316,7 @@ export default function CleanupRealPlayersPage() {
                   </svg>
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">All Clean!</h3>
-                <p className="text-gray-600">No real players have unnecessary fields.</p>
+                <p className="text-gray-600">No player user accounts found in the users collection.</p>
               </div>
             )}
           </div>

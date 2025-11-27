@@ -9,7 +9,7 @@ import { verifyAuth } from '@/lib/auth-helper';
 
 const UNNECESSARY_FIELDS = [
   'user_id',
-  'role', 
+  'registered_user_id',
   'isActive',
   'createdAt',
   'updatedAt'
