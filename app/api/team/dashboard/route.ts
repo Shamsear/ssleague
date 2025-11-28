@@ -366,6 +366,11 @@ export async function GET(request: NextRequest) {
       };
     }));
 
+    // dbTeamId already retrieved earlier and used in teamData.id
+    
+    // Fetch team's current bids from SQL/Neon (where they're actually stored)
+    const activeRoundIds = activeRounds.map(r => r.id);
+    
     // Fetch bid submission status for active rounds
     const submissionStatusMap = new Map<string, any>();
     if (activeRoundIds.length > 0 && dbTeamId) {
@@ -400,11 +405,6 @@ export async function GET(request: NextRequest) {
         is_locked: false,
       };
     });
-    
-    // dbTeamId already retrieved earlier and used in teamData.id
-    
-    // Fetch team's current bids from SQL/Neon (where they're actually stored)
-    const activeRoundIds = activeRounds.map(r => r.id);
     let activeBids: any[] = [];
     
     if (activeRoundIds.length > 0 && dbTeamId) {
