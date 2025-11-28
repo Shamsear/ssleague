@@ -11,32 +11,65 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const position = searchParams.get('position') || '';
     const positionGroup = searchParams.get('position_group') || '';
+    const playingStyle = searchParams.get('playing_style') || '';
+    const teamId = searchParams.get('team_id') || '';
+    const starredOnly = searchParams.get('starred_only') === 'true';
     
-    // If requesting position-specific playing styles, don't use cache
-    if (position || positionGroup) {
-      let playingStyles;
+    // If any filter is applied, don't use cache and build dynamic query
+    if (position || positionGroup || playingStyle || teamId || starredOnly) {
+      // Build WHERE conditions dynamically
+      let query = `
+        SELECT 
+          ARRAY_AGG(DISTINCT position ORDER BY position) FILTER (WHERE position IS NOT NULL) as positions,
+          ARRAY_AGG(DISTINCT position_group ORDER BY position_group) FILTER (WHERE position_group IS NOT NULL) as position_groups,
+          ARRAY_AGG(DISTINCT playing_style ORDER BY playing_style) FILTER (WHERE playing_style IS NOT NULL) as playing_styles
+        FROM footballplayers
+        WHERE 1=1
+      `;
+      
+      const params: any[] = [];
+      let paramIndex = 1;
       
       if (position) {
-        const result = await sql`
-          SELECT DISTINCT playing_style
-          FROM footballplayers
-          WHERE position = ${position} AND playing_style IS NOT NULL
-          ORDER BY playing_style
-        `;
-        playingStyles = result.map(r => r.playing_style);
-      } else if (positionGroup) {
-        const result = await sql`
-          SELECT DISTINCT playing_style
-          FROM footballplayers
-          WHERE position_group = ${positionGroup} AND playing_style IS NOT NULL
-          ORDER BY playing_style
-        `;
-        playingStyles = result.map(r => r.playing_style);
+        query += ` AND position = $${paramIndex}`;
+        params.push(position);
+        paramIndex++;
       }
+      if (positionGroup) {
+        query += ` AND position_group = $${paramIndex}`;
+        params.push(positionGroup);
+        paramIndex++;
+      }
+      if (playingStyle) {
+        query += ` AND playing_style = $${paramIndex}`;
+        params.push(playingStyle);
+        paramIndex++;
+      }
+      if (teamId) {
+        if (teamId === 'free_agent') {
+          query += ` AND team_id IS NULL`;
+        } else {
+          query += ` AND team_id = $${paramIndex}`;
+          params.push(teamId);
+          paramIndex++;
+        }
+      }
+      if (starredOnly) {
+        query += ` AND is_starred = true`;
+      }
+      
+      // Use sql.query for dynamic queries with parameters
+      const result = await sql.query(query, params);
+      
+      const data = {
+        positions: result[0]?.positions || [],
+        positionGroups: result[0]?.position_groups || [],
+        playingStyles: result[0]?.playing_styles || []
+      };
       
       return NextResponse.json({
         success: true,
-        data: { playingStyles },
+        data,
         cached: false
       });
     }

@@ -60,7 +60,11 @@ export default function PlayerStatisticsPage() {
     playingStyleFilter: '',
     teamFilter: ''
   });
+  const [sharePlayingStyles, setSharePlayingStyles] = useState<string[]>([]);
+  const [sharePositions, setSharePositions] = useState<string[]>([]);
+  const [sharePositionGroups, setSharePositionGroups] = useState<string[]>([]);
   const [playingStyles, setPlayingStyles] = useState<string[]>([]);
+  const [isLoadingShareFilters, setIsLoadingShareFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalPlayers, setTotalPlayers] = useState(0);
@@ -437,13 +441,30 @@ export default function PlayerStatisticsPage() {
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold gradient-text">Football Players Database</h1>
           <button
-            onClick={() => setShowShareModal(true)}
+            onClick={() => {
+              const newState = !showShareModal;
+              setShowShareModal(newState);
+              if (newState) {
+                setSharePlayingStyles(allPlayingStyles);
+                setSharePositions(positions);
+                setSharePositionGroups(positionGroups);
+                setShareFilters({
+                  starredFilter: 'all',
+                  positionFilter: '',
+                  playingStyleFilter: '',
+                  teamFilter: ''
+                });
+              }
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
             </svg>
-            Share
+            {showShareModal ? 'Hide Share Options' : 'Share to WhatsApp'}
+            <svg className={`w-4 h-4 transition-transform ${showShareModal ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
         </div>
         <div className="flex flex-col sm:flex-row w-full sm:w-auto space-y-3 sm:space-y-0 sm:space-x-4">
@@ -503,6 +524,345 @@ export default function PlayerStatisticsPage() {
           </div>
         </div>
       </div>
+
+      {/* Share to WhatsApp Collapsible Section */}
+      {showShareModal && (
+        <div className="glass-card p-6 rounded-2xl mb-6 animate-slideDown border-2 border-green-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-2">
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <svg className="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Share Players to WhatsApp
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">Select filters to customize your player list</p>
+            </div>
+            {isLoadingShareFilters && (
+              <div className="flex items-center gap-2 text-sm text-blue-600">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Updating filters...
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {/* Starred Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Player Selection</label>
+                <select
+                  value={shareFilters.starredFilter}
+                  onChange={async (e) => {
+                    const newStarredFilter = e.target.value;
+                    setShareFilters({
+                      starredFilter: newStarredFilter,
+                      positionFilter: '',
+                      playingStyleFilter: '',
+                      teamFilter: ''
+                    });
+                    
+                    // Fetch available options based on starred filter
+                    setIsLoadingShareFilters(true);
+                    try {
+                      const params = new URLSearchParams();
+                      if (newStarredFilter === 'starred') params.append('starred_only', 'true');
+                      
+                      const response = await fetchWithTokenRefresh(`/api/players/filter-options?${params.toString()}`);
+                      const { success, data } = await response.json();
+                      
+                      if (success) {
+                        setSharePositions(data.positions || positions);
+                        setSharePositionGroups(data.positionGroups || positionGroups);
+                        setSharePlayingStyles(data.playingStyles || allPlayingStyles);
+                      }
+                    } catch (err) {
+                      console.error('Error fetching filter options:', err);
+                      setSharePositions(positions);
+                      setSharePositionGroups(positionGroups);
+                      setSharePlayingStyles(allPlayingStyles);
+                    } finally {
+                      setIsLoadingShareFilters(false);
+                    }
+                  }}
+                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
+                >
+                  <option value="all">All Players</option>
+                  <option value="starred">Starred Players Only</option>
+                  <option value="unstarred">Unstarred Players Only</option>
+                </select>
+              </div>
+
+              {/* Position Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
+                <select
+                  value={shareFilters.positionFilter}
+                  onChange={async (e) => {
+                    const newPosition = e.target.value;
+                    setShareFilters({...shareFilters, positionFilter: newPosition, playingStyleFilter: ''});
+                    
+                    // Fetch playing styles for selected position + starred filter
+                    if (newPosition) {
+                      setIsLoadingShareFilters(true);
+                      try {
+                        const params = new URLSearchParams();
+                        const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+                        const param = allPositions.includes(newPosition) ? 'position' : 'position_group';
+                        params.append(param, newPosition);
+                        if (shareFilters.starredFilter === 'starred') params.append('starred_only', 'true');
+                        if (shareFilters.teamFilter) params.append('team_id', shareFilters.teamFilter);
+                        
+                        const response = await fetchWithTokenRefresh(`/api/players/filter-options?${params.toString()}`);
+                        const { success, data } = await response.json();
+                        if (success && data.playingStyles) {
+                          setSharePlayingStyles(data.playingStyles);
+                        }
+                      } catch (err) {
+                        console.error('Error fetching playing styles:', err);
+                        setSharePlayingStyles(shareFilters.starredFilter === 'starred' ? sharePlayingStyles : allPlayingStyles);
+                      } finally {
+                        setIsLoadingShareFilters(false);
+                      }
+                    } else {
+                      // Reset to all available styles for current filters
+                      const availableStyles = shareFilters.starredFilter === 'starred' ? sharePlayingStyles : allPlayingStyles;
+                      setSharePlayingStyles(availableStyles);
+                    }
+                  }}
+                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
+                >
+                  <option value="">All Positions</option>
+                  <optgroup label="Positions">
+                    {sharePositions.map(position => (
+                      <option key={position} value={position}>{position}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Position Groups">
+                    {sharePositionGroups.map(group => (
+                      <option key={group} value={group}>{group}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Playing Style Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Playing Style</label>
+                <select
+                  value={shareFilters.playingStyleFilter}
+                  onChange={async (e) => {
+                    const newPlayingStyle = e.target.value;
+                    setShareFilters({...shareFilters, playingStyleFilter: newPlayingStyle});
+                    
+                    // Fetch updated positions when playing style changes
+                    if (newPlayingStyle || shareFilters.positionFilter || shareFilters.teamFilter) {
+                      setIsLoadingShareFilters(true);
+                      try {
+                        const params = new URLSearchParams();
+                        if (shareFilters.starredFilter === 'starred') params.append('starred_only', 'true');
+                        if (shareFilters.positionFilter) {
+                          const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+                          const param = allPositions.includes(shareFilters.positionFilter) ? 'position' : 'position_group';
+                          params.append(param, shareFilters.positionFilter);
+                        }
+                        if (newPlayingStyle) params.append('playing_style', newPlayingStyle);
+                        if (shareFilters.teamFilter) params.append('team_id', shareFilters.teamFilter);
+                        
+                        const response = await fetchWithTokenRefresh(`/api/players/filter-options?${params.toString()}`);
+                        const { success, data } = await response.json();
+                        if (success) {
+                          if (data.positions) setSharePositions(data.positions);
+                          if (data.positionGroups) setSharePositionGroups(data.positionGroups);
+                        }
+                      } catch (err) {
+                        console.error('Error fetching updated positions:', err);
+                      } finally {
+                        setIsLoadingShareFilters(false);
+                      }
+                    }
+                  }}
+                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
+                  disabled={shareFilters.positionFilter && sharePlayingStyles.length === 0}
+                >
+                  <option value="">All Playing Styles</option>
+                  {sharePlayingStyles.map(style => (
+                    <option key={style} value={style}>{style}</option>
+                  ))}
+                </select>
+                {shareFilters.positionFilter && sharePlayingStyles.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">No playing styles available for this position</p>
+                )}
+              </div>
+
+              {/* Team Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                <select
+                  value={shareFilters.teamFilter}
+                  onChange={async (e) => {
+                    const newTeam = e.target.value;
+                    setShareFilters({...shareFilters, teamFilter: newTeam, positionFilter: '', playingStyleFilter: ''});
+                    
+                    // Fetch updated positions and playing styles when team changes
+                    setIsLoadingShareFilters(true);
+                    try {
+                      const params = new URLSearchParams();
+                      if (shareFilters.starredFilter === 'starred') params.append('starred_only', 'true');
+                      if (newTeam) params.append('team_id', newTeam);
+                      
+                      const response = await fetchWithTokenRefresh(`/api/players/filter-options?${params.toString()}`);
+                      const { success, data } = await response.json();
+                      
+                      if (success) {
+                        if (data.positions) setSharePositions(data.positions);
+                        if (data.positionGroups) setSharePositionGroups(data.positionGroups);
+                        if (data.playingStyles) setSharePlayingStyles(data.playingStyles);
+                      }
+                    } catch (err) {
+                      console.error('Error fetching filter options for team:', err);
+                      // Reset to all options on error
+                      setSharePositions(positions);
+                      setSharePositionGroups(positionGroups);
+                      setSharePlayingStyles(allPlayingStyles);
+                    } finally {
+                      setIsLoadingShareFilters(false);
+                    }
+                  }}
+                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
+                >
+                  <option value="">All Teams</option>
+                  <option value="free_agent">Free Agents</option>
+                  {teams.map(team => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Share Button */}
+            <div className="mt-4">
+              <button
+                onClick={async () => {
+                  // Fetch ALL players matching the share filters (not just current page)
+                  try {
+                    const params = new URLSearchParams({
+                      limit: '1000', // Get up to 1000 players
+                    });
+                    
+                    if (shareFilters.starredFilter === 'starred') params.append('starred_only', 'true');
+                    if (shareFilters.positionFilter) {
+                      const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+                      if (allPositions.includes(shareFilters.positionFilter)) {
+                        params.append('position', shareFilters.positionFilter);
+                      } else {
+                        params.append('position_group', shareFilters.positionFilter);
+                      }
+                    }
+                    if (shareFilters.playingStyleFilter) params.append('playing_style', shareFilters.playingStyleFilter);
+                    if (shareFilters.teamFilter) params.append('team_id', shareFilters.teamFilter);
+                    
+                    const response = await fetchWithTokenRefresh(`/api/players/database?${params.toString()}`);
+                    const { success, data } = await response.json();
+                    
+                    if (!success || !data || !data.players) {
+                      showAlert({
+                        type: 'error',
+                        title: 'Error',
+                        message: 'Failed to fetch players for sharing.'
+                      });
+                      return;
+                    }
+                    
+                    let filteredForShare = data.players;
+                    
+                    // Apply unstarred filter (API doesn't support this directly)
+                    if (shareFilters.starredFilter === 'unstarred') {
+                      filteredForShare = filteredForShare.filter((player: Player) => !player.is_starred);
+                    }
+                  
+                      if (filteredForShare.length === 0) {
+                      showAlert({
+                        type: 'error',
+                        title: 'No Players Found',
+                        message: 'No players match the selected filters.'
+                      });
+                      return;
+                    }
+
+                      // Generate WhatsApp message
+                    let message = `*FOOTBALL PLAYERS DATABASE*\n\n`;
+                  
+                    // Add filter information
+                    const filterInfo = [];
+                    if (shareFilters.starredFilter === 'starred') filterInfo.push('Starred Players');
+                    if (shareFilters.starredFilter === 'unstarred') filterInfo.push('Unstarred Players');
+                    if (shareFilters.positionFilter) filterInfo.push(`Position: ${shareFilters.positionFilter}`);
+                    if (shareFilters.playingStyleFilter) filterInfo.push(`Playing Style: ${shareFilters.playingStyleFilter}`);
+                    if (shareFilters.teamFilter) {
+                      if (shareFilters.teamFilter === 'free_agent') {
+                        filterInfo.push('Free Agents Only');
+                      } else {
+                        const teamName = teams.find(t => t.id === shareFilters.teamFilter)?.name;
+                        filterInfo.push(`Team: ${teamName}`);
+                      }
+                    }
+                    
+                    if (filterInfo.length > 0) {
+                      message += `*Filters Applied:*\n`;
+                      filterInfo.forEach(info => {
+                        message += `- ${info}\n`;
+                      });
+                      message += `\n`;
+                    }
+                    
+                    message += `*Total Players: ${filteredForShare.length}*\n`;
+                    message += `${'='.repeat(40)}\n\n`;
+
+                    filteredForShare.slice(0, 50).forEach((player: Player, index: number) => {
+                      message += `${index + 1}. ${player.name}\n`;
+                      message += `   Position: ${player.position} | Overall Rating: ${player.overall_rating}`;
+                      if (player.team_name) message += ` | Team: ${player.team_name}`;
+                      else message += ` | Status: Free Agent`;
+                      message += `\n`;
+                      if (player.playing_style) message += `   Playing Style: ${player.playing_style}\n`;
+                      if (player.is_starred) message += `   [Starred]\n`;
+                      message += `\n`;
+                    });
+
+                    if (filteredForShare.length > 50) {
+                      message += `\n... and ${filteredForShare.length - 50} more players\n`;
+                      message += `\nShowing first 50 players only.\n`;
+                    }
+
+                    // Encode message for WhatsApp URL
+                    const encodedMessage = encodeURIComponent(message);
+                    const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
+                    
+                    // Open WhatsApp
+                    window.open(whatsappUrl, '_blank');
+                    setShowShareModal(false);
+                  } catch (error) {
+                    console.error('Error generating share message:', error);
+                    showAlert({
+                      type: 'error',
+                      title: 'Error',
+                      message: 'Failed to generate share message. Please try again.'
+                    });
+                  }
+                }}
+                className="w-full py-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 transition-all duration-200 font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Share to WhatsApp
+              </button>
+            </div>
+        </div>
+      )}
 
       {/* Show Starred Players Toggle and Stats */}
       <div className="mt-4 mb-6">
@@ -739,199 +1099,6 @@ export default function PlayerStatisticsPage() {
           >
             Next
           </button>
-        </div>
-      )}
-
-      {/* Share to WhatsApp Modal */}
-      {showShareModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Share Players to WhatsApp</h3>
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Starred Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Player Selection</label>
-                <select
-                  value={shareFilters.starredFilter}
-                  onChange={(e) => setShareFilters({...shareFilters, starredFilter: e.target.value})}
-                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
-                >
-                  <option value="all">All Players</option>
-                  <option value="starred">Starred Players Only</option>
-                  <option value="unstarred">Unstarred Players Only</option>
-                </select>
-              </div>
-
-              {/* Position Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
-                <select
-                  value={shareFilters.positionFilter}
-                  onChange={(e) => setShareFilters({...shareFilters, positionFilter: e.target.value})}
-                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
-                >
-                  <option value="">All Positions</option>
-                  <optgroup label="Positions">
-                    {positions.map(position => (
-                      <option key={position} value={position}>{position}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Position Groups">
-                    {positionGroups.map(group => (
-                      <option key={group} value={group}>{group}</option>
-                    ))}
-                  </optgroup>
-                </select>
-              </div>
-
-              {/* Playing Style Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Playing Style</label>
-                <select
-                  value={shareFilters.playingStyleFilter}
-                  onChange={(e) => setShareFilters({...shareFilters, playingStyleFilter: e.target.value})}
-                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
-                >
-                  <option value="">All Playing Styles</option>
-                  {allPlayingStyles.map(style => (
-                    <option key={style} value={style}>{style}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Team Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
-                <select
-                  value={shareFilters.teamFilter}
-                  onChange={(e) => setShareFilters({...shareFilters, teamFilter: e.target.value})}
-                  className="w-full py-2 px-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF] outline-none"
-                >
-                  <option value="">All Teams</option>
-                  <option value="free_agent">Free Agents</option>
-                  {teams.map(team => (
-                    <option key={team.id} value={team.id}>{team.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Share Button */}
-              <button
-                onClick={async () => {
-                  // Fetch ALL players matching the share filters (not just current page)
-                  try {
-                    const params = new URLSearchParams({
-                      limit: '1000', // Get up to 1000 players
-                    });
-                    
-                    if (shareFilters.starredFilter === 'starred') params.append('starred_only', 'true');
-                    if (shareFilters.positionFilter) {
-                      const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
-                      if (allPositions.includes(shareFilters.positionFilter)) {
-                        params.append('position', shareFilters.positionFilter);
-                      } else {
-                        params.append('position_group', shareFilters.positionFilter);
-                      }
-                    }
-                    if (shareFilters.playingStyleFilter) params.append('playing_style', shareFilters.playingStyleFilter);
-                    if (shareFilters.teamFilter) params.append('team_id', shareFilters.teamFilter);
-                    
-                    const response = await fetchWithTokenRefresh(`/api/players/database?${params.toString()}`);
-                    const { success, data } = await response.json();
-                    
-                    if (!success || !data || !data.players) {
-                      showAlert({
-                        type: 'error',
-                        title: 'Error',
-                        message: 'Failed to fetch players for sharing.'
-                      });
-                      return;
-                    }
-                    
-                    let filteredForShare = data.players;
-                    
-                    // Apply unstarred filter (API doesn't support this directly)
-                    if (shareFilters.starredFilter === 'unstarred') {
-                      filteredForShare = filteredForShare.filter((player: Player) => !player.is_starred);
-                    }
-                  
-                      if (filteredForShare.length === 0) {
-                      showAlert({
-                        type: 'error',
-                        title: 'No Players Found',
-                        message: 'No players match the selected filters.'
-                      });
-                      return;
-                    }
-
-                      // Generate WhatsApp message
-                    let message = `⚽ *Football Players Database*\n\n`;
-                  
-                    if (shareFilters.starredFilter === 'starred') message += `⭐ *Starred Players*\n`;
-                    if (shareFilters.starredFilter === 'unstarred') message += `*Unstarred Players*\n`;
-                    if (shareFilters.positionFilter) message += `📍 Position: *${shareFilters.positionFilter}*\n`;
-                    if (shareFilters.playingStyleFilter) message += `🎯 Style: *${shareFilters.playingStyleFilter}*\n`;
-                    if (shareFilters.teamFilter) {
-                      if (shareFilters.teamFilter === 'free_agent') {
-                        message += `🆓 *Free Agents*\n`;
-                      } else {
-                        const teamName = teams.find(t => t.id === shareFilters.teamFilter)?.name;
-                        message += `🏆 Team: *${teamName}*\n`;
-                      }
-                    }
-                    
-                    message += `\n*Total: ${filteredForShare.length} players*\n\n`;
-                    message += `━━━━━━━━━━━━━━━━\n\n`;
-
-                    filteredForShare.slice(0, 50).forEach((player: Player, index: number) => {
-                      message += `${index + 1}. *${player.name}*\n`;
-                      message += `   ${player.is_starred ? '⭐ ' : ''}${player.position} | OVR: ${player.overall_rating}`;
-                      if (player.team_name) message += ` | ${player.team_name}`;
-                      message += `\n`;
-                      if (player.playing_style) message += `   Style: ${player.playing_style}\n`;
-                      message += `\n`;
-                    });
-
-                    if (filteredForShare.length > 50) {
-                      message += `\n_...and ${filteredForShare.length - 50} more players_\n`;
-                    }
-
-                    // Encode message for WhatsApp URL
-                    const encodedMessage = encodeURIComponent(message);
-                    const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
-                    
-                    // Open WhatsApp
-                    window.open(whatsappUrl, '_blank');
-                    setShowShareModal(false);
-                  } catch (error) {
-                    console.error('Error generating share message:', error);
-                    showAlert({
-                      type: 'error',
-                      title: 'Error',
-                      message: 'Failed to generate share message. Please try again.'
-                    });
-                  }
-                }}
-                className="w-full py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-medium flex items-center justify-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-                Share to WhatsApp
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
