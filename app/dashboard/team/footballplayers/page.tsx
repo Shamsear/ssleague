@@ -8,6 +8,7 @@ import PlayerImage, { PlayerAvatar } from '@/components/PlayerImage';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import * as XLSX from 'xlsx';
 
 // Position constants
 // Dynamic positions and position groups will be generated from actual player data
@@ -461,7 +462,7 @@ export default function PlayerStatisticsPage() {
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
             </svg>
-            {showShareModal ? 'Hide Share Options' : 'Share to WhatsApp'}
+            {showShareModal ? 'Hide Share/Download Options' : 'Share or Download'}
             <svg className={`w-4 h-4 transition-transform ${showShareModal ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
             </svg>
@@ -534,7 +535,7 @@ export default function PlayerStatisticsPage() {
                 <svg className="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
-                Share Players to WhatsApp
+                Share or Download Players
               </h3>
               <p className="text-sm text-gray-500 mt-1">Select filters to customize your player list</p>
             </div>
@@ -742,8 +743,9 @@ export default function PlayerStatisticsPage() {
               </div>
             </div>
 
-            {/* Share Button */}
-            <div className="mt-4">
+            {/* Share/Download Buttons */}
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* WhatsApp Share Button */}
               <button
                 onClick={async () => {
                   // Fetch ALL players matching the share filters (not just current page)
@@ -783,7 +785,7 @@ export default function PlayerStatisticsPage() {
                       filteredForShare = filteredForShare.filter((player: Player) => !player.is_starred);
                     }
                   
-                      if (filteredForShare.length === 0) {
+                    if (filteredForShare.length === 0) {
                       showAlert({
                         type: 'error',
                         title: 'No Players Found',
@@ -792,7 +794,7 @@ export default function PlayerStatisticsPage() {
                       return;
                     }
 
-                      // Generate WhatsApp message
+                    // Generate WhatsApp message
                     let message = `*FOOTBALL PLAYERS DATABASE*\n\n`;
                   
                     // Add filter information
@@ -821,7 +823,7 @@ export default function PlayerStatisticsPage() {
                     message += `*Total Players: ${filteredForShare.length}*\n`;
                     message += `${'='.repeat(40)}\n\n`;
 
-                    filteredForShare.slice(0, 50).forEach((player: Player, index: number) => {
+                    filteredForShare.slice(0, 300).forEach((player: Player, index: number) => {
                       message += `${index + 1}. ${player.name}\n`;
                       message += `   Position: ${player.position} | Overall Rating: ${player.overall_rating}`;
                       if (player.team_name) message += ` | Team: ${player.team_name}`;
@@ -832,9 +834,9 @@ export default function PlayerStatisticsPage() {
                       message += `\n`;
                     });
 
-                    if (filteredForShare.length > 50) {
-                      message += `\n... and ${filteredForShare.length - 50} more players\n`;
-                      message += `\nShowing first 50 players only.\n`;
+                    if (filteredForShare.length > 300) {
+                      message += `\n... and ${filteredForShare.length - 300} more players\n`;
+                      message += `\nShowing first 300 players only.\n`;
                     }
 
                     // Encode message for WhatsApp URL
@@ -864,6 +866,155 @@ export default function PlayerStatisticsPage() {
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
                 Share to WhatsApp
+              </button>
+
+              {/* Excel Download Button */}
+              <button
+                onClick={async () => {
+                  // Fetch ALL players matching the share filters (not just current page)
+                  try {
+                    const params = new URLSearchParams({
+                      limit: '1000', // Get up to 1000 players
+                    });
+                    
+                    if (shareFilters.starredFilter === 'starred') params.append('starred_only', 'true');
+                    if (shareFilters.positionFilter) {
+                      const allPositions = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'CF', 'SS'];
+                      if (allPositions.includes(shareFilters.positionFilter)) {
+                        params.append('position', shareFilters.positionFilter);
+                      } else {
+                        params.append('position_group', shareFilters.positionFilter);
+                      }
+                    }
+                    if (shareFilters.playingStyleFilter) params.append('playing_style', shareFilters.playingStyleFilter);
+                    if (shareFilters.teamFilter) params.append('team_id', shareFilters.teamFilter);
+                    
+                    const response = await fetchWithTokenRefresh(`/api/players/database?${params.toString()}`);
+                    const { success, data } = await response.json();
+                    
+                    if (!success || !data || !data.players) {
+                      showAlert({
+                        type: 'error',
+                        title: 'Error',
+                        message: 'Failed to fetch players for download.'
+                      });
+                      return;
+                    }
+                    
+                    let filteredForExport = data.players;
+                    
+                    // Apply unstarred filter (API doesn't support this directly)
+                    if (shareFilters.starredFilter === 'unstarred') {
+                      filteredForExport = filteredForExport.filter((player: Player) => !player.is_starred);
+                    }
+                  
+                    if (filteredForExport.length === 0) {
+                      showAlert({
+                        type: 'error',
+                        title: 'No Players Found',
+                        message: 'No players match the selected filters.'
+                      });
+                      return;
+                    }
+
+                    // Prepare data for Excel export
+                    const exportData = filteredForExport.map((player: Player, index: number) => ({
+                      'No.': index + 1,
+                      'Player Name': player.name,
+                      'Position': player.position,
+                      'Position Group': player.position_group || '',
+                      'Playing Style': player.playing_style || '',
+                      'Overall Rating': player.overall_rating,
+                      'Speed': player.speed || '',
+                      'Acceleration': player.acceleration || '',
+                      'Ball Control': player.ball_control || '',
+                      'Dribbling': player.dribbling || '',
+                      'Low Pass': player.low_pass || '',
+                      'Lofted Pass': player.lofted_pass || '',
+                      'Finishing': player.finishing || '',
+                      'Tackling': player.tackling || '',
+                      'Defensive Awareness': player.defensive_awareness || '',
+                      'Stamina': player.stamina || '',
+                      'GK Awareness': player.gk_awareness || '',
+                      'GK Reflexes': player.gk_reflexes || '',
+                      'GK Catching': player.gk_catching || '',
+                      'Team': player.team_name || 'Free Agent',
+                      'Starred': player.is_starred ? 'Yes' : 'No'
+                    }));
+
+                    // Create worksheet
+                    const ws = XLSX.utils.json_to_sheet(exportData);
+
+                    // Set column widths
+                    ws['!cols'] = [
+                      { wch: 5 },  // No.
+                      { wch: 25 }, // Player Name
+                      { wch: 10 }, // Position
+                      { wch: 20 }, // Position Group
+                      { wch: 20 }, // Playing Style
+                      { wch: 12 }, // Overall Rating
+                      { wch: 8 },  // Speed
+                      { wch: 12 }, // Acceleration
+                      { wch: 12 }, // Ball Control
+                      { wch: 10 }, // Dribbling
+                      { wch: 10 }, // Low Pass
+                      { wch: 12 }, // Lofted Pass
+                      { wch: 10 }, // Finishing
+                      { wch: 10 }, // Tackling
+                      { wch: 18 }, // Defensive Awareness
+                      { wch: 10 }, // Stamina
+                      { wch: 12 }, // GK Awareness
+                      { wch: 12 }, // GK Reflexes
+                      { wch: 12 }, // GK Catching
+                      { wch: 20 }, // Team
+                      { wch: 8 }   // Starred
+                    ];
+
+                    // Create workbook
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, 'Football Players');
+
+                    // Generate filename with filters and timestamp
+                    const timestamp = new Date().toISOString().split('T')[0];
+                    let filename = `Football_Players_${timestamp}`;
+                    
+                    if (shareFilters.starredFilter === 'starred') filename += '_Starred';
+                    if (shareFilters.starredFilter === 'unstarred') filename += '_Unstarred';
+                    if (shareFilters.positionFilter) filename += `_${shareFilters.positionFilter}`;
+                    if (shareFilters.playingStyleFilter) filename += `_${shareFilters.playingStyleFilter.replace(/\s+/g, '_')}`;
+                    if (shareFilters.teamFilter === 'free_agent') filename += '_FreeAgents';
+                    else if (shareFilters.teamFilter) {
+                      const teamName = teams.find(t => t.id === shareFilters.teamFilter)?.name;
+                      if (teamName) filename += `_${teamName.replace(/\s+/g, '_')}`;
+                    }
+                    
+                    filename += '.xlsx';
+
+                    // Download file
+                    XLSX.writeFile(wb, filename);
+
+                    showAlert({
+                      type: 'success',
+                      title: 'Success',
+                      message: `Exported ${filteredForExport.length} players to ${filename}`
+                    });
+                    
+                    setShowShareModal(false);
+                  } catch (error) {
+                    console.error('Error generating Excel file:', error);
+                    showAlert({
+                      type: 'error',
+                      title: 'Error',
+                      message: 'Failed to generate Excel file. Please try again.'
+                    });
+                  }
+                }}
+                className="w-full py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download Excel
               </button>
             </div>
         </div>
