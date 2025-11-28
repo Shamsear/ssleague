@@ -841,8 +841,13 @@ export default function PlayerStatisticsPage() {
                     const encodedMessage = encodeURIComponent(message);
                     const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
                     
-                    // Open WhatsApp
-                    window.open(whatsappUrl, '_blank');
+                    // Open WhatsApp - use location.href on mobile for better app detection
+                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                    if (isMobile) {
+                      window.location.href = whatsappUrl;
+                    } else {
+                      window.open(whatsappUrl, '_blank');
+                    }
                     setShowShareModal(false);
                   } catch (error) {
                     console.error('Error generating share message:', error);
