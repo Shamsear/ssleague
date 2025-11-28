@@ -366,6 +366,41 @@ export async function GET(request: NextRequest) {
       };
     }));
 
+    // Fetch bid submission status for active rounds
+    const submissionStatusMap = new Map<string, any>();
+    if (activeRoundIds.length > 0 && dbTeamId) {
+      const submissionsResult = await sql`
+        SELECT 
+          round_id,
+          submitted_at,
+          bid_count,
+          is_locked
+        FROM bid_submissions
+        WHERE team_id = ${dbTeamId}
+        AND round_id = ANY(${activeRoundIds})
+      `;
+      
+      submissionsResult.forEach((sub: any) => {
+        submissionStatusMap.set(sub.round_id, {
+          submitted: true,
+          submitted_at: sub.submitted_at,
+          bid_count: sub.bid_count,
+          is_locked: sub.is_locked,
+        });
+      });
+    }
+    
+    // Add submission status to each active round
+    activeRounds.forEach(round => {
+      const submission = submissionStatusMap.get(round.id);
+      round.submission_status = submission || {
+        submitted: false,
+        submitted_at: null,
+        bid_count: 0,
+        is_locked: false,
+      };
+    });
+    
     // dbTeamId already retrieved earlier and used in teamData.id
     
     // Fetch team's current bids from SQL/Neon (where they're actually stored)

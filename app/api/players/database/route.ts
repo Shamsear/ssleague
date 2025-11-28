@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { sql } from '@/lib/neon/config';
 import { cookies } from 'next/headers';
 import { getFirebaseUidFromToken } from '@/lib/jwt-decode';
+import { adminDb } from '@/lib/firebase/admin';
 
 // Simple in-memory cache for team_id lookups (expires after 5 minutes)
 const teamIdCache = new Map<string, { teamId: string; expiresAt: number }>();
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
     const position = searchParams.get('position') || '';
     const positionGroup = searchParams.get('position_group') || '';
     const playingStyle = searchParams.get('playing_style') || '';
+    const teamIdFilter = searchParams.get('team_id') || '';
     const starredOnly = searchParams.get('starred_only') === 'true';
 
     // Get Neon team_id from Firebase token (if authenticated)
@@ -93,6 +95,15 @@ export async function GET(request: Request) {
       queryParams.push(playingStyle);
     }
 
+    if (teamIdFilter) {
+      if (teamIdFilter === 'free_agent') {
+        whereParts.push('fp.team_id IS NULL');
+      } else {
+        whereParts.push(`fp.team_id = $${paramIndex++}`);
+        queryParams.push(teamIdFilter);
+      }
+    }
+
     if (starredOnly && teamId) {
       whereParts.push('sp.id IS NOT NULL');
     }
@@ -113,7 +124,7 @@ export async function GET(request: Request) {
       SELECT 
         fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
         fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-        fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.team_name,
+        fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id,
         CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
       FROM footballplayers fp
       LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = $${teamIdParam}
@@ -123,6 +134,33 @@ export async function GET(request: Request) {
     `;
 
     players = await sql.query(queryText, queryParams);
+
+    // Fetch team names from auction DB for players that have team_id
+    const uniqueTeamIds = [...new Set(players.map((p: any) => p.team_id).filter(Boolean))];
+    const teamNamesMap = new Map<string, string>();
+
+    if (uniqueTeamIds.length > 0) {
+      try {
+        // Fetch team names from Neon auction DB
+        const teamsResult = await sql`
+          SELECT id, name
+          FROM teams
+          WHERE id = ANY(${uniqueTeamIds})
+        `;
+
+        teamsResult.forEach((team: any) => {
+          teamNamesMap.set(team.id, team.name || 'Unknown Team');
+        });
+      } catch (dbError) {
+        console.error('Error fetching team names from auction DB:', dbError);
+      }
+    }
+
+    // Add team_name to each player
+    players = players.map((player: any) => ({
+      ...player,
+      team_name: player.team_id ? teamNamesMap.get(player.team_id) || null : null
+    }));
 
     // Count query (reuse params without limit/offset)
     const countParams = queryParams.slice(0, -2);

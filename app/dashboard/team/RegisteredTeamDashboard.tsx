@@ -80,6 +80,12 @@ interface Round {
   player_count?: number;
   players?: Player[];
   tiebreakers?: RoundTiebreaker[];
+  submission_status?: {
+    submitted: boolean;
+    submitted_at: string | null;
+    bid_count: number;
+    is_locked: boolean;
+  };
 }
 
 interface Player {
@@ -1188,8 +1194,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                     return (
                     <div key={round.id} className="glass-card rounded-xl sm:rounded-2xl p-4 sm:p-6 border-l-4 border-orange-500">
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-lg sm:text-xl font-bold text-gray-900">
                               Round #{round.round_number}{round.round_type === 'bulk' ? ' - Bulk Bidding' : (round.position ? ` - ${round.position.includes(',') ? round.position.split(',').join(' + ') : round.position}` : '')}
                             </h3>
@@ -1197,6 +1203,21 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                               <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold">
                                 ⚡ BULK
                               </span>
+                            )}
+                            {round.submission_status?.submitted ? (
+                              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-100 text-green-700 text-xs font-medium">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                                <span>Submitted ({round.submission_status.bid_count} bids)</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-yellow-100 text-yellow-700 text-xs font-medium">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                                <span>Not Submitted</span>
+                              </div>
                             )}
                           </div>
                           <p className="text-xs sm:text-sm text-gray-600 mt-1">
@@ -1260,7 +1281,17 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   {activeBids.length > 0 && (
                     <div>
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-                        <h3 className="text-lg font-bold text-gray-900">My Active Bids ({activeBids.length})</h3>
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900">My Active Bids ({activeBids.length})</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <span>{activeBids.length} bid{activeBids.length > 1 ? 's' : ''} submitted & confirmed</span>
+                            </div>
+                          </div>
+                        </div>
                         <input
                           type="text"
                           placeholder="Search bids..."
@@ -1271,7 +1302,26 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                       </div>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                         {filteredBids.map(bid => (
-                          <div key={bid.id} className="glass-card p-3 sm:p-4 rounded-xl hover:shadow-lg transition-all">
+                          <div key={bid.id} className="glass-card p-3 sm:p-4 rounded-xl hover:shadow-lg transition-all border-l-4 border-green-500">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-100 text-green-700 text-xs font-medium">
+                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                  </svg>
+                                  <span>Submitted</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteBid(bid.id)}
+                                className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                                title="Delete bid"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
                             <div className="flex items-center justify-between">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-2">
@@ -1286,14 +1336,6 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                                   <span className="font-bold text-green-600">eCoin {bid.amount.toLocaleString()}</span>
                                 </div>
                               </div>
-                              <button
-                                onClick={() => handleDeleteBid(bid.id)}
-                                className="ml-2 p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
                             </div>
                           </div>
                         ))}
