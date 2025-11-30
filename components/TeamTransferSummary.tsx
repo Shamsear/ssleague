@@ -85,41 +85,64 @@ export default function TeamTransferSummary({ teamId, seasonId, className = '' }
       };
 
       transactions.forEach((tx: any) => {
-        // Count by type
-        breakdown[tx.transaction_type as keyof typeof breakdown]++;
+        // Check if this team is involved in the transaction
+        let teamInvolved = false;
 
-        // Calculate fees paid
+        // Calculate fees paid and check involvement
         if (tx.transaction_type === 'transfer') {
           // Team paid fee if they were the buying team
-          if (tx.new_team_id === teamId && tx.financial?.committee_fee) {
-            totalFeesPaid += tx.financial.committee_fee;
-            netFinancialImpact -= tx.financial.buying_team_paid || 0;
+          if (tx.new_team_id === teamId) {
+            teamInvolved = true;
+            if (tx.financial?.committee_fee) {
+              totalFeesPaid += tx.financial.committee_fee;
+              netFinancialImpact -= tx.financial.buying_team_paid || 0;
+            }
           }
           // Team received compensation if they were the selling team
-          if (tx.old_team_id === teamId && tx.financial?.selling_team_received) {
-            netFinancialImpact += tx.financial.selling_team_received;
+          if (tx.old_team_id === teamId) {
+            teamInvolved = true;
+            if (tx.financial?.selling_team_received) {
+              netFinancialImpact += tx.financial.selling_team_received;
+            }
           }
         } else if (tx.transaction_type === 'swap') {
           // Calculate which fee this team paid
-          if (tx.teams?.team_a_id === teamId) {
+          if (tx.teams?.team_a_id === teamId || tx.team_a_id === teamId) {
+            teamInvolved = true;
             totalFeesPaid += tx.financial?.team_a_fee || 0;
             netFinancialImpact -= tx.teams?.team_a_pays || 0;
-          } else if (tx.teams?.team_b_id === teamId) {
+          } else if (tx.teams?.team_b_id === teamId || tx.team_b_id === teamId) {
+            teamInvolved = true;
             totalFeesPaid += tx.financial?.team_b_fee || 0;
             netFinancialImpact -= tx.teams?.team_b_pays || 0;
           }
         } else if (tx.transaction_type === 'release') {
           // Team received refund
-          if (tx.old_team_id === teamId && tx.financial?.refund_amount) {
-            netFinancialImpact += tx.financial.refund_amount;
+          if (tx.old_team_id === teamId) {
+            teamInvolved = true;
+            if (tx.financial?.refund_amount) {
+              netFinancialImpact += tx.financial.refund_amount;
+            }
           }
+        }
+
+        // Only count in breakdown if team is involved
+        if (teamInvolved && tx.transaction_type in breakdown) {
+          breakdown[tx.transaction_type as keyof typeof breakdown]++;
         }
       });
 
+      // Calculate transfersRemaining if not provided or if it's incorrect
+      const transfersUsed = limitData.transfersUsed || 0;
+      const transfersRemaining = limitData.transfersRemaining !== undefined 
+        ? limitData.transfersRemaining 
+        : Math.max(0, 2 - transfersUsed);
+      const canTransfer = transfersUsed < 2;
+
       setData({
-        transfersUsed: limitData.transfersUsed || 0,
-        transfersRemaining: limitData.transfersRemaining || 0,
-        canTransfer: limitData.canTransfer || false,
+        transfersUsed,
+        transfersRemaining,
+        canTransfer,
         transactions: transactions.map((tx: any) => ({
           id: tx.id,
           transaction_type: tx.transaction_type,
@@ -211,8 +234,12 @@ export default function TeamTransferSummary({ teamId, seasonId, className = '' }
               {data.transfersUsed} <span className="text-lg text-gray-500">of 2</span>
             </p>
           </div>
-          <div className={`px-4 py-2 rounded-xl font-bold ${data.canTransfer ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-            {data.canTransfer ? `${data.transfersRemaining} Remaining` : 'Limit Reached'}
+          <div className={`px-4 py-2 rounded-xl font-bold ${
+            data.transfersUsed >= 2 
+              ? 'bg-red-100 text-red-700' 
+              : 'bg-green-100 text-green-700'
+          }`}>
+            {data.transfersUsed >= 2 ? 'Limit Reached' : `${data.transfersRemaining} Remaining`}
           </div>
         </div>
         

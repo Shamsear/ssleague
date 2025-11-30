@@ -64,25 +64,33 @@ export async function GET(
       return seasonNum >= 16;
     };
 
-    // Fetch football players
-    const footballPlayersSnapshot = await adminDb
-      .collection('footballplayers')
-      .where('season_id', '==', seasonId)
-      .where('team_id', '==', teamId)
-      .get();
+    // Fetch football players from Neon auction database
+    const { neon } = await import('@neondatabase/serverless');
+    const auctionSql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+    
+    const footballPlayersData = await auctionSql`
+      SELECT 
+        tp.player_id,
+        tp.purchase_price,
+        fp.name,
+        fp.position,
+        fp.overall_rating,
+        fp.team_name as club
+      FROM team_players tp
+      INNER JOIN footballplayers fp ON tp.player_id = fp.id
+      WHERE tp.team_id = ${teamId}
+        AND tp.season_id = ${seasonId}
+    `;
 
-    const footballPlayers = footballPlayersSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        name: data.name || 'Unknown',
-        position: data.primary_position || 'Unknown',
-        rating: data.attributes?.overall || 0,
-        category: data.category,
-        value: data.value,
-        is_real_player: false,
-      };
-    });
+    const footballPlayers = footballPlayersData.map((player: any) => ({
+      id: player.player_id,
+      name: player.name || 'Unknown',
+      position: player.position || 'Unknown',
+      rating: player.overall_rating || 0,
+      category: 'Football',
+      value: player.purchase_price,
+      is_real_player: false,
+    }));
 
     // Fetch real players from Neon
     const sql = getTournamentDb();

@@ -8,7 +8,6 @@ import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import Link from 'next/link';
 import Image from 'next/image';
 import ContractInfo from '@/components/ContractInfo';
-import TeamTransferSummary from '@/components/TeamTransferSummary';
 
 interface Player {
   id: string;
@@ -272,14 +271,7 @@ export default function TeamDetailPage() {
           </div>
         )}
 
-        {/* Transfer Summary */}
-        {userSeasonId && (
-          <TeamTransferSummary 
-            teamId={teamId} 
-            seasonId={userSeasonId} 
-            className="mb-6"
-          />
-        )}
+
 
         {/* Tabs */}
         <div className="glass rounded-xl shadow-lg border border-white/30 overflow-hidden">

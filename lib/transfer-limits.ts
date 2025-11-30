@@ -55,11 +55,8 @@ export async function getTransferLimitStatus(
     // Query player_transactions collection for all operations involving this team
     const transactionsRef = adminDb.collection('player_transactions');
     
-    // Count operations where this team is involved
-    // For transfers: count as old_team_id (selling) or new_team_id (buying)
-    // For swaps: count as team_a_id or team_b_id
-    // For releases: count as old_team_id
-    
+    // We need to query multiple fields, so we'll get all for the season and filter
+    // Firestore doesn't support OR queries across different fields efficiently
     const snapshot = await transactionsRef
       .where('season_id', '==', seasonId)
       .get();
@@ -73,7 +70,7 @@ export async function getTransferLimitStatus(
       const data = doc.data();
       const operationId = doc.id;
       
-      // Skip if already processed (shouldn't happen, but safety check)
+      // Skip if already processed
       if (processedOperations.has(operationId)) {
         continue;
       }
@@ -88,7 +85,9 @@ export async function getTransferLimitStatus(
         }
       } else if (data.transaction_type === 'swap') {
         // For swaps, count if team is team_a_id or team_b_id
-        if (data.team_a_id === teamId || data.team_b_id === teamId) {
+        const teamAId = data.team_a_id || data.teams?.team_a_id;
+        const teamBId = data.team_b_id || data.teams?.team_b_id;
+        if (teamAId === teamId || teamBId === teamId) {
           teamInvolved = true;
         }
       }
@@ -102,6 +101,12 @@ export async function getTransferLimitStatus(
     const transfersRemaining = Math.max(0, MAX_TRANSFERS_PER_SEASON - transfersUsed);
     const canTransfer = transfersUsed < MAX_TRANSFERS_PER_SEASON;
     
+    console.log(`Transfer limit status for ${teamId} in ${seasonId}:`, {
+      transfersUsed,
+      transfersRemaining,
+      canTransfer
+    });
+    
     return {
       teamId,
       seasonId,
@@ -112,7 +117,14 @@ export async function getTransferLimitStatus(
     
   } catch (error) {
     console.error('Error getting transfer limit status:', error);
-    throw new Error(`Failed to get transfer limit status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // Return default status on error instead of throwing
+    return {
+      teamId,
+      seasonId,
+      transfersUsed: 0,
+      transfersRemaining: MAX_TRANSFERS_PER_SEASON,
+      canTransfer: true
+    };
   }
 }
 
