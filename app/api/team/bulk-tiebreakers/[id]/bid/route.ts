@@ -298,6 +298,19 @@ export async function POST(
       }
     );
     
+    // Also broadcast to the round channel for admin page
+    const { broadcastRoundUpdate } = await import('@/lib/realtime/broadcast');
+    await broadcastRoundUpdate(tiebreaker.season_id, tiebreaker.bulk_round_id, {
+      type: 'tiebreaker_bid',
+      data: {
+        tiebreaker_id: tiebreakerId,
+        team_id: teamId,
+        team_name: teamName,
+        bid_amount,
+        player_name: tiebreaker.player_name,
+      }
+    });
+    
     // 📨 Send push notifications to all other participating teams
     try {
       // Get all participating teams except the bidder

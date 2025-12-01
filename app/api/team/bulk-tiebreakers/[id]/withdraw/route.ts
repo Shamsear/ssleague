@@ -55,7 +55,9 @@ export async function POST(
         status, 
         current_highest_bid,
         current_highest_team_id,
-        max_end_time
+        max_end_time,
+        season_id,
+        bulk_round_id
       FROM bulk_tiebreakers
       WHERE id = ${tiebreakerId}
     `;
@@ -177,6 +179,19 @@ export async function POST(
         bid_amount: 0, // Withdrawal indicated by 0 bid
       }
     );
+    
+    // Also broadcast to the round channel for admin page
+    const { broadcastRoundUpdate } = await import('@/lib/realtime/broadcast');
+    await broadcastRoundUpdate(tiebreaker.season_id, tiebreaker.bulk_round_id, {
+      type: 'team_withdrew',
+      data: {
+        tiebreaker_id: tiebreakerId,
+        team_id: teamId,
+        team_name: withdrawnTeamName,
+        player_name: tiebreaker.player_name,
+        teams_remaining: teamsLeft,
+      }
+    });
 
     if (isWinnerDetermined) {
       console.log(`🏆 AUTO-FINALIZE: Only 1 team left! Team ${winnerId} wins!`);

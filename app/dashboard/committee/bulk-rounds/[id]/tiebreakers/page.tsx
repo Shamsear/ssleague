@@ -129,10 +129,10 @@ export default function BulkRoundTiebreakersPage() {
     fetchData();
   }, [fetchData]);
 
-  // WebSocket for live updates
+  // WebSocket for live updates - listen to the round channel where tiebreaker events are broadcast
   const { isConnected } = useWebSocket({
-    channel: seasonId ? `updates/${seasonId}/tiebreakers` : null,
-    enabled: !!seasonId,
+    channel: seasonId && roundId ? `updates/${seasonId}/rounds/${roundId}` : null,
+    enabled: !!seasonId && !!roundId,
     onMessage: useCallback((message: any) => {
       console.log('⚡ [Tiebreaker WS] Real-time update:', message);
       
@@ -299,11 +299,22 @@ export default function BulkRoundTiebreakersPage() {
     return tb.status === filterStatus;
   });
 
+  // Debug: Log all tiebreaker statuses
+  console.log('📊 Tiebreaker statuses:', tiebreakers.map(tb => ({ id: tb.id, status: tb.status, player: tb.player_name })));
+
   const tiebreakerStats = {
     total: tiebreakers.length,
-    active: tiebreakers.filter(tb => tb.status === 'active' || tb.status === 'ongoing').length,
+    active: tiebreakers.filter(tb => 
+      tb.status === 'active' || 
+      tb.status === 'ongoing' || 
+      tb.status === 'in_progress'
+    ).length,
     pending: tiebreakers.filter(tb => tb.status === 'pending').length,
-    completed: tiebreakers.filter(tb => tb.status === 'resolved' || tb.status === 'finalized').length,
+    completed: tiebreakers.filter(tb => 
+      tb.status === 'resolved' || 
+      tb.status === 'finalized' || 
+      tb.status === 'completed'
+    ).length,
   };
 
   if (loading || !user || user.role !== 'committee_admin' || isLoading) {
