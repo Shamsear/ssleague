@@ -97,8 +97,11 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     onMessage: useCallback((message: any) => {
       console.log('⚡ [Committee WS] Real-time update:', message);
       
+      // Handle both string messages and object messages
+      const messageType = typeof message === 'string' ? message : message.type;
+      
       // Handle different message types for instant UI updates
-      switch (message.type) {
+      switch (messageType) {
         case 'round_updated':
           // ⚡ INSTANT: Update round metadata (timer, status, etc.)
           console.log('🔄 Updating round metadata...', message);
@@ -130,11 +133,9 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 ),
               };
             });
-            // Update team summary - refresh when any bid is added
-            if (teamId) {
-              console.log('🔄 Refreshing team summary due to bid_added');
-              setTeamSummaryRefreshTrigger(prev => prev + 1);
-            }
+            // Always refresh team summary when any bid is added
+            console.log('🔄 Refreshing team summary due to bid_added');
+            setTeamSummaryRefreshTrigger(prev => prev + 1);
           }
           break;
           
@@ -157,11 +158,9 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 ),
               };
             });
-            // Update team summary - refresh when any bid is removed
-            if (removedTeamId) {
-              console.log('🔄 Refreshing team summary due to bid_removed');
-              setTeamSummaryRefreshTrigger(prev => prev + 1);
-            }
+            // Always refresh team summary when any bid is removed
+            console.log('🔄 Refreshing team summary due to bid_removed');
+            setTeamSummaryRefreshTrigger(prev => prev + 1);
           }
           break;
           
