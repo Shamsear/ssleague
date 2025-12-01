@@ -70,85 +70,133 @@ export default function BulkRoundTiebreakersPage() {
   }, [user, loading, router]);
 
   // Fetch round and tiebreakers
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!roundId) return;
+  const fetchData = useCallback(async () => {
+    if (!roundId) return;
 
-      setIsLoading(true);
-      try {
-        // Fetch round details from bulk-rounds API
-        const roundResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
-        const roundResult = await roundResponse.json();
-        
-        if (roundResult.success && roundResult.data) {
-          const roundData = roundResult.data;
-          setBulkRound({
-            id: roundData.id,
-            round_number: roundData.round_number,
-            status: roundData.status,
-            base_price: roundData.base_price,
-          });
-          if (roundData.season_id) {
-            setSeasonId(roundData.season_id);
-          }
+    setIsLoading(true);
+    try {
+      // Fetch round details from bulk-rounds API
+      const roundResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
+      const roundResult = await roundResponse.json();
+      
+      if (roundResult.success && roundResult.data) {
+        const roundData = roundResult.data;
+        setBulkRound({
+          id: roundData.id,
+          round_number: roundData.round_number,
+          status: roundData.status,
+          base_price: roundData.base_price,
+        });
+        if (roundData.season_id) {
+          setSeasonId(roundData.season_id);
         }
-
-        // Fetch tiebreakers for this round
-        const tiebreakerResponse = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${roundId}/tiebreakers`);
-        const tiebreakerResult = await tiebreakerResponse.json();
-        
-        if (tiebreakerResult.success && tiebreakerResult.data) {
-          setTiebreakers(tiebreakerResult.data);
-          console.log(`✅ Loaded ${tiebreakerResult.data.length} tiebreakers`);
-        } else {
-          console.error('❌ Failed to load tiebreakers:', tiebreakerResult.error);
-          setTiebreakers([]);
-        }
-        
-        // Fetch contested players (pending tiebreaker creation)
-        const contestedResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
-        const contestedResult = await contestedResponse.json();
-        
-        if (contestedResult.success && contestedResult.data) {
-          const roundData = contestedResult.data;
-          // Filter players with status 'contested' and no tiebreaker_id
-          const pending = (roundData.players || []).filter((p: any) => 
-            p.status === 'contested' && p.bid_count > 1 && !p.tiebreaker_id
-          );
-          setContestedPlayers(pending);
-          console.log(`✅ Found ${pending.length} contested players needing tiebreakers`);
-        }
-      } catch (err) {
-        console.error('❌ Error fetching data:', err);
-        setTiebreakers([]);
-      } finally {
-        setIsLoading(false);
       }
-    };
 
-    fetchData();
+      // Fetch tiebreakers for this round
+      const tiebreakerResponse = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${roundId}/tiebreakers`);
+      const tiebreakerResult = await tiebreakerResponse.json();
+      
+      if (tiebreakerResult.success && tiebreakerResult.data) {
+        setTiebreakers(tiebreakerResult.data);
+        console.log(`✅ Loaded ${tiebreakerResult.data.length} tiebreakers`);
+      } else {
+        console.error('❌ Failed to load tiebreakers:', tiebreakerResult.error);
+        setTiebreakers([]);
+      }
+      
+      // Fetch contested players (pending tiebreaker creation)
+      const contestedResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
+      const contestedResult = await contestedResponse.json();
+      
+      if (contestedResult.success && contestedResult.data) {
+        const roundData = contestedResult.data;
+        // Filter players with status 'contested' and no tiebreaker_id
+        const pending = (roundData.players || []).filter((p: any) => 
+          p.status === 'contested' && p.bid_count > 1 && !p.tiebreaker_id
+        );
+        setContestedPlayers(pending);
+        console.log(`✅ Found ${pending.length} contested players needing tiebreakers`);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching data:', err);
+      setTiebreakers([]);
+    } finally {
+      setIsLoading(false);
+    }
   }, [roundId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // WebSocket for live updates
   const { isConnected } = useWebSocket({
     channel: seasonId ? `updates/${seasonId}/tiebreakers` : null,
     enabled: !!seasonId,
     onMessage: useCallback((message: any) => {
-      if (message.team_id && message.bid_amount) {
-        setTiebreakers(prev => prev.map(tb => {
-          const teamInTiebreaker = tb.teams.find(t => t.team_id === message.team_id);
-          if (!teamInTiebreaker) return tb;
-          return {
-            ...tb,
-            current_highest_bid: message.bid_amount,
-            current_highest_team_id: message.team_id,
-            teams: tb.teams.map(t => 
-              t.team_id === message.team_id ? { ...t, bid_amount: message.bid_amount } : t
-            ),
-          };
-        }));
+      console.log('⚡ [Tiebreaker WS] Real-time update:', message);
+      
+      const messageType = typeof message === 'string' ? message : message.type;
+      
+      switch (messageType) {
+        case 'tiebreaker_created':
+          // New tiebreaker created - refresh full data
+          console.log('🎯 Tiebreaker created, refreshing data...');
+          fetchData();
+          break;
+          
+        case 'tiebreaker_bid':
+        case 'bid_placed':
+          // Team placed a bid - update bid amount
+          if (message.data?.team_id && message.data?.bid_amount) {
+            const { team_id, bid_amount, tiebreaker_id } = message.data;
+            console.log(`💰 Bid placed: £${bid_amount} by team ${team_id}`);
+            setTiebreakers(prev => prev.map(tb => {
+              if (tb.id !== tiebreaker_id) return tb;
+              return {
+                ...tb,
+                teams: tb.teams.map(t => 
+                  t.team_id === team_id 
+                    ? { ...t, bid_amount, submitted_at: new Date().toISOString(), status: 'submitted' } 
+                    : t
+                ),
+                submitted_count: tb.teams.filter(t => t.team_id === team_id || t.status === 'submitted').length,
+              };
+            }));
+          }
+          break;
+          
+        case 'tiebreaker_resolved':
+        case 'tiebreaker_finalized':
+          // Tiebreaker resolved - refresh full data
+          console.log('✅ Tiebreaker resolved, refreshing data...');
+          fetchData();
+          break;
+          
+        case 'team_withdrew':
+          // Team withdrew from tiebreaker - refresh data
+          console.log('🚪 Team withdrew, refreshing data...');
+          fetchData();
+          break;
+          
+        default:
+          // Handle legacy format
+          if (message.team_id && message.bid_amount) {
+            setTiebreakers(prev => prev.map(tb => {
+              const teamInTiebreaker = tb.teams.find(t => t.team_id === message.team_id);
+              if (!teamInTiebreaker) return tb;
+              return {
+                ...tb,
+                teams: tb.teams.map(t => 
+                  t.team_id === message.team_id 
+                    ? { ...t, bid_amount: message.bid_amount, submitted_at: new Date().toISOString() } 
+                    : t
+                ),
+              };
+            }));
+          }
       }
-    }, []),
+    }, [fetchData]),
   });
 
   const toggleTiebreaker = (tiebreakerId: string) => {
@@ -177,8 +225,8 @@ export default function BulkRoundTiebreakersPage() {
 
       if (result.success) {
         alert(`✅ Tiebreaker resolved successfully! ${playerName} has been assigned to the winning team.`);
-        // Refresh the tiebreakers list
-        window.location.reload();
+        // Refresh data instead of reloading page
+        await fetchData();
       } else {
         alert(`❌ Failed to resolve tiebreaker: ${result.error}`);
       }
@@ -191,34 +239,8 @@ export default function BulkRoundTiebreakersPage() {
   };
 
   const handleRefreshStatus = async () => {
-    setIsLoading(true);
-    try {
-      const tiebreakerResponse = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${roundId}/tiebreakers`);
-      const tiebreakerResult = await tiebreakerResponse.json();
-      
-      if (tiebreakerResult.success && tiebreakerResult.data) {
-        setTiebreakers(tiebreakerResult.data);
-      }
-      
-      // Also refresh contested players
-      const contestedResponse = await fetchWithTokenRefresh(`/api/bulk-rounds/${roundId}`);
-      const contestedResult = await contestedResponse.json();
-      
-      if (contestedResult.success && contestedResult.data) {
-        const roundData = contestedResult.data;
-        const pending = (roundData.players || []).filter((p: any) => 
-          p.status === 'contested' && p.bid_count > 1 && !p.tiebreaker_id
-        );
-        setContestedPlayers(pending);
-      }
-      
-      alert('✅ Status refreshed successfully');
-    } catch (err) {
-      console.error('Error refreshing:', err);
-      alert('❌ Failed to refresh status');
-    } finally {
-      setIsLoading(false);
-    }
+    await fetchData();
+    alert('✅ Status refreshed successfully');
   };
   
   const handleCreateTiebreaker = async (playerId: string, playerName: string) => {
@@ -239,8 +261,8 @@ export default function BulkRoundTiebreakersPage() {
       
       if (result.success) {
         alert(`✅ Tiebreaker created successfully for ${playerName}!`);
-        // Refresh the page
-        window.location.reload();
+        // Refresh data instead of reloading page
+        await fetchData();
       } else {
         alert(`❌ Failed to create tiebreaker: ${result.error}`);
       }

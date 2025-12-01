@@ -61,7 +61,7 @@ export async function POST(
         SELECT COUNT(*) as count FROM round_players
         WHERE round_id = ${roundId} AND bid_count > 1
       `;
-      
+
       return NextResponse.json({
         success: true,
         data: {
@@ -75,9 +75,11 @@ export async function POST(
       });
     }
 
-    if (round.status !== 'active') {
+    // Allow finalization for active, expired, or expired_pending_finalization rounds
+    const validStatuses = ['active', 'expired', 'expired_pending_finalization', 'finalizing'];
+    if (!validStatuses.includes(round.status)) {
       return NextResponse.json(
-        { success: false, error: `Cannot finalize round. Current status: ${round.status}. Round must be active.` },
+        { success: false, error: `Cannot finalize round. Current status: ${round.status}. Round must be active, expired, or expired_pending_finalization.` },
         { status: 400 }
       );
     }
@@ -140,7 +142,7 @@ export async function POST(
     } catch (error) {
       console.warn('Could not fetch contract_duration, using default of 2');
     }
-    
+
     const seasonNum = parseInt(round.season_id?.replace(/\D/g, '') || '0');
     const seasonPrefix = round.season_id?.replace(/\d+$/, '') || 'S';
     const contractEndSeason = `${seasonPrefix}${seasonNum + contractDuration - 1}`;
@@ -161,33 +163,34 @@ export async function POST(
         singlePlayerDetailsMap.set(p.player_id, p);
       }
     }
-    
-    // Get teams that already have players in this round (from previous finalization attempts)
+
+    // Get players that have already been allocated in this round (from previous finalization attempts)
     // This prevents duplicate allocations if finalize endpoint is called multiple times
     const existingAllocations = await sql`
-      SELECT DISTINCT team_id
-      FROM team_players
+      SELECT player_id
+      FROM round_players
       WHERE round_id = ${roundId}
+      AND status = 'sold'
     `;
-    const teamsAlreadyAllocated = new Set(existingAllocations.map((a: any) => a.team_id));
-    
-    if (teamsAlreadyAllocated.size > 0) {
-      console.log(`🔍 Found ${teamsAlreadyAllocated.size} teams already allocated in this round (skipping them)`);
+    const playersAlreadyAllocated = new Set(existingAllocations.map((a: any) => a.player_id));
+
+    if (playersAlreadyAllocated.size > 0) {
+      console.log(`🔍 Found ${playersAlreadyAllocated.size} players already allocated in this round (skipping them)`);
     }
-    
+
     // PART 1: Immediately assign players with single bidder
     if (singleBidders.length > 0) {
       console.log(`\n🎯 Assigning ${singleBidders.length} players with single bidders...`);
 
       for (const playerId of singleBidders) {
         const bid = bidsByPlayer.get(playerId)![0];
-        
-        // Skip if this team already got a player in this round (prevents duplicates)
-        if (teamsAlreadyAllocated.has(bid.team_id)) {
-          console.log(`⏭️ Skipping ${bid.team_name} - already allocated in this round`);
+
+        // Skip if this player was already allocated (prevents duplicates on re-finalization)
+        if (playersAlreadyAllocated.has(playerId)) {
+          console.log(`⏭️ Skipping player ${playerId} - already allocated in this round`);
           continue;
         }
-        
+
         const playerInfo = singlePlayerDetailsMap.get(playerId);
         const contractId = `contract_${playerId}_${round.season_id}_${Date.now()}`;
 
@@ -236,7 +239,7 @@ export async function POST(
             purchase_price = EXCLUDED.purchase_price
           RETURNING (xmax = 0) AS inserted
         `;
-        
+
         const wasInserted = teamPlayerResult[0]?.inserted;
         if (!wasInserted) {
           console.log(`🔄 Updated existing team_players entry for player ${playerId}`);
@@ -259,7 +262,7 @@ export async function POST(
             updated_at = NOW()
           WHERE id = ${playerId}
         `;
-        
+
         if (playerUpdateResult.length === 0) {
           console.warn(`⚠️ Player ${playerId} not found in footballplayers table`);
         }
@@ -271,9 +274,9 @@ export async function POST(
           WHERE player_id = ${playerId}
           AND season_id = ${round.season_id}
         `;
-        
+
         const isNewAssignment = existingAssignment.length === 0 || existingAssignment[0].team_id !== bid.team_id;
-        
+
         if (isNewAssignment) {
           try {
             await sql`
@@ -298,7 +301,7 @@ export async function POST(
         const teamSeasonId = `${bid.team_id}_${round.season_id}`;
         const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
         const teamSeasonSnap = await teamSeasonRef.get();
-        
+
         // Get firebase_uid for transaction logging
         const teamFirebaseResult = await sql`
           SELECT firebase_uid FROM teams
@@ -306,26 +309,26 @@ export async function POST(
           AND season_id = ${round.season_id}
           LIMIT 1
         `;
-        
+
         const firebaseUid = teamFirebaseResult[0]?.firebase_uid;
-        
+
         if (teamSeasonSnap.exists) {
           const teamSeasonData = teamSeasonSnap.data();
           const currencySystem = teamSeasonData?.currency_system || 'single';
           const isDualCurrency = currencySystem === 'dual';
-          
+
           // Get current budget based on currency system
-          const currentBudget = isDualCurrency 
+          const currentBudget = isDualCurrency
             ? (teamSeasonData?.football_budget || 0)
             : (teamSeasonData?.budget || 0);
-          
+
           // Get player position for position counts
           const playerPosition = playerInfo?.position;
           const positionCounts = teamSeasonData?.position_counts || {};
           if (playerPosition && playerPosition in positionCounts) {
             positionCounts[playerPosition] = (positionCounts[playerPosition] || 0) + 1;
           }
-          
+
           // Prepare update object
           const updateData: any = {
             total_spent: (teamSeasonData?.total_spent || 0) + round.base_price,
@@ -333,7 +336,7 @@ export async function POST(
             position_counts: positionCounts,
             updated_at: new Date()
           };
-          
+
           // Update budget based on currency system
           if (isDualCurrency) {
             updateData.football_budget = currentBudget - round.base_price;
@@ -341,10 +344,10 @@ export async function POST(
           } else {
             updateData.budget = currentBudget - round.base_price;
           }
-          
+
           // Update balance
           await teamSeasonRef.update(updateData);
-          
+
           // Log transaction using firebase_uid (if available)
           if (firebaseUid) {
             await logAuctionWin(
@@ -358,9 +361,9 @@ export async function POST(
               roundId
             );
           }
-          
+
           console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${bid.team_id}`);
-          
+
           // Broadcast squad and wallet updates to team
           await broadcastSquadUpdate(round.season_id, bid.team_id, {
             player_id: playerId,
@@ -368,7 +371,7 @@ export async function POST(
             action: 'acquired',
             price: round.base_price,
           });
-          
+
           await broadcastWalletUpdate(round.season_id, bid.team_id, {
             new_balance: isDualCurrency ? updateData.football_budget : updateData.budget,
             amount_spent: round.base_price,
@@ -378,8 +381,8 @@ export async function POST(
           console.warn(`⚠️ Team season ${teamSeasonId} not found in Firebase`);
         }
 
-        // Mark this team as allocated to prevent multiple assignments in same run
-        teamsAlreadyAllocated.add(bid.team_id);
+        // Mark this player as allocated to prevent duplicate assignments in same run
+        playersAlreadyAllocated.add(playerId);
         immediatelyAssigned++;
       }
 
@@ -389,7 +392,7 @@ export async function POST(
     // PART 2: Update bid counts for contested players
     if (conflicts.length > 0) {
       console.log(`\n⚠️ Found ${conflicts.length} contested players (manual tiebreaker creation required)`);
-      
+
       // Update round_players with correct bid counts for contested players
       for (const playerId of conflicts) {
         const bids = bidsByPlayer.get(playerId)!;
@@ -402,7 +405,7 @@ export async function POST(
           AND player_id = ${playerId}
         `;
       }
-      
+
       tiebreakerCreated = conflicts.length; // Track count for status
     }
 
@@ -512,7 +515,7 @@ export async function POST(
         conflicts: tiebreakerCreated,
         tiebreakers_created: tiebreakerCreated,
         total_bids: allBids.length,
-        message: tiebreakerCreated > 0 
+        message: tiebreakerCreated > 0
           ? `${immediatelyAssigned} players assigned immediately. ${tiebreakerCreated} tiebreakers created for conflicts.`
           : `All ${immediatelyAssigned} players assigned successfully. No conflicts.`,
       },

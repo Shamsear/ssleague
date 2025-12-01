@@ -89,6 +89,47 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const [teamSummary, setTeamSummary] = useState<TeamSummary[]>([]);
   const [loadingTeamSummary, setLoadingTeamSummary] = useState(false);
   const [teamSummaryRefreshTrigger, setTeamSummaryRefreshTrigger] = useState(0);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+
+  // Fetch round details
+  const fetchRound = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Add show_all=true to see all players, not just ones with bids
+      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}?show_all=true&limit=100`);
+      const { success, data } = await response.json();
+
+      if (success) {
+        setRound(data);
+      }
+    } catch (err) {
+      console.error('Error fetching round:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [resolvedParams.id]);
+
+  // Fetch team summary
+  const fetchTeamSummary = useCallback(async () => {
+    setLoadingTeamSummary(true);
+    try {
+      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}/team-summary`);
+      const { success, data, error } = await response.json();
+
+      console.log('[Team Summary] Response:', { success, data, error });
+
+      if (success && data?.teams) {
+        setTeamSummary(data.teams);
+        console.log('[Team Summary] Loaded teams:', data.teams.length);
+      } else {
+        console.error('[Team Summary] Error:', error);
+      }
+    } catch (err) {
+      console.error('[Team Summary] Fetch error:', err);
+    } finally {
+      setLoadingTeamSummary(false);
+    }
+  }, [resolvedParams.id]);
 
   // ⚡ Enable WebSocket for real-time round updates - NO PAGE REFRESH NEEDED!
   const { isConnected: isRoundConnected } = useWebSocket({
@@ -218,9 +259,12 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           break;
           
         case 'round_completed':
-          // ⚡ INSTANT: Round completed
-          console.log('✅ Round completed!');
+          // ⚡ INSTANT: Round completed - refresh full data to show allocations
+          console.log('✅ Round completed! Refreshing data...');
           setRound(prev => prev ? { ...prev, status: 'completed' } : null);
+          // Fetch full round data to show player allocations
+          fetchRound();
+          fetchTeamSummary();
           break;
           
         case 'tiebreaker_bid':
@@ -275,7 +319,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       }
       
       setLastUpdate(Date.now());
-    }, []),
+    }, [fetchRound, fetchTeamSummary]),
   });
   
   // ⚡ ALSO listen to tiebreaker channels for ANY tiebreaker in this round
@@ -301,46 +345,6 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       router.push('/dashboard');
     }
   }, [user, loading, router]);
-
-  // Fetch round details
-  const fetchRound = async () => {
-    setIsLoading(true);
-    try {
-      // Add show_all=true to see all players, not just ones with bids
-      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}?show_all=true&limit=100`);
-      const { success, data } = await response.json();
-
-      if (success) {
-        setRound(data);
-      }
-    } catch (err) {
-      console.error('Error fetching round:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Fetch team summary
-  const fetchTeamSummary = async () => {
-    setLoadingTeamSummary(true);
-    try {
-      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}/team-summary`);
-      const { success, data, error } = await response.json();
-
-      console.log('[Team Summary] Response:', { success, data, error });
-
-      if (success && data?.teams) {
-        setTeamSummary(data.teams);
-        console.log('[Team Summary] Loaded teams:', data.teams.length);
-      } else {
-        console.error('[Team Summary] Error:', error);
-      }
-    } catch (err) {
-      console.error('[Team Summary] Fetch error:', err);
-    } finally {
-      setLoadingTeamSummary(false);
-    }
-  };
 
   useEffect(() => {
     if (resolvedParams.id) {
@@ -434,6 +438,14 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
 
     // Handle finalize/complete
     if (newStatus === 'completed') {
+      // Prevent duplicate finalization
+      if (isFinalizing) {
+        alert('Finalization already in progress. Please wait...');
+        return;
+      }
+
+      setIsFinalizing(true);
+      
       try {
         const response = await fetchWithTokenRefresh(`/api/admin/bulk-rounds/${round.id}/finalize`, {
           method: 'POST',
@@ -443,14 +455,18 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
         const { success, data, error } = await response.json();
 
         if (success) {
-          alert(data.message || 'Round completed successfully!');
-          // ⚡ NO REFRESH NEEDED - WebSocket will update automatically!
+          alert(data.message || `Round finalized! ${data.immediately_assigned || 0} players assigned, ${data.conflicts || 0} tiebreakers created.`);
+          // Refresh to show updated allocations
+          fetchRound();
+          fetchTeamSummary();
         } else {
           alert(`Error: ${error}`);
         }
       } catch (err) {
         console.error('Error completing round:', err);
-        alert('Failed to complete round');
+        alert('Failed to complete round. Please try again or contact support.');
+      } finally {
+        setIsFinalizing(false);
       }
       return;
     }
@@ -574,6 +590,9 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
       case 'active': return 'bg-green-100 text-green-700 border-green-300';
       case 'completed': return 'bg-purple-100 text-purple-700 border-purple-300';
       case 'cancelled': return 'bg-red-100 text-red-700 border-red-300';
+      case 'expired': return 'bg-orange-100 text-orange-700 border-orange-300';
+      case 'expired_pending_finalization': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+      case 'finalizing': return 'bg-indigo-100 text-indigo-700 border-indigo-300';
       default: return 'bg-gray-100 text-gray-700 border-gray-300';
     }
   };
@@ -738,11 +757,59 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                   </button>
                   <button
                     onClick={() => handleUpdateStatus('completed')}
-                    className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-lg hover:from-purple-600 hover:to-violet-700 transition-all font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm sm:text-base"
+                    disabled={(timeRemaining !== null && timeRemaining > 0) || isFinalizing}
+                    className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg transition-all font-semibold shadow-md text-sm sm:text-base flex items-center gap-2 ${
+                      (timeRemaining !== null && timeRemaining > 0) || isFinalizing
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-purple-500 to-violet-600 text-white hover:from-purple-600 hover:to-violet-700 hover:shadow-lg transform hover:-translate-y-0.5'
+                    }`}
+                    title={
+                      isFinalizing 
+                        ? 'Finalization in progress...' 
+                        : timeRemaining !== null && timeRemaining > 0 
+                        ? 'Wait for timer to reach 0 before finalizing' 
+                        : 'Finalize round and assign players'
+                    }
                   >
-                    ✅ Complete Round
+                    {isFinalizing ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Finalizing...
+                      </>
+                    ) : (
+                      <>✅ Finalize Round</>
+                    )}
                   </button>
                 </>
+              )}
+              
+              {/* Show finalize button for expired/scheduled rounds that haven't been finalized */}
+              {(round.status === 'scheduled' || round.status === 'expired' || round.status === 'expired_pending_finalization' || round.status === 'finalizing') && pending.length > 0 && (
+                <button
+                  onClick={() => handleUpdateStatus('completed')}
+                  disabled={isFinalizing}
+                  className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg transition-all font-semibold shadow-md text-sm sm:text-base flex items-center gap-2 ${
+                    isFinalizing
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-purple-500 to-violet-600 text-white hover:from-purple-600 hover:to-violet-700 hover:shadow-lg transform hover:-translate-y-0.5'
+                  }`}
+                  title={isFinalizing ? 'Finalization in progress...' : 'Finalize round and assign players'}
+                >
+                  {isFinalizing ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Finalizing...
+                    </>
+                  ) : (
+                    <>✅ Finalize Round</>
+                  )}
+                </button>
               )}
             </div>
           </div>
