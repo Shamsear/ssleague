@@ -49,28 +49,56 @@ export async function GET(
 
     // Get all teams for the season from Firebase
     console.log('[Team Summary] Fetching teams for season:', seasonId);
-    const teamsSnapshot = await adminDb
-      .collection('teams')
-      .where('seasons', 'array-contains', seasonId)
-      .get();
+    let teamsResult: Array<{ id: string; name: string }> = [];
     
-    console.log('[Team Summary] Found teams in Firebase:', teamsSnapshot.size);
-    
-    const teamsResult = teamsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      const teamName = data.name || data.teamName || data.team_name || doc.id;
+    try {
+      const teamsSnapshot = await adminDb
+        .collection('teams')
+        .where('seasons', 'array-contains', seasonId)
+        .get();
       
-      // Log if we're using fallback
-      if (!data.name && !data.teamName && !data.team_name) {
-        console.log(`[Team Summary] Warning: Team ${doc.id} has no name field`);
-        console.log(`[Team Summary] Available fields:`, Object.keys(data));
+      console.log('[Team Summary] Found teams in Firebase:', teamsSnapshot.size);
+      
+      teamsResult = teamsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        const teamName = data.name || data.teamName || data.team_name || doc.id;
+        
+        // Log if we're using fallback
+        if (!data.name && !data.teamName && !data.team_name) {
+          console.log(`[Team Summary] Warning: Team ${doc.id} has no name field`);
+          console.log(`[Team Summary] Available fields:`, Object.keys(data));
+        }
+        
+        return {
+          id: doc.id,
+          name: teamName,
+        };
+      });
+    } catch (firebaseError: any) {
+      console.error('[Team Summary] Firebase error:', firebaseError);
+      console.log('[Team Summary] Falling back to Neon database for teams');
+      
+      // Fallback: Try to get teams from Neon database
+      try {
+        const neonTeams = await sql`
+          SELECT DISTINCT id, name
+          FROM teams
+          WHERE season_id = ${seasonId}
+          ORDER BY name
+        `;
+        
+        console.log('[Team Summary] Found teams in Neon:', neonTeams.length);
+        
+        teamsResult = neonTeams.map((team: any) => ({
+          id: team.id,
+          name: team.name || team.id,
+        }));
+      } catch (neonError: any) {
+        console.error('[Team Summary] Neon fallback error:', neonError);
+        // Return empty array if both fail
+        teamsResult = [];
       }
-      
-      return {
-        id: doc.id,
-        name: teamName,
-      };
-    });
+    }
 
     // Get bid counts per team for this round
     const bidsResult = await sql`
