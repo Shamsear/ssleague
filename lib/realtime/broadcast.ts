@@ -106,7 +106,8 @@ export async function broadcastRoundUpdate(
 ) {
   try {
     const updateRef = adminRealtimeDb.ref(`updates/${seasonId}/rounds/${roundId}`);
-    await updateRef.set({
+    // Use push() instead of set() to send as a single message
+    await updateRef.push({
       ...data,
       timestamp: Date.now(),
     });
