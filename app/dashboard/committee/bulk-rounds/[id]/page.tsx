@@ -1580,8 +1580,8 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           )}
         </div>
 
-        {/* Tiebreakers Section - Show contested players that need tiebreakers */}
-        {contested.length > 0 && (
+        {/* Tiebreakers Section - Show contested players that need tiebreakers (only after timer ends) */}
+        {shouldShowBids && contested.length > 0 && (
           <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 border-orange-300 shadow-md">
             <h2 className="text-lg sm:text-xl font-bold text-orange-900 mb-3 sm:mb-4 flex items-center">
               <svg className="w-5 h-5 sm:w-6 sm:h-6 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
