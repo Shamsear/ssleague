@@ -17,7 +17,7 @@ export async function GET(
     console.log('[Team Summary] Fetching for round ID:', roundId);
 
     // Initialize database connection inside the function to avoid build-time errors
-    const sql = neon(process.env.DATABASE_URL!);
+    const sql = neon(process.env.DATABASE_URL || process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL!);
 
     // Get round details to find season_id
     const roundResult = await sql`
