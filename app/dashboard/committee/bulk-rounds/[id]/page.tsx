@@ -113,21 +113,26 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           
         case 'bid_added':
           // ⚡ INSTANT: Team placed a bid - update bid count
-          if (message.data?.player_id) {
-            console.log(`💰 Bid added for player ${message.data.player_id}: ${message.data.bid_count} total bids`);
+          const playerId = message.data?.player_id || message.player_id;
+          const bidCount = message.data?.bid_count || message.bid_count;
+          const teamId = message.data?.team_id || message.team_id;
+          
+          if (playerId) {
+            console.log(`💰 Bid added for player ${playerId}: ${bidCount} total bids, team: ${teamId}`);
             setRound(prev => {
               if (!prev?.roundPlayers) return prev;
               return {
                 ...prev,
                 roundPlayers: prev.roundPlayers.map(player => 
-                  player.player_id === message.data.player_id
-                    ? { ...player, bid_count: message.data.bid_count }
+                  player.player_id === playerId
+                    ? { ...player, bid_count: bidCount }
                     : player
                 ),
               };
             });
-            // Update team summary
-            if (message.data?.team_id) {
+            // Update team summary - refresh when any bid is added
+            if (teamId) {
+              console.log('🔄 Refreshing team summary due to bid_added');
               setTeamSummaryRefreshTrigger(prev => prev + 1);
             }
           }
@@ -135,21 +140,26 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           
         case 'bid_removed':
           // ⚡ INSTANT: Team removed a bid - update bid count
-          if (message.data?.player_id) {
-            console.log(`❌ Bid removed for player ${message.data.player_id}: ${message.data.bid_count} total bids`);
+          const removedPlayerId = message.data?.player_id || message.player_id;
+          const removedBidCount = message.data?.bid_count || message.bid_count;
+          const removedTeamId = message.data?.team_id || message.team_id;
+          
+          if (removedPlayerId) {
+            console.log(`❌ Bid removed for player ${removedPlayerId}: ${removedBidCount} total bids, team: ${removedTeamId}`);
             setRound(prev => {
               if (!prev?.roundPlayers) return prev;
               return {
                 ...prev,
                 roundPlayers: prev.roundPlayers.map(player => 
-                  player.player_id === message.data.player_id
-                    ? { ...player, bid_count: message.data.bid_count }
+                  player.player_id === removedPlayerId
+                    ? { ...player, bid_count: removedBidCount }
                     : player
                 ),
               };
             });
-            // Update team summary
-            if (message.data?.team_id) {
+            // Update team summary - refresh when any bid is removed
+            if (removedTeamId) {
+              console.log('🔄 Refreshing team summary due to bid_removed');
               setTeamSummaryRefreshTrigger(prev => prev + 1);
             }
           }
@@ -878,30 +888,6 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 {timeRemaining !== null && timeRemaining > 0 && (
                   <p className="text-xs sm:text-sm text-amber-700 mt-1 font-medium">
                     Time remaining: <span className="font-mono font-bold">{formatTime(timeRemaining)}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Bids Hidden Notice */}
-        {round.status === 'active' && !shouldShowBids && (
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl sm:rounded-2xl shadow-md p-6 mb-4 sm:mb-6 border-2 border-amber-200">
-            <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-              <div className="p-3 bg-amber-100 rounded-full">
-                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-1">🔒 Team Bids Hidden</h3>
-                <p className="text-gray-700 text-sm sm:text-base">
-                  Individual team bids are hidden while the round is active. All bids will be revealed when the timer reaches zero.
-                </p>
-                {timeRemaining !== null && (
-                  <p className="text-amber-700 font-semibold mt-2 text-sm sm:text-base">
-                    Bids will be revealed in: <span className="font-mono text-lg">{formatTime(timeRemaining)}</span>
                   </p>
                 )}
               </div>
