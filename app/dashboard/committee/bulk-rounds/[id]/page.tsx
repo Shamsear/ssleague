@@ -46,6 +46,14 @@ interface RoundPlayer {
   tiebreaker?: TiebreakerInfo;
 }
 
+interface TeamSummary {
+  team_id: string;
+  team_name: string;
+  slots_needed: number;
+  players_selected: number;
+  bids_submitted: number;
+}
+
 interface Round {
   id: number;
   season_id: string;
@@ -78,6 +86,9 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const [expandedBids, setExpandedBids] = useState<Set<string>>(new Set());
   const [playerBids, setPlayerBids] = useState<Map<string, any[]>>(new Map());
   const [loadingBids, setLoadingBids] = useState<Set<string>>(new Set());
+  const [teamSummary, setTeamSummary] = useState<TeamSummary[]>([]);
+  const [loadingTeamSummary, setLoadingTeamSummary] = useState(false);
+  const [teamSummaryRefreshTrigger, setTeamSummaryRefreshTrigger] = useState(0);
 
   // ⚡ Enable WebSocket for real-time round updates - NO PAGE REFRESH NEEDED!
   const { isConnected: isRoundConnected } = useWebSocket({
@@ -115,6 +126,10 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 ),
               };
             });
+            // Update team summary
+            if (message.data?.team_id) {
+              setTeamSummaryRefreshTrigger(prev => prev + 1);
+            }
           }
           break;
           
@@ -133,6 +148,10 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                 ),
               };
             });
+            // Update team summary
+            if (message.data?.team_id) {
+              setTeamSummaryRefreshTrigger(prev => prev + 1);
+            }
           }
           break;
           
@@ -278,7 +297,8 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
   const fetchRound = async () => {
     setIsLoading(true);
     try {
-      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}`);
+      // Add show_all=true to see all players, not just ones with bids
+      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}?show_all=true&limit=100`);
       const { success, data } = await response.json();
 
       if (success) {
@@ -291,11 +311,41 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
     }
   };
 
+  // Fetch team summary
+  const fetchTeamSummary = async () => {
+    setLoadingTeamSummary(true);
+    try {
+      const response = await fetchWithTokenRefresh(`/api/bulk-rounds/${resolvedParams.id}/team-summary`);
+      const { success, data, error } = await response.json();
+
+      console.log('[Team Summary] Response:', { success, data, error });
+
+      if (success && data?.teams) {
+        setTeamSummary(data.teams);
+        console.log('[Team Summary] Loaded teams:', data.teams.length);
+      } else {
+        console.error('[Team Summary] Error:', error);
+      }
+    } catch (err) {
+      console.error('[Team Summary] Fetch error:', err);
+    } finally {
+      setLoadingTeamSummary(false);
+    }
+  };
+
   useEffect(() => {
     if (resolvedParams.id) {
       fetchRound();
+      fetchTeamSummary();
     }
   }, [resolvedParams.id]);
+
+  // Refresh team summary when trigger changes
+  useEffect(() => {
+    if (teamSummaryRefreshTrigger > 0) {
+      fetchTeamSummary();
+    }
+  }, [teamSummaryRefreshTrigger]);
 
 
   // Timer for active rounds
@@ -554,6 +604,9 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
 
   const { pending, sold, contested } = playersByStatus();
 
+  // Determine if bids should be shown
+  const shouldShowBids = round.status === 'completed' || timeRemaining === 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-50">
       <div className="container mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
@@ -729,6 +782,133 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
           )}
         </div>
 
+        {/* Team Progress Summary */}
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-md hover:shadow-lg transition-shadow p-4 sm:p-6 mb-4 sm:mb-6 border border-gray-100">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Team Progress
+          </h2>
+          {loadingTeamSummary ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-2 text-sm text-gray-500">Loading team progress...</p>
+            </div>
+          ) : teamSummary.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>No teams found for this season</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+              {teamSummary
+                .sort((a, b) => b.players_selected - a.players_selected)
+                .map((team) => {
+                  const progress = (team.players_selected / team.slots_needed) * 100;
+                  const isComplete = team.players_selected >= team.slots_needed;
+                  const hasStarted = team.players_selected > 0;
+                  
+                  return (
+                    <div 
+                      key={team.team_id} 
+                      className={`border-2 rounded-lg sm:rounded-xl p-3 sm:p-4 transition-all hover:shadow-md ${
+                        isComplete 
+                          ? 'bg-green-50 border-green-300' 
+                          : hasStarted 
+                          ? 'bg-blue-50 border-blue-300' 
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-bold text-gray-900 text-sm sm:text-base flex-1 pr-2">{team.team_name}</h4>
+                        {isComplete && (
+                          <span className="text-green-600 flex-shrink-0">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs sm:text-sm mb-1.5">
+                          <span className="text-gray-600">Players Selected:</span>
+                          <span className={`font-bold ${
+                            isComplete ? 'text-green-700' : hasStarted ? 'text-blue-700' : 'text-gray-700'
+                          }`}>
+                            {team.players_selected} / {team.slots_needed}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-500 ${
+                              isComplete 
+                                ? 'bg-green-600' 
+                                : hasStarted 
+                                ? 'bg-blue-600' 
+                                : 'bg-gray-400'
+                            }`}
+                            style={{ width: `${Math.min(progress, 100)}%` }}
+                          />
+                        </div>
+                        {isComplete && (
+                          <p className="text-xs text-green-700 font-medium mt-1.5">✓ Complete</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+
+        {/* Bids Hidden Message */}
+        {!shouldShowBids && round.status === 'active' && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl sm:rounded-2xl shadow-md p-4 sm:p-6 mb-4 sm:mb-6 border-2 border-amber-200">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 text-center sm:text-left">
+              <div className="p-3 rounded-full bg-amber-100">
+                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg sm:text-xl font-bold text-amber-900 mb-1">🔒 Team Bids Hidden</h3>
+                <p className="text-sm sm:text-base text-amber-800">
+                  Individual team bids will be revealed when the timer reaches zero
+                </p>
+                {timeRemaining !== null && timeRemaining > 0 && (
+                  <p className="text-xs sm:text-sm text-amber-700 mt-1 font-medium">
+                    Time remaining: <span className="font-mono font-bold">{formatTime(timeRemaining)}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bids Hidden Notice */}
+        {round.status === 'active' && !shouldShowBids && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl sm:rounded-2xl shadow-md p-6 mb-4 sm:mb-6 border-2 border-amber-200">
+            <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+              <div className="p-3 bg-amber-100 rounded-full">
+                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-1">🔒 Team Bids Hidden</h3>
+                <p className="text-gray-700 text-sm sm:text-base">
+                  Individual team bids are hidden while the round is active. All bids will be revealed when the timer reaches zero.
+                </p>
+                {timeRemaining !== null && (
+                  <p className="text-amber-700 font-semibold mt-2 text-sm sm:text-base">
+                    Bids will be revealed in: <span className="font-mono text-lg">{formatTime(timeRemaining)}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Statistics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-6 mb-4 sm:mb-6">
           <div className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all p-4 sm:p-6 border-l-4 border-gray-400 transform hover:-translate-y-1">
@@ -897,13 +1077,22 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                       
                       {/* Bids Info */}
                       <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                        <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
-                          (player.bid_count || 0) > 1 ? 'bg-orange-100 text-orange-700' :
-                          (player.bid_count || 0) === 1 ? 'bg-blue-100 text-blue-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {player.bid_count || 0} {(player.bid_count || 0) === 1 ? 'bid' : 'bids'}
-                        </span>
+                        {shouldShowBids ? (
+                          <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
+                            (player.bid_count || 0) > 1 ? 'bg-orange-100 text-orange-700' :
+                            (player.bid_count || 0) === 1 ? 'bg-blue-100 text-blue-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {player.bid_count || 0} {(player.bid_count || 0) === 1 ? 'bid' : 'bids'}
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold flex items-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                            Bids Hidden
+                          </span>
+                        )}
                         
                         {player.tiebreaker_id ? (
                           <button 
@@ -920,7 +1109,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                           >
                             {expandedTiebreakers.has(player.player_id) ? '▲ Hide' : '▼ View'} Tiebreaker
                           </button>
-                        ) : (
+                        ) : shouldShowBids ? (
                           <button 
                             onClick={async () => {
                               const newExpanded = new Set(expandedBids);
@@ -958,12 +1147,19 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                           >
                             {expandedBids.has(player.player_id) ? '▲ Hide' : '▼ View'} Bids
                           </button>
+                        ) : (
+                          <div className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold flex items-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                            Hidden
+                          </div>
                         )}
                       </div>
                     </div>
                     
                     {/* Expandable Bid Details - Mobile */}
-                    {!player.tiebreaker_id && expandedBids.has(player.player_id) && (
+                    {!player.tiebreaker_id && expandedBids.has(player.player_id) && shouldShowBids && (
                       <div className="border-t border-gray-200 bg-blue-50 p-4">
                         <h4 className="font-semibold text-gray-800 mb-3 flex items-center text-sm">
                           <svg className="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1118,7 +1314,9 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Player Name</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Position</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Base Price</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700 cursor-pointer hover:text-blue-600" title="Sorted by bid count (highest first)">Bids ↓</th>
+                      {shouldShowBids && (
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700 cursor-pointer hover:text-blue-600" title="Sorted by bid count (highest first)">Bids ↓</th>
+                      )}
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
                     </tr>
@@ -1130,15 +1328,17 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                         <td className="py-3 px-4 font-medium text-gray-800">{player.player_name}</td>
                         <td className="py-3 px-4 text-gray-600">{player.position}</td>
                         <td className="py-3 px-4 text-gray-600">£{player.base_price}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            (player.bid_count || 0) > 1 ? 'bg-orange-100 text-orange-700' :
-                            (player.bid_count || 0) === 1 ? 'bg-blue-100 text-blue-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {player.bid_count || 0} {(player.bid_count || 0) === 1 ? 'bid' : 'bids'}
-                          </span>
-                        </td>
+                        {shouldShowBids && (
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              (player.bid_count || 0) > 1 ? 'bg-orange-100 text-orange-700' :
+                              (player.bid_count || 0) === 1 ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {player.bid_count || 0} {(player.bid_count || 0) === 1 ? 'bid' : 'bids'}
+                            </span>
+                          </td>
+                        )}
                         <td className="py-3 px-4">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                             player.status === 'sold' ? 'bg-green-100 text-green-700' :
@@ -1164,7 +1364,7 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                             >
                               {expandedTiebreakers.has(player.player_id) ? 'Hide' : 'View'} Tiebreaker
                             </button>
-                          ) : (
+                          ) : shouldShowBids ? (
                             <button 
                               onClick={async () => {
                                 const newExpanded = new Set(expandedBids);
@@ -1209,11 +1409,18 @@ export default function BulkRoundManagementPage({ params }: { params: Promise<{ 
                             >
                               {expandedBids.has(player.player_id) ? 'Hide' : 'View'} Bids
                             </button>
+                          ) : (
+                            <span className="text-gray-500 text-sm flex items-center gap-1">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                              Hidden
+                            </span>
                           )}
                         </td>
                         </tr>
                       {/* Expandable Bid Details */}
-                      {!player.tiebreaker_id && expandedBids.has(player.player_id) && (
+                      {!player.tiebreaker_id && expandedBids.has(player.player_id) && shouldShowBids && (
                         <tr>
                         <td colSpan={6} className="p-0">
                           <div className="bg-blue-50 border-t border-b border-blue-200 p-4">

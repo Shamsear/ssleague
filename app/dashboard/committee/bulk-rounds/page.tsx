@@ -123,6 +123,8 @@ export default function BulkRoundsPage() {
     fetchBulkRounds();
   }, [currentSeasonId, filterStatus]);
 
+  const [isCreating, setIsCreating] = useState(false);
+
   const handleCreateBulkRound = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -141,6 +143,7 @@ export default function BulkRoundsPage() {
       ? Math.max(...bulkRounds.map(r => r.round_number)) + 1 
       : 1;
 
+    setIsCreating(true);
     try {
       const response = await fetchWithTokenRefresh('/api/admin/bulk-rounds', {
         method: 'POST',
@@ -157,7 +160,7 @@ export default function BulkRoundsPage() {
       const { success, data, error } = await response.json();
 
       if (success) {
-        alert('Bulk round created successfully!');
+        alert(`Bulk round created successfully with ${data.player_count || 0} players!`);
         setShowCreateForm(false);
         setFormData({
           base_price: '10',
@@ -181,6 +184,8 @@ export default function BulkRoundsPage() {
     } catch (err) {
       console.error('Error creating bulk round:', err);
       alert('Failed to create bulk round');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -425,10 +430,26 @@ export default function BulkRoundsPage() {
                     />
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-gray-500">
-                  Total: {parseInt(formData.duration_hours) * 3600 + parseInt(formData.duration_minutes) * 60 + parseInt(formData.duration_seconds)} seconds
-                  ({parseInt(formData.duration_hours)}h {parseInt(formData.duration_minutes)}m {parseInt(formData.duration_seconds)}s)
-                </p>
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-gray-500">
+                    Total: {parseInt(formData.duration_hours) * 3600 + parseInt(formData.duration_minutes) * 60 + parseInt(formData.duration_seconds)} seconds
+                    ({parseInt(formData.duration_hours)}h {parseInt(formData.duration_minutes)}m {parseInt(formData.duration_seconds)}s)
+                  </p>
+                  <p className="text-xs font-medium text-blue-600">
+                    Timer will end at: {(() => {
+                      const totalSeconds = parseInt(formData.duration_hours) * 3600 + parseInt(formData.duration_minutes) * 60 + parseInt(formData.duration_seconds);
+                      const endTime = new Date(Date.now() + totalSeconds * 1000);
+                      return endTime.toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      });
+                    })()} (Local Time)
+                  </p>
+                </div>
               </div>
 
               <div className="md:col-span-2 flex justify-end gap-3">
@@ -441,9 +462,17 @@ export default function BulkRoundsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-[#0066FF] text-white rounded-lg hover:bg-[#0052CC] transition-colors font-medium"
+                  disabled={isCreating}
+                  className="px-6 py-2 bg-[#0066FF] text-white rounded-lg hover:bg-[#0052CC] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Create Bulk Round
+                  {isCreating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      Creating... (Adding players, please wait)
+                    </>
+                  ) : (
+                    'Create Bulk Round'
+                  )}
                 </button>
               </div>
             </form>

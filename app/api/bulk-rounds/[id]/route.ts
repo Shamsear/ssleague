@@ -39,7 +39,14 @@ export async function GET(
       WHERE rp.round_id = ${roundId}
     `;
 
-    // Get only players with bids or tiebreakers (these are the ones committee needs to see)
+    // Get all players in the round with pagination support
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const offset = (page - 1) * limit;
+    const showAll = searchParams.get('show_all') === 'true';
+
+    // If show_all is false, only show players with bids or tiebreakers
     const roundPlayers = await sql`
       SELECT 
         rp.*,
@@ -56,8 +63,9 @@ export async function GET(
       LEFT JOIN bulk_tiebreakers bt ON rp.player_id = bt.player_id AND bt.bulk_round_id = ${roundId}
       WHERE rp.round_id = ${roundId}
       GROUP BY rp.id, bt.id, bt.status, bt.created_at, bt.current_highest_bid, bt.current_highest_team_id, bt.start_time, bt.last_activity_time
-      HAVING COUNT(rb.id) > 0 OR bt.id IS NOT NULL
+      ${showAll ? sql`` : sql`HAVING COUNT(rb.id) > 0 OR bt.id IS NOT NULL`}
       ORDER BY COUNT(rb.id) DESC, rp.player_name
+      LIMIT ${limit} OFFSET ${offset}
     `;
 
     // For each player with a bulk tiebreaker, fetch team bids
@@ -101,15 +109,25 @@ export async function GET(
       }
     }
 
+    const totalPlayers = parseInt(stats[0]?.total_players || '0');
+    const totalPages = Math.ceil(totalPlayers / limit);
+
     return NextResponse.json({
       success: true,
       data: {
         ...round,
         roundPlayers,
         stats: {
-          total_players: parseInt(stats[0]?.total_players || '0'),
+          total_players: totalPlayers,
           pending_count: parseInt(stats[0]?.pending_count || '0'),
           sold_count: parseInt(stats[0]?.sold_count || '0'),
+        },
+        pagination: {
+          page,
+          limit,
+          total: totalPlayers,
+          totalPages,
+          hasMore: page < totalPages,
         },
       },
     });

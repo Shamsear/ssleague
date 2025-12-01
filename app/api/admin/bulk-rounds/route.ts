@@ -131,27 +131,81 @@ export async function POST(request: NextRequest) {
     // Insert all players into round_players table
     console.time('⚡ Insert players into round');
     
-    // Build bulk insert values
-    const playerValues = eligiblePlayers.map((player: any) => 
-      `('${createdRoundId}', '${season_id}', '${player.player_id}', '${player.name.replace(/'/g, "''")}', '${player.position || ''}', '${player.position_group || ''}', ${base_price}, 'pending')`
-    ).join(',');
+    try {
+      // Build bulk insert values
+      const playerValues = eligiblePlayers.map((player: any) => 
+        `('${createdRoundId}', '${season_id}', '${player.player_id}', '${player.name.replace(/'/g, "''")}', '${player.position || ''}', '${player.position_group || ''}', ${base_price}, 'pending')`
+      ).join(',');
 
-    await sql.unsafe(`
-      INSERT INTO round_players (
-        round_id,
-        season_id,
-        player_id, 
-        player_name, 
-        position, 
-        position_group, 
-        base_price, 
-        status
-      ) VALUES ${playerValues}
-    `);
-    
-    console.timeEnd('⚡ Insert players into round');
+      console.log(`📝 Inserting ${eligiblePlayers.length} players using individual inserts...`);
+      
+      // Insert players one by one using proper parameterized queries
+      // This is slower but guaranteed to work
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const player of eligiblePlayers) {
+        try {
+          await sql`
+            INSERT INTO round_players (
+              round_id,
+              season_id,
+              player_id, 
+              player_name, 
+              position, 
+              position_group, 
+              base_price, 
+              status
+            ) VALUES (
+              ${createdRoundId},
+              ${season_id},
+              ${player.player_id},
+              ${player.name},
+              ${player.position || ''},
+              ${player.position_group || ''},
+              ${base_price},
+              'pending'
+            )
+          `;
+          successCount++;
+          
+          // Log progress every 500 players
+          if (successCount % 500 === 0) {
+            console.log(`  ✅ Inserted ${successCount} players...`);
+          }
+        } catch (err) {
+          failCount++;
+          if (failCount <= 5) {
+            console.error(`  ❌ Failed to insert player ${player.player_id}: ${err}`);
+          }
+        }
+      }
+      
+      console.log(`✅ Insert complete: ${successCount} succeeded, ${failCount} failed`);
+      
+      console.timeEnd('⚡ Insert players into round');
 
-    console.log(`✅ Added ${eligiblePlayers.length} players to bulk round ${roundNumber}`);
+      // Verify the insert worked
+      const verifyCount = await sql`
+        SELECT COUNT(*) as count FROM round_players WHERE round_id = ${createdRoundId}
+      `;
+      const actualCount = parseInt(verifyCount[0]?.count || '0');
+      console.log(`✅ Verified: ${actualCount} players added to bulk round ${roundNumber}`);
+
+      if (actualCount === 0) {
+        console.error('❌ WARNING: No players were actually inserted!');
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Failed to insert players into round_players table' 
+          },
+          { status: 500 }
+        );
+      }
+    } catch (insertError) {
+      console.error('❌ Error inserting players:', insertError);
+      throw insertError;
+    }
 
     // Return success
     return NextResponse.json({
