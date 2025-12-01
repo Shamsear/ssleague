@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { adminDb } from '@/lib/firebase/admin';
 
-const sql = neon(process.env.DATABASE_URL!);
-
 /**
  * GET /api/bulk-rounds/:id/team-summary
  * Get team summary for bulk round (slots needed, players selected)
@@ -17,6 +15,9 @@ export async function GET(
     const { id: roundId } = await params;
 
     console.log('[Team Summary] Fetching for round ID:', roundId);
+
+    // Initialize database connection inside the function to avoid build-time errors
+    const sql = neon(process.env.DATABASE_URL!);
 
     // Get round details to find season_id
     const roundResult = await sql`
@@ -55,10 +56,21 @@ export async function GET(
     
     console.log('[Team Summary] Found teams in Firebase:', teamsSnapshot.size);
     
-    const teamsResult = teamsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().name || doc.data().teamName || 'Unknown Team',
-    }));
+    const teamsResult = teamsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      const teamName = data.name || data.teamName || data.team_name || doc.id;
+      
+      // Log if we're using fallback
+      if (!data.name && !data.teamName && !data.team_name) {
+        console.log(`[Team Summary] Warning: Team ${doc.id} has no name field`);
+        console.log(`[Team Summary] Available fields:`, Object.keys(data));
+      }
+      
+      return {
+        id: doc.id,
+        name: teamName,
+      };
+    });
 
     // Get bid counts per team for this round
     const bidsResult = await sql`
