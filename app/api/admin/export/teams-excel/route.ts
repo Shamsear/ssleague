@@ -110,25 +110,23 @@ export async function GET(request: NextRequest) {
         ORDER BY fp.position, fp.name
       `;
 
-      // Get real players from tournament database
+      // Get real players from tournament database player_seasons table
       let realPlayers: any[] = [];
       try {
         realPlayers = await tournamentSql`
           SELECT 
-            rp.id,
-            rp.name,
-            rp.position,
-            rp.acquisition_value,
-            rp.contract_start_season,
-            rp.contract_end_season,
-            rp.status,
-            r.round_number
-          FROM realplayers rp
-          LEFT JOIN rounds r ON rp.round_id = r.id
-          WHERE rp.team_id = ${team.id}
-          AND rp.season_id = ${seasonId}
-          AND rp.is_sold = true
-          ORDER BY rp.position, rp.name
+            ps.id,
+            ps.player_name as name,
+            ps.position,
+            0 as acquisition_value,
+            ps.season_id as contract_start_season,
+            ps.season_id as contract_end_season,
+            'active' as status,
+            NULL as round_number
+          FROM player_seasons ps
+          WHERE ps.team_id = ${team.id}
+          AND ps.season_id = ${seasonId}
+          ORDER BY ps.position, ps.player_name
         `;
       } catch (error) {
         console.warn(`⚠️ Could not fetch real players for team ${team.id}:`, error);
