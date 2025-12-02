@@ -117,16 +117,17 @@ export async function GET(request: NextRequest) {
           SELECT 
             ps.id,
             ps.player_name as name,
-            ps.position,
-            0 as acquisition_value,
-            ps.season_id as contract_start_season,
-            ps.season_id as contract_end_season,
-            'active' as status,
+            ps.category as position,
+            ps.auction_value as acquisition_value,
+            ps.contract_start_season,
+            ps.contract_end_season,
+            ps.status,
             NULL as round_number
           FROM player_seasons ps
           WHERE ps.team_id = ${team.id}
           AND ps.season_id = ${seasonId}
-          ORDER BY ps.position, ps.player_name
+          AND ps.status = 'active'
+          ORDER BY ps.player_name
         `;
       } catch (error) {
         console.warn(`⚠️ Could not fetch real players for team ${team.id}:`, error);
