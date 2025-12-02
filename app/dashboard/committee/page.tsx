@@ -223,25 +223,45 @@ export default function CommitteeDashboard() {
               </p>
             </div>
             
-            {currentSeason && (
-              <div className="glass rounded-2xl p-5 shadow-xl border border-white/30 min-w-[240px]">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-[#0066FF]/20 to-blue-500/20">
-                    <svg className="w-5 h-5 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <div className="flex flex-col gap-3">
+              {currentSeason && (
+                <div className="glass rounded-2xl p-5 shadow-xl border border-white/30 min-w-[240px]">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-[#0066FF]/20 to-blue-500/20">
+                      <svg className="w-5 h-5 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium">Active Season</div>
+                      <div className="font-bold text-gray-900 text-lg">{currentSeason.name}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200/50">
+                    <span className="text-xs text-gray-600">Teams Registered</span>
+                    <span className="font-bold text-[#0066FF]">{teams.length}</span>
+                  </div>
+                </div>
+              )}
+              
+              {currentSeason && (
+                <a
+                  href={`/api/admin/export/teams-excel?season_id=${currentSeason.id}`}
+                  download
+                  className="glass rounded-2xl p-4 shadow-xl border border-white/30 hover:border-green-500/40 transition-all hover:-translate-y-1 flex items-center gap-3 min-w-[240px]"
+                >
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-green-500 to-green-600">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500 font-medium">Active Season</div>
-                    <div className="font-bold text-gray-900 text-lg">{currentSeason.name}</div>
+                    <div className="text-sm font-bold text-gray-900">Export to Excel</div>
+                    <div className="text-xs text-gray-600">Download teams & players</div>
                   </div>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-gray-200/50">
-                  <span className="text-xs text-gray-600">Teams Registered</span>
-                  <span className="font-bold text-[#0066FF]">{teams.length}</span>
-                </div>
-              </div>
-            )}
+                </a>
+              )}
+            </div>
           </div>
         </div>
 
