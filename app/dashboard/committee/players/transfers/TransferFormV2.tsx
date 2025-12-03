@@ -5,6 +5,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCachedTeams } from '@/hooks/useCachedData';
 import { calculateTransferDetails, TransferCalculation } from '@/lib/player-transfers-v2-utils';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import SearchablePlayerSelect from '@/components/ui/SearchablePlayerSelect';
 
 interface Player {
   id: string;
@@ -31,6 +32,7 @@ export default function TransferFormV2({ playerType, onSuccess }: TransferFormV2
   // Form state
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [newTeamId, setNewTeamId] = useState('');
+  const [searchPlayer, setSearchPlayer] = useState('');
   
   // Data state
   const [players, setPlayers] = useState<Player[]>([]);
@@ -100,6 +102,16 @@ export default function TransferFormV2({ playerType, onSuccess }: TransferFormV2
 
     loadPlayers();
   }, [userSeasonId, cachedTeams, playerType]);
+
+  // Get filtered players based on search
+  const filteredPlayers = useMemo(() => {
+    if (!searchPlayer) return players;
+    const searchLower = searchPlayer.toLowerCase();
+    return players.filter(p => 
+      p.player_name.toLowerCase().includes(searchLower) ||
+      p.team_name?.toLowerCase().includes(searchLower)
+    );
+  }, [players, searchPlayer]);
 
   // Get selected player
   const selectedPlayer = useMemo(() => {
@@ -349,27 +361,17 @@ export default function TransferFormV2({ playerType, onSuccess }: TransferFormV2
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Player Selection */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Select Player to Transfer
-          </label>
-          <select
-            value={selectedPlayerId}
-            onChange={(e) => {
-              setSelectedPlayerId(e.target.value);
-              setNewTeamId(''); // Reset team selection
-            }}
-            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-            required
-          >
-            <option value="">-- Choose Player --</option>
-            {players.map(player => (
-              <option key={player.id} value={player.id}>
-                {player.player_name} ({player.team_name}) - ${player.auction_value} - {player.star_rating}⭐
-              </option>
-            ))}
-          </select>
-        </div>
+        <SearchablePlayerSelect
+          players={players}
+          value={selectedPlayerId}
+          onChange={(id) => {
+            setSelectedPlayerId(id);
+            setNewTeamId(''); // Reset team selection
+          }}
+          label="Select Player to Transfer"
+          placeholder="Select player..."
+          color="blue"
+        />
 
         {/* Current Player Info (Read-only) */}
         {selectedPlayer && (

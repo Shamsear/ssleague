@@ -5,6 +5,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCachedTeams } from '@/hooks/useCachedData';
 import { calculateSwapDetails, SwapCalculation, validateCashAmount } from '@/lib/player-transfers-v2-utils';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import SearchablePlayerSelect from '@/components/ui/SearchablePlayerSelect';
 
 interface Player {
   id: string;
@@ -33,6 +34,8 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
   const [selectedPlayerBId, setSelectedPlayerBId] = useState('');
   const [cashAmount, setCashAmount] = useState<number>(0);
   const [cashDirection, setCashDirection] = useState<'A_to_B' | 'B_to_A' | 'none'>('none');
+  const [searchPlayerA, setSearchPlayerA] = useState('');
+  const [searchPlayerB, setSearchPlayerB] = useState('');
   
   // Data state
   const [players, setPlayers] = useState<Player[]>([]);
@@ -104,6 +107,16 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
     loadPlayers();
   }, [userSeasonId, cachedTeams, playerType]);
 
+  // Get filtered players for Player A based on search
+  const filteredPlayersA = useMemo(() => {
+    if (!searchPlayerA) return players;
+    const searchLower = searchPlayerA.toLowerCase();
+    return players.filter(p => 
+      p.player_name.toLowerCase().includes(searchLower) ||
+      p.team_name?.toLowerCase().includes(searchLower)
+    );
+  }, [players, searchPlayerA]);
+
   // Get selected players
   const selectedPlayerA = useMemo(() => {
     return players.find(p => p.id === selectedPlayerAId);
@@ -118,6 +131,16 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
     if (!selectedPlayerA) return players;
     return players.filter(p => p.team_id !== selectedPlayerA.team_id);
   }, [players, selectedPlayerA]);
+
+  // Get filtered players for Player B based on search
+  const filteredPlayersB = useMemo(() => {
+    if (!searchPlayerB) return availablePlayersForB;
+    const searchLower = searchPlayerB.toLowerCase();
+    return availablePlayersForB.filter(p => 
+      p.player_name.toLowerCase().includes(searchLower) ||
+      p.team_name?.toLowerCase().includes(searchLower)
+    );
+  }, [availablePlayersForB, searchPlayerB]);
 
   // Fetch transfer limits for both teams
   useEffect(() => {
@@ -457,27 +480,17 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Player A Selection */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Team A Player
-          </label>
-          <select
-            value={selectedPlayerAId}
-            onChange={(e) => {
-              setSelectedPlayerAId(e.target.value);
-              setSelectedPlayerBId(''); // Reset Player B selection
-            }}
-            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-            required
-          >
-            <option value="">-- Choose Player A --</option>
-            {players.map(player => (
-              <option key={player.id} value={player.id}>
-                {player.player_name} ({player.team_name}) - ${player.auction_value} - {player.star_rating}⭐
-              </option>
-            ))}
-          </select>
-        </div>
+        <SearchablePlayerSelect
+          players={players}
+          value={selectedPlayerAId}
+          onChange={(id) => {
+            setSelectedPlayerAId(id);
+            setSelectedPlayerBId(''); // Reset Player B selection
+          }}
+          label="Team A Player"
+          placeholder="Select Player A..."
+          color="blue"
+        />
 
         {/* Team A Info */}
         {selectedPlayerA && (
@@ -517,24 +530,14 @@ export default function SwapFormV2({ playerType, onSuccess }: SwapFormV2Props) {
 
         {/* Player B Selection */}
         {selectedPlayerA && (
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Team B Player
-            </label>
-            <select
-              value={selectedPlayerBId}
-              onChange={(e) => setSelectedPlayerBId(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
-              required
-            >
-              <option value="">-- Choose Player B --</option>
-              {availablePlayersForB.map(player => (
-                <option key={player.id} value={player.id}>
-                  {player.player_name} ({player.team_name}) - ${player.auction_value} - {player.star_rating}⭐
-                </option>
-              ))}
-            </select>
-          </div>
+          <SearchablePlayerSelect
+            players={availablePlayersForB}
+            value={selectedPlayerBId}
+            onChange={setSelectedPlayerBId}
+            label="Team B Player (from different team)"
+            placeholder="Select Player B..."
+            color="purple"
+          />
         )}
 
         {/* Team B Info */}

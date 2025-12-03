@@ -4,7 +4,7 @@ import { verifyAuth } from '@/lib/auth-helper';
 import ExcelJS from 'exceljs';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
-const tournamentSql = neon(process.env.TOURNAMENT_DATABASE_URL || process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+const tournamentSql = neon(process.env.NEON_TOURNAMENT_DB_URL!);
 
 /**
  * GET /api/admin/export/teams-excel
@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
           fp.id,
           fp.name,
           fp.position,
+          fp.overall_rating,
           fp.acquisition_value,
           fp.contract_start_season,
           fp.contract_end_season,
@@ -112,6 +113,8 @@ export async function GET(request: NextRequest) {
 
       // Get real players from tournament database player_seasons table
       let realPlayers: any[] = [];
+      let realPlayerBalance = 0;
+      let realPlayerSpent = 0;
       try {
         realPlayers = await tournamentSql`
           SELECT 
@@ -119,6 +122,9 @@ export async function GET(request: NextRequest) {
             ps.player_name as name,
             ps.category as position,
             ps.auction_value as acquisition_value,
+            ps.salary_per_match,
+            ps.star_rating,
+            ps.points,
             ps.contract_start_season,
             ps.contract_end_season,
             ps.status,
@@ -129,6 +135,10 @@ export async function GET(request: NextRequest) {
           AND ps.status = 'active'
           ORDER BY ps.player_name
         `;
+        
+        // Calculate real player spent and balance
+        realPlayerSpent = realPlayers.reduce((sum, p) => sum + (parseFloat(p.acquisition_value) || 0), 0);
+        realPlayerBalance = 1000 - realPlayerSpent; // Assuming 1000 is the initial real player budget
       } catch (error) {
         console.warn(`⚠️ Could not fetch real players for team ${team.id}:`, error);
         // Continue without real players if tournament DB is not available
@@ -150,6 +160,14 @@ export async function GET(request: NextRequest) {
       teamSheet.getCell('D2').value = team.football_spent || 0;
       teamSheet.getCell('E2').value = 'Football Players:';
       teamSheet.getCell('F2').value = team.football_players_count || 0;
+      
+      // Add real player budget info
+      teamSheet.getCell('A3').value = 'Real Player Balance:';
+      teamSheet.getCell('B3').value = realPlayerBalance;
+      teamSheet.getCell('C3').value = 'Real Player Spent:';
+      teamSheet.getCell('D3').value = realPlayerSpent;
+      teamSheet.getCell('E3').value = 'Real Players:';
+      teamSheet.getCell('F3').value = realPlayers.length;
 
       // Football Players section
       teamSheet.getCell('A5').value = 'FOOTBALL PLAYERS';
@@ -162,7 +180,7 @@ export async function GET(request: NextRequest) {
 
       // Football players header
       const fpHeaderRow = teamSheet.getRow(6);
-      fpHeaderRow.values = ['Name', 'Position', 'Price', 'Round', 'Contract Start', 'Contract End', 'Status'];
+      fpHeaderRow.values = ['Name', 'Position', 'Overall Rating', 'Price', 'Salary (10%)', 'Round', 'Contract Start', 'Contract End', 'Status'];
       fpHeaderRow.font = { bold: true };
       fpHeaderRow.fill = {
         type: 'pattern',
@@ -173,10 +191,13 @@ export async function GET(request: NextRequest) {
       // Add football players
       let currentRow = 7;
       footballPlayers.forEach(player => {
+        const salary = (player.acquisition_value || 0) * 0.1; // 10% of acquisition value
         teamSheet.getRow(currentRow).values = [
           player.name,
           player.position,
+          player.overall_rating || 0,
           player.acquisition_value || 0,
+          salary.toFixed(2),
           player.round_number || '-',
           player.contract_start_season || '-',
           player.contract_end_season || '-',
@@ -198,7 +219,7 @@ export async function GET(request: NextRequest) {
       // Real players header
       currentRow++;
       const rpHeaderRow = teamSheet.getRow(currentRow);
-      rpHeaderRow.values = ['Name', 'Position', 'Price', 'Round', 'Contract Start', 'Contract End', 'Status'];
+      rpHeaderRow.values = ['Name', 'Price', 'Salary/Match', 'Star Rating', 'Points', 'Contract Start', 'Contract End', 'Status'];
       rpHeaderRow.font = { bold: true };
       rpHeaderRow.fill = {
         type: 'pattern',
@@ -211,9 +232,10 @@ export async function GET(request: NextRequest) {
       realPlayers.forEach(player => {
         teamSheet.getRow(currentRow).values = [
           player.name,
-          player.position,
           player.acquisition_value || 0,
-          player.round_number || '-',
+          player.salary_per_match || 0,
+          player.star_rating || 0,
+          player.points || 0,
           player.contract_start_season || '-',
           player.contract_end_season || '-',
           player.status || 'active',
@@ -222,13 +244,15 @@ export async function GET(request: NextRequest) {
       });
 
       // Set column widths
-      teamSheet.getColumn(1).width = 25;
-      teamSheet.getColumn(2).width = 12;
-      teamSheet.getColumn(3).width = 12;
-      teamSheet.getColumn(4).width = 10;
-      teamSheet.getColumn(5).width = 15;
-      teamSheet.getColumn(6).width = 15;
-      teamSheet.getColumn(7).width = 12;
+      teamSheet.getColumn(1).width = 25; // Name
+      teamSheet.getColumn(2).width = 12; // Position (football) / Price (real)
+      teamSheet.getColumn(3).width = 15; // Overall Rating (football) / Salary (real)
+      teamSheet.getColumn(4).width = 12; // Price (football) / Star Rating (real)
+      teamSheet.getColumn(5).width = 12; // Salary (football) / Points (real)
+      teamSheet.getColumn(6).width = 10; // Round (football) / Contract Start (real)
+      teamSheet.getColumn(7).width = 15; // Contract Start (football) / Contract End (real)
+      teamSheet.getColumn(8).width = 15; // Contract End (football) / Status (real)
+      teamSheet.getColumn(9).width = 12; // Status (football only)
     }
 
     // Generate Excel file

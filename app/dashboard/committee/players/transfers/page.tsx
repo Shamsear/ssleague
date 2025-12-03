@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import TransferFormV2 from './TransferFormV2';
 import SwapFormV2 from './SwapFormV2';
+import FootballPlayerForm from './FootballPlayerForm';
 import Link from 'next/link';
 
 type TabType = 'transfer' | 'swap';
@@ -111,62 +112,73 @@ export default function PlayerTransfersPage() {
 
         {/* Tabs */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          <div className="border-b border-gray-200">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('transfer')}
-                className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'transfer'
-                  ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-              >
-                ➡️ Transfer Player (Sale)
-              </button>
-              <button
-                onClick={() => setActiveTab('swap')}
-                className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'swap'
-                  ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-              >
-                🔄 Swap Players
-              </button>
+          {/* Only show tabs for real players */}
+          {playerType === 'real' && (
+            <div className="border-b border-gray-200">
+              <div className="flex">
+                <button
+                  onClick={() => setActiveTab('transfer')}
+                  className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'transfer'
+                    ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  ➡️ Transfer Player (Sale)
+                </button>
+                <button
+                  onClick={() => setActiveTab('swap')}
+                  className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'swap'
+                    ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  🔄 Swap Players
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="p-6">
-            {/* TRANSFER TAB */}
-            {activeTab === 'transfer' && (
-              <div>
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <h3 className="font-semibold text-gray-900 mb-2">How Transfers Work</h3>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• Player value increases based on star rating (115%-150%)</li>
-                    <li>• Buying team pays: New Value + 10% committee fee</li>
-                    <li>• Selling team receives: New Value - 10% committee fee</li>
-                    <li>• Player may upgrade star rating based on value increase</li>
-                    <li>• Both teams use 1 transfer slot (max 2 per season)</li>
-                  </ul>
-                </div>
-                <TransferFormV2 playerType={playerType} />
-              </div>
-            )}
+            {/* FOOTBALL PLAYERS - Simple Swap/Release */}
+            {playerType === 'football' ? (
+              <FootballPlayerForm key={playerType} />
+            ) : (
+              <>
+                {/* REAL PLAYERS - Complex Transfer System */}
+                {/* TRANSFER TAB */}
+                {activeTab === 'transfer' && (
+                  <div>
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-900 mb-2">How Transfers Work</h3>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        <li>• Player value increases based on star rating (115%-150%)</li>
+                        <li>• Buying team pays: New Value + 10% committee fee</li>
+                        <li>• Selling team receives: New Value - 10% committee fee</li>
+                        <li>• Player may upgrade star rating based on value increase</li>
+                        <li>• Both teams use 1 transfer slot (max 2 per season)</li>
+                      </ul>
+                    </div>
+                    <TransferFormV2 key={playerType} playerType={playerType} />
+                  </div>
+                )}
 
-            {/* SWAP TAB */}
-            {activeTab === 'swap' && (
-              <div>
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <h3 className="font-semibold text-gray-900 mb-2">How Swaps Work</h3>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• Both player values increase based on star ratings</li>
-                    <li>• Fixed committee fees based on star ratings (30-100)</li>
-                    <li>• Optional cash addition up to 30% of player value</li>
-                    <li>• Both players may upgrade star ratings</li>
-                    <li>• Both teams use 1 transfer slot (max 2 per season)</li>
-                  </ul>
-                </div>
-                <SwapFormV2 playerType={playerType} />
-              </div>
+                {/* SWAP TAB */}
+                {activeTab === 'swap' && (
+                  <div>
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-900 mb-2">How Swaps Work</h3>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        <li>• Both player values increase based on star ratings</li>
+                        <li>• Fixed committee fees based on star ratings (30-100)</li>
+                        <li>• Optional cash addition up to 30% of player value</li>
+                        <li>• Both players may upgrade star ratings</li>
+                        <li>• Both teams use 1 transfer slot (max 2 per season)</li>
+                      </ul>
+                    </div>
+                    <SwapFormV2 key={playerType} playerType={playerType} />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

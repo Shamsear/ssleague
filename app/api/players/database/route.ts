@@ -124,7 +124,7 @@ export async function GET(request: Request) {
       SELECT 
         fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
         fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
-        fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id,
+        fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.acquisition_value,
         CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
       FROM footballplayers fp
       LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = $${teamIdParam}
