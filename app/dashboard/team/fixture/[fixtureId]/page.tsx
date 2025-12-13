@@ -60,6 +60,10 @@ interface RoundDeadlines {
   round_start_time?: string;
   home_fixture_deadline_time: string;
   away_fixture_deadline_time: string;
+  home_substitution_deadline_time?: string;
+  away_substitution_deadline_time?: string;
+  home_substitution_deadline_day_offset?: number;
+  away_substitution_deadline_day_offset?: number;
   result_entry_deadline_day_offset: number;
   result_entry_deadline_time: string;
   status: string;
@@ -118,6 +122,10 @@ export default function FixturePage() {
   const [lineupDeadline, setLineupDeadline] = useState<Date | null>(null);
   const [canSubmitLineup, setCanSubmitLineup] = useState(false);
   const [phaseUpdateTrigger, setPhaseUpdateTrigger] = useState(0);
+  
+  // Substitution deadline tracking
+  const [substitutionDeadline, setSubstitutionDeadline] = useState<Date | null>(null);
+  const [canMakeSubstitution, setCanMakeSubstitution] = useState(false);
 
   // Monitor phase changes via WebSocket
   const { isConnected: wsConnected, lastCheck } = useRoundPhaseMonitor({
@@ -618,6 +626,36 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               matchupsExist: matchupsList.length > 0,
               canSubmitLineup: canSubmit,
               reason: matchupsList.length > 0 ? 'Matchups created - lineups locked' : 'OK'
+            });
+
+            // Calculate substitution deadline
+            // Home team: 21:00 on day after scheduled_date (day_offset = +1)
+            // Away team: 21:00 on round start day (day_offset = 0)
+            const subTime = isHome 
+              ? (deadlines.home_substitution_deadline_time || '21:00')
+              : (deadlines.away_substitution_deadline_time || '21:00');
+            const subDayOffset = isHome
+              ? (deadlines.home_substitution_deadline_day_offset !== undefined ? deadlines.home_substitution_deadline_day_offset : 1)
+              : (deadlines.away_substitution_deadline_day_offset !== undefined ? deadlines.away_substitution_deadline_day_offset : 0);
+            
+            const subDate = new Date(deadlines.scheduled_date);
+            subDate.setDate(subDate.getDate() + subDayOffset);
+            const subDateStr = subDate.toISOString().split('T')[0];
+            const substitutionDeadlineTime = new Date(`${subDateStr}T${subTime}:00+05:30`);
+            setSubstitutionDeadline(substitutionDeadlineTime);
+            
+            const canSub = now < substitutionDeadlineTime;
+            setCanMakeSubstitution(canSub);
+            
+            console.log('🔄 Substitution Deadline Debug:', {
+              isHome,
+              subTime,
+              subDayOffset,
+              subDateStr,
+              substitutionDeadline: substitutionDeadlineTime.toISOString(),
+              substitutionDeadlineLocal: substitutionDeadlineTime.toLocaleString(),
+              now: now.toISOString(),
+              canMakeSubstitution: canSub
             });
 
             // Determine matchup permissions with separate phases
