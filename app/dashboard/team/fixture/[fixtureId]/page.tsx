@@ -586,12 +586,12 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
 
             setPhase(currentPhase);
             
-            // Calculate lineup deadline (round start + 1 hour grace period)
+            // Calculate lineup deadline (round start time - no grace period)
             // Use round_start_time if available (actual time round started/restarted)
             // Otherwise fall back to home_fixture_deadline_time (scheduled start time)
             const actualRoundStartTimeStr = deadlines.round_start_time || deadlines.home_fixture_deadline_time;
             const roundStartTime = new Date(`${deadlines.scheduled_date}T${actualRoundStartTimeStr}:00+05:30`);
-            const lineupDeadlineTime = new Date(roundStartTime.getTime() + (60 * 60 * 1000)); // +1 hour grace
+            const lineupDeadlineTime = roundStartTime; // Lineup deadline is exactly at round start
             setLineupDeadline(lineupDeadlineTime);
             
             console.log('⏰ Lineup Deadline Debug:', {
@@ -1112,19 +1112,15 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                 </div>
                 <div className="flex-1">
                   <p className="text-sm sm:text-base text-gray-800 font-semibold mb-2">{phaseInfo.description}</p>
-              {roundDeadlines && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-gray-600">
+              {roundDeadlines && lineupDeadline && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
                   <div className="flex items-center gap-2">
                     <span className="text-base">📅</span>
                     <span>Match: {roundDeadlines.scheduled_date}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-base">⏰</span>
-                    <span>Home: {roundDeadlines.home_fixture_deadline_time}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">⏰</span>
-                    <span>Away: {roundDeadlines.away_fixture_deadline_time}</span>
+                    <span>Lineup Deadline: {lineupDeadline.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST</span>
                   </div>
                 </div>
               )}
@@ -1174,7 +1170,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               <p className="text-xs text-gray-700">
                 {matchups.length > 0 && !canSubmitLineup
                   ? '🔒 Lineups locked: Matchups have been created'
-                  : `Deadline: ${lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (Round start + 1 hour grace period)`
+                  : `Deadline: ${lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (Round start time)`
                 }
               </p>
             </div>
