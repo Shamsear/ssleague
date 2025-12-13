@@ -247,8 +247,8 @@ export async function isLineupEditable(
       timestamp: roundStart.getTime()
     });
     
-    // Lineup deadline = round start time + 1 hour grace period
-    const lineupDeadline = new Date(roundStart.getTime() + 60 * 60 * 1000);
+    // Lineup deadline = round start time (no grace period)
+    const lineupDeadline = new Date(roundStart.getTime());
 
     console.log('🕐 Lineup Deadline Check:', {
       scheduled_date: fixture.scheduled_date,
@@ -272,7 +272,7 @@ export async function isLineupEditable(
     if (now > lineupDeadline) {
       return { 
         editable: false, 
-        reason: 'Lineup deadline has passed (1 hour after round start)', 
+        reason: 'Lineup deadline has passed (round start time)', 
         deadline: lineupDeadline.toISOString(),
         roundStart: roundStart.toISOString()
       };

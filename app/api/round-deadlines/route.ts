@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
         ${round_number},
         ${leg},
         ${dateOnly ? sql`${dateOnly}::date` : null},
-        ${startTime || '14:00'},
+        ${startTime || '08:00'},
         ${homeTime},
         ${awayTime},
         ${resultOffset},
@@ -212,8 +212,8 @@ export async function POST(request: NextRequest) {
       ON CONFLICT (tournament_id, round_number, leg) DO UPDATE SET
         scheduled_date = ${dateOnly ? sql`${dateOnly}::date` : sql`EXCLUDED.scheduled_date`},
         round_start_time = CASE 
-          WHEN EXCLUDED.status = 'active' AND round_deadlines.status != 'active' THEN COALESCE(EXCLUDED.round_start_time, '14:00')
-          ELSE COALESCE(round_deadlines.round_start_time, EXCLUDED.round_start_time, '14:00')
+          WHEN EXCLUDED.status = 'active' AND round_deadlines.status != 'active' THEN COALESCE(EXCLUDED.round_start_time, '08:00')
+          ELSE COALESCE(round_deadlines.round_start_time, EXCLUDED.round_start_time, '08:00')
         END,
         home_fixture_deadline_time = EXCLUDED.home_fixture_deadline_time,
         away_fixture_deadline_time = EXCLUDED.away_fixture_deadline_time,
