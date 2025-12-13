@@ -10,12 +10,6 @@ const nextConfig: NextConfig = {
   // Performance optimizations
   poweredByHeader: false,
   
-  eslint: {
-    // During builds, only run ESLint on specific directories
-    dirs: ['app', 'components', 'lib'],
-    // Don't fail the build if there are ESLint warnings
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     // Don't fail the build if there are TypeScript errors during production build
     ignoreBuildErrors: true,
@@ -52,6 +46,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Turbopack configuration (Next.js 16+)
+  turbopack: {},
+  
   webpack: (config, { isServer, dev }) => {
     // Exclude sql.js from server-side bundling
     if (!isServer) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
-import { query as pgQuery } from '@/lib/neon';
+import { sql } from '@/lib/neon';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get all teams from Neon
-    const neonTeams = await pgQuery(
+    const neonTeams = await sql(
       'SELECT team_uid, team_name, is_active FROM teams ORDER BY team_name'
     );
 

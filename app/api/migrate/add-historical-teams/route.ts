@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
-import { query as pgQuery } from '@/lib/neon';
+import { sql } from '@/lib/neon';
 
 /**
  * This endpoint adds all historical teams from Firebase to Neon database
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     console.log(`📊 Found ${teamHistory.size} unique teams in Firebase`);
     
     // Get existing teams from Neon
-    const existingTeams = await pgQuery('SELECT team_uid FROM teams');
+    const existingTeams = await sql('SELECT team_uid FROM teams');
     const existingIds = new Set(existingTeams.rows.map(t => t.team_uid));
     
     console.log(`📊 Found ${existingIds.size} teams already in Neon`);
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     
     for (const team of teamsToAdd) {
       try {
-        await pgQuery(
+        await sql(
           `INSERT INTO teams (
             team_uid, 
             team_name, 
@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
     });
     
     // Get existing teams from Neon
-    const existingTeams = await pgQuery('SELECT team_uid, team_name FROM teams');
+    const existingTeams = await sql('SELECT team_uid, team_name FROM teams');
     const existingMap = new Map(existingTeams.rows.map(t => [t.team_uid, t.team_name]));
     
     // Categorize teams
