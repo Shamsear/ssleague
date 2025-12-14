@@ -108,11 +108,17 @@ export default function LineupSubmission({
         console.log('🔍 LineupSubmission - Active players:', activePlayers.length, activePlayers.map(p => p.name));
         setRoster(activePlayers);
         
-        // Auto-select all players if exactly 5 (no choice needed)
+        // Auto-select and auto-submit for teams with exactly 5 players (no choice needed)
         if (activePlayers.length === 5 && !existingLineup) {
           const allPlayerIds = activePlayers.map(p => p.player_id);
           setStartingXI(allPlayerIds);
           setSubstitutes([]);
+          
+          console.log('✅ Team has exactly 5 players - Auto-submitting lineup');
+          // Auto-submit after a short delay to ensure state is set
+          setTimeout(() => {
+            autoSubmitLineup(allPlayerIds, []);
+          }, 500);
         }
       }
     } catch (err) {
@@ -120,6 +126,44 @@ export default function LineupSubmission({
       setError('Failed to load team roster');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const autoSubmitLineup = async (startingPlayers: string[], substitutePlayers: string[]) => {
+    try {
+      console.log('🤖 Auto-submitting lineup for team with 5 players');
+      
+      const payload = {
+        fixture_id: fixtureId,
+        team_id: teamId,
+        starting_xi: startingPlayers,
+        substitutes: substitutePlayers,
+        submitted_by: user?.uid,
+        submitted_by_name: user?.display_name || user?.email || 'Auto-submit',
+        selected_by_opponent: isOpponentSelection,
+        is_draft: false
+      };
+
+      const response = await fetch('/api/lineups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('✅ Auto-submit successful');
+        if (onSubmitSuccess) {
+          onSubmitSuccess();
+        }
+      } else {
+        console.error('❌ Auto-submit failed:', data.error);
+        setError(`Auto-submit failed: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Error auto-submitting lineup:', err);
+      setError('Failed to auto-submit lineup');
     }
   };
 
@@ -193,6 +237,71 @@ export default function LineupSubmission({
         setSubstitutes([...currentSubstitutes, playerId]);
       }
     }
+  };
+
+  const handleAutoSelect = () => {
+    if (!isEditable || roster.length === 0) return;
+
+    // Auto-select logic:
+    // 1. If exactly 5 players: all as starters, no subs
+    // 2. If 6-7 players: first 5 as starters, rest as subs
+    // 3. Prioritize by category if requirements exist, otherwise by order
+
+    const availablePlayers = [...roster];
+    let selectedStarters: string[] = [];
+    let selectedSubs: string[] = [];
+
+    if (availablePlayers.length === 5) {
+      // All 5 as starters
+      selectedStarters = availablePlayers.map(p => p.player_id);
+      selectedSubs = [];
+    } else if (availablePlayers.length > 5) {
+      // Try to meet category requirements if enabled
+      if (enableCategoryRequirements && Object.keys(categoryRequirements).length > 0) {
+        // Group players by category
+        const playersByCategory: Record<string, Player[]> = {};
+        availablePlayers.forEach(player => {
+          const cat = player.category || 'unknown';
+          if (!playersByCategory[cat]) {
+            playersByCategory[cat] = [];
+          }
+          playersByCategory[cat].push(player);
+        });
+
+        // First, fill required categories
+        for (const [catId, minCount] of Object.entries(categoryRequirements)) {
+          const catPlayers = playersByCategory[catId] || [];
+          const toAdd = Math.min(minCount, catPlayers.length);
+          for (let i = 0; i < toAdd && selectedStarters.length < squadSize; i++) {
+            selectedStarters.push(catPlayers[i].player_id);
+          }
+        }
+
+        // Fill remaining spots with any available players
+        for (const player of availablePlayers) {
+          if (selectedStarters.length >= squadSize) break;
+          if (!selectedStarters.includes(player.player_id)) {
+            selectedStarters.push(player.player_id);
+          }
+        }
+      } else {
+        // No category requirements - just take first 5
+        selectedStarters = availablePlayers.slice(0, squadSize).map(p => p.player_id);
+      }
+
+      // Remaining players as substitutes (max 2)
+      const remaining = availablePlayers.filter(p => !selectedStarters.includes(p.player_id));
+      selectedSubs = remaining.slice(0, maxSubstitutes).map(p => p.player_id);
+    }
+
+    setStartingXI(selectedStarters);
+    setSubstitutes(selectedSubs);
+  };
+
+  const handleClearSelection = () => {
+    if (!isEditable) return;
+    setStartingXI([]);
+    setSubstitutes([]);
   };
 
   const handleSubmit = async (isDraft: boolean = false) => {
@@ -319,11 +428,18 @@ export default function LineupSubmission({
         )}
       </div>
 
-      {/* Auto-selection info for 5-player teams */}
+      {/* Auto-selection info */}
       {roster.length === 5 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <p className="text-xs sm:text-sm text-blue-800">
             ℹ️ Your team has exactly 5 players. All players have been automatically selected as starters.
+          </p>
+        </div>
+      )}
+      {roster.length > 5 && isEditable && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+          <p className="text-xs sm:text-sm text-purple-800">
+            💡 <strong>Tip:</strong> Use the "Auto-Select Lineup" button below to quickly fill your lineup with the first {squadSize} players as starters and remaining as substitutes.
           </p>
         </div>
       )}
@@ -464,6 +580,27 @@ export default function LineupSubmission({
           </div>
         </div>
       </div>
+
+      {/* Quick Actions */}
+      {isEditable && roster.length > 0 && (
+        <div className="flex gap-2 sm:gap-3">
+          <button
+            onClick={handleAutoSelect}
+            className="flex-1 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-bold bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+          >
+            <span className="text-base sm:text-lg">⚡</span>
+            <span>Auto-Select Lineup</span>
+          </button>
+          <button
+            onClick={handleClearSelection}
+            disabled={(startingXI?.length || 0) === 0 && (substitutes?.length || 0) === 0}
+            className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-bold bg-gradient-to-r from-gray-400 to-gray-500 text-white hover:from-gray-500 hover:to-gray-600 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all shadow-md disabled:shadow-none flex items-center justify-center gap-2"
+          >
+            <span className="text-base sm:text-lg">🗑️</span>
+            <span>Clear</span>
+          </button>
+        </div>
+      )}
 
       {/* Available Players */}
       {isEditable && roster.length > 5 && (

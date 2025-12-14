@@ -60,23 +60,39 @@ export async function POST(request: NextRequest) {
             processedCount++;
           }
         } else {
-          // No lineup submitted - create locked empty lineup
+          // Check if team has exactly 5 players - auto-create lineup with all players
+          const rosterResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/team/${home_team_id}/roster?season_id=${fixtureSeason}`);
+          const rosterData = await rosterResponse.json();
+          
+          let starters: string[] = [];
+          let subs: string[] = [];
+          
+          if (rosterData.success && rosterData.players) {
+            const activePlayers = rosterData.players.filter((p: any) => p.is_active);
+            if (activePlayers.length === 5) {
+              // Team has exactly 5 players - auto-select all as starters
+              starters = activePlayers.map((p: any) => p.player_id);
+              console.log(`✅ Auto-created lineup for home team ${home_team_id} with 5 players`);
+            }
+          }
+          
+          // No lineup submitted - create locked lineup (empty if not 5 players, auto-filled if exactly 5)
           await homeLineupRef.set({
             fixture_id,
             team_id: home_team_id,
             season_id: fixtureSeason || '',
-            starters: [],
-            substitutes: [],
+            starters,
+            substitutes: subs,
             is_locked: true,
             locked_at: now.toISOString(),
             locked_by: 'system',
-            locked_by_name: 'Auto-lock (Deadline - No Submission)',
+            locked_by_name: starters.length === 5 ? 'Auto-lock (5 Players)' : 'Auto-lock (Deadline - No Submission)',
             created_at: now.toISOString(),
             updated_at: now.toISOString(),
             submitted_by: null,
             submitted_by_name: null
           });
-          results.push({ team_id: home_team_id, status: 'locked_empty' });
+          results.push({ team_id: home_team_id, status: starters.length === 5 ? 'locked_auto_5' : 'locked_empty' });
           processedCount++;
         }
 
@@ -99,23 +115,39 @@ export async function POST(request: NextRequest) {
             processedCount++;
           }
         } else {
-          // No lineup submitted - create locked empty lineup
+          // Check if team has exactly 5 players - auto-create lineup with all players
+          const rosterResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/team/${away_team_id}/roster?season_id=${fixtureSeason}`);
+          const rosterData = await rosterResponse.json();
+          
+          let starters: string[] = [];
+          let subs: string[] = [];
+          
+          if (rosterData.success && rosterData.players) {
+            const activePlayers = rosterData.players.filter((p: any) => p.is_active);
+            if (activePlayers.length === 5) {
+              // Team has exactly 5 players - auto-select all as starters
+              starters = activePlayers.map((p: any) => p.player_id);
+              console.log(`✅ Auto-created lineup for away team ${away_team_id} with 5 players`);
+            }
+          }
+          
+          // No lineup submitted - create locked lineup (empty if not 5 players, auto-filled if exactly 5)
           await awayLineupRef.set({
             fixture_id,
             team_id: away_team_id,
             season_id: fixtureSeason || '',
-            starters: [],
-            substitutes: [],
+            starters,
+            substitutes: subs,
             is_locked: true,
             locked_at: now.toISOString(),
             locked_by: 'system',
-            locked_by_name: 'Auto-lock (Deadline - No Submission)',
+            locked_by_name: starters.length === 5 ? 'Auto-lock (5 Players)' : 'Auto-lock (Deadline - No Submission)',
             created_at: now.toISOString(),
             updated_at: now.toISOString(),
             submitted_by: null,
             submitted_by_name: null
           });
-          results.push({ team_id: away_team_id, status: 'locked_empty' });
+          results.push({ team_id: away_team_id, status: starters.length === 5 ? 'locked_auto_5' : 'locked_empty' });
           processedCount++;
         }
 

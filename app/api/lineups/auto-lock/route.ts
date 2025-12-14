@@ -59,17 +59,33 @@ export async function POST(request: NextRequest) {
         homeLocked = true;
       }
     } else {
-      // Create empty locked lineup for team that didn't submit
+      // Check if team has exactly 5 players - auto-create lineup with all players
+      const rosterResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/team/${fixture?.home_team_id}/roster?season_id=${fixture?.season_id}`);
+      const rosterData = await rosterResponse.json();
+      
+      let starters: string[] = [];
+      let subs: string[] = [];
+      
+      if (rosterData.success && rosterData.players) {
+        const activePlayers = rosterData.players.filter((p: any) => p.is_active);
+        if (activePlayers.length === 5) {
+          // Team has exactly 5 players - auto-select all as starters
+          starters = activePlayers.map((p: any) => p.player_id);
+          console.log(`✅ Auto-created lineup for home team with 5 players: ${starters.join(', ')}`);
+        }
+      }
+      
+      // Create locked lineup (empty if not 5 players, auto-filled if exactly 5)
       await homeLineupRef.set({
         fixture_id,
         team_id: fixture?.home_team_id,
         season_id: fixture?.season_id || '',
-        starters: [],
-        substitutes: [],
+        starters,
+        substitutes: subs,
         is_locked: true,
         locked_at: now.toISOString(),
         locked_by: 'system',
-        locked_by_name: 'Auto-lock (No Submission)',
+        locked_by_name: starters.length === 5 ? 'Auto-lock (5 Players)' : 'Auto-lock (No Submission)',
         created_at: now.toISOString(),
         updated_at: now.toISOString(),
         submitted_by: null,
@@ -97,17 +113,33 @@ export async function POST(request: NextRequest) {
         awayLocked = true;
       }
     } else {
-      // Create empty locked lineup for team that didn't submit
+      // Check if team has exactly 5 players - auto-create lineup with all players
+      const rosterResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/team/${fixture?.away_team_id}/roster?season_id=${fixture?.season_id}`);
+      const rosterData = await rosterResponse.json();
+      
+      let starters: string[] = [];
+      let subs: string[] = [];
+      
+      if (rosterData.success && rosterData.players) {
+        const activePlayers = rosterData.players.filter((p: any) => p.is_active);
+        if (activePlayers.length === 5) {
+          // Team has exactly 5 players - auto-select all as starters
+          starters = activePlayers.map((p: any) => p.player_id);
+          console.log(`✅ Auto-created lineup for away team with 5 players: ${starters.join(', ')}`);
+        }
+      }
+      
+      // Create locked lineup (empty if not 5 players, auto-filled if exactly 5)
       await awayLineupRef.set({
         fixture_id,
         team_id: fixture?.away_team_id,
         season_id: fixture?.season_id || '',
-        starters: [],
-        substitutes: [],
+        starters,
+        substitutes: subs,
         is_locked: true,
         locked_at: now.toISOString(),
         locked_by: 'system',
-        locked_by_name: 'Auto-lock (No Submission)',
+        locked_by_name: starters.length === 5 ? 'Auto-lock (5 Players)' : 'Auto-lock (No Submission)',
         created_at: now.toISOString(),
         updated_at: now.toISOString(),
         submitted_by: null,
