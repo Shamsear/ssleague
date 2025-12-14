@@ -86,9 +86,13 @@ export default function TransfersManagementPage() {
       // Auto-select first window if available
       if (windowsList.length > 0 && !selectedWindowId) {
         setSelectedWindowId(windowsList[0].window_id);
+      } else if (windowsList.length === 0) {
+        // No windows available, stop loading settings
+        setIsLoadingSettings(false);
       }
     } catch (error) {
       console.error('Error loading windows:', error);
+      setIsLoadingSettings(false);
     } finally {
       setIsLoadingWindows(false);
     }
