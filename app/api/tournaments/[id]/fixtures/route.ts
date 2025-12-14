@@ -345,27 +345,61 @@ function generateRoundRobinFixtures(
   const numRounds = numTeams - 1;
   const matchesPerRound = numTeams / 2;
 
-  // Generate first leg
+  // Track home/away balance for each team
+  const homeAwayBalance: { [teamId: string]: number } = {};
+  teamList.forEach(team => {
+    if (team.id !== 'bye') {
+      homeAwayBalance[team.id] = 0; // 0 is balanced, positive means more home games, negative means more away
+    }
+  });
+
+  // Generate first leg with randomized home/away
   for (let round = 0; round < numRounds; round++) {
     let matchNumber = 0;
 
     for (let match = 0; match < matchesPerRound; match++) {
-      let home: number, away: number;
+      let homeIdx: number, awayIdx: number;
 
       if (match === 0) {
-        home = 0;
-        away = round + 1;
+        homeIdx = 0;
+        awayIdx = round + 1;
       } else {
-        home = (round + match) % (numTeams - 1) + 1;
-        away = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
+        homeIdx = (round + match) % (numTeams - 1) + 1;
+        awayIdx = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
       }
 
       // Skip bye teams
-      if (teamList[home].id === 'bye' || teamList[away].id === 'bye') {
+      if (teamList[homeIdx].id === 'bye' || teamList[awayIdx].id === 'bye') {
         continue;
       }
 
       matchNumber++;
+
+      // Decide home/away based on balance - team with fewer home games gets home advantage
+      let home = homeIdx;
+      let away = awayIdx;
+      
+      const team1Balance = homeAwayBalance[teamList[homeIdx].id];
+      const team2Balance = homeAwayBalance[teamList[awayIdx].id];
+      
+      // If one team has significantly fewer home games, give them home advantage
+      if (team2Balance < team1Balance - 1) {
+        // Swap: team2 gets home
+        home = awayIdx;
+        away = homeIdx;
+      } else if (team1Balance === team2Balance) {
+        // If balanced, randomize
+        if (Math.random() < 0.5) {
+          home = awayIdx;
+          away = homeIdx;
+        }
+      }
+      // Otherwise keep original assignment (team1 home)
+
+      // Update balance
+      homeAwayBalance[teamList[home].id]++;
+      homeAwayBalance[teamList[away].id]--;
+
       const fixtureId = `${tournamentId}_leg1_r${round + 1}_m${matchNumber}`;
 
       fixtures.push({
@@ -490,28 +524,57 @@ function generateGroupStageFixtures(
     const numRounds = numTeams - 1;
     const matchesPerRound = numTeams / 2;
 
-    // Generate first leg
+    // Track home/away balance for each team in this group
+    const homeAwayBalance: { [teamId: string]: number } = {};
+    teamList.forEach(team => {
+      if (team.id !== 'bye') {
+        homeAwayBalance[team.id] = 0;
+      }
+    });
+
+    // Generate first leg with randomized home/away
     for (let round = 0; round < numRounds; round++) {
       overallRound++;
       let matchNumber = 0;
 
       for (let match = 0; match < matchesPerRound; match++) {
-        let home: number, away: number;
+        let homeIdx: number, awayIdx: number;
 
         if (match === 0) {
-          home = 0;
-          away = round + 1;
+          homeIdx = 0;
+          awayIdx = round + 1;
         } else {
-          home = (round + match) % (numTeams - 1) + 1;
-          away = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
+          homeIdx = (round + match) % (numTeams - 1) + 1;
+          awayIdx = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
         }
 
         // Skip bye teams
-        if (teamList[home].id === 'bye' || teamList[away].id === 'bye') {
+        if (teamList[homeIdx].id === 'bye' || teamList[awayIdx].id === 'bye') {
           continue;
         }
 
         matchNumber++;
+
+        // Decide home/away based on balance
+        let home = homeIdx;
+        let away = awayIdx;
+        
+        const team1Balance = homeAwayBalance[teamList[homeIdx].id];
+        const team2Balance = homeAwayBalance[teamList[awayIdx].id];
+        
+        if (team2Balance < team1Balance - 1) {
+          home = awayIdx;
+          away = homeIdx;
+        } else if (team1Balance === team2Balance) {
+          if (Math.random() < 0.5) {
+            home = awayIdx;
+            away = homeIdx;
+          }
+        }
+
+        homeAwayBalance[teamList[home].id]++;
+        homeAwayBalance[teamList[away].id]--;
+
         const fixtureId = `${tournamentId}_grp${groupName}_leg1_r${round + 1}_m${matchNumber}`;
 
         fixtures.push({
