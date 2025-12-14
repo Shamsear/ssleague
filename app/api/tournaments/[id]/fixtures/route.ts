@@ -418,49 +418,30 @@ function generateRoundRobinFixtures(
     }
   }
 
-  // Generate second leg if needed
+  // Generate second leg if needed - swap home/away from first leg
   if (isTwoLegged) {
-    const firstLegCount = fixtures.length;
+    const firstLegFixtures = fixtures.filter(f => f.leg === 'first');
     const roundsInFirstLeg = numRounds;
 
-    for (let round = 0; round < numRounds; round++) {
-      let matchNumber = 0;
+    firstLegFixtures.forEach((firstLegFixture, index) => {
+      const secondLegRound = firstLegFixture.round_number + roundsInFirstLeg;
+      const fixtureId = `${tournamentId}_leg2_r${secondLegRound}_m${firstLegFixture.match_number}`;
 
-      for (let match = 0; match < matchesPerRound; match++) {
-        let home: number, away: number;
-
-        if (match === 0) {
-          home = 0;
-          away = round + 1;
-        } else {
-          home = (round + match) % (numTeams - 1) + 1;
-          away = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
-        }
-
-        // Skip bye teams
-        if (teamList[home].id === 'bye' || teamList[away].id === 'bye') {
-          continue;
-        }
-
-        matchNumber++;
-        const fixtureId = `${tournamentId}_leg2_r${round + roundsInFirstLeg + 1}_m${matchNumber}`;
-
-        // Swap home and away for second leg
-        fixtures.push({
-          id: fixtureId,
-          tournament_id: tournamentId,
-          season_id: seasonId,
-          round_number: round + roundsInFirstLeg + 1,
-          match_number: matchNumber,
-          home_team_id: teamList[away].id, // Swapped
-          away_team_id: teamList[home].id, // Swapped
-          home_team_name: teamList[away].team_name,
-          away_team_name: teamList[home].team_name,
-          status: 'scheduled',
-          leg: 'second',
-        });
-      }
-    }
+      // Swap home and away teams from first leg
+      fixtures.push({
+        id: fixtureId,
+        tournament_id: tournamentId,
+        season_id: seasonId,
+        round_number: secondLegRound,
+        match_number: firstLegFixture.match_number,
+        home_team_id: firstLegFixture.away_team_id, // Swapped
+        away_team_id: firstLegFixture.home_team_id, // Swapped
+        home_team_name: firstLegFixture.away_team_name,
+        away_team_name: firstLegFixture.home_team_name,
+        status: 'scheduled',
+        leg: 'second',
+      });
+    });
   }
 
   return fixtures;
@@ -594,50 +575,32 @@ function generateGroupStageFixtures(
       }
     }
 
-    // Generate second leg if needed
+    // Generate second leg if needed - swap home/away from first leg
     if (isTwoLegged) {
+      const groupFirstLegFixtures = fixtures.filter(f => f.leg === 'first' && f.group_name === groupName);
       const roundsInFirstLeg = numRounds;
 
-      for (let round = 0; round < numRounds; round++) {
+      groupFirstLegFixtures.forEach((firstLegFixture) => {
         overallRound++;
-        let matchNumber = 0;
+        const secondLegRoundNumber = firstLegFixture.round_number + roundsInFirstLeg;
+        const fixtureId = `${tournamentId}_grp${groupName}_leg2_r${secondLegRoundNumber}_m${firstLegFixture.match_number}`;
 
-        for (let match = 0; match < matchesPerRound; match++) {
-          let home: number, away: number;
-
-          if (match === 0) {
-            home = 0;
-            away = round + 1;
-          } else {
-            home = (round + match) % (numTeams - 1) + 1;
-            away = (round + (numTeams - 1) - match) % (numTeams - 1) + 1;
-          }
-
-          // Skip bye teams
-          if (teamList[home].id === 'bye' || teamList[away].id === 'bye') {
-            continue;
-          }
-
-          matchNumber++;
-          const fixtureId = `${tournamentId}_grp${groupName}_leg2_r${round + roundsInFirstLeg + 1}_m${matchNumber}`;
-
-          // Swap home and away for second leg
-          fixtures.push({
-            id: fixtureId,
-            tournament_id: tournamentId,
-            season_id: seasonId,
-            round_number: overallRound,
-            match_number: matchNumber,
-            home_team_id: teamList[away].id, // Swapped
-            away_team_id: teamList[home].id, // Swapped
-            home_team_name: teamList[away].team_name,
-            away_team_name: teamList[home].team_name,
-            status: 'scheduled',
-            leg: 'second',
-            group_name: groupName,
-          });
-        }
-      }
+        // Swap home and away teams from first leg
+        fixtures.push({
+          id: fixtureId,
+          tournament_id: tournamentId,
+          season_id: seasonId,
+          round_number: overallRound,
+          match_number: firstLegFixture.match_number,
+          home_team_id: firstLegFixture.away_team_id, // Swapped
+          away_team_id: firstLegFixture.home_team_id, // Swapped
+          home_team_name: firstLegFixture.away_team_name,
+          away_team_name: firstLegFixture.home_team_name,
+          status: 'scheduled',
+          leg: 'second',
+          group_name: groupName,
+        });
+      });
     }
   });
 
