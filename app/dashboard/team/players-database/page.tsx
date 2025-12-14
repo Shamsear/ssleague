@@ -185,30 +185,45 @@ export default function TeamPlayersPage() {
   const currentPlayers = activeTab === 'auction' ? auctionPlayers : tournamentPlayers;
   const isCurrentLoading = activeTab === 'auction' ? isLoadingAuction : isLoadingTournament;
 
-  // Filter players based on current tab
-  const filteredPlayers = currentPlayers.filter(player => {
-    const matchesSearch = player.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    if (activeTab === 'auction') {
-      const auctionPlayer = player as AuctionPlayer;
-      const positionMatch = auctionPlayer.position?.toLowerCase().includes(searchTerm.toLowerCase());
-      const searchMatch = matchesSearch || positionMatch;
-      const matchesPosition = positionFilter === 'all' || auctionPlayer.position === positionFilter;
-      const matchesGroup = positionGroupFilter === 'all' || auctionPlayer.position_group === positionGroupFilter;
-      return searchMatch && matchesPosition && matchesGroup;
-    } else {
-      const tournamentPlayer = player as TournamentPlayer;
-      const categoryMatch = tournamentPlayer.category?.toLowerCase().includes(searchTerm.toLowerCase());
-      const searchMatch = matchesSearch || categoryMatch;
+  // Filter and sort players based on current tab
+  const filteredPlayers = currentPlayers
+    .filter(player => {
+      const matchesSearch = player.name.toLowerCase().includes(searchTerm.toLowerCase());
       
-      // Tournament player filters
-      const matchesCategory = categoryFilter === 'all' || tournamentPlayer.category === categoryFilter;
-      const matchesStarRating = starRatingFilter === 'all' || tournamentPlayer.star_rating === parseInt(starRatingFilter);
-      const matchesStatus = statusFilter === 'all' || tournamentPlayer.status === statusFilter;
-      
-      return searchMatch && matchesCategory && matchesStarRating && matchesStatus;
-    }
-  });
+      if (activeTab === 'auction') {
+        const auctionPlayer = player as AuctionPlayer;
+        const positionMatch = auctionPlayer.position?.toLowerCase().includes(searchTerm.toLowerCase());
+        const searchMatch = matchesSearch || positionMatch;
+        const matchesPosition = positionFilter === 'all' || auctionPlayer.position === positionFilter;
+        const matchesGroup = positionGroupFilter === 'all' || auctionPlayer.position_group === positionGroupFilter;
+        return searchMatch && matchesPosition && matchesGroup;
+      } else {
+        const tournamentPlayer = player as TournamentPlayer;
+        const categoryMatch = tournamentPlayer.category?.toLowerCase().includes(searchTerm.toLowerCase());
+        const searchMatch = matchesSearch || categoryMatch;
+        
+        // Tournament player filters
+        const matchesCategory = categoryFilter === 'all' || tournamentPlayer.category === categoryFilter;
+        const matchesStarRating = starRatingFilter === 'all' || tournamentPlayer.star_rating === parseInt(starRatingFilter);
+        const matchesStatus = statusFilter === 'all' || tournamentPlayer.status === statusFilter;
+        
+        return searchMatch && matchesCategory && matchesStarRating && matchesStatus;
+      }
+    })
+    .sort((a, b) => {
+      // Sort tournament players by points (descending)
+      if (activeTab === 'tournament') {
+        const playerA = a as TournamentPlayer;
+        const playerB = b as TournamentPlayer;
+        return (playerB.points || 0) - (playerA.points || 0);
+      }
+      // Sort auction players by overall rating (descending)
+      else {
+        const playerA = a as AuctionPlayer;
+        const playerB = b as AuctionPlayer;
+        return (playerB.overall_rating || 0) - (playerA.overall_rating || 0);
+      }
+    });
 
   // Get unique values for filters
   // Tournament filters

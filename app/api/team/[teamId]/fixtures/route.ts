@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
+    const sql = getTournamentDb();
     const { teamId } = await params;
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('season_id');
     const status = searchParams.get('status'); // 'scheduled', 'completed', etc.
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '50');
 
     if (!seasonId) {
       return NextResponse.json(
@@ -19,50 +20,88 @@ export async function GET(
       );
     }
 
-    // Build query
-    let query = adminDb.collection('fixtures')
-      .where('season_id', '==', seasonId);
-
-    // Add team filter (home or away)
-    // Note: Firestore doesn't support OR queries directly, so we need to do two queries
-    const homeQuery = query.where('home_team_id', '==', teamId);
-    const awayQuery = query.where('away_team_id', '==', teamId);
+    // Fetch fixtures from Neon where team is either home or away
+    let fixturesQuery = sql`
+      SELECT 
+        id,
+        tournament_id,
+        season_id,
+        round_number,
+        match_number,
+        home_team_id,
+        away_team_id,
+        home_team_name,
+        away_team_name,
+        home_score,
+        away_score,
+        status,
+        leg,
+        group_name,
+        knockout_round,
+        created_at,
+        updated_at
+      FROM fixtures
+      WHERE season_id = ${seasonId}
+        AND (home_team_id = ${teamId} OR away_team_id = ${teamId})
+    `;
 
     // Add status filter if provided
     if (status) {
-      homeQuery.where('status', '==', status);
-      awayQuery.where('status', '==', status);
+      fixturesQuery = sql`
+        SELECT 
+          id,
+          tournament_id,
+          season_id,
+          round_number,
+          match_number,
+          home_team_id,
+          away_team_id,
+          home_team_name,
+          away_team_name,
+          home_score,
+          away_score,
+          status,
+          leg,
+          group_name,
+          knockout_round,
+          created_at,
+          updated_at
+        FROM fixtures
+        WHERE season_id = ${seasonId}
+          AND (home_team_id = ${teamId} OR away_team_id = ${teamId})
+          AND status = ${status}
+        ORDER BY round_number ASC, match_number ASC
+        LIMIT ${limit}
+      `;
+    } else {
+      fixturesQuery = sql`
+        SELECT 
+          id,
+          tournament_id,
+          season_id,
+          round_number,
+          match_number,
+          home_team_id,
+          away_team_id,
+          home_team_name,
+          away_team_name,
+          home_score,
+          away_score,
+          status,
+          leg,
+          group_name,
+          knockout_round,
+          created_at,
+          updated_at
+        FROM fixtures
+        WHERE season_id = ${seasonId}
+          AND (home_team_id = ${teamId} OR away_team_id = ${teamId})
+        ORDER BY round_number ASC, match_number ASC
+        LIMIT ${limit}
+      `;
     }
 
-    // Order by scheduled date
-    homeQuery.orderBy('scheduled_date', 'asc').limit(limit);
-    awayQuery.orderBy('scheduled_date', 'asc').limit(limit);
-
-    // Execute both queries
-    const [homeSnapshot, awaySnapshot] = await Promise.all([
-      homeQuery.get(),
-      awayQuery.get()
-    ]);
-
-    // Combine results
-    const fixturesMap = new Map();
-    
-    homeSnapshot.docs.forEach(doc => {
-      fixturesMap.set(doc.id, { id: doc.id, ...doc.data() });
-    });
-    
-    awaySnapshot.docs.forEach(doc => {
-      fixturesMap.set(doc.id, { id: doc.id, ...doc.data() });
-    });
-
-    // Convert to array and sort by date
-    const fixtures = Array.from(fixturesMap.values())
-      .sort((a: any, b: any) => {
-        const dateA = a.scheduled_date?.toDate?.() || new Date(0);
-        const dateB = b.scheduled_date?.toDate?.() || new Date(0);
-        return dateA.getTime() - dateB.getTime();
-      })
-      .slice(0, limit);
+    const fixtures = await fixturesQuery;
 
     return NextResponse.json({
       success: true,

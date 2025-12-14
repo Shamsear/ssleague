@@ -37,15 +37,15 @@ interface PlayerData {
 
 interface FixtureData {
   id: string;
-  roundNumber: number;
-  homeTeamId: string;
-  homeTeamName: string;
-  awayTeamId: string;
-  awayTeamName: string;
-  homeScore?: number;
-  awayScore?: number;
+  round_number?: number;
+  home_team_id: string;
+  home_team_name: string;
+  away_team_id: string;
+  away_team_name: string;
+  home_score?: number;
+  away_score?: number;
   status: string;
-  scheduledDate?: string;
+  scheduled_date?: any;
 }
 
 interface StandingsData {
@@ -171,8 +171,8 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
         // Fetch players, fixtures, and standings from API
         const [playersRes, fixturesRes, standingsRes] = await Promise.all([
           fetch(`/api/team/${teamId}/players?seasonId=${seasonId}`),
-          fetch(`/api/team/${teamId}/fixtures?seasonId=${seasonId}`),
-          fetch(`/api/team/${teamId}/standings?seasonId=${seasonId}`)
+          fetch(`/api/team/${teamId}/fixtures?season_id=${seasonId}&limit=50`),
+          fetch(`/api/team/${teamId}/standings?season_id=${seasonId}`)
         ]);
 
         if (playersRes.ok) {
@@ -192,14 +192,20 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
 
         if (fixturesRes.ok) {
           const fixturesData = await fixturesRes.json();
-          setFixtures(fixturesData.fixtures || []);
+          if (fixturesData.success && fixturesData.fixtures) {
+            setFixtures(fixturesData.fixtures || []);
+          }
+        } else {
+          console.error('Failed to fetch fixtures:', fixturesRes.status);
         }
 
         if (standingsRes.ok) {
           const standingsData = await standingsRes.json();
-          if (standingsData.standings) {
+          if (standingsData.success && standingsData.standings) {
             setStandings(standingsData.standings);
           }
+        } else {
+          console.error('Failed to fetch standings:', standingsRes.status);
         }
 
         setIsLoading(false);
@@ -446,7 +452,10 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
               </div>
               {players.filter((p: any) => p.type === 'realplayer').length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {players.filter((p: any) => p.type === 'realplayer').map((player) => (
+                  {players
+                    .filter((p: any) => p.type === 'realplayer')
+                    .sort((a: any, b: any) => (b.points || 0) - (a.points || 0))
+                    .map((player) => (
                     <div key={player.id} className="glass rounded-xl p-4 hover:shadow-lg transition-all border-l-4 border-green-400">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="h-12 w-12 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
@@ -512,26 +521,29 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
             {fixtures.length > 0 ? (
               <div className="space-y-3">
                 {fixtures.map((fixture) => {
-                  const isHome = fixture.homeTeamId === teamId;
-                  const opponent = isHome ? fixture.awayTeamName : fixture.homeTeamName;
-                  const result = fixture.homeScore !== null && fixture.awayScore !== null
+                  const isHome = fixture.home_team_id === teamId;
+                  const opponent = isHome ? fixture.away_team_name : fixture.home_team_name;
+                  const result = fixture.home_score !== null && fixture.home_score !== undefined && 
+                                 fixture.away_score !== null && fixture.away_score !== undefined
                     ? isHome 
-                      ? fixture.homeScore > fixture.awayScore ? 'W' : fixture.homeScore < fixture.awayScore ? 'L' : 'D'
-                      : fixture.awayScore > fixture.homeScore ? 'W' : fixture.awayScore < fixture.homeScore ? 'L' : 'D'
+                      ? fixture.home_score > fixture.away_score ? 'W' : fixture.home_score < fixture.away_score ? 'L' : 'D'
+                      : fixture.away_score > fixture.home_score ? 'W' : fixture.away_score < fixture.home_score ? 'L' : 'D'
                     : null;
 
                   return (
                     <div key={fixture.id} className="glass rounded-xl p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold text-gray-500">R{fixture.roundNumber}</span>
+                          {fixture.round_number && (
+                            <span className="text-sm font-bold text-gray-500">R{fixture.round_number}</span>
+                          )}
                           <span className="text-sm text-gray-600">{isHome ? 'vs' : '@'} {opponent}</span>
                         </div>
                         <div className="flex items-center gap-3">
                           {fixture.status === 'completed' ? (
                             <>
                               <span className="text-lg font-bold">
-                                {isHome ? fixture.homeScore : fixture.awayScore} - {isHome ? fixture.awayScore : fixture.homeScore}
+                                {isHome ? fixture.home_score : fixture.away_score} - {isHome ? fixture.away_score : fixture.home_score}
                               </span>
                               <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                                 result === 'W' ? 'bg-green-100 text-green-800' :
@@ -542,7 +554,7 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
                               </span>
                             </>
                           ) : (
-                            <span className="text-sm text-gray-500">{fixture.status}</span>
+                            <span className="text-sm text-gray-500 capitalize">{fixture.status}</span>
                           )}
                         </div>
                       </div>
@@ -556,67 +568,79 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
           </div>
         )}
 
-        {activeTab === 'stats' && standings && (
+        {activeTab === 'stats' && (
           <div className="space-y-6">
-            <div className="glass rounded-3xl p-6">
-              <h2 className="text-2xl font-bold mb-6">League Statistics</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 glass rounded-xl">
-                  <div className="text-3xl font-bold text-[#0066FF]">{standings.position}</div>
-                  <div className="text-sm text-gray-600 mt-1">Position</div>
-                </div>
-                <div className="text-center p-4 glass rounded-xl">
-                  <div className="text-3xl font-bold text-green-600">{standings.points}</div>
-                  <div className="text-sm text-gray-600 mt-1">Points</div>
-                </div>
-                <div className="text-center p-4 glass rounded-xl">
-                  <div className="text-3xl font-bold text-orange-600">{standings.played}</div>
-                  <div className="text-sm text-gray-600 mt-1">Played</div>
-                </div>
-                <div className="text-center p-4 glass rounded-xl">
-                  <div className="text-3xl font-bold text-purple-600">{teamProfile.averageRating.toFixed(1)}</div>
-                  <div className="text-sm text-gray-600 mt-1">Avg Rating</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="glass rounded-3xl p-6">
-              <h3 className="text-xl font-bold mb-4">Match Record</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-green-50 rounded-xl">
-                  <div className="text-2xl font-bold text-green-600">{standings.won}</div>
-                  <div className="text-sm text-green-700">Wins</div>
-                </div>
-                <div className="text-center p-4 bg-gray-50 rounded-xl">
-                  <div className="text-2xl font-bold text-gray-600">{standings.drawn}</div>
-                  <div className="text-sm text-gray-700">Draws</div>
-                </div>
-                <div className="text-center p-4 bg-red-50 rounded-xl">
-                  <div className="text-2xl font-bold text-red-600">{standings.lost}</div>
-                  <div className="text-sm text-red-700">Losses</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="glass rounded-3xl p-6">
-              <h3 className="text-xl font-bold mb-4">Goals</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 glass rounded-xl">
-                  <div className="text-2xl font-bold text-green-600">{standings.goalsFor}</div>
-                  <div className="text-sm text-gray-600">Scored</div>
-                </div>
-                <div className="text-center p-4 glass rounded-xl">
-                  <div className="text-2xl font-bold text-red-600">{standings.goalsAgainst}</div>
-                  <div className="text-sm text-gray-600">Conceded</div>
-                </div>
-                <div className="text-center p-4 glass rounded-xl">
-                  <div className={`text-2xl font-bold ${standings.goalDifference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {standings.goalDifference >= 0 ? '+' : ''}{standings.goalDifference}
+            {standings ? (
+              <>
+                <div className="glass rounded-3xl p-6">
+                  <h2 className="text-2xl font-bold mb-6">League Statistics</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 glass rounded-xl">
+                      <div className="text-3xl font-bold text-[#0066FF]">{standings.position}</div>
+                      <div className="text-sm text-gray-600 mt-1">Position</div>
+                    </div>
+                    <div className="text-center p-4 glass rounded-xl">
+                      <div className="text-3xl font-bold text-green-600">{standings.points}</div>
+                      <div className="text-sm text-gray-600 mt-1">Points</div>
+                    </div>
+                    <div className="text-center p-4 glass rounded-xl">
+                      <div className="text-3xl font-bold text-orange-600">{standings.played}</div>
+                      <div className="text-sm text-gray-600 mt-1">Played</div>
+                    </div>
+                    <div className="text-center p-4 glass rounded-xl">
+                      <div className="text-3xl font-bold text-purple-600">{teamProfile.averageRating.toFixed(1)}</div>
+                      <div className="text-sm text-gray-600 mt-1">Avg Rating</div>
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-600">Difference</div>
                 </div>
+
+                <div className="glass rounded-3xl p-6">
+                  <h3 className="text-xl font-bold mb-4">Match Record</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-green-50 rounded-xl">
+                      <div className="text-2xl font-bold text-green-600">{standings.won}</div>
+                      <div className="text-sm text-green-700">Wins</div>
+                    </div>
+                    <div className="text-center p-4 bg-gray-50 rounded-xl">
+                      <div className="text-2xl font-bold text-gray-600">{standings.drawn}</div>
+                      <div className="text-sm text-gray-700">Draws</div>
+                    </div>
+                    <div className="text-center p-4 bg-red-50 rounded-xl">
+                      <div className="text-2xl font-bold text-red-600">{standings.lost}</div>
+                      <div className="text-sm text-red-700">Losses</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="glass rounded-3xl p-6">
+                  <h3 className="text-xl font-bold mb-4">Goals</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 glass rounded-xl">
+                      <div className="text-2xl font-bold text-green-600">{standings.goalsFor}</div>
+                      <div className="text-sm text-gray-600">Scored</div>
+                    </div>
+                    <div className="text-center p-4 glass rounded-xl">
+                      <div className="text-2xl font-bold text-red-600">{standings.goalsAgainst}</div>
+                      <div className="text-sm text-gray-600">Conceded</div>
+                    </div>
+                    <div className="text-center p-4 glass rounded-xl">
+                      <div className={`text-2xl font-bold ${standings.goalDifference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {standings.goalDifference >= 0 ? '+' : ''}{standings.goalDifference}
+                      </div>
+                      <div className="text-sm text-gray-600">Difference</div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="glass rounded-3xl p-8 text-center">
+                <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <h3 className="text-xl font-bold text-gray-700 mb-2">No Statistics Available</h3>
+                <p className="text-gray-500">Team statistics will appear here once matches are played</p>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
