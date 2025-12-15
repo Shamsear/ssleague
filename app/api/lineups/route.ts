@@ -173,9 +173,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if lineup can be edited
-    const editableCheck = await isLineupEditable(fixture_id);
+    // Check if lineup can be edited (pass team_id to check home team permissions)
+    const editableCheck = await isLineupEditable(fixture_id, team_id);
     if (!editableCheck.editable) {
+      // Check if it's because matchups exist
+      const matchupsResult = await sql`
+        SELECT COUNT(*) as count FROM matchups WHERE fixture_id = ${fixture_id}
+      `;
+      const matchupsExist = matchupsResult[0].count > 0;
+      
+      if (matchupsExist) {
+        return NextResponse.json(
+          { 
+            error: 'Lineup locked - matchups have been created',
+            message: 'Matchups already exist for this fixture. To edit lineup, go to the fixture page and use the "Edit Your Lineup" button.',
+            requires_confirmation: true
+          },
+          { status: 409 }
+        );
+      }
+      
       return NextResponse.json(
         { error: editableCheck.reason || 'Lineup cannot be edited' },
         { status: 403 }
@@ -226,6 +243,21 @@ export async function POST(request: NextRequest) {
     
     console.log('💾 Saving lineup:', { lineupId, fixture_id, team_id });
 
+    // Check if matchups exist - if so, delete them when lineup changes
+    const matchupsResult = await sql`
+      SELECT COUNT(*) as count FROM matchups WHERE fixture_id = ${fixture_id}
+    `;
+    const matchupsExist = matchupsResult[0].count > 0;
+    let matchupsDeleted = false;
+
+    if (matchupsExist) {
+      console.log('🗑️ Deleting existing matchups due to lineup change');
+      await sql`
+        DELETE FROM matchups WHERE fixture_id = ${fixture_id}
+      `;
+      matchupsDeleted = true;
+    }
+
     // Use UPSERT to handle both create and update in a single query
     // This prevents race conditions and handles both cases reliably
     await sql`
@@ -273,9 +305,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Lineup saved successfully',
+      message: matchupsDeleted ? 'Lineup saved successfully. Matchups have been deleted and need to be recreated.' : 'Lineup saved successfully',
       lineup_id: lineupId,
       validation,
+      matchups_deleted: matchupsDeleted,
     });
   } catch (error: any) {
     console.error('Error submitting lineup:', error);
