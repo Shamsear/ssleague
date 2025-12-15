@@ -245,6 +245,11 @@ export default function FixturePage() {
     const substitutions = matchups.filter(m => m.home_substituted || m.away_substituted);
     const hasSubstitutions = substitutions.length > 0;
 
+    // Get substitute players (all players beyond the first 5)
+    const homeSubstitutes = homeStartingXI.length > 5 ? homeStartingXI.slice(5) : [];
+    const awaySubstitutes = awayStartingXI.length > 5 ? awayStartingXI.slice(5) : [];
+    const hasAnySubstitutes = homeSubstitutes.length > 0 || awaySubstitutes.length > 0;
+
     const text = `*SS PES SUPER LEAGUE - S${seasonNumber}*
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -276,6 +281,14 @@ ${matchups.map((m, idx) => {
   
   return line;
 }).join('\n\n')}
+
+${hasAnySubstitutes ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*SUBSTITUTES:*
+
+${homeSubstitutes.length > 0 ? `*${fixture.home_team_name}:*\n${homeSubstitutes.map((sub, idx) => `   ${idx + 1}. ${sub.player_name}`).join('\n')}` : ''}${homeSubstitutes.length > 0 && awaySubstitutes.length > 0 ? '\n\n' : ''}${awaySubstitutes.length > 0 ? `*${fixture.away_team_name}:*\n${awaySubstitutes.map((sub, idx) => `   ${idx + 1}. ${sub.player_name}`).join('\n')}` : ''}
+` : ''}
 
 ${hasSubstitutions ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
