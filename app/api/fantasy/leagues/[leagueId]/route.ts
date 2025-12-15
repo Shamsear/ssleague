@@ -253,6 +253,9 @@ export async function GET(
         rank: team.rank || null,
         player_count: Number(team.player_count) || 0,
         draft_submitted: team.draft_submitted || false,
+        supported_team_id: team.supported_team_id || null,
+        supported_team_name: team.supported_team_name || null,
+        passive_points: Number(team.passive_points) || 0,
       })),
       scoring_rules: scoringRules.map(rule => ({
         id: rule.id,

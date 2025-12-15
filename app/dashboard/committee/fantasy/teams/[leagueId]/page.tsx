@@ -105,19 +105,55 @@ export default function FantasyTeamsPage() {
       return;
     }
 
+    if (!selectedTeam) {
+      console.error('No team selected');
+      return;
+    }
+
     setExpandedPlayer(playerId);
     setIsLoadingPlayer(true);
 
     try {
-      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/points`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/points?team_id=${selectedTeam.id}`);
       if (!response.ok) {
-        throw new Error('Failed to load player data');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to load player data:', errorData);
+        // Set empty player data instead of throwing
+        setPlayerData({ 
+          player: { total_points: 0 },
+          stats: { 
+            total_points: 0, 
+            total_goals: 0, 
+            total_clean_sheets: 0, 
+            total_motm: 0,
+            total_matches: 0,
+            average_points: 0,
+            best_performance: 0,
+            total_bonus_points: 0
+          }, 
+          matches: [] 
+        });
+        return;
       }
       const result = await response.json();
       setPlayerData(result);
     } catch (err) {
       console.error('Error loading player:', err);
-      setPlayerData(null);
+      // Set empty player data on error
+      setPlayerData({ 
+        player: { total_points: 0 },
+        stats: { 
+          total_points: 0, 
+          total_goals: 0, 
+          total_clean_sheets: 0, 
+          total_motm: 0,
+          total_matches: 0,
+          average_points: 0,
+          best_performance: 0,
+          total_bonus_points: 0
+        }, 
+        matches: [] 
+      });
     } finally {
       setIsLoadingPlayer(false);
     }
@@ -352,28 +388,28 @@ export default function FantasyTeamsPage() {
                                 <div className="flex items-center justify-center py-8">
                                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
                                 </div>
-                              ) : playerData ? (
+                              ) : playerData && playerData.stats ? (
                                 <>
                                   {/* Stats Grid */}
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                                     <div className="bg-purple-50 rounded-lg p-3 text-center">
                                       <TrendingUp className="w-5 h-5 text-purple-600 mx-auto mb-1" />
-                                      <p className="text-2xl font-bold text-purple-600">{playerData.player.total_points}</p>
+                                      <p className="text-2xl font-bold text-purple-600">{playerData.player?.total_points || 0}</p>
                                       <p className="text-xs text-gray-600">Total Points</p>
                                     </div>
                                     <div className="bg-green-50 rounded-lg p-3 text-center">
                                       <Target className="w-5 h-5 text-green-600 mx-auto mb-1" />
-                                      <p className="text-2xl font-bold text-green-600">{playerData.stats.total_goals}</p>
+                                      <p className="text-2xl font-bold text-green-600">{playerData.stats?.total_goals || 0}</p>
                                       <p className="text-xs text-gray-600">Goals</p>
                                     </div>
                                     <div className="bg-blue-50 rounded-lg p-3 text-center">
                                       <ShieldIcon className="w-5 h-5 text-blue-600 mx-auto mb-1" />
-                                      <p className="text-2xl font-bold text-blue-600">{playerData.stats.total_clean_sheets}</p>
+                                      <p className="text-2xl font-bold text-blue-600">{playerData.stats?.total_clean_sheets || 0}</p>
                                       <p className="text-xs text-gray-600">Clean Sheets</p>
                                     </div>
                                     <div className="bg-amber-50 rounded-lg p-3 text-center">
                                       <Award className="w-5 h-5 text-amber-600 mx-auto mb-1" />
-                                      <p className="text-2xl font-bold text-amber-600">{playerData.stats.total_motm}</p>
+                                      <p className="text-2xl font-bold text-amber-600">{playerData.stats?.total_motm || 0}</p>
                                       <p className="text-xs text-gray-600">MOTM</p>
                                     </div>
                                   </div>
@@ -382,11 +418,11 @@ export default function FantasyTeamsPage() {
                                   <div className="bg-gray-50 rounded-lg p-3 mb-6 grid grid-cols-4 gap-3 text-center text-sm">
                                     <div>
                                       <p className="text-gray-600">Matches</p>
-                                      <p className="font-bold text-gray-900">{playerData.stats.total_matches}</p>
+                                      <p className="font-bold text-gray-900">{playerData.stats?.total_matches || 0}</p>
                                     </div>
                                     <div>
                                       <p className="text-gray-600">Avg Points</p>
-                                      <p className="font-bold text-indigo-600">{playerData.stats.average_points}</p>
+                                      <p className="font-bold text-indigo-600">{playerData.stats?.average_points || 0}</p>
                                     </div>
                                     <div>
                                       <p className="text-gray-600">Best Game</p>

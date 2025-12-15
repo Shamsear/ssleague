@@ -50,9 +50,9 @@ export default function LineupPage() {
       // Initialize selections from current data
       const starters = new Set<string>();
       data.squad?.forEach((p: Player) => {
-        if (p.is_starting) starters.add(p.id);
-        if (p.is_captain) setCaptainId(p.id);
-        if (p.is_vice_captain) setViceCaptainId(p.id);
+        if (p.is_starting) starters.add(p.real_player_id);
+        if (p.is_captain) setCaptainId(p.real_player_id);
+        if (p.is_vice_captain) setViceCaptainId(p.real_player_id);
       });
       setSelectedStarters(starters);
 
@@ -157,8 +157,8 @@ export default function LineupPage() {
 
   if (!user) return null;
 
-  const starters = squad.filter(p => selectedStarters.has(p.id));
-  const subs = squad.filter(p => !selectedStarters.has(p.id));
+  const starters = squad.filter(p => selectedStarters.has(p.real_player_id));
+  const subs = squad.filter(p => !selectedStarters.has(p.real_player_id));
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -199,7 +199,7 @@ export default function LineupPage() {
             <div className="space-y-2">
               {starters.map(player => (
                 <div
-                  key={player.id}
+                  key={player.real_player_id}
                   className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded"
                 >
                   <div className="flex-1">
@@ -209,31 +209,31 @@ export default function LineupPage() {
                   
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setCaptainId(player.id)}
+                      onClick={() => setCaptainId(player.real_player_id)}
                       disabled={isLineupLocked}
                       className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                        captainId === player.id
+                        captainId === player.real_player_id
                           ? 'bg-yellow-500 text-white'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
-                      {captainId === player.id ? '⭐ Captain' : 'Captain'}
+                      {captainId === player.real_player_id ? '⭐ Captain' : 'Captain'}
                     </button>
                     
                     <button
-                      onClick={() => setViceCaptainId(player.id)}
+                      onClick={() => setViceCaptainId(player.real_player_id)}
                       disabled={isLineupLocked}
                       className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                        viceCaptainId === player.id
+                        viceCaptainId === player.real_player_id
                           ? 'bg-orange-500 text-white'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
-                      {viceCaptainId === player.id ? '🥈 Vice' : 'Vice'}
+                      {viceCaptainId === player.real_player_id ? '🥈 Vice' : 'Vice'}
                     </button>
                     
                     <button
-                      onClick={() => toggleStarter(player.id)}
+                      onClick={() => toggleStarter(player.real_player_id)}
                       disabled={isLineupLocked}
                       className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -258,7 +258,7 @@ export default function LineupPage() {
             <div className="space-y-2">
               {subs.map(player => (
                 <div
-                  key={player.id}
+                  key={player.real_player_id}
                   className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded"
                 >
                   <div>
@@ -267,7 +267,7 @@ export default function LineupPage() {
                   </div>
                   
                   <button
-                    onClick={() => toggleStarter(player.id)}
+                    onClick={() => toggleStarter(player.real_player_id)}
                     disabled={selectedStarters.size >= 5 || isLineupLocked}
                     className={`px-3 py-1 rounded text-sm ${
                       selectedStarters.size >= 5 || isLineupLocked
