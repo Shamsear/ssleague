@@ -14,8 +14,6 @@ import {
   Filter,
   AlertCircle,
   Calendar,
-  Crown,
-  Star,
   Users as UsersIcon,
 } from 'lucide-react';
 
@@ -60,7 +58,7 @@ export default function TeamTransfersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'players' | 'captains' | 'team'>('players');
+  const [activeTab, setActiveTab] = useState<'players' | 'team'>('players');
   const [mySquad, setMySquad] = useState<Player[]>([]);
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -73,12 +71,7 @@ export default function TeamTransfersPage() {
   const [transfersUsed, setTransfersUsed] = useState(0);
   const [leagueId, setLeagueId] = useState<string>('');
   
-  // Captain/VC state
-  const [captainId, setCaptainId] = useState<string | null>(null);
-  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
-  const [originalCaptainId, setOriginalCaptainId] = useState<string | null>(null);
-  const [originalViceCaptainId, setOriginalViceCaptainId] = useState<string | null>(null);
-  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
+
   
   // Team affiliation state
   const [myTeam, setMyTeam] = useState<MyTeam | null>(null);
@@ -115,18 +108,6 @@ export default function TeamTransfersPage() {
       setLeagueId(teamData.team.fantasy_league_id);
       setMyTeam(teamData.team);
       setSelectedTeamId(teamData.team.supported_team_id || '');
-      
-      // Set current captain and vice-captain
-      const captain = teamData.players.find((p: any) => p.is_captain);
-      const viceCaptain = teamData.players.find((p: any) => p.is_vice_captain);
-      if (captain) {
-        setCaptainId(captain.real_player_id);
-        setOriginalCaptainId(captain.real_player_id);
-      }
-      if (viceCaptain) {
-        setViceCaptainId(viceCaptain.real_player_id);
-        setOriginalViceCaptainId(viceCaptain.real_player_id);
-      }
 
       // Get active transfer window
       const windowsRes = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${teamData.team.fantasy_league_id}`
@@ -186,53 +167,7 @@ export default function TeamTransfersPage() {
     }
   };
 
-  const saveCaptains = async () => {
-    if (!user) return;
-    
-    if (!captainId || !viceCaptainId) {
-      alert('Please select both captain and vice-captain');
-      return;
-    }
 
-    if (captainId === viceCaptainId) {
-      alert('Captain and vice-captain must be different players');
-      return;
-    }
-    
-    setIsSavingCaptains(true);
-    try {
-      const response = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.uid,
-          captain_player_id: captainId,
-          vice_captain_player_id: viceCaptainId,
-        }),
-      });
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to save captains';
-        try {
-          const error = await response.json();
-          errorMessage = error.error || errorMessage;
-        } catch (e) {
-          // Response body is empty or not JSON
-        }
-        throw new Error(errorMessage);
-      }
-
-      alert('Captain and vice-captain updated successfully!');
-      setOriginalCaptainId(captainId);
-      setOriginalViceCaptainId(viceCaptainId);
-      await loadTransferData();
-    } catch (error) {
-      console.error('Error saving captains:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save captains');
-    } finally {
-      setIsSavingCaptains(false);
-    }
-  };
 
   const changeTeamAffiliation = async () => {
     if (!user || !myTeam) return;
@@ -452,17 +387,6 @@ export default function TeamTransfersPage() {
             >
               <ArrowLeftRight className="w-5 h-5" />
               Player Transfers
-            </button>
-            <button
-              onClick={() => setActiveTab('captains')}
-              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'captains'
-                  ? 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Crown className="w-5 h-5" />
-              Captain Changes
             </button>
             <button
               onClick={() => setActiveTab('team')}
@@ -685,101 +609,6 @@ export default function TeamTransfersPage() {
           </div>
         </div>
             </>
-          )}
-
-          {/* Captain Changes Tab */}
-          {activeTab === 'captains' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Change Captain & Vice-Captain</h2>
-                <p className="text-gray-600 mb-6">Updates take effect immediately for all future matches</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Captain Selection */}
-                <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-6 border-2 border-yellow-300">
-                  <label className="block text-lg font-bold text-gray-900 mb-3">
-                    <div className="flex items-center gap-2">
-                      <Crown className="w-6 h-6 text-yellow-600" />
-                      <span>Captain (2x Points)</span>
-                    </div>
-                  </label>
-                  <select
-                    value={captainId || ''}
-                    onChange={(e) => setCaptainId(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                  >
-                    <option value="">Select Captain...</option>
-                    {mySquad.map((player) => (
-                      <option 
-                        key={player.real_player_id} 
-                        value={player.real_player_id}
-                        disabled={player.real_player_id === viceCaptainId}
-                      >
-                        {player.player_name} ({player.team}) - {player.position}
-                      </option>
-                    ))}
-                  </select>
-                  {originalCaptainId && (
-                    <p className="text-xs text-gray-600 mt-2">
-                      Current: {mySquad.find(p => p.real_player_id === originalCaptainId)?.player_name}
-                    </p>
-                  )}
-                </div>
-
-                {/* Vice-Captain Selection */}
-                <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border-2 border-blue-300">
-                  <label className="block text-lg font-bold text-gray-900 mb-3">
-                    <div className="flex items-center gap-2">
-                      <Star className="w-6 h-6 text-blue-600" />
-                      <span>Vice-Captain (1.5x Points)</span>
-                    </div>
-                  </label>
-                  <select
-                    value={viceCaptainId || ''}
-                    onChange={(e) => setViceCaptainId(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Select Vice-Captain...</option>
-                    {mySquad.map((player) => (
-                      <option 
-                        key={player.real_player_id} 
-                        value={player.real_player_id}
-                        disabled={player.real_player_id === captainId}
-                      >
-                        {player.player_name} ({player.team}) - {player.position}
-                      </option>
-                    ))}
-                  </select>
-                  {originalViceCaptainId && (
-                    <p className="text-xs text-gray-600 mt-2">
-                      Current: {mySquad.find(p => p.real_player_id === originalViceCaptainId)?.player_name}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <button
-                onClick={saveCaptains}
-                disabled={
-                  isSavingCaptains || 
-                  !captainId || 
-                  !viceCaptainId || 
-                  (captainId === originalCaptainId && viceCaptainId === originalViceCaptainId)
-                }
-                className="w-full px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg text-lg"
-              >
-                {isSavingCaptains ? 'Saving...' : 'Save Captain Changes'}
-              </button>
-
-              {captainId === originalCaptainId && viceCaptainId === originalViceCaptainId && captainId && viceCaptainId && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <p className="text-sm text-blue-800 text-center">
-                    ℹ️ No changes to save - these are your current selections
-                  </p>
-                </div>
-              )}
-            </div>
           )}
 
           {/* Team Affiliation Tab */}

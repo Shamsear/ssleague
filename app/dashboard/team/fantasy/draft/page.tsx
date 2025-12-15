@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Crown, Star, Trash2, Lock, Edit } from 'lucide-react';
+import { Shield, DollarSign, Users, TrendingUp, Sparkles, Check, X, Filter, Trash2, Lock, Edit } from 'lucide-react';
 import { useAutoCloseDraft } from '@/hooks/useAutoCloseDraft';
 // Firebase Realtime DB handles draft status updates automatically
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
@@ -65,9 +65,6 @@ export default function TeamDraftPage() {
   const [isDrafting, setIsDrafting] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [isSelectingTeam, setIsSelectingTeam] = useState(false);
-  const [captainId, setCaptainId] = useState<string | null>(null);
-  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
-  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Auto-open/close draft based on time windows
@@ -89,12 +86,6 @@ export default function TeamDraftPage() {
       const teamData = await teamRes.json();
       setMyTeam(teamData.team);
       setMySquad(teamData.players || []);
-      
-      // Set captain/VC from existing squad
-      const captain = teamData.players?.find((p: any) => p.is_captain);
-      const viceCaptain = teamData.players?.find((p: any) => p.is_vice_captain);
-      if (captain) setCaptainId(captain.real_player_id);
-      if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
       // Get draft settings and league info
       const settingsRes = await fetchWithTokenRefresh(`/api/fantasy/draft/settings?league_id=${teamData.team.fantasy_league_id}`);
@@ -195,53 +186,7 @@ export default function TeamDraftPage() {
     }
   };
 
-  const saveCaptains = async () => {
-    if (!user) return;
-    
-    if (!captainId || !viceCaptainId) {
-      alert('Please select both captain and vice-captain');
-      return;
-    }
 
-    if (captainId === viceCaptainId) {
-      alert('Captain and vice-captain must be different players');
-      return;
-    }
-    
-    setIsSavingCaptains(true);
-    try {
-      const response = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.uid,
-          captain_player_id: captainId,
-          vice_captain_player_id: viceCaptainId,
-        }),
-      });
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to save captains';
-        try {
-          const error = await response.json();
-          errorMessage = error.error || errorMessage;
-        } catch (e) {
-          // Response body is empty or not JSON
-        }
-        throw new Error(errorMessage);
-      }
-
-      alert('Captain and vice-captain saved successfully!');
-      
-      // Refresh squad data to show captain badges
-      await loadDraftData();
-    } catch (error) {
-      console.error('Error saving captains:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save captains');
-    } finally {
-      setIsSavingCaptains(false);
-    }
-  };
 
   const draftPlayer = async (playerId: string) => {
     if (!myTeam || !draftSettings) return;
@@ -343,20 +288,14 @@ export default function TeamDraftPage() {
       return;
     }
 
-    // Validation 2: Captain and Vice-Captain
-    if (!captainId || !viceCaptainId) {
-      alert('❌ Please select both captain and vice-captain before submitting');
-      return;
-    }
-
-    // Validation 3: Passive team selection (supported team)
+    // Validation 2: Passive team selection (supported team)
     if (!myTeam.supported_team_id || !myTeam.supported_team_name) {
       alert('❌ Please select a Supported Team for passive points before submitting.\n\nScroll down to the "Select Your Supported Team" section.');
       return;
     }
 
     // Show summary before confirming
-    const confirmMessage = `Submit your draft?\n\n✓ Players: ${mySquad.length}\n✓ Captain: ${mySquad.find(p => p.real_player_id === captainId)?.player_name}\n✓ Vice-Captain: ${mySquad.find(p => p.real_player_id === viceCaptainId)?.player_name}\n✓ Supported Team: ${myTeam.supported_team_name}\n\nYou will need to click "Edit Draft" to make changes after submitting.`;
+    const confirmMessage = `Submit your draft?\n\n✓ Players: ${mySquad.length}\n✓ Supported Team: ${myTeam.supported_team_name}\n\n⚠️ Remember to set your lineup (5 starters + captain/VC) after submitting!`;
     
     if (!confirm(confirmMessage)) {
       return;
@@ -519,14 +458,11 @@ export default function TeamDraftPage() {
                 disabled={
                   isSubmitting || 
                   mySquad.length === 0 || 
-                  !captainId || 
-                  !viceCaptainId || 
                   !myTeam?.supported_team_id || 
                   !draftSettings?.is_draft_active
                 }
                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
                 title={
-                  !captainId || !viceCaptainId ? 'Select captain and vice-captain first' : 
                   !myTeam?.supported_team_id ? 'Select a supported team first' :
                   mySquad.length === 0 ? 'Draft at least one player' : ''
                 }
@@ -869,102 +805,33 @@ export default function TeamDraftPage() {
           </div>
         </div>
 
-        {/* Captain Selection (shown when at least 1 player drafted) */}
-        {mySquad.length > 0 && (
+        {/* Lineup Reminder */}
+        {mySquad.length >= 5 && (
           <div className="mt-8 glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Captain & Vice-Captain</h2>
-                <p className="text-sm text-gray-600">
-                  Captain earns 2x points, Vice-Captain earns 1.5x points. You can change these selections anytime during the draft.
-                </p>
-              </div>
-              <button
-                onClick={saveCaptains}
-                disabled={isSavingCaptains || !captainId || !viceCaptainId || myTeam?.draft_submitted}
-                className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
-              >
-                {isSavingCaptains ? 'Saving...' : 'Save Captains'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Captain Selection */}
-              <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-6 border-2 border-yellow-300">
-                <label className="block text-lg font-bold text-gray-900 mb-3">
-                  <div className="flex items-center gap-2">
-                    <Crown className="w-6 h-6 text-yellow-600" />
-                    <span>Captain (2x Points)</span>
-                  </div>
-                </label>
-                <select
-                  value={captainId || ''}
-                  onChange={(e) => setCaptainId(e.target.value)}
-                  disabled={myTeam?.draft_submitted}
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">Select Captain...</option>
-                  {mySquad.map((player) => (
-                    <option 
-                      key={player.real_player_id} 
-                      value={player.real_player_id}
-                      disabled={player.real_player_id === viceCaptainId}
-                    >
-                      {player.player_name} ({player.team}) - {player.position}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-600 mt-2">
-                  Your captain will earn double points in every match
-                </p>
-              </div>
-
-              {/* Vice-Captain Selection */}
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border-2 border-blue-300">
-                <label className="block text-lg font-bold text-gray-900 mb-3">
-                  <div className="flex items-center gap-2">
-                    <Star className="w-6 h-6 text-blue-600" />
-                    <span>Vice-Captain (1.5x Points)</span>
-                  </div>
-                </label>
-                <select
-                  value={viceCaptainId || ''}
-                  onChange={(e) => setViceCaptainId(e.target.value)}
-                  disabled={myTeam?.draft_submitted}
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">Select Vice-Captain...</option>
-                  {mySquad.map((player) => (
-                    <option 
-                      key={player.real_player_id} 
-                      value={player.real_player_id}
-                      disabled={player.real_player_id === captainId}
-                    >
-                      {player.player_name} ({player.team}) - {player.position}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-600 mt-2">
-                  Your vice-captain will earn 1.5x points in every match
-                </p>
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-6 border-2 border-purple-300">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">Ready to Set Your Lineup!</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    After submitting your draft, go to "My Team" and click "Set Lineup" to choose your 5 starters, captain (2x points), and vice-captain (1.5x points).
+                  </p>
+                  <Link
+                    href="/dashboard/team/fantasy/my-team"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-lg transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Go to My Team
+                  </Link>
+                </div>
               </div>
             </div>
-
-            {(!captainId || !viceCaptainId) && (
-              <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl">
-                <p className="text-sm text-blue-800 font-medium text-center">
-                  💡 Select both captain and vice-captain from your squad above
-                </p>
-              </div>
-            )}
-            
-            {captainId && viceCaptainId && (
-              <div className="mt-4 p-4 bg-green-50 border-2 border-green-300 rounded-xl">
-                <p className="text-sm text-green-800 font-medium text-center">
-                  ✅ Captain and Vice-Captain selected! Click "Save Captains" to confirm.
-                </p>
-              </div>
-            )}
           </div>
         )}
       </div>

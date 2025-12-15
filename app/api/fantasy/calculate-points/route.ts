@@ -257,12 +257,13 @@ async function processPlayer(params: {
     fixture_id, round_number, scoringRules, sql, pointsCalculated, teamPointsMap
   } = params;
 
-  // Get ALL teams that have drafted this player
+  // Get ALL teams that have drafted this player AND have them in starting lineup
   const squads = await sql`
     SELECT team_id
     FROM fantasy_squad
     WHERE league_id = ${fantasy_league_id}
       AND real_player_id = ${player_id}
+      AND is_starting = true
   `;
 
   if (squads.length === 0) {
