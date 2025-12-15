@@ -527,25 +527,20 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
             // Track actual submission status (for matchup creation logic)
             actualHomeLineupSubmitted = true;
             
-            // Always show own team's lineup
+            // Always load the starting XI data (needed for matchup creation)
+            const homeStartingPlayers = homeLineupData.lineups.starting_xi
+              .map((playerId: string) => homePlayersList.find((p: any) => p.player_id === playerId))
+              .filter(Boolean);
+            setHomeStartingXI(homeStartingPlayers);
+            
+            // Only show submission status if it's own team OR matchups exist
             if (isHome) {
               setHomeLineupSubmitted(true);
-              const homeStartingPlayers = homeLineupData.lineups.starting_xi
-                .map((playerId: string) => homePlayersList.find((p: any) => p.player_id === playerId))
-                .filter(Boolean);
-              setHomeStartingXI(homeStartingPlayers);
+            } else if (matchupsExist) {
+              setHomeLineupSubmitted(true);
             } else {
-              // Away team viewing home lineup - only show if matchups exist
-              if (matchupsExist) {
-                setHomeLineupSubmitted(true);
-                const homeStartingPlayers = homeLineupData.lineups.starting_xi
-                  .map((playerId: string) => homePlayersList.find((p: any) => p.player_id === playerId))
-                  .filter(Boolean);
-                setHomeStartingXI(homeStartingPlayers);
-              } else {
-                // Hide opponent's lineup during fixture entry phase (but track that it exists)
-                console.log('🔒 Hiding home lineup from away team (no matchups yet)');
-              }
+              // Don't show submission status (but data is loaded for matchup creation)
+              console.log('🔒 Hiding home lineup status from away team (no matchups yet)');
             }
           }
         }
@@ -556,25 +551,20 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
             // Track actual submission status (for matchup creation logic)
             actualAwayLineupSubmitted = true;
             
-            // Always show own team's lineup
+            // Always load the starting XI data (needed for matchup creation)
+            const awayStartingPlayers = awayLineupData.lineups.starting_xi
+              .map((playerId: string) => awayPlayersList.find((p: any) => p.player_id === playerId))
+              .filter(Boolean);
+            setAwayStartingXI(awayStartingPlayers);
+            
+            // Only show submission status if it's own team OR matchups exist
             if (!isHome) {
               setAwayLineupSubmitted(true);
-              const awayStartingPlayers = awayLineupData.lineups.starting_xi
-                .map((playerId: string) => awayPlayersList.find((p: any) => p.player_id === playerId))
-                .filter(Boolean);
-              setAwayStartingXI(awayStartingPlayers);
+            } else if (matchupsExist) {
+              setAwayLineupSubmitted(true);
             } else {
-              // Home team viewing away lineup - only show if matchups exist
-              if (matchupsExist) {
-                setAwayLineupSubmitted(true);
-                const awayStartingPlayers = awayLineupData.lineups.starting_xi
-                  .map((playerId: string) => awayPlayersList.find((p: any) => p.player_id === playerId))
-                  .filter(Boolean);
-                setAwayStartingXI(awayStartingPlayers);
-              } else {
-                // Hide opponent's lineup during fixture entry phase (but track that it exists)
-                console.log('🔒 Hiding away lineup from home team (no matchups yet)');
-              }
+              // Don't show submission status (but data is loaded for matchup creation)
+              console.log('🔒 Hiding away lineup status from home team (no matchups yet)');
             }
           }
         }
