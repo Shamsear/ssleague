@@ -341,6 +341,9 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
   // Poll lineup status AND matchups
   useEffect(() => {
     if (!fixtureId || !fixture) return;
+    
+    // Don't poll when in edit mode or result mode to avoid overwriting user changes
+    if (isEditMode || isResultMode) return;
 
     const pollStatus = async () => {
       try {
@@ -394,7 +397,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
     pollStatus();
     
     return () => clearInterval(interval);
-  }, [fixtureId, fixture, matchups]);
+  }, [fixtureId, fixture, matchups, isEditMode, isResultMode]);
 
   useEffect(() => {
     const loadFixture = async () => {
@@ -1783,7 +1786,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                               newMatchups[idx].away_player_id = '';
                               newMatchups[idx].away_player_name = '';
                             } else {
-                              const selectedPlayer = awayPlayers.find(p => p.player_id === e.target.value);
+                              const selectedPlayer = awayStartingXI.find(p => p.player_id === e.target.value);
                               newMatchups[idx].away_player_id = e.target.value;
                               newMatchups[idx].away_player_name = selectedPlayer?.player_name || '';
                             }
@@ -1791,8 +1794,8 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                           }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         >
-                          <option value="">-- Deselect --</option>
-                          {awayPlayers
+                          <option value="">-- Select Player --</option>
+                          {awayStartingXI
                             .filter(player => {
                               // Show this player if:
                               // 1. Not selected in any other matchup, OR
@@ -1800,7 +1803,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                               const isSelectedElsewhere = matchups.some((m, i) => 
                                 i !== idx && m.away_player_id === player.player_id
                               );
-                              return !isSelectedElsewhere || player.player_id === matchup.away_player_id;
+                              return !isSelectedElsewhere;
                             })
                             .map(player => (
                               <option key={player.player_id} value={player.player_id}>

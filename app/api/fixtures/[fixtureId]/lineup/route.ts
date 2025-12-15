@@ -236,6 +236,25 @@ export async function POST(
       }
     }
 
+    // Check if matchups exist
+    const existingMatchups = await sql`
+      SELECT COUNT(*) as count FROM matchups WHERE fixture_id = ${fixtureId}
+    `;
+    const matchupsExist = existingMatchups[0].count > 0;
+
+    // If matchups exist, prevent lineup changes (they should use PUT with delete_matchups flag)
+    if (matchupsExist) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Lineup locked - matchups have been created',
+          message: 'Matchups already exist for this fixture. To edit lineup, you must delete matchups first.',
+          requires_confirmation: true
+        },
+        { status: 409 }
+      );
+    }
+
     // Save lineup to Neon
     const lineupData = {
       players: players,
