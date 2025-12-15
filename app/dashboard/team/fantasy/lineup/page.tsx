@@ -147,9 +147,10 @@ export default function LineupPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-4xl mx-auto">
-          <p className="text-center">Loading squad...</p>
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-8 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-sm sm:text-base text-gray-600">Loading squad...</p>
         </div>
       </div>
     );
@@ -161,26 +162,26 @@ export default function LineupPage() {
   const subs = squad.filter(p => !selectedStarters.has(p.real_player_id));
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Set Your Lineup</h1>
-          <p className="text-gray-600 mt-2">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Set Your Lineup</h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-2">
             Select 5 starting players and choose your captain (2x points) and vice-captain (1.5x points)
           </p>
         </div>
 
         {/* Lineup Lock Warning */}
         {isLineupLocked && (
-          <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 mb-6">
-            <div className="flex items-start gap-3">
-              <svg className="w-6 h-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
               <div>
-                <h3 className="text-lg font-bold text-red-900 mb-1">🔒 Lineup Changes Locked</h3>
-                <p className="text-sm text-red-800">
-                  The committee has locked lineup changes. You cannot modify your starting lineup, captain, or vice-captain at this time. Contact the committee if you need assistance.
+                <h3 className="text-base sm:text-lg font-bold text-red-900 mb-1">🔒 Lineup Changes Locked</h3>
+                <p className="text-xs sm:text-sm text-red-800">
+                  The committee has locked lineup changes. You cannot modify your starting lineup, captain, or vice-captain at this time.
                 </p>
               </div>
             </div>
@@ -188,54 +189,54 @@ export default function LineupPage() {
         )}
 
         {/* Starting 5 */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4 text-green-600">
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-green-600">
             Starting 5 ({starters.length}/5)
           </h2>
           
           {starters.length === 0 ? (
-            <p className="text-gray-500 italic">No starters selected. Click players below to add them.</p>
+            <p className="text-sm sm:text-base text-gray-500 italic">No starters selected. Click players below to add them.</p>
           ) : (
             <div className="space-y-2">
               {starters.map(player => (
                 <div
                   key={player.real_player_id}
-                  className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 p-3 bg-green-50 border border-green-200 rounded"
                 >
-                  <div className="flex-1">
-                    <span className="font-semibold">{player.player_name}</span>
-                    <span className="text-sm text-gray-600 ml-2">({player.position})</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-sm sm:text-base break-words">{player.player_name}</span>
+                    <span className="text-xs sm:text-sm text-gray-600 ml-2">({player.position})</span>
                   </div>
                   
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <button
                       onClick={() => setCaptainId(player.real_player_id)}
                       disabled={isLineupLocked}
-                      className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`px-2 sm:px-3 py-1 rounded text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
                         captainId === player.real_player_id
                           ? 'bg-yellow-500 text-white'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
-                      {captainId === player.real_player_id ? '⭐ Captain' : 'Captain'}
+                      {captainId === player.real_player_id ? '⭐ C' : 'C'}
                     </button>
                     
                     <button
                       onClick={() => setViceCaptainId(player.real_player_id)}
                       disabled={isLineupLocked}
-                      className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`px-2 sm:px-3 py-1 rounded text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
                         viceCaptainId === player.real_player_id
                           ? 'bg-orange-500 text-white'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
-                      {viceCaptainId === player.real_player_id ? '🥈 Vice' : 'Vice'}
+                      {viceCaptainId === player.real_player_id ? '🥈 VC' : 'VC'}
                     </button>
                     
                     <button
                       onClick={() => toggleStarter(player.real_player_id)}
                       disabled={isLineupLocked}
-                      className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-2 sm:px-3 py-1 bg-red-500 text-white rounded text-xs sm:text-sm hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Remove
                     </button>
@@ -247,29 +248,29 @@ export default function LineupPage() {
         </div>
 
         {/* Substitutes */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-600">
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-600">
             Substitutes ({subs.length})
           </h2>
           
           {subs.length === 0 ? (
-            <p className="text-gray-500 italic">All players are in starting lineup</p>
+            <p className="text-sm sm:text-base text-gray-500 italic">All players are in starting lineup</p>
           ) : (
             <div className="space-y-2">
               {subs.map(player => (
                 <div
                   key={player.real_player_id}
-                  className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-gray-50 border border-gray-200 rounded"
                 >
-                  <div>
-                    <span className="font-semibold">{player.player_name}</span>
-                    <span className="text-sm text-gray-600 ml-2">({player.position})</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-sm sm:text-base break-words">{player.player_name}</span>
+                    <span className="text-xs sm:text-sm text-gray-600 ml-2">({player.position})</span>
                   </div>
                   
                   <button
                     onClick={() => toggleStarter(player.real_player_id)}
                     disabled={selectedStarters.size >= 5 || isLineupLocked}
-                    className={`px-3 py-1 rounded text-sm ${
+                    className={`px-3 py-1.5 rounded text-xs sm:text-sm whitespace-nowrap ${
                       selectedStarters.size >= 5 || isLineupLocked
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-green-500 text-white hover:bg-green-600'
@@ -284,18 +285,18 @@ export default function LineupPage() {
         </div>
 
         {/* Save Button */}
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <button
             onClick={handleSave}
             disabled={saving || selectedStarters.size !== 5 || !captainId || !viceCaptainId || isLineupLocked}
-            className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            className="flex-1 bg-blue-600 text-white py-3 px-4 sm:px-6 rounded-lg text-sm sm:text-base font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? 'Saving...' : isLineupLocked ? '🔒 Lineup Locked' : 'Save Lineup'}
           </button>
           
           <button
             onClick={() => router.push('/dashboard/team/fantasy/my-team')}
-            className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50"
+            className="px-4 sm:px-6 py-3 border border-gray-300 rounded-lg text-sm sm:text-base font-semibold hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
