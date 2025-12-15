@@ -21,6 +21,8 @@ export default function LineupPage() {
   const [selectedStarters, setSelectedStarters] = useState<Set<string>>(new Set());
   const [captainId, setCaptainId] = useState<string | null>(null);
   const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
+  const [isLineupLocked, setIsLineupLocked] = useState(false);
+  const [leagueId, setLeagueId] = useState<string>('');
 
   useEffect(() => {
     fetchSquad();
@@ -33,6 +35,7 @@ export default function LineupPage() {
       const data = await res.json();
       
       setSquad(data.squad || []);
+      setLeagueId(data.league_id || '');
       
       // Initialize selections from current data
       const starters = new Set<string>();
@@ -42,6 +45,15 @@ export default function LineupPage() {
         if (p.is_vice_captain) setViceCaptainId(p.id);
       });
       setSelectedStarters(starters);
+
+      // Check lineup lock status
+      if (data.league_id) {
+        const lockRes = await fetch(`/api/admin/fantasy/lineup-lock?league_id=${data.league_id}`);
+        if (lockRes.ok) {
+          const lockData = await lockRes.json();
+          setIsLineupLocked(lockData.is_lineup_locked || false);
+        }
+      }
     } catch (error) {
       console.error('Error fetching squad:', error);
       alert('Failed to load squad');
@@ -143,6 +155,23 @@ export default function LineupPage() {
           </p>
         </div>
 
+        {/* Lineup Lock Warning */}
+        {isLineupLocked && (
+          <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <svg className="w-6 h-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <div>
+                <h3 className="text-lg font-bold text-red-900 mb-1">🔒 Lineup Changes Locked</h3>
+                <p className="text-sm text-red-800">
+                  The committee has locked lineup changes. You cannot modify your starting lineup, captain, or vice-captain at this time. Contact the committee if you need assistance.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Starting 5 */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-bold mb-4 text-green-600">
@@ -166,7 +195,8 @@ export default function LineupPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setCaptainId(player.id)}
-                      className={`px-3 py-1 rounded text-sm ${
+                      disabled={isLineupLocked}
+                      className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
                         captainId === player.id
                           ? 'bg-yellow-500 text-white'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -177,7 +207,8 @@ export default function LineupPage() {
                     
                     <button
                       onClick={() => setViceCaptainId(player.id)}
-                      className={`px-3 py-1 rounded text-sm ${
+                      disabled={isLineupLocked}
+                      className={`px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
                         viceCaptainId === player.id
                           ? 'bg-orange-500 text-white'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -188,7 +219,8 @@ export default function LineupPage() {
                     
                     <button
                       onClick={() => toggleStarter(player.id)}
-                      className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                      disabled={isLineupLocked}
+                      className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Remove
                     </button>
@@ -221,9 +253,9 @@ export default function LineupPage() {
                   
                   <button
                     onClick={() => toggleStarter(player.id)}
-                    disabled={selectedStarters.size >= 5}
+                    disabled={selectedStarters.size >= 5 || isLineupLocked}
                     className={`px-3 py-1 rounded text-sm ${
-                      selectedStarters.size >= 5
+                      selectedStarters.size >= 5 || isLineupLocked
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-green-500 text-white hover:bg-green-600'
                     }`}
@@ -240,10 +272,10 @@ export default function LineupPage() {
         <div className="flex gap-4">
           <button
             onClick={handleSave}
-            disabled={saving || selectedStarters.size !== 5 || !captainId || !viceCaptainId}
+            disabled={saving || selectedStarters.size !== 5 || !captainId || !viceCaptainId || isLineupLocked}
             className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {saving ? 'Saving...' : 'Save Lineup'}
+            {saving ? 'Saving...' : isLineupLocked ? '🔒 Lineup Locked' : 'Save Lineup'}
           </button>
           
           <button

@@ -34,6 +34,8 @@ export default function FantasyLeagueDashboard() {
   const [league, setLeague] = useState<FantasyLeague | null>(null);
   const [teams, setTeams] = useState<FantasyTeam[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLineupLocked, setIsLineupLocked] = useState(false);
+  const [isTogglingLock, setIsTogglingLock] = useState(false);
 
   const { alertState, showAlert, closeAlert } = useModal();
 
@@ -68,6 +70,13 @@ export default function FantasyLeagueDashboard() {
         const data = await response.json();
         setLeague(data.league);
         setTeams(data.teams || []);
+
+        // Load lineup lock status
+        const lockRes = await fetchWithTokenRefresh(`/api/admin/fantasy/lineup-lock?league_id=${leagueId}`);
+        if (lockRes.ok) {
+          const lockData = await lockRes.json();
+          setIsLineupLocked(lockData.is_lineup_locked || false);
+        }
       } catch (error) {
         console.error('Error loading league:', error);
         showAlert({
@@ -84,6 +93,49 @@ export default function FantasyLeagueDashboard() {
       loadLeagueData();
     }
   }, [user, leagueId]);
+
+  const toggleLineupLock = async () => {
+    if (!leagueId) return;
+
+    const newLockState = !isLineupLocked;
+    const action = newLockState ? 'lock' : 'unlock';
+    
+    if (!confirm(`Are you sure you want to ${action} lineup changes for all teams?`)) {
+      return;
+    }
+
+    setIsTogglingLock(true);
+    try {
+      const response = await fetchWithTokenRefresh('/api/admin/fantasy/lineup-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          league_id: leagueId,
+          is_locked: newLockState,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle lineup lock');
+      }
+
+      setIsLineupLocked(newLockState);
+      showAlert({
+        type: 'success',
+        title: 'Success',
+        message: `Lineup changes ${newLockState ? 'locked' : 'unlocked'} successfully!`,
+      });
+    } catch (error) {
+      console.error('Error toggling lineup lock:', error);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to toggle lineup lock',
+      });
+    } finally {
+      setIsTogglingLock(false);
+    }
+  };
 
   if (loading || isLoading) {
     return (
@@ -343,6 +395,63 @@ export default function FantasyLeagueDashboard() {
               {teams.reduce((sum, t) => sum + t.total_points, 0)}
             </p>
             <p className="text-sm text-gray-600">Total Points</p>
+          </div>
+        </div>
+
+        {/* Lineup Lock Control */}
+        <div className="mb-8 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl shadow-lg border-2 border-purple-200 p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${
+                isLineupLocked ? 'bg-red-500' : 'bg-green-500'
+              }`}>
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {isLineupLocked ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                  )}
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 mb-1">
+                  Lineup Lock Control
+                </h3>
+                <p className="text-sm text-gray-700 mb-2">
+                  {isLineupLocked ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                      <strong>LOCKED:</strong> Teams cannot change their lineup, captain, or vice-captain
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                      <strong>UNLOCKED:</strong> Teams can freely modify their lineup
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-gray-600">
+                  Use this to prevent teams from gaining unfair advantages by changing lineups after seeing match results
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={toggleLineupLock}
+              disabled={isTogglingLock}
+              className={`px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${
+                isLineupLocked
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
+                  : 'bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700'
+              }`}
+            >
+              {isTogglingLock ? (
+                'Processing...'
+              ) : isLineupLocked ? (
+                '🔓 Unlock Lineups'
+              ) : (
+                '🔒 Lock Lineups'
+              )}
+            </button>
           </div>
         </div>
 

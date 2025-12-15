@@ -46,6 +46,21 @@ export async function POST(request: NextRequest) {
     }
 
     const team_id = fantasyTeams[0].team_id
+    const league_id = fantasyTeams[0].league_id
+
+    // Check if lineup is locked
+    const leagueCheck = await fantasySql`
+      SELECT is_lineup_locked FROM fantasy_leagues
+      WHERE league_id = ${league_id}
+      LIMIT 1
+    `
+
+    if (leagueCheck.length > 0 && leagueCheck[0].is_lineup_locked) {
+      return NextResponse.json(
+        { error: 'Lineup changes are currently locked by admin. Please contact the committee.' },
+        { status: 403 }
+      )
+    }
 
     // Validate that all starting players are in the squad
     const squadPlayers = await fantasySql`

@@ -14,7 +14,6 @@ import {
   Filter,
   AlertCircle,
   Calendar,
-  Users as UsersIcon,
 } from 'lucide-react';
 
 interface Player {
@@ -43,22 +42,13 @@ interface TransferSettings {
   points_cost_per_transfer: number;
 }
 
-interface RealTeam {
-  team_id: string;
-  team_name: string;
-}
 
-interface MyTeam {
-  fantasy_league_id: string;
-  supported_team_id?: string;
-  supported_team_name?: string;
-}
 
 export default function TeamTransfersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'players' | 'team'>('players');
+  // Only players tab now - team affiliation is set during draft only
   const [mySquad, setMySquad] = useState<Player[]>([]);
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -72,12 +62,7 @@ export default function TeamTransfersPage() {
   const [leagueId, setLeagueId] = useState<string>('');
   
 
-  
-  // Team affiliation state
-  const [myTeam, setMyTeam] = useState<MyTeam | null>(null);
-  const [realTeams, setRealTeams] = useState<RealTeam[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
-  const [isSavingTeam, setIsSavingTeam] = useState(false);
+
 
   useEffect(() => {
     if (!loading && !user) {
@@ -106,8 +91,6 @@ export default function TeamTransfersPage() {
       const teamData = await teamRes.json();
       setMySquad(teamData.players || []);
       setLeagueId(teamData.team.fantasy_league_id);
-      setMyTeam(teamData.team);
-      setSelectedTeamId(teamData.team.supported_team_id || '');
 
       // Get active transfer window
       const windowsRes = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${teamData.team.fantasy_league_id}`
@@ -154,12 +137,7 @@ export default function TeamTransfersPage() {
         setTransfersUsed(transfersData.transfers_used || 0);
       }
 
-      // Get real teams for team affiliation changes
-      const teamsRes = await fetchWithTokenRefresh('/api/teams/registered');
-      if (teamsRes.ok) {
-        const teamsData = await teamsRes.json();
-        setRealTeams(teamsData.teams || []);
-      }
+
     } catch (error) {
       console.error('Failed to load transfer data:', error);
     } finally {
@@ -169,49 +147,7 @@ export default function TeamTransfersPage() {
 
 
 
-  const changeTeamAffiliation = async () => {
-    if (!user || !myTeam) return;
-    
-    if (!selectedTeamId) {
-      alert('Please select a team');
-      return;
-    }
 
-    const team = realTeams.find(t => t.team_id === selectedTeamId);
-    if (!team) return;
-    
-    setIsSavingTeam(true);
-    try {
-      const response = await fetchWithTokenRefresh('/api/fantasy/teams/select-supported', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.uid,
-          supported_team_id: team.team_id,
-          supported_team_name: team.team_name,
-        }),
-      });
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to change team';
-        try {
-          const error = await response.json();
-          errorMessage = error.error || errorMessage;
-        } catch (e) {
-          // Response body is empty or not JSON
-        }
-        throw new Error(errorMessage);
-      }
-
-      alert(`Now supporting ${team.team_name} for passive points!`);
-      await loadTransferData();
-    } catch (error) {
-      console.error('Error changing team:', error);
-      alert(error instanceof Error ? error.message : 'Failed to change team');
-    } finally {
-      setIsSavingTeam(false);
-    }
-  };
 
   const makeTransfer = async () => {
     if (!selectedOut || !selectedIn) {
@@ -374,38 +310,8 @@ export default function TeamTransfersPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white rounded-t-2xl shadow-lg border border-gray-200 border-b-0 mb-0">
-          <div className="flex">
-            <button
-              onClick={() => setActiveTab('players')}
-              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'players'
-                  ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <ArrowLeftRight className="w-5 h-5" />
-              Player Transfers
-            </button>
-            <button
-              onClick={() => setActiveTab('team')}
-              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'team'
-                  ? 'bg-gradient-to-r from-green-500 to-teal-600 text-white'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <UsersIcon className="w-5 h-5" />
-              Team Affiliation
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-b-2xl shadow-lg border border-gray-200 border-t-0 p-6">
-          {/* Player Transfers Tab */}
-          {activeTab === 'players' && (
-            <>
+        {/* Player Transfers */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
               {/* Info Alert */}
               {settings.points_cost_per_transfer > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
@@ -608,77 +514,6 @@ export default function TeamTransfersPage() {
             )}
           </div>
         </div>
-            </>
-          )}
-
-          {/* Team Affiliation Tab */}
-          {activeTab === 'team' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Change Supported Team</h2>
-                <p className="text-gray-600 mb-6">Select which real team you support to earn passive points from their wins</p>
-              </div>
-
-              {myTeam?.supported_team_name && (
-                <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl p-6 border-2 border-green-300">
-                  <div className="flex items-center gap-3">
-                    <UsersIcon className="w-8 h-8 text-green-600" />
-                    <div>
-                      <p className="text-sm text-gray-600">Currently Supporting</p>
-                      <p className="text-2xl font-bold text-gray-900">{myTeam.supported_team_name}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 border-2 border-gray-300">
-                <label className="block text-lg font-bold text-gray-900 mb-3">
-                  Select New Team
-                </label>
-                <select
-                  value={selectedTeamId}
-                  onChange={(e) => setSelectedTeamId(e.target.value)}
-                  className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-gray-900 font-medium focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="">Select a team...</option>
-                  {realTeams.map(team => (
-                    <option key={team.team_id} value={team.team_id}>
-                      {team.team_name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-600 mt-2">
-                  You'll earn passive points when this team wins matches
-                </p>
-              </div>
-
-              <button
-                onClick={changeTeamAffiliation}
-                disabled={
-                  isSavingTeam || 
-                  !selectedTeamId || 
-                  selectedTeamId === myTeam?.supported_team_id
-                }
-                className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg text-lg"
-              >
-                {isSavingTeam ? 'Saving...' : 'Change Supported Team'}
-              </button>
-
-              {selectedTeamId === myTeam?.supported_team_id && selectedTeamId && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <p className="text-sm text-blue-800 text-center">
-                    ℹ️ This is already your supported team
-                  </p>
-                </div>
-              )}
-
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <p className="text-sm text-green-800">
-                  <strong>How Passive Points Work:</strong> When your supported team wins a match, you automatically earn bonus points added to your fantasy total. This is separate from your player points.
-                </p>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
