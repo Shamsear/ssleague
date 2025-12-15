@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
-import { verifyAuth } from '@/lib/auth-helpers';
+import { verifyAuth } from '@/lib/auth-helper';
 
 /**
  * POST /api/admin/fantasy/lineup-lock
@@ -9,10 +9,10 @@ import { verifyAuth } from '@/lib/auth-helpers';
 export async function POST(request: NextRequest) {
   try {
     // Verify admin authentication
-    const authResult = await verifyAuth(request, ['committee', 'superadmin']);
-    if (!authResult.authenticated || !authResult.user) {
+    const authResult = await verifyAuth(['committee_admin', 'admin'], request);
+    if (!authResult.authenticated) {
       return NextResponse.json(
-        { error: authResult.error || 'Unauthorized' },
+        { error: 'Unauthorized' },
         { status: 401 }
       );
     }
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     `;
 
     const action = is_locked ? 'locked' : 'unlocked';
-    console.log(`✅ Lineup ${action} for league: ${league_id} by ${authResult.user.role}`);
+    console.log(`✅ Lineup ${action} for league: ${league_id}`);
 
     return NextResponse.json({
       success: true,
