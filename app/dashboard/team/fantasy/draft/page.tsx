@@ -66,6 +66,9 @@ export default function TeamDraftPage() {
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [isSelectingTeam, setIsSelectingTeam] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [captainId, setCaptainId] = useState<string | null>(null);
+  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
+  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
 
   // Auto-open/close draft based on time windows
   useAutoCloseDraft(
@@ -86,6 +89,12 @@ export default function TeamDraftPage() {
       const teamData = await teamRes.json();
       setMyTeam(teamData.team);
       setMySquad(teamData.players || []);
+      
+      // Set captain and vice-captain from squad
+      const captain = (teamData.players || []).find((p: any) => p.is_captain);
+      const viceCaptain = (teamData.players || []).find((p: any) => p.is_vice_captain);
+      if (captain) setCaptainId(captain.real_player_id);
+      if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
       // Get draft settings and league info
       const settingsRes = await fetchWithTokenRefresh(`/api/fantasy/draft/settings?league_id=${teamData.team.fantasy_league_id}`);
@@ -276,6 +285,51 @@ export default function TeamDraftPage() {
       alert('Failed to remove player');
     } finally {
       setIsRemoving(null);
+    }
+  };
+
+  const saveCaptains = async () => {
+    if (!user || !myTeam) return;
+
+    if (!captainId) {
+      alert('Please select a captain');
+      return;
+    }
+
+    if (!viceCaptainId) {
+      alert('Please select a vice-captain');
+      return;
+    }
+
+    if (captainId === viceCaptainId) {
+      alert('Captain and vice-captain must be different players');
+      return;
+    }
+
+    setIsSavingCaptains(true);
+    try {
+      const res = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          captain_player_id: captainId,
+          vice_captain_player_id: viceCaptainId,
+        }),
+      });
+
+      if (res.ok) {
+        alert('✅ Captain and Vice-Captain saved successfully!');
+        await loadDraftData();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to save captain selection');
+      }
+    } catch (error) {
+      console.error('Failed to save captains:', error);
+      alert('Failed to save captain selection');
+    } finally {
+      setIsSavingCaptains(false);
     }
   };
 
@@ -787,11 +841,34 @@ export default function TeamDraftPage() {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-xs mb-2">
                       <span className="text-gray-600">
                         {player.position} • {player.team}
                       </span>
                       <span className="text-green-600 font-bold">${player.draft_price}M</span>
+                    </div>
+                    {/* Captain/VC Selection */}
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => setCaptainId(player.real_player_id)}
+                        className={`flex-1 px-2 py-1 rounded text-xs font-medium transition ${
+                          captainId === player.real_player_id
+                            ? 'bg-yellow-500 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {captainId === player.real_player_id ? '⭐ Captain' : 'Captain'}
+                      </button>
+                      <button
+                        onClick={() => setViceCaptainId(player.real_player_id)}
+                        className={`flex-1 px-2 py-1 rounded text-xs font-medium transition ${
+                          viceCaptainId === player.real_player_id
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {viceCaptainId === player.real_player_id ? '🥈 Vice' : 'Vice'}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -801,34 +878,41 @@ export default function TeamDraftPage() {
                 )}
               </div>
 
+              {/* Save Captain/VC Button */}
+              {mySquad.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={saveCaptains}
+                    disabled={isSavingCaptains || !captainId || !viceCaptainId}
+                    className="w-full px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSavingCaptains ? 'Saving...' : '💾 Save Captain & Vice-Captain'}
+                  </button>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Captain gets 2x points • Vice-Captain gets 1.5x points
+                  </p>
+                </div>
+              )}
+
             </div>
           </div>
         </div>
 
-        {/* Lineup Reminder */}
-        {mySquad.length >= 5 && (
+        {/* Captain/VC Reminder */}
+        {mySquad.length >= 1 && (!captainId || !viceCaptainId) && (
           <div className="mt-8 glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
-            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-6 border-2 border-purple-300">
+            <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl p-6 border-2 border-yellow-300">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center">
+                <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-full flex items-center justify-center">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-gray-900 mb-1">Ready to Set Your Lineup!</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    After submitting your draft, go to "My Team" and click "Set Lineup" to choose your 5 starters, captain (2x points), and vice-captain (1.5x points).
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">⭐ Don't Forget Captain & Vice-Captain!</h3>
+                  <p className="text-sm text-gray-600">
+                    Select your captain (2x points) and vice-captain (1.5x points) from your squad above, then click "Save Captain & Vice-Captain" to lock in your choices.
                   </p>
-                  <Link
-                    href="/dashboard/team/fantasy/my-team"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-lg transition-all"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    Go to My Team
-                  </Link>
                 </div>
               </div>
             </div>

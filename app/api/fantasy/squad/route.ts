@@ -3,7 +3,7 @@ import { fantasySql } from '@/lib/neon/fantasy-config';
 
 /**
  * GET /api/fantasy/squad?user_id=xxx
- * Get current user's fantasy squad with lineup info
+ * Get current user's fantasy squad with captain/VC info
  */
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const { team_id, league_id } = teams[0];
 
-    // Get squad with lineup info
+    // Get squad with captain/VC info
     const squad = await fantasySql`
       SELECT 
         squad_id as id,
@@ -42,7 +42,6 @@ export async function GET(request: NextRequest) {
         player_name,
         position,
         real_team_name as team,
-        COALESCE(is_starting, true) as is_starting,
         COALESCE(is_captain, false) as is_captain,
         COALESCE(is_vice_captain, false) as is_vice_captain,
         total_points,
@@ -51,7 +50,7 @@ export async function GET(request: NextRequest) {
         acquired_at
       FROM fantasy_squad
       WHERE team_id = ${team_id}
-      ORDER BY is_starting DESC NULLS LAST, is_captain DESC NULLS LAST, is_vice_captain DESC NULLS LAST, acquired_at ASC
+      ORDER BY is_captain DESC NULLS LAST, is_vice_captain DESC NULLS LAST, acquired_at ASC
     `;
 
     return NextResponse.json({

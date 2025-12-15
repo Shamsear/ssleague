@@ -561,7 +561,7 @@ function SeasonRegistrationContent() {
                             🎮 Join Fantasy League
                           </span>
                           <span className="block text-sm text-purple-700">
-                            Participate in the fantasy league! Draft players, set weekly lineups, earn points based on real match performance, and compete against other managers.
+                            Participate in the fantasy league! Draft players, set your captain & vice-captain, earn points based on real match performance, and compete against other managers.
                           </span>
                         </label>
                       </div>

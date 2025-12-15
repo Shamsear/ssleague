@@ -60,6 +60,9 @@ export default function TeamTransfersPage() {
   const [isTransferring, setIsTransferring] = useState(false);
   const [transfersUsed, setTransfersUsed] = useState(0);
   const [leagueId, setLeagueId] = useState<string>('');
+  const [captainId, setCaptainId] = useState<string | null>(null);
+  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
+  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
   
 
 
@@ -91,6 +94,12 @@ export default function TeamTransfersPage() {
       const teamData = await teamRes.json();
       setMySquad(teamData.players || []);
       setLeagueId(teamData.team.fantasy_league_id);
+      
+      // Set captain and vice-captain from squad
+      const captain = (teamData.players || []).find((p: any) => p.is_captain);
+      const viceCaptain = (teamData.players || []).find((p: any) => p.is_vice_captain);
+      if (captain) setCaptainId(captain.real_player_id);
+      if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
       // Get active transfer window
       const windowsRes = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${teamData.team.fantasy_league_id}`
@@ -194,6 +203,51 @@ export default function TeamTransfersPage() {
       alert('Transfer failed');
     } finally {
       setIsTransferring(false);
+    }
+  };
+
+  const saveCaptains = async () => {
+    if (!user) return;
+
+    if (!captainId) {
+      alert('Please select a captain');
+      return;
+    }
+
+    if (!viceCaptainId) {
+      alert('Please select a vice-captain');
+      return;
+    }
+
+    if (captainId === viceCaptainId) {
+      alert('Captain and vice-captain must be different players');
+      return;
+    }
+
+    setIsSavingCaptains(true);
+    try {
+      const res = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          captain_player_id: captainId,
+          vice_captain_player_id: viceCaptainId,
+        }),
+      });
+
+      if (res.ok) {
+        alert('✅ Captain and Vice-Captain saved successfully!');
+        await loadTransferData();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to save captain selection');
+      }
+    } catch (error) {
+      console.error('Failed to save captains:', error);
+      alert('Failed to save captain selection');
+    } finally {
+      setIsSavingCaptains(false);
     }
   };
 
@@ -476,6 +530,66 @@ export default function TeamTransfersPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Captain & Vice-Captain Selection */}
+        <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">⭐ Captain & Vice-Captain</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Select your captain (2x points) and vice-captain (1.5x points) from your squad
+          </p>
+          
+          <div className="space-y-2 mb-4">
+            {mySquad.map(player => (
+              <div
+                key={player.real_player_id}
+                className="p-3 bg-white rounded-lg border border-gray-200"
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2 flex-1">
+                    <Shield className="w-4 h-4 text-gray-600" />
+                    <p className="font-medium text-gray-900 text-sm">{player.player_name}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="text-gray-600">
+                    {player.position} • {player.team}
+                  </span>
+                  <span className="text-gray-600">${player.draft_price}M</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCaptainId(player.real_player_id)}
+                    className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition ${
+                      captainId === player.real_player_id
+                        ? 'bg-yellow-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {captainId === player.real_player_id ? '⭐ Captain' : 'Captain'}
+                  </button>
+                  <button
+                    onClick={() => setViceCaptainId(player.real_player_id)}
+                    className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition ${
+                      viceCaptainId === player.real_player_id
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {viceCaptainId === player.real_player_id ? '🥈 Vice' : 'Vice'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={saveCaptains}
+            disabled={isSavingCaptains || !captainId || !viceCaptainId}
+            className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSavingCaptains ? 'Saving...' : '💾 Save Captain & Vice-Captain'}
+          </button>
         </div>
 
         {/* Transfer History */}

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     const { team_id } = teams[0];
 
-    // Validate that players are in the squad AND in starting lineup
+    // Validate that players are in the squad
     if (captain_player_id) {
       const captain = await fantasySql`
         SELECT * FROM fantasy_squad
@@ -44,13 +44,6 @@ export async function POST(request: NextRequest) {
       if (captain.length === 0) {
         return NextResponse.json(
           { error: 'Captain player not in your squad' },
-          { status: 400 }
-        );
-      }
-
-      if (!captain[0].is_starting) {
-        return NextResponse.json(
-          { error: 'Captain must be in your starting lineup. Please set your lineup first.' },
           { status: 400 }
         );
       }
@@ -66,13 +59,6 @@ export async function POST(request: NextRequest) {
       if (viceCaptain.length === 0) {
         return NextResponse.json(
           { error: 'Vice-captain player not in your squad' },
-          { status: 400 }
-        );
-      }
-
-      if (!viceCaptain[0].is_starting) {
-        return NextResponse.json(
-          { error: 'Vice-captain must be in your starting lineup. Please set your lineup first.' },
           { status: 400 }
         );
       }
