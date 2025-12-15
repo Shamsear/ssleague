@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       settings: {
         budget_per_team: Number(league.budget_per_team),
+        min_squad_size: Number(league.min_squad_size || 11),
         max_squad_size: Number(league.max_squad_size),
         league_name: league.league_name,
         season_name: league.season_name,
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
       UPDATE fantasy_leagues
       SET 
         budget_per_team = ${budget_per_team || 1000},
+        min_squad_size = ${min_squad_size || 11},
         max_squad_size = ${max_squad_size || 15},
         updated_at = NOW()
       WHERE league_id = ${fantasy_league_id}
@@ -109,6 +111,7 @@ export async function POST(request: NextRequest) {
       message: 'Draft settings updated successfully',
       settings: {
         budget_per_team: Number(result[0].budget_per_team),
+        min_squad_size: Number(result[0].min_squad_size),
         max_squad_size: Number(result[0].max_squad_size),
       },
     });

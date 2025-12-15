@@ -50,11 +50,18 @@ export default function DraftSettingsPage() {
       if (!leagueId) return;
 
       try {
-        const response = await fetchWithTokenRefresh(`/api/fantasy/draft/settings?fantasy_league_id=${leagueId}`);
+        const response = await fetchWithTokenRefresh(`/api/fantasy/draft/settings?league_id=${leagueId}`);
         if (response.ok) {
           const data = await response.json();
-          if (data.id) {
-            setSettings(data);
+          if (data.settings) {
+            // Map the API response to our settings state
+            setSettings({
+              budget_per_team: data.settings.budget_per_team || 1000,
+              min_squad_size: data.settings.min_squad_size || 11,
+              max_squad_size: data.settings.max_squad_size || 15,
+              require_team_affiliation: true, // Not stored in DB yet
+              draft_status: data.settings.draft_status || 'pending',
+            });
           }
         }
       } catch (error) {
