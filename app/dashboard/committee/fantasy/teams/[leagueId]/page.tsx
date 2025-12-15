@@ -16,6 +16,9 @@ interface FantasyTeam {
   total_points: number;
   player_count: number;
   rank: number;
+  supported_team_id?: string;
+  supported_team_name?: string;
+  passive_points?: number;
 }
 
 interface Player {
@@ -268,6 +271,27 @@ export default function FantasyTeamsPage() {
                         <p className="text-2xl font-bold text-gray-900">#{selectedTeam.rank || '-'}</p>
                       </div>
                     </div>
+
+                    {/* Supported Team (Passive Points) */}
+                    {selectedTeam.supported_team_name && (
+                      <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border-2 border-green-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                              <ShieldIcon className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-600 font-medium">Supported Team (Passive Points)</p>
+                              <p className="text-lg font-bold text-gray-900">{selectedTeam.supported_team_name}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-600">Passive Points</p>
+                            <p className="text-2xl font-bold text-green-600">{selectedTeam.passive_points || 0}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {isLoadingPlayers ? (

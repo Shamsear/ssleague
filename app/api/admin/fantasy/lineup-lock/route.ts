@@ -41,13 +41,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update lineup lock status
-    await fantasySql`
-      UPDATE fantasy_leagues
-      SET is_lineup_locked = ${is_locked},
-          updated_at = CURRENT_TIMESTAMP
-      WHERE league_id = ${league_id}
-    `;
+    // Update lineup lock status (add column if it doesn't exist)
+    try {
+      await fantasySql`
+        UPDATE fantasy_leagues
+        SET is_lineup_locked = ${is_locked},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE league_id = ${league_id}
+      `;
+    } catch (error: any) {
+      if (error?.code === '42703') {
+        console.log('is_lineup_locked column does not exist, adding it now...');
+        await fantasySql`
+          ALTER TABLE fantasy_leagues
+          ADD COLUMN IF NOT EXISTS is_lineup_locked BOOLEAN DEFAULT false
+        `;
+        console.log('✅ is_lineup_locked column added, retrying update...');
+        
+        // Retry the update
+        await fantasySql`
+          UPDATE fantasy_leagues
+          SET is_lineup_locked = ${is_locked},
+              updated_at = CURRENT_TIMESTAMP
+          WHERE league_id = ${league_id}
+        `;
+      } else {
+        throw error;
+      }
+    }
 
     const action = is_locked ? 'locked' : 'unlocked';
     console.log(`✅ Lineup ${action} for league: ${league_id}`);
@@ -86,16 +107,68 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const leagues = await fantasySql`
-      SELECT 
-        league_id,
-        league_name,
-        is_lineup_locked,
-        updated_at
-      FROM fantasy_leagues
-      WHERE league_id = ${league_id}
-      LIMIT 1
-    `;
+    let leagues;
+    try {
+      leagues = await fantasySql`
+        SELECT 
+          league_id,
+          league_name,
+          is_lineup_locked,
+          updated_at
+        FROM fantasy_leagues
+        WHERE league_id = ${league_id}
+        LIMIT 1
+      `;
+    } catch (error: any) {
+      // If column doesn't exist, add it automatically
+      if (error?.code === '42703') {
+        console.log('is_lineup_locked column does not exist, adding it now...');
+        try {
+          await fantasySql`
+            ALTER TABLE fantasy_leagues
+            ADD COLUMN IF NOT EXISTS is_lineup_locked BOOLEAN DEFAULT false
+          `;
+          console.log('✅ is_lineup_locked column added successfully');
+          
+          // Retry the query
+          leagues = await fantasySql`
+            SELECT 
+              league_id,
+              league_name,
+              is_lineup_locked,
+              updated_at
+            FROM fantasy_leagues
+            WHERE league_id = ${league_id}
+            LIMIT 1
+          `;
+        } catch (alterError) {
+          console.error('Failed to add is_lineup_locked column:', alterError);
+          // Return default value if we can't add the column
+          const leaguesBasic = await fantasySql`
+            SELECT league_id, league_name, updated_at
+            FROM fantasy_leagues
+            WHERE league_id = ${league_id}
+            LIMIT 1
+          `;
+          
+          if (leaguesBasic.length === 0) {
+            return NextResponse.json(
+              { error: 'Fantasy league not found' },
+              { status: 404 }
+            );
+          }
+          
+          return NextResponse.json({
+            league_id: leaguesBasic[0].league_id,
+            league_name: leaguesBasic[0].league_name,
+            is_lineup_locked: false,
+            updated_at: leaguesBasic[0].updated_at,
+          });
+        }
+      } else {
+        throw error;
+      }
+    }
 
     if (leagues.length === 0) {
       return NextResponse.json(

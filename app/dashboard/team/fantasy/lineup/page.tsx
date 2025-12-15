@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Player {
   id: string;
@@ -14,6 +15,7 @@ interface Player {
 }
 
 export default function LineupPage() {
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [squad, setSquad] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,12 +27,20 @@ export default function LineupPage() {
   const [leagueId, setLeagueId] = useState<string>('');
 
   useEffect(() => {
-    fetchSquad();
-  }, []);
+    if (!authLoading && !user) {
+      router.push('/login');
+      return;
+    }
+    if (user) {
+      fetchSquad();
+    }
+  }, [user, authLoading, router]);
 
   const fetchSquad = async () => {
+    if (!user) return;
+    
     try {
-      const res = await fetch('/api/fantasy/squad');
+      const res = await fetch(`/api/fantasy/squad?user_id=${user.uid}`);
       if (!res.ok) throw new Error('Failed to fetch squad');
       const data = await res.json();
       
@@ -84,6 +94,8 @@ export default function LineupPage() {
   };
 
   const handleSave = async () => {
+    if (!user) return;
+    
     // Validation
     if (selectedStarters.size !== 5) {
       alert('You must select exactly 5 starting players');
@@ -111,9 +123,10 @@ export default function LineupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          starterIds: Array.from(selectedStarters),
-          captainId,
-          viceCaptainId,
+          user_id: user.uid,
+          starting_player_ids: Array.from(selectedStarters),
+          captain_player_id: captainId,
+          vice_captain_player_id: viceCaptainId,
         }),
       });
 
@@ -132,7 +145,7 @@ export default function LineupPage() {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto">
@@ -141,6 +154,8 @@ export default function LineupPage() {
       </div>
     );
   }
+
+  if (!user) return null;
 
   const starters = squad.filter(p => selectedStarters.has(p.id));
   const subs = squad.filter(p => !selectedStarters.has(p.id));
