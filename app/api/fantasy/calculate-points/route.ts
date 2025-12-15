@@ -306,6 +306,20 @@ async function processPlayer(params: {
   if (goals_scored >= 3) {
     points_breakdown.hat_trick = scoringRules.get('hat_trick') || 0;
   }
+  if (goals_scored >= 6) {
+    points_breakdown.scored_6_plus = scoringRules.get('scored_6_plus_goals') || 0;
+  }
+  
+  // Conditional penalties based on goals conceded
+  if (goals_conceded >= 4) {
+    points_breakdown.concedes_4_plus = scoringRules.get('concedes_4_plus_goals') || 0;
+  }
+  if (goals_conceded >= 15) {
+    points_breakdown.concedes_15_plus = scoringRules.get('concedes_15_plus_goals') || 0;
+  }
+  
+  // Match played bonus (always awarded if player participated)
+  points_breakdown.match_played = scoringRules.get('match_played') || 0;
 
   const total_points = Object.values(points_breakdown).reduce((sum, val) => sum + val, 0);
 

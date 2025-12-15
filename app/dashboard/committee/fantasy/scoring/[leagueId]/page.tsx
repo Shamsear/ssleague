@@ -202,6 +202,7 @@ export default function CustomScoringRulesPage() {
     { value: 'hat_trick', label: 'Hat-trick (3+ goals)', icon: '🎩' },
     { value: 'brace', label: 'Brace (2 goals)', icon: '⚽⚽' },
     { value: 'concedes_4_plus_goals', label: 'Concedes 4+ Goals', icon: '🚨' },
+    { value: 'concedes_15_plus_goals', label: 'Concedes 15+ Goals', icon: '💥' },
     { value: 'scored_6_plus_goals', label: 'Scored 6+ Goals', icon: '🔥' },
     { value: 'match_played', label: 'Match Played', icon: '🎮' },
     { value: 'golden_boot', label: 'Golden Boot Award', icon: '👢' },
