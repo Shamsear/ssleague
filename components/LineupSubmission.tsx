@@ -370,8 +370,11 @@ export default function LineupSubmission({
           alert('Draft saved successfully!');
         }
       } else {
-        // Show detailed validation errors if available
-        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+        // Special handling for matchups exist error
+        if (data.requires_confirmation && data.error?.includes('matchups')) {
+          setError('⚠️ Matchups have been created for this fixture. To edit your lineup, please go to the fixture page and use the "Edit Your Lineup" button, which will delete the existing matchups.');
+        } else if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          // Show detailed validation errors if available
           setError(`${data.error}: ${data.errors.join(', ')}`);
         } else {
           setError(data.error || `Failed to ${isDraft ? 'save draft' : 'submit lineup'}`);
