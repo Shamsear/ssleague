@@ -1,12 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { verifyAuth } from '@/lib/auth-helper';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 interface LineupPlayer {
   player_id: string;
   player_name: string;
   position: number;
   is_substitute: boolean;
+}
+
+/**
+ * Log lineup changes to audit trail
+ */
+async function logLineupChange(params: {
+  fixtureId: string;
+  teamId: string;
+  action: 'created' | 'updated' | 'deleted';
+  previousLineup: any;
+  newLineup: any;
+  changedBy: string;
+  reason?: string;
+  matchupsDeleted?: boolean;
+}) {
+  const sql = getTournamentDb();
+  const { fixtureId, teamId, action, previousLineup, newLineup, changedBy, reason, matchupsDeleted } = params;
+
+  try {
+    await sql`
+      INSERT INTO lineup_audit_log (
+        fixture_id,
+        team_id,
+        action,
+        previous_lineup,
+        new_lineup,
+        changed_by,
+        reason,
+        matchups_deleted
+      ) VALUES (
+        ${fixtureId},
+        ${teamId},
+        ${action},
+        ${previousLineup ? JSON.stringify(previousLineup) : null}::jsonb,
+        ${newLineup ? JSON.stringify(newLineup) : null}::jsonb,
+        ${changedBy},
+        ${reason || null},
+        ${matchupsDeleted || false}
+      )
+    `;
+    console.log(`✅ Logged lineup ${action} for team ${teamId}`);
+  } catch (error) {
+    console.error('Failed to log lineup change:', error);
+    // Don't fail the request if audit logging fails
+  }
 }
 
 export async function POST(
@@ -197,12 +244,18 @@ export async function POST(
       submitted_at: new Date().toISOString(),
     };
 
+    // Get previous lineup for audit
+    const previousLineup = isHomeTeam ? fixture.home_lineup : fixture.away_lineup;
+    const isNewSubmission = isHomeTeam ? !homeSubmitted : !awaySubmitted;
+
     if (isHomeTeam) {
       await sql`
         UPDATE fixtures
         SET 
           home_lineup = ${JSON.stringify(lineupData)}::jsonb,
           home_lineup_submitted_at = ${!homeSubmitted ? 'NOW()' : sql`home_lineup_submitted_at`},
+          lineup_last_edited_by = ${userId},
+          lineup_last_edited_at = NOW(),
           updated_at = NOW()
         WHERE id = ${fixtureId}
       `;
@@ -212,10 +265,24 @@ export async function POST(
         SET 
           away_lineup = ${JSON.stringify(lineupData)}::jsonb,
           away_lineup_submitted_at = ${!awaySubmitted ? 'NOW()' : sql`away_lineup_submitted_at`},
+          lineup_last_edited_by = ${userId},
+          lineup_last_edited_at = NOW(),
           updated_at = NOW()
         WHERE id = ${fixtureId}
       `;
     }
+
+    // Log the change
+    const teamSeasonsData = teamSeasonsQuery.docs[0].data();
+    await logLineupChange({
+      fixtureId,
+      teamId: teamSeasonsData.team_id,
+      action: isNewSubmission ? 'created' : 'updated',
+      previousLineup,
+      newLineup: lineupData,
+      changedBy: userId,
+      reason: isNewSubmission ? 'Initial lineup submission' : 'Lineup updated'
+    });
 
     return NextResponse.json({
       success: true,
@@ -225,6 +292,245 @@ export async function POST(
     console.error('Error saving lineup:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to save lineup' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { fixtureId: string } }
+) {
+  try {
+    const { fixtureId } = params;
+    
+    const auth = await verifyAuth(['team'], request);
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { success: false, error: auth.error || 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const userId = auth.userId!;
+
+    // Get request body
+    const body = await request.json();
+    const { players, delete_matchups } = body as { players: LineupPlayer[], delete_matchups?: boolean };
+
+    // Validate lineup
+    if (!players || players.length !== 6) {
+      return NextResponse.json(
+        { success: false, error: 'Lineup must have exactly 6 players' },
+        { status: 400 }
+      );
+    }
+
+    const substituteCount = players.filter(p => p.is_substitute).length;
+    if (substituteCount !== 1) {
+      return NextResponse.json(
+        { success: false, error: 'Lineup must have exactly 1 substitute' },
+        { status: 400 }
+      );
+    }
+
+    const sql = getTournamentDb();
+    
+    const fixtures = await sql`
+      SELECT * FROM fixtures WHERE id = ${fixtureId} LIMIT 1
+    `;
+
+    if (fixtures.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Fixture not found' },
+        { status: 404 }
+      );
+    }
+
+    const fixture = fixtures[0];
+
+    // Get team_id from team_seasons
+    const teamSeasonsQuery = await adminDb
+      .collection('team_seasons')
+      .where('user_id', '==', userId)
+      .where('season_id', '==', fixture.season_id)
+      .where('status', '==', 'registered')
+      .limit(1)
+      .get();
+
+    if (teamSeasonsQuery.empty) {
+      return NextResponse.json(
+        { success: false, error: 'Team not registered for this season' },
+        { status: 403 }
+      );
+    }
+
+    const teamId = teamSeasonsQuery.docs[0].data().team_id;
+    const isHomeTeam = fixture.home_team_id === teamId;
+    const isAwayTeam = fixture.away_team_id === teamId;
+
+    if (!isHomeTeam && !isAwayTeam) {
+      return NextResponse.json(
+        { success: false, error: 'Not authorized for this fixture' },
+        { status: 403 }
+      );
+    }
+
+    // Get round deadlines to check if editing is allowed
+    const seasonId = fixture.season_id;
+    const roundNumber = fixture.round_number;
+    const leg = fixture.leg || 'first';
+
+    const roundDeadlines = await sql`
+      SELECT * FROM round_deadlines 
+      WHERE season_id = ${seasonId}
+        AND round_number = ${roundNumber}
+        AND leg = ${leg}
+      LIMIT 1
+    `;
+
+    if (roundDeadlines.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Round configuration not found' },
+        { status: 404 }
+      );
+    }
+
+    const roundData = roundDeadlines[0];
+    const now = new Date();
+
+    // Calculate deadlines
+    const scheduledDate = roundData.scheduled_date;
+    if (!scheduledDate) {
+      return NextResponse.json(
+        { success: false, error: 'Round not scheduled yet' },
+        { status: 400 }
+      );
+    }
+
+    const homeDeadline = new Date(`${scheduledDate}T${roundData.home_fixture_deadline_time}:00+05:30`);
+    const awayDeadline = new Date(`${scheduledDate}T${roundData.away_fixture_deadline_time}:00+05:30`);
+
+    // Home team can edit until home deadline
+    // Away team can edit until away deadline (if they submitted first in fixture_entry phase)
+    if (isHomeTeam && now >= homeDeadline) {
+      return NextResponse.json(
+        { success: false, error: 'Home team deadline has passed. Cannot edit lineup.' },
+        { status: 403 }
+      );
+    }
+
+    if (isAwayTeam && now >= awayDeadline) {
+      return NextResponse.json(
+        { success: false, error: 'Away team deadline has passed. Cannot edit lineup.' },
+        { status: 403 }
+      );
+    }
+
+    // Get previous lineup for audit log
+    const previousLineup = isHomeTeam ? fixture.home_lineup : fixture.away_lineup;
+
+    // Check if matchups exist
+    const existingMatchups = await sql`
+      SELECT COUNT(*) as count FROM matchups WHERE fixture_id = ${fixtureId}
+    `;
+    const matchupsExist = existingMatchups[0].count > 0;
+
+    let matchupsDeleted = false;
+
+    // If matchups exist and delete_matchups is true, delete them
+    if (matchupsExist && delete_matchups) {
+      await sql`
+        DELETE FROM matchups WHERE fixture_id = ${fixtureId}
+      `;
+      matchupsDeleted = true;
+      console.log(`🗑️ Deleted matchups for fixture ${fixtureId} due to lineup edit`);
+    } else if (matchupsExist && !delete_matchups) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Matchups already exist. Set delete_matchups=true to confirm deletion.',
+          requires_confirmation: true
+        },
+        { status: 409 }
+      );
+    }
+
+    // Update lineup
+    const lineupData = {
+      players: players,
+      locked: false,
+      submitted_by: userId,
+      submitted_at: new Date().toISOString(),
+    };
+
+    if (isHomeTeam) {
+      await sql`
+        UPDATE fixtures
+        SET 
+          home_lineup = ${JSON.stringify(lineupData)}::jsonb,
+          lineup_last_edited_by = ${userId},
+          lineup_last_edited_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${fixtureId}
+      `;
+    } else {
+      await sql`
+        UPDATE fixtures
+        SET 
+          away_lineup = ${JSON.stringify(lineupData)}::jsonb,
+          lineup_last_edited_by = ${userId},
+          lineup_last_edited_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${fixtureId}
+      `;
+    }
+
+    // Log the change
+    await logLineupChange({
+      fixtureId,
+      teamId,
+      action: 'updated',
+      previousLineup,
+      newLineup: lineupData,
+      changedBy: userId,
+      reason: matchupsDeleted ? 'Lineup edited - matchups deleted' : 'Lineup edited',
+      matchupsDeleted
+    });
+
+    // Send notification if matchups were deleted
+    if (matchupsDeleted) {
+      try {
+        const teamName = isHomeTeam ? fixture.home_team_name : fixture.away_team_name;
+        await sendNotificationToSeason(
+          {
+            title: '🔄 Lineup Updated',
+            body: `${teamName} has updated their lineup. Matchups have been reset.`,
+            url: `/fixtures/${fixtureId}`,
+            icon: '/logo.png',
+            data: {
+              type: 'lineup_updated',
+              fixture_id: fixtureId,
+              team_name: teamName,
+              matchups_deleted: 'true'
+            }
+          },
+          seasonId
+        );
+      } catch (notifError) {
+        console.error('Failed to send lineup update notification:', notifError);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Lineup updated successfully',
+      matchups_deleted: matchupsDeleted
+    });
+  } catch (error: any) {
+    console.error('Error updating lineup:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Failed to update lineup' },
       { status: 500 }
     );
   }

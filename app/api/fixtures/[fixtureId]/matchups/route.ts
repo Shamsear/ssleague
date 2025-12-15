@@ -176,13 +176,14 @@ export async function POST(
     const sql = getTournamentDb();
     const { fixtureId } = await params;
     const body = await request.json();
-    const { matchups, created_by } = body;
+    const { matchups, created_by, allow_overwrite } = body;
 
     console.log('📥 Received matchups data:', {
       fixtureId,
       created_by,
       matchupsCount: matchups?.length,
       isArray: Array.isArray(matchups),
+      allow_overwrite,
       firstMatchup: matchups?.[0]
     });
 
@@ -197,7 +198,10 @@ export async function POST(
 
     // Get fixture to extract season_id and round_number
     const fixtures = await sql`
-      SELECT season_id, round_number FROM fixtures WHERE id = ${fixtureId} LIMIT 1
+      SELECT season_id, round_number, home_team_id, away_team_id, home_team_name, away_team_name 
+      FROM fixtures 
+      WHERE id = ${fixtureId} 
+      LIMIT 1
     `;
     
     if (fixtures.length === 0) {
@@ -207,64 +211,112 @@ export async function POST(
       );
     }
     
-    const seasonId = fixtures[0].season_id;
-    const roundNumber = fixtures[0].round_number;
+    const fixture = fixtures[0];
+    const { season_id: seasonId, round_number: roundNumber, home_team_id, away_team_id, home_team_name, away_team_name } = fixture;
 
-    // Delete existing matchups for this fixture
-    await sql`
-      DELETE FROM matchups
-      WHERE fixture_id = ${fixtureId}
-    `;
+    // Use transaction to prevent race conditions
+    let matchupsCreated = false;
+    let wasOverwritten = false;
 
-    // Insert new matchups
-    for (const matchup of matchups) {
-      await sql`
-        INSERT INTO matchups (
-          fixture_id,
-          season_id,
-          round_number,
-          home_player_id,
-          home_player_name,
-          away_player_id,
-          away_player_name,
-          position,
-          match_duration,
-          created_by,
-          created_at
-        ) VALUES (
-          ${fixtureId},
-          ${seasonId},
-          ${roundNumber},
-          ${matchup.home_player_id},
-          ${matchup.home_player_name},
-          ${matchup.away_player_id},
-          ${matchup.away_player_name},
-          ${matchup.position},
-          ${matchup.match_duration || 6},
-          ${created_by},
-          NOW()
-      )
-    `;
-  }
+    await sql.begin(async (tx) => {
+      // Lock the fixture row to prevent concurrent modifications
+      const [lockedFixture] = await tx`
+        SELECT matchups_created_by, matchups_created_at
+        FROM fixtures
+        WHERE id = ${fixtureId}
+        FOR UPDATE
+      `;
 
-  // Get fixture details for notification
-  const fixtureDetails = await sql`
-    SELECT home_team_name, away_team_name FROM fixtures WHERE id = ${fixtureId}
-  `;
+      // Check if matchups already exist
+      const existingMatchups = await tx`
+        SELECT COUNT(*) as count
+        FROM matchups
+        WHERE fixture_id = ${fixtureId}
+      `;
 
-  if (fixtureDetails.length > 0) {
-    const { home_team_name, away_team_name } = fixtureDetails[0];
-    
+      const matchupsExist = existingMatchups[0].count > 0;
+
+      // If matchups exist and we're not explicitly allowing overwrite, reject
+      if (matchupsExist && !allow_overwrite) {
+        console.log('⚠️ Race condition detected: Matchups already exist');
+        throw new Error('MATCHUPS_ALREADY_EXIST');
+      }
+
+      // If overwriting, delete existing matchups
+      if (matchupsExist) {
+        console.log('🗑️ Deleting existing matchups for overwrite');
+        await tx`
+          DELETE FROM matchups
+          WHERE fixture_id = ${fixtureId}
+        `;
+        wasOverwritten = true;
+      }
+
+      // Insert new matchups
+      for (const matchup of matchups) {
+        await tx`
+          INSERT INTO matchups (
+            fixture_id,
+            season_id,
+            round_number,
+            home_player_id,
+            home_player_name,
+            away_player_id,
+            away_player_name,
+            position,
+            match_duration,
+            created_by,
+            created_at
+          ) VALUES (
+            ${fixtureId},
+            ${seasonId},
+            ${roundNumber},
+            ${matchup.home_player_id},
+            ${matchup.home_player_name},
+            ${matchup.away_player_id},
+            ${matchup.away_player_name},
+            ${matchup.position},
+            ${matchup.match_duration || 6},
+            ${created_by},
+            NOW()
+          )
+        `;
+      }
+
+      // Update fixture with creation tracking
+      await tx`
+        UPDATE fixtures
+        SET 
+          matchups_created_by = ${created_by},
+          matchups_created_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${fixtureId}
+      `;
+
+      matchupsCreated = true;
+    });
+
+    if (!matchupsCreated) {
+      return NextResponse.json(
+        { error: 'Failed to create matchups' },
+        { status: 500 }
+      );
+    }
+
     // Send FCM notification
     try {
+      const notificationBody = wasOverwritten
+        ? `Matchups for ${home_team_name} vs ${away_team_name} have been updated (${matchups.length} matches).`
+        : `Matchups for ${home_team_name} vs ${away_team_name} have been created (${matchups.length} matches).`;
+
       await sendNotificationToSeason(
         {
-          title: '⚔️ Matchups Created',
-          body: `Matchups for ${home_team_name} vs ${away_team_name} have been created (${matchups.length} matches).`,
+          title: wasOverwritten ? '🔄 Matchups Updated' : '⚔️ Matchups Created',
+          body: notificationBody,
           url: `/fixtures/${fixtureId}`,
           icon: '/logo.png',
           data: {
-            type: 'matchups_created',
+            type: wasOverwritten ? 'matchups_updated' : 'matchups_created',
             fixture_id: fixtureId,
             home_team: home_team_name,
             away_team: away_team_name,
@@ -277,11 +329,28 @@ export async function POST(
       console.error('Failed to send matchups creation notification:', notifError);
       // Don't fail the request
     }
-  }
 
-  return NextResponse.json({ success: true, message: 'Matchups created successfully' });
+    console.log(`✅ Matchups ${wasOverwritten ? 'updated' : 'created'} successfully by ${created_by}`);
+
+    return NextResponse.json({ 
+      success: true, 
+      message: wasOverwritten ? 'Matchups updated successfully' : 'Matchups created successfully',
+      was_overwritten: wasOverwritten
+    });
   } catch (error: any) {
     console.error('Error creating matchups:', error);
+    
+    // Handle race condition error specifically
+    if (error.message === 'MATCHUPS_ALREADY_EXIST') {
+      return NextResponse.json(
+        { 
+          error: 'MATCHUPS_ALREADY_EXIST',
+          message: 'Fixture has already been created by the other team'
+        },
+        { status: 409 } // 409 Conflict
+      );
+    }
+    
     console.error('Error details:', error.message, error.stack);
     return NextResponse.json(
       { error: 'Failed to create matchups', details: error.message },

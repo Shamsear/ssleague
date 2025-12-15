@@ -54,14 +54,6 @@ export default function FixtureLineupPage() {
 
       setFixture(fixtureData.fixture);
 
-      // Fetch deadline information from editable API
-      const editableRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/editable`);
-      const editableData = await editableRes.json();
-      
-      if (editableData.deadline) {
-        setDeadline(editableData.deadline);
-      }
-
       // Fetch user's team_id from team_seasons for this season
       const teamSeasonsRes = await fetchWithTokenRefresh(`/api/team-seasons?user_id=${user?.uid}&season_id=${fixtureData.fixture.season_id}`);
       const teamSeasonsData = await teamSeasonsRes.json();
@@ -103,6 +95,14 @@ export default function FixtureLineupPage() {
       }
       
       setTeamId(userTeamId);
+
+      // Fetch deadline information from editable API with teamId
+      const editableRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/editable?team_id=${userTeamId}`);
+      const editableData = await editableRes.json();
+      
+      if (editableData.deadline) {
+        setDeadline(editableData.deadline);
+      }
 
       // Fetch existing lineup if any - only for the user's team
       const lineupUrl = `/api/lineups?fixture_id=${fixtureId}&team_id=${userTeamId}`;

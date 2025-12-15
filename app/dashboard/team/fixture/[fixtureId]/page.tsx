@@ -505,40 +505,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
         setHomePlayers(homePlayersList);
         setAwayPlayers(awayPlayersList);
         
-        // Process lineup submissions
-        if (homeLineupResponse.ok) {
-          const homeLineupData = await homeLineupResponse.json();
-          if (homeLineupData.success && homeLineupData.lineups && homeLineupData.lineups.starting_xi && homeLineupData.lineups.starting_xi.length > 0) {
-            setHomeLineupSubmitted(true);
-            actualHomeLineupSubmitted = true;
-            // Get starting XI player details
-            const homeStartingPlayers = homeLineupData.lineups.starting_xi
-              .map((playerId: string) => homePlayersList.find((p: any) => p.player_id === playerId))
-              .filter(Boolean);
-            setHomeStartingXI(homeStartingPlayers);
-          }
-        }
-        
-        if (awayLineupResponse.ok) {
-          const awayLineupData = await awayLineupResponse.json();
-          if (awayLineupData.success && awayLineupData.lineups && awayLineupData.lineups.starting_xi && awayLineupData.lineups.starting_xi.length > 0) {
-            setAwayLineupSubmitted(true);
-            actualAwayLineupSubmitted = true;
-            // Get starting XI player details
-            const awayStartingPlayers = awayLineupData.lineups.starting_xi
-              .map((playerId: string) => awayPlayersList.find((p: any) => p.player_id === playerId))
-              .filter(Boolean);
-            setAwayStartingXI(awayStartingPlayers);
-          }
-        }
-        
-        console.log('📋 Lineup Status Check:', {
-          homeLineupSubmitted: actualHomeLineupSubmitted,
-          awayLineupSubmitted: actualAwayLineupSubmitted,
-          bothSubmitted: actualHomeLineupSubmitted && actualAwayLineupSubmitted
-        });
-
-        // Process matchups
+        // Process matchups first to determine if lineups should be visible
         let matchupsList: any[] = [];
         if (matchupsResponse.ok) {
           const matchupsData = await matchupsResponse.json();
@@ -548,6 +515,78 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
             setMatchups(matchupsList);
           }
         }
+
+        // Process lineup submissions
+        // During fixture entry phase (after home deadline, before away deadline, no matchups),
+        // each team's lineup changes should be private until matchups are created
+        const matchupsExist = matchupsList.length > 0;
+        
+        if (homeLineupResponse.ok) {
+          const homeLineupData = await homeLineupResponse.json();
+          if (homeLineupData.success && homeLineupData.lineups && homeLineupData.lineups.starting_xi && homeLineupData.lineups.starting_xi.length > 0) {
+            // Track actual submission status (for matchup creation logic)
+            actualHomeLineupSubmitted = true;
+            
+            // Always show own team's lineup
+            if (isHome) {
+              setHomeLineupSubmitted(true);
+              const homeStartingPlayers = homeLineupData.lineups.starting_xi
+                .map((playerId: string) => homePlayersList.find((p: any) => p.player_id === playerId))
+                .filter(Boolean);
+              setHomeStartingXI(homeStartingPlayers);
+            } else {
+              // Away team viewing home lineup - only show if matchups exist
+              if (matchupsExist) {
+                setHomeLineupSubmitted(true);
+                const homeStartingPlayers = homeLineupData.lineups.starting_xi
+                  .map((playerId: string) => homePlayersList.find((p: any) => p.player_id === playerId))
+                  .filter(Boolean);
+                setHomeStartingXI(homeStartingPlayers);
+              } else {
+                // Hide opponent's lineup during fixture entry phase (but track that it exists)
+                console.log('🔒 Hiding home lineup from away team (no matchups yet)');
+              }
+            }
+          }
+        }
+        
+        if (awayLineupResponse.ok) {
+          const awayLineupData = await awayLineupResponse.json();
+          if (awayLineupData.success && awayLineupData.lineups && awayLineupData.lineups.starting_xi && awayLineupData.lineups.starting_xi.length > 0) {
+            // Track actual submission status (for matchup creation logic)
+            actualAwayLineupSubmitted = true;
+            
+            // Always show own team's lineup
+            if (!isHome) {
+              setAwayLineupSubmitted(true);
+              const awayStartingPlayers = awayLineupData.lineups.starting_xi
+                .map((playerId: string) => awayPlayersList.find((p: any) => p.player_id === playerId))
+                .filter(Boolean);
+              setAwayStartingXI(awayStartingPlayers);
+            } else {
+              // Home team viewing away lineup - only show if matchups exist
+              if (matchupsExist) {
+                setAwayLineupSubmitted(true);
+                const awayStartingPlayers = awayLineupData.lineups.starting_xi
+                  .map((playerId: string) => awayPlayersList.find((p: any) => p.player_id === playerId))
+                  .filter(Boolean);
+                setAwayStartingXI(awayStartingPlayers);
+              } else {
+                // Hide opponent's lineup during fixture entry phase (but track that it exists)
+                console.log('🔒 Hiding away lineup from home team (no matchups yet)');
+              }
+            }
+          }
+        }
+        
+        console.log('📋 Lineup Status Check:', {
+          isHome,
+          matchupsExist,
+          homeLineupSubmitted: actualHomeLineupSubmitted,
+          awayLineupSubmitted: actualAwayLineupSubmitted,
+          bothSubmitted: actualHomeLineupSubmitted && actualAwayLineupSubmitted,
+          note: matchupsExist ? 'Showing both lineups' : 'Hiding opponent lineup'
+        });
         
         // Process round deadlines and calculate phase
         if (roundResponse.ok) {
@@ -656,16 +695,53 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               canSubmit: now < lineupDeadlineTime
             });
             
-            // Can submit lineup if before deadline AND matchups haven't been created yet
-            // Once matchups are created, lineups are locked to prevent inconsistencies
-            const canSubmit = now < lineupDeadlineTime && matchupsList.length === 0;
+            // Calculate lineup submission permissions
+            // 1. Before round start: anyone can submit (if no matchups)
+            // 2. Home team: can submit until home deadline (even if matchups exist, they'll be deleted)
+            // 3. After home deadline: if no matchups, both teams can submit until away deadline
+            
+            const homeDeadlineTime = new Date(`${deadlines.scheduled_date}T${deadlines.home_fixture_deadline_time}:00+05:30`);
+            const awayDeadlineTime = new Date(`${deadlines.scheduled_date}T${deadlines.away_fixture_deadline_time}:00+05:30`);
+            
+            let canSubmit = false;
+            let submitReason = '';
+            
+            if (matchupsList.length > 0) {
+              // Matchups exist - only home team can edit before home deadline
+              if (isHome && now < homeDeadlineTime) {
+                canSubmit = true;
+                submitReason = 'Home team can edit until home deadline (will delete matchups)';
+              } else {
+                canSubmit = false;
+                submitReason = 'Matchups created - lineups locked';
+              }
+            } else {
+              // No matchups yet
+              if (now < homeDeadlineTime) {
+                // Before home deadline - anyone can submit
+                canSubmit = true;
+                submitReason = 'Before home deadline';
+              } else if (now < awayDeadlineTime) {
+                // After home deadline, before away deadline - both teams can submit
+                canSubmit = true;
+                submitReason = 'Fixture entry phase - both teams can submit';
+              } else {
+                // After away deadline
+                canSubmit = false;
+                submitReason = 'Deadline passed';
+              }
+            }
+            
             setCanSubmitLineup(canSubmit);
             
-            console.log('\ud83d\udd12 Lineup Edit Permission:', {
-              beforeDeadline: now < lineupDeadlineTime,
+            console.log('🔒 Lineup Edit Permission:', {
+              isHome,
+              now: now.toISOString(),
+              homeDeadline: homeDeadlineTime.toISOString(),
+              awayDeadline: awayDeadlineTime.toISOString(),
               matchupsExist: matchupsList.length > 0,
               canSubmitLineup: canSubmit,
-              reason: matchupsList.length > 0 ? 'Matchups created - lineups locked' : 'OK'
+              reason: submitReason
             });
 
             // Calculate substitution deadline
@@ -858,12 +934,29 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
         body: JSON.stringify({
           matchups: matchupsToSave,
           created_by: user!.uid,
+          allow_overwrite: false, // Don't allow overwrite - first come first served
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Server error:', errorData);
+        
+        // Handle race condition - opponent created fixture first
+        if (response.status === 409 && errorData.error === 'MATCHUPS_ALREADY_EXIST') {
+          showAlert({
+            type: 'warning',
+            title: 'Fixture Already Created',
+            message: 'The opponent has already created the fixture. Refreshing to show their matchups...'
+          });
+          
+          // Refresh page after 2 seconds to show the created matchups
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+          return;
+        }
+        
         throw new Error(errorData.details || errorData.error || 'Failed to create matchups');
       }
 
@@ -1280,32 +1373,55 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
           </div>
 
           {/* Lineup Deadline Info */}
-          {lineupDeadline && (
-            <div className={`mb-4 p-4 rounded-xl border-2 ${
-              canSubmitLineup 
-                ? 'bg-green-50 border-green-300' 
-                : 'bg-red-50 border-red-300'
-            }`}>
-              <div className="flex items-center gap-2 mb-2">
-                <svg className={`w-5 h-5 ${
-                  canSubmitLineup ? 'text-green-600' : 'text-red-600'
-                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className={`text-sm font-semibold ${
-                  canSubmitLineup ? 'text-green-900' : 'text-red-900'
-                }`}>
-                  {canSubmitLineup ? '✓ Lineup Submission Open' : '⏰ Lineup Submission Closed'}
-                </span>
+          {lineupDeadline && (() => {
+            const now = new Date();
+            const homeDeadline = roundDeadlines && roundDeadlines.scheduled_date 
+              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`)
+              : null;
+            const awayDeadline = roundDeadlines && roundDeadlines.scheduled_date 
+              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`)
+              : null;
+            
+            // Home team can edit until home deadline
+            const canHomeEdit = isHomeTeam && homeDeadline && now < homeDeadline;
+            
+            // After home deadline, if no matchups exist, both teams can edit until away deadline
+            const inFixtureEntryPhase = homeDeadline && awayDeadline && now >= homeDeadline && now < awayDeadline;
+            const canEditDuringFixtureEntry = inFixtureEntryPhase && matchups.length === 0;
+            
+            const isOpen = canSubmitLineup || canHomeEdit || canEditDuringFixtureEntry;
+            
+            return (
+              <div className={`mb-4 p-4 rounded-xl border-2 ${
+                isOpen 
+                  ? 'bg-green-50 border-green-300' 
+                  : 'bg-red-50 border-red-300'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className={`w-5 h-5 ${
+                    isOpen ? 'text-green-600' : 'text-red-600'
+                  }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className={`text-sm font-semibold ${
+                    isOpen ? 'text-green-900' : 'text-red-900'
+                  }`}>
+                    {isOpen ? '✓ Lineup Submission Open' : '⏰ Lineup Submission Closed'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-700">
+                  {canEditDuringFixtureEntry
+                    ? `⚡ Both teams can edit lineup & create fixture until: ${awayDeadline?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (First to submit wins!)`
+                    : canHomeEdit && !canSubmitLineup
+                    ? `🏠 Home team can edit until: ${homeDeadline?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST`
+                    : matchups.length > 0 && !canSubmitLineup
+                    ? '🔒 Lineups locked: Matchups have been created'
+                    : `Deadline: ${lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (Round start time)`
+                  }
+                </p>
               </div>
-              <p className="text-xs text-gray-700">
-                {matchups.length > 0 && !canSubmitLineup
-                  ? '🔒 Lineups locked: Matchups have been created'
-                  : `Deadline: ${lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (Round start time)`
-                }
-              </p>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Lineup Status Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -1331,7 +1447,9 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               <p className={`text-xs font-medium ${
                 homeLineupSubmitted ? 'text-green-700' : 'text-gray-600'
               }`}>
-                {homeLineupSubmitted ? '✓ Lineup Submitted' : '⏳ Waiting for lineup'}
+                {homeLineupSubmitted 
+                  ? '✓ Lineup Submitted' 
+                  : '⏳ Waiting for lineup'}
               </p>
             </div>
 
@@ -1357,47 +1475,103 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               <p className={`text-xs font-medium ${
                 awayLineupSubmitted ? 'text-green-700' : 'text-gray-600'
               }`}>
-                {awayLineupSubmitted ? '✓ Lineup Submitted' : '⏳ Waiting for lineup'}
+                {awayLineupSubmitted 
+                  ? '✓ Lineup Submitted' 
+                  : '⏳ Waiting for lineup'}
               </p>
             </div>
           </div>
 
           {/* Submit/Edit Lineup Button */}
-          {canSubmitLineup && (
-            <Link
-              href={`/dashboard/team/fixture/${fixtureId}/lineup`}
-              className="group relative w-full px-5 py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 text-white font-bold rounded-2xl hover:from-purple-700 hover:via-pink-700 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.02] flex items-center justify-center gap-3 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 group-hover:animate-shimmer"></div>
-              <div className="relative flex items-center gap-3">
-                <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                </svg>
-                <span className="text-base sm:text-lg">
-                  {isHomeTeam && homeLineupSubmitted ? '✏️ Edit Your Lineup' : 
-                   !isHomeTeam && awayLineupSubmitted ? '✏️ Edit Your Lineup' : 
-                   '📝 Submit Your Lineup'}
-                </span>
+          {(() => {
+            // Check if home team can edit (before home deadline)
+            const now = new Date();
+            const homeDeadline = roundDeadlines && roundDeadlines.scheduled_date 
+              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`)
+              : null;
+            const awayDeadline = roundDeadlines && roundDeadlines.scheduled_date 
+              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`)
+              : null;
+            
+            const canHomeEdit = isHomeTeam && homeDeadline && now < homeDeadline;
+            
+            // After home deadline, if no matchups exist, both teams can edit until away deadline
+            const inFixtureEntryPhase = homeDeadline && awayDeadline && now >= homeDeadline && now < awayDeadline;
+            const canEditDuringFixtureEntry = inFixtureEntryPhase && matchups.length === 0;
+            
+            // Show button if: can submit OR home team can edit OR both can edit during fixture entry
+            const showButton = canSubmitLineup || canHomeEdit || canEditDuringFixtureEntry;
+            
+            if (showButton) {
+              return (
+                <>
+                  <Link
+                    href={`/dashboard/team/fixture/${fixtureId}/lineup`}
+                    className="group relative w-full px-5 py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 text-white font-bold rounded-2xl hover:from-purple-700 hover:via-pink-700 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.02] flex items-center justify-center gap-3 overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 group-hover:animate-shimmer"></div>
+                    <div className="relative flex items-center gap-3">
+                      <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                      <span className="text-base sm:text-lg">
+                        {isHomeTeam && homeLineupSubmitted ? '✏️ Edit Your Lineup' : 
+                         !isHomeTeam && awayLineupSubmitted ? '✏️ Edit Your Lineup' : 
+                         '📝 Submit Your Lineup'}
+                      </span>
+                    </div>
+                  </Link>
+                  {canHomeEdit && matchups.length > 0 && (
+                    <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <svg className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-orange-900">⚠️ Warning</p>
+                          <p className="text-xs text-orange-700 mt-1">
+                            Editing your lineup will delete the existing matchups. You'll need to recreate them after saving your changes.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {canEditDuringFixtureEntry && (
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-blue-900">ℹ️ Fixture Entry Phase</p>
+                          <p className="text-xs text-blue-700 mt-1">
+                            Home team didn't create fixture. Both teams can now edit lineup and create matchups. Your changes are private until you submit. First to submit wins!
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            }
+            
+            return (
+              <div className="text-center py-4 text-gray-600">
+                <p className="text-sm font-medium">
+                  {matchups.length > 0 
+                    ? '🔒 Lineups locked: Matchups created' 
+                    : '⏰ Lineup submission deadline has passed'
+                  }
+                </p>
+                <p className="text-xs mt-1">
+                  {matchups.length > 0
+                    ? 'Lineups cannot be edited once matchups are created to maintain fair play'
+                    : 'Lineups are now locked for this fixture'
+                  }
+                </p>
               </div>
-            </Link>
-          )}
-
-          {!canSubmitLineup && (
-            <div className="text-center py-4 text-gray-600">
-              <p className="text-sm font-medium">
-                {matchups.length > 0 
-                  ? '🔒 Lineups locked: Matchups created' 
-                  : '⏰ Lineup submission deadline has passed'
-                }
-              </p>
-              <p className="text-xs mt-1">
-                {matchups.length > 0
-                  ? 'Lineups cannot be edited once matchups are created to maintain fair play'
-                  : 'Lineups are now locked for this fixture'
-                }
-              </p>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Matchups Section */}

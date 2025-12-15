@@ -54,11 +54,32 @@ export default function LineupSubmission({
     fetchFixtureTournamentId();
     fetchRoster();
     checkEditability();
-    if (existingLineup) {
-      setStartingXI(existingLineup.starting_xi);
-      setSubstitutes(existingLineup.substitutes);
-    }
   }, [fixtureId, teamId, seasonId]);
+
+  // Separate useEffect for loading existing lineup
+  useEffect(() => {
+    if (existingLineup) {
+      console.log('📋 Loading existing lineup:', {
+        starting_xi: existingLineup.starting_xi,
+        substitutes: existingLineup.substitutes,
+        starting_xi_length: existingLineup.starting_xi?.length,
+        substitutes_length: existingLineup.substitutes?.length
+      });
+      setStartingXI(existingLineup.starting_xi || []);
+      setSubstitutes(existingLineup.substitutes || []);
+      console.log('✅ State updated with existing lineup');
+    }
+  }, [existingLineup]);
+
+  // Debug log when state changes
+  useEffect(() => {
+    console.log('🔍 Current state:', {
+      startingXI,
+      substitutes,
+      startingXI_length: startingXI?.length,
+      substitutes_length: substitutes?.length
+    });
+  }, [startingXI, substitutes]);
 
   const fetchFixtureTournamentId = async () => {
     try {
@@ -169,7 +190,7 @@ export default function LineupSubmission({
 
   const checkEditability = async () => {
     try {
-      const response = await fetch(`/api/fixtures/${fixtureId}/editable`);
+      const response = await fetch(`/api/fixtures/${fixtureId}/editable?team_id=${teamId}`);
       const data = await response.json();
       setIsEditable(data.editable);
       setDeadlineInfo(data);

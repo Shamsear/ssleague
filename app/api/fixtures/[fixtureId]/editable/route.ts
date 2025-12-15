@@ -8,7 +8,11 @@ export async function GET(
   try {
     const { fixtureId } = await params;
     
-    const editabilityCheck = await isLineupEditable(fixtureId);
+    // Get teamId from query params if provided
+    const searchParams = request.nextUrl.searchParams;
+    const teamId = searchParams.get('team_id');
+    
+    const editabilityCheck = await isLineupEditable(fixtureId, teamId || undefined);
     
     return NextResponse.json({
       editable: editabilityCheck.editable,

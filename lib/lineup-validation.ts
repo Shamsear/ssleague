@@ -166,9 +166,13 @@ export async function validateLineup(
 
 /**
  * Check if lineup can still be edited (deadline not passed)
+ * Updated to support:
+ * 1. Home team can edit until home deadline
+ * 2. Both teams can edit during fixture_entry phase (after home deadline, before away deadline, if no matchups)
  */
 export async function isLineupEditable(
-  fixtureId: string
+  fixtureId: string,
+  teamId?: string
 ): Promise<{ editable: boolean; reason?: string; deadline?: string; roundStart?: string; homeDeadline?: string; awayDeadline?: string }> {
   const sql = getTournamentDb();
 
@@ -179,10 +183,13 @@ export async function isLineupEditable(
       f.season_id,
       f.tournament_id,
       f.leg,
+      f.home_team_id,
+      f.away_team_id,
       f.status as fixture_status,
       rd.scheduled_date,
       rd.round_start_time,
       rd.home_fixture_deadline_time,
+      rd.away_fixture_deadline_time,
       rd.status as round_status
     FROM fixtures f
     LEFT JOIN round_deadlines rd ON 
@@ -211,77 +218,92 @@ export async function isLineupEditable(
   if (fixture.scheduled_date) {
     const now = new Date();
     
-    // Use round_start_time (actual time round began/restarted)
-    // This represents the true round start, which may differ from scheduled time
-    const roundStartTimeStr = fixture.round_start_time || fixture.home_fixture_deadline_time || '14:00';
-    
     // Convert scheduled_date to YYYY-MM-DD string if it's a Date object
     let scheduledDateStr: string;
     if (fixture.scheduled_date instanceof Date) {
-      // Extract just the date part in YYYY-MM-DD format
       const year = fixture.scheduled_date.getFullYear();
       const month = String(fixture.scheduled_date.getMonth() + 1).padStart(2, '0');
       const day = String(fixture.scheduled_date.getDate()).padStart(2, '0');
       scheduledDateStr = `${year}-${month}-${day}`;
     } else {
-      // It's already a string, use as-is
-      scheduledDateStr = String(fixture.scheduled_date).split('T')[0]; // Extract date part if timestamp
+      scheduledDateStr = String(fixture.scheduled_date).split('T')[0];
     }
     
-    console.log('🔍 Date construction inputs:', {
-      scheduled_date: fixture.scheduled_date,
-      scheduled_date_type: typeof fixture.scheduled_date,
-      scheduledDateStr,
-      round_start_time: fixture.round_start_time,
-      home_fixture_deadline_time: fixture.home_fixture_deadline_time,
-      roundStartTimeStr,
-      dateString: `${scheduledDateStr}T${roundStartTimeStr}:00+05:30`
-    });
-    
-    // Combine date with round start time (using IST timezone)
+    // Calculate all deadlines
+    const homeDeadlineTime = new Date(`${scheduledDateStr}T${fixture.home_fixture_deadline_time}:00+05:30`);
+    const awayDeadlineTime = new Date(`${scheduledDateStr}T${fixture.away_fixture_deadline_time}:00+05:30`);
+    const roundStartTimeStr = fixture.round_start_time || fixture.home_fixture_deadline_time || '14:00';
     const roundStart = new Date(`${scheduledDateStr}T${roundStartTimeStr}:00+05:30`);
     
-    console.log('🔍 Date construction result:', {
-      roundStart,
-      isValid: !isNaN(roundStart.getTime()),
-      timestamp: roundStart.getTime()
+    // Check if matchups exist
+    const matchupsResult = await sql`
+      SELECT COUNT(*) as count
+      FROM matchups
+      WHERE fixture_id = ${fixtureId}
+    `;
+    const matchupsExist = matchupsResult[0].count > 0;
+    
+    // Determine if user is home team
+    const isHomeTeam = teamId === fixture.home_team_id;
+    
+    console.log('🕐 Lineup Editability Check:', {
+      fixtureId,
+      teamId,
+      isHomeTeam,
+      matchupsExist,
+      now: now.toISOString(),
+      homeDeadline: homeDeadlineTime.toISOString(),
+      awayDeadline: awayDeadlineTime.toISOString(),
+      roundStart: roundStart.toISOString()
     });
     
-    // Lineup deadline = round start time (no grace period)
-    const lineupDeadline = new Date(roundStart.getTime());
-
-    console.log('🕐 Lineup Deadline Check:', {
-      scheduled_date: fixture.scheduled_date,
-      home_fixture_deadline_time: fixture.home_fixture_deadline_time,
-      round_start_time: fixture.round_start_time,
-      actualRoundStartTimeStr: roundStartTimeStr,
-      roundStart: roundStart.toISOString(),
-      roundStartLocal: roundStart.toLocaleString(),
-      roundStartIST: roundStart.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      lineupDeadline: lineupDeadline.toISOString(),
-      lineupDeadlineLocal: lineupDeadline.toLocaleString(),
-      lineupDeadlineIST: lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      now: now.toISOString(),
-      nowLocal: now.toLocaleString(),
-      nowIST: now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      isPassed: now > lineupDeadline,
-      minutesRemaining: Math.floor((lineupDeadline.getTime() - now.getTime()) / 60000)
+    // Determine editability based on phase and matchups
+    let editable = false;
+    let reason = '';
+    let deadline = roundStart.toISOString();
+    
+    if (matchupsExist) {
+      // Matchups exist - only home team can edit before home deadline
+      if (isHomeTeam && now < homeDeadlineTime) {
+        editable = true;
+        reason = 'Home team can edit until home deadline (will delete matchups)';
+        deadline = homeDeadlineTime.toISOString();
+      } else {
+        editable = false;
+        reason = 'Lineup locked - matchups have been created';
+      }
+    } else {
+      // No matchups yet
+      if (now < homeDeadlineTime) {
+        // Before home deadline - anyone can edit
+        editable = true;
+        reason = 'Before home deadline';
+        deadline = homeDeadlineTime.toISOString();
+      } else if (now < awayDeadlineTime) {
+        // After home deadline, before away deadline - both teams can edit
+        editable = true;
+        reason = 'Fixture entry phase - both teams can edit';
+        deadline = awayDeadlineTime.toISOString();
+      } else {
+        // After away deadline
+        editable = false;
+        reason = 'Lineup deadline has passed';
+      }
+    }
+    
+    console.log('🔒 Editability Result:', {
+      editable,
+      reason,
+      deadline
     });
 
-    // Check if deadline has passed
-    if (now > lineupDeadline) {
-      return { 
-        editable: false, 
-        reason: 'Lineup deadline has passed (round start time)', 
-        deadline: lineupDeadline.toISOString(),
-        roundStart: roundStart.toISOString()
-      };
-    }
-
     return { 
-      editable: true,
-      deadline: lineupDeadline.toISOString(),
-      roundStart: roundStart.toISOString()
+      editable,
+      reason,
+      deadline,
+      roundStart: roundStart.toISOString(),
+      homeDeadline: homeDeadlineTime.toISOString(),
+      awayDeadline: awayDeadlineTime.toISOString()
     };
   }
 
