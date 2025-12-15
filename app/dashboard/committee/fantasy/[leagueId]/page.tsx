@@ -270,6 +270,19 @@ export default function FantasyLeagueDashboard() {
       borderColor: 'border-red-200',
     },
     {
+      title: 'View Lineups',
+      description: 'Check all teams\' starting 5, captain & vice-captain',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/${leagueId}/lineups`,
+      color: 'from-indigo-500 to-blue-600',
+      bgColor: 'from-indigo-50 to-blue-50',
+      borderColor: 'border-indigo-200',
+    },
+    {
       title: 'Transfer Management',
       description: 'Configure windows, settings & rules',
       icon: (
