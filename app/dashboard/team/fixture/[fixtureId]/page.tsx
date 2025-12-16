@@ -12,6 +12,7 @@ import { useRoundPhaseMonitor } from '@/hooks/useRoundPhaseMonitor';
 import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import LineupDeadlineMonitor from '@/components/LineupDeadlineMonitor';
 
 interface Matchup {
   home_player_id: string;
@@ -1214,6 +1215,19 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-7xl">
+        {/* Lineup Deadline Monitor */}
+        {roundDeadlines && roundDeadlines.scheduled_date && roundDeadlines.round_start_time && (
+          <div className="mb-6">
+            <LineupDeadlineMonitor
+              seasonId={fixture.season_id}
+              roundNumber={fixture.round_number}
+              leg={fixture.leg}
+              scheduledDate={roundDeadlines.scheduled_date}
+              awayDeadlineTime={roundDeadlines.round_start_time}
+            />
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-4 sm:mb-6">
           <Link

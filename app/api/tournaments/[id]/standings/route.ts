@@ -12,11 +12,13 @@ export async function GET(
     // Get tournament info to determine format
     const tournaments = await sql`
       SELECT 
+        tournament_name,
         has_league_stage,
         has_group_stage,
         has_knockout_stage,
         is_pure_knockout,
-        teams_advancing_per_group
+        teams_advancing_per_group,
+        season_id
       FROM tournaments
       WHERE id = ${tournamentId}
     `;
@@ -29,6 +31,23 @@ export async function GET(
     }
 
     const tournament = tournaments[0];
+
+    // Fetch season name from Firebase
+    let seasonName = null;
+    if (tournament.season_id) {
+      try {
+        const { db } = await import('@/lib/firebase/config');
+        const { doc, getDoc } = await import('firebase/firestore');
+        
+        const seasonDoc = await getDoc(doc(db, 'seasons', tournament.season_id));
+        if (seasonDoc.exists()) {
+          const seasonData = seasonDoc.data();
+          seasonName = seasonData.season_name || seasonData.name || `Season ${seasonData.season_number || ''}`;
+        }
+      } catch (error) {
+        console.error('Error fetching season from Firebase:', error);
+      }
+    }
 
     // Get all completed fixtures for this tournament from Neon
     const fixtures = await sql`
@@ -57,6 +76,8 @@ export async function GET(
       
       return NextResponse.json({
         success: true,
+        tournament_name: tournament.tournament_name,
+        season_name: seasonName,
         format: 'group_stage',
         has_knockout: tournament.has_knockout_stage,
         groupStandings,
@@ -66,6 +87,8 @@ export async function GET(
       // Pure Knockout format
       return NextResponse.json({
         success: true,
+        tournament_name: tournament.tournament_name,
+        season_name: seasonName,
         format: 'knockout',
         knockoutFixtures: getKnockoutFixtures(fixtures),
       });
@@ -84,6 +107,8 @@ export async function GET(
       
       return NextResponse.json({
         success: true,
+        tournament_name: tournament.tournament_name,
+        season_name: seasonName,
         format: 'league',
         has_knockout: tournament.has_knockout_stage,
         playoff_spots: playoffSpots,

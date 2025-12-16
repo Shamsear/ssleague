@@ -20,27 +20,29 @@ interface MatchupResult {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { season_id, fixture_id, home_team_id, away_team_id, matchups } = body;
+    const { season_id, fixture_id, home_team_id, away_team_id, matchups, home_score, away_score, home_penalty_goals, away_penalty_goals, is_edit } = body;
 
-    if (!season_id || !fixture_id || !home_team_id || !away_team_id || !matchups || !Array.isArray(matchups)) {
+    if (!season_id || !fixture_id || !home_team_id || !away_team_id) {
       return NextResponse.json(
-        { error: 'Invalid request data. Required: season_id, fixture_id, home_team_id, away_team_id, matchups[]' },
+        { error: 'Invalid request data. Required: season_id, fixture_id, home_team_id, away_team_id' },
         { status: 400 }
       );
     }
 
-    // Calculate aggregate scores
-    let homeTeamGoals = 0;
-    let awayTeamGoals = 0;
+    // Use provided scores if available, otherwise calculate from matchups
+    let homeTeamGoals = home_score !== undefined ? home_score : 0;
+    let awayTeamGoals = away_score !== undefined ? away_score : 0;
 
-    for (const matchup of matchups as MatchupResult[]) {
-      if (matchup.home_goals !== null && matchup.away_goals !== null) {
-        homeTeamGoals += matchup.home_goals;
-        awayTeamGoals += matchup.away_goals;
+    if (home_score === undefined && matchups && Array.isArray(matchups)) {
+      for (const matchup of matchups as MatchupResult[]) {
+        if (matchup.home_goals !== null && matchup.away_goals !== null) {
+          homeTeamGoals += matchup.home_goals;
+          awayTeamGoals += matchup.away_goals;
+        }
       }
     }
 
-    // Determine match result
+    // Determine match result (based on FINAL scores including penalties)
     const homeWon = homeTeamGoals > awayTeamGoals;
     const awayWon = awayTeamGoals > homeTeamGoals;
     const draw = homeTeamGoals === awayTeamGoals;
@@ -52,9 +54,12 @@ export async function POST(request: NextRequest) {
       fixture_id,
       goals_for: homeTeamGoals,
       goals_against: awayTeamGoals,
+      penalty_goals_for: Number(home_penalty_goals) || 0,
+      penalty_goals_against: Number(away_penalty_goals) || 0,
       won: homeWon,
       draw,
-      lost: awayWon
+      lost: awayWon,
+      is_edit: is_edit || false
     });
 
     // Update away team stats
@@ -64,9 +69,12 @@ export async function POST(request: NextRequest) {
       fixture_id,
       goals_for: awayTeamGoals,
       goals_against: homeTeamGoals,
+      penalty_goals_for: Number(away_penalty_goals) || 0,
+      penalty_goals_against: Number(home_penalty_goals) || 0,
       won: awayWon,
       draw,
-      lost: homeWon
+      lost: homeWon,
+      is_edit: is_edit || false
     });
 
     // Get tournament_id from fixture to recalculate positions for this tournament only
@@ -148,12 +156,15 @@ async function updateTeamStats(data: {
   fixture_id: string;
   goals_for: number;
   goals_against: number;
+  penalty_goals_for?: number;
+  penalty_goals_against?: number;
   won: boolean;
   draw: boolean;
   lost: boolean;
+  is_edit?: boolean;
 }) {
   const sql = getTournamentDb();
-  const { team_id, season_id, fixture_id, goals_for, goals_against, won, draw, lost } = data;
+  const { team_id, season_id, fixture_id, goals_for, goals_against, penalty_goals_for, penalty_goals_against, won, draw, lost, is_edit } = data;
 
   // Construct composite ID: team_id_seasonId
   const statsId = `${team_id}_${season_id}`;
@@ -165,18 +176,52 @@ async function updateTeamStats(data: {
 
   if (existing.length > 0) {
     const current = existing[0];
-    const processedFixtures = current.processed_fixtures || [];
+    let processedFixtures = current.processed_fixtures || [];
     
     // Check if this fixture was already processed
-    const existingFixture = processedFixtures.find((f: any) => f.fixture_id === fixture_id);
+    const existingFixtureIndex = processedFixtures.findIndex((f: any) => f.fixture_id === fixture_id);
     
-    if (existingFixture) {
+    if (existingFixtureIndex >= 0 && !is_edit) {
       console.log(`✓ Fixture ${fixture_id} already processed for team ${team_id}, skipping`);
       return; // Already processed, skip to prevent duplicates
     }
     
+    // If editing, remove the old fixture data first
+    if (existingFixtureIndex >= 0 && is_edit) {
+      const oldFixture = processedFixtures[existingFixtureIndex];
+      console.log(`🔄 Editing fixture ${fixture_id} for team ${team_id}, removing old data first`);
+      
+      // Remove old stats
+      const oldMatches = current.matches_played - 1;
+      const oldGoalsFor = current.goals_for - oldFixture.goals_for;
+      const oldGoalsAgainst = current.goals_against - oldFixture.goals_against;
+      const oldWins = current.wins - (oldFixture.won ? 1 : 0);
+      const oldDraws = current.draws - (oldFixture.draw ? 1 : 0);
+      const oldLosses = current.losses - (oldFixture.lost ? 1 : 0);
+      
+      // Update current to reflect removal
+      current.matches_played = oldMatches;
+      current.goals_for = oldGoalsFor;
+      current.goals_against = oldGoalsAgainst;
+      current.wins = oldWins;
+      current.draws = oldDraws;
+      current.losses = oldLosses;
+      current.points = (oldWins * 3) + oldDraws;
+      
+      // Remove from processed fixtures
+      processedFixtures.splice(existingFixtureIndex, 1);
+    }
+    
     // New fixture - add stats
-    const updatedProcessedFixtures = [...processedFixtures, { fixture_id, goals_for, goals_against, won, draw, lost }];
+    // Note: goals_for and goals_against already include penalty goals from the fixture
+    const updatedProcessedFixtures = [...processedFixtures, { 
+      fixture_id, 
+      goals_for, 
+      goals_against, 
+      won, 
+      draw, 
+      lost 
+    }];
     
     const newMatches = (current.matches_played || 0) + 1;
     const newGoalsFor = (current.goals_for || 0) + goals_for;
@@ -217,7 +262,8 @@ async function updateTeamStats(data: {
       WHERE id = ${statsId}
     `;
     
-    console.log(`✓ Updated team stats for ${team_id}: +${goals_for} GF, +${goals_against} GA, ${won ? 'W' : draw ? 'D' : 'L'}, Form: ${newForm}`);
+    const penaltyInfo = (penalty_goals_for || 0) > 0 ? ` (includes ${penalty_goals_for} penalty goals)` : '';
+    console.log(`✓ Updated team stats for ${team_id}: +${goals_for} GF${penaltyInfo}, +${goals_against} GA, ${won ? 'W' : draw ? 'D' : 'L'}, Form: ${newForm}`);
   } else {
     // Stats don't exist - skip creation (stats should already exist before fixtures)
     console.warn(`⚠ Team stats not found for ${statsId}, skipping update. Stats must be created before processing fixtures.`);

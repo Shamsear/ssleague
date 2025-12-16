@@ -561,6 +561,75 @@ export async function PATCH(
       // Don't fail the entire request if rewards fail
     }
 
+    // Update team stats in teamstats table
+    try {
+      console.log('📊 Updating team stats...');
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      
+      // Get fixture details for team stats update
+      const fixtureDetails = await sql`
+        SELECT home_team_id, away_team_id
+        FROM fixtures
+        WHERE id = ${fixtureId}
+        LIMIT 1
+      `;
+      
+      if (fixtureDetails.length > 0) {
+        const teamStatsResponse = await fetch(`${baseUrl}/api/teamstats/update-stats`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            season_id: season_id,
+            fixture_id: fixtureId,
+            home_team_id: fixtureDetails[0].home_team_id,
+            away_team_id: fixtureDetails[0].away_team_id,
+            home_score: totalHomeScore,
+            away_score: totalAwayScore,
+            home_penalty_goals: Number(home_penalty_goals) || 0,
+            away_penalty_goals: Number(away_penalty_goals) || 0,
+            matchups: results
+          })
+        });
+
+        if (!teamStatsResponse.ok) {
+          const errorData = await teamStatsResponse.json();
+          console.error('Team stats update failed:', errorData);
+        } else {
+          const teamStatsData = await teamStatsResponse.json();
+          console.log('✅ Team stats updated:', teamStatsData);
+        }
+      }
+    } catch (teamStatsError) {
+      console.error('Failed to update team stats:', teamStatsError);
+      // Don't fail the entire request if team stats update fails
+    }
+
+    // Calculate fantasy points (including passive team bonuses)
+    try {
+      console.log('🎮 Triggering fantasy points calculation...');
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      const fantasyResponse = await fetch(`${baseUrl}/api/fantasy/calculate-points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fixture_id: fixtureId,
+          season_id: season_id,
+          round_number: round_number
+        })
+      });
+
+      if (!fantasyResponse.ok) {
+        const errorData = await fantasyResponse.json();
+        console.error('Fantasy points calculation failed:', errorData);
+      } else {
+        const fantasyData = await fantasyResponse.json();
+        console.log('✅ Fantasy points calculated:', fantasyData);
+      }
+    } catch (fantasyError) {
+      console.error('Failed to calculate fantasy points:', fantasyError);
+      // Don't fail the entire request if fantasy calculation fails
+    }
+
     return NextResponse.json({ 
       success: true, 
       message: 'Results saved successfully',

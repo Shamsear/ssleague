@@ -386,6 +386,19 @@ export async function PATCH(
     const newResult = newHomeScore > newAwayScore ? 'home_win' : 
                       newAwayScore > newHomeScore ? 'away_win' : 'draw';
 
+    // Step 4.2: Delete old transactions for this fixture to prevent duplicates
+    console.log('🗑️  Deleting old transactions for this fixture...');
+    try {
+      await sql`
+        DELETE FROM transactions
+        WHERE description LIKE ${'%Fixture: ' + fixtureId + '%'}
+          AND transaction_type = 'match_reward'
+      `;
+      console.log('✅ Old transactions deleted');
+    } catch (txError) {
+      console.error('⚠️  Failed to delete old transactions:', txError);
+    }
+
     // Step 4.3: Revert old match rewards if result changed
     const oldResult = fixture.result;
     if (oldResult && oldResult !== newResult) {
@@ -537,7 +550,12 @@ export async function PATCH(
           fixture_id: fixtureId,
           home_team_id: fixture.home_team_id,
           away_team_id: fixture.away_team_id,
+          home_score: totalHomeScore,
+          away_score: totalAwayScore,
+          home_penalty_goals: Number(home_penalty_goals) || 0,
+          away_penalty_goals: Number(away_penalty_goals) || 0,
           matchups: matchups,
+          is_edit: true  // Flag to indicate this is an edit
         })
       });
 
@@ -552,6 +570,21 @@ export async function PATCH(
     } catch (teamStatsError) {
       console.error('Team stats update error:', teamStatsError);
       throw new Error('Failed to update team stats');
+    }
+
+    // Step 7.5.5: Delete old fantasy team bonus points to prevent duplicates
+    console.log('🗑️  Deleting old fantasy team bonus points...');
+    try {
+      const { getFantasyDb } = await import('@/lib/neon/fantasy-config');
+      const fantasySql = getFantasyDb();
+      
+      await fantasySql`
+        DELETE FROM fantasy_team_bonus_points
+        WHERE fixture_id = ${fixtureId}
+      `;
+      console.log('✅ Old fantasy team bonus points deleted');
+    } catch (bonusError) {
+      console.error('⚠️  Failed to delete old fantasy bonus points:', bonusError);
     }
 
     // Step 7.6: Revert old fantasy points

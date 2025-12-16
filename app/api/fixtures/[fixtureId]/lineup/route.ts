@@ -160,7 +160,7 @@ export async function POST(
     const roundData = roundDeadlines[0];
     const now = new Date();
 
-    // Calculate deadlines
+    // Calculate deadlines in IST (UTC+5:30)
     const scheduledDate = roundData.scheduled_date;
     if (!scheduledDate) {
       return NextResponse.json(
@@ -169,24 +169,35 @@ export async function POST(
       );
     }
 
-    const baseDate = new Date(scheduledDate);
+    const baseDateStr = new Date(scheduledDate).toISOString().split('T')[0]; // YYYY-MM-DD
     const [homeHour, homeMin] = (roundData.home_fixture_deadline_time || '17:00').split(':').map(Number);
     const [awayHour, awayMin] = (roundData.away_fixture_deadline_time || '17:00').split(':').map(Number);
 
-    const homeDeadline = new Date(baseDate);
-    homeDeadline.setHours(homeHour, homeMin, 0, 0);
+    // Create deadlines in UTC by converting from IST
+    const homeDeadline = new Date(baseDateStr);
+    homeDeadline.setUTCHours(homeHour - 5, homeMin - 30, 0, 0); // Convert IST to UTC
 
-    const awayDeadline = new Date(baseDate);
-    awayDeadline.setHours(awayHour, awayMin, 0, 0);
+    const awayDeadline = new Date(baseDateStr);
+    awayDeadline.setUTCHours(awayHour - 5, awayMin - 30, 0, 0); // Convert IST to UTC
 
     // Determine current phase
     const isHomePhase = now < homeDeadline;
     const isAwayPhase = now >= homeDeadline && now < awayDeadline;
     const isLocked = now >= awayDeadline;
 
+    console.log('Lineup submission deadline check:', {
+      now: now.toISOString(),
+      homeDeadline: homeDeadline.toISOString(),
+      awayDeadline: awayDeadline.toISOString(),
+      isHomePhase,
+      isAwayPhase,
+      isLocked,
+      teamType: isHomeTeam ? 'home' : 'away'
+    });
+
     if (isLocked) {
       return NextResponse.json(
-        { success: false, error: 'Fixture lineup is locked. Deadline passed.' },
+        { success: false, error: 'Fixture lineup is locked. Deadline has passed.' },
         { status: 403 }
       );
     }
@@ -266,29 +277,105 @@ export async function POST(
     // Get previous lineup for audit
     const previousLineup = isHomeTeam ? fixture.home_lineup : fixture.away_lineup;
     const isNewSubmission = isHomeTeam ? !homeSubmitted : !awaySubmitted;
+    const submissionTime = new Date();
+
+    // Check if this is a late submission (after away deadline)
+    const isLateSubmission = submissionTime > awayDeadline;
 
     if (isHomeTeam) {
-      await sql`
-        UPDATE fixtures
-        SET 
-          home_lineup = ${JSON.stringify(lineupData)}::jsonb,
-          home_lineup_submitted_at = ${!homeSubmitted ? 'NOW()' : sql`home_lineup_submitted_at`},
-          lineup_last_edited_by = ${userId},
-          lineup_last_edited_at = NOW(),
-          updated_at = NOW()
-        WHERE id = ${fixtureId}
-      `;
+      if (isNewSubmission) {
+        await sql`
+          UPDATE fixtures
+          SET 
+            home_lineup = ${JSON.stringify(lineupData)}::jsonb,
+            home_lineup_submitted_at = NOW(),
+            home_lineup_submitted_by = ${userId},
+            lineup_last_edited_by = ${userId},
+            lineup_last_edited_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${fixtureId}
+        `;
+      } else {
+        await sql`
+          UPDATE fixtures
+          SET 
+            home_lineup = ${JSON.stringify(lineupData)}::jsonb,
+            lineup_last_edited_by = ${userId},
+            lineup_last_edited_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${fixtureId}
+        `;
+      }
     } else {
-      await sql`
-        UPDATE fixtures
-        SET 
-          away_lineup = ${JSON.stringify(lineupData)}::jsonb,
-          away_lineup_submitted_at = ${!awaySubmitted ? 'NOW()' : sql`away_lineup_submitted_at`},
-          lineup_last_edited_by = ${userId},
-          lineup_last_edited_at = NOW(),
-          updated_at = NOW()
-        WHERE id = ${fixtureId}
-      `;
+      if (isNewSubmission) {
+        await sql`
+          UPDATE fixtures
+          SET 
+            away_lineup = ${JSON.stringify(lineupData)}::jsonb,
+            away_lineup_submitted_at = NOW(),
+            away_lineup_submitted_by = ${userId},
+            lineup_last_edited_by = ${userId},
+            lineup_last_edited_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${fixtureId}
+        `;
+      } else {
+        await sql`
+          UPDATE fixtures
+          SET 
+            away_lineup = ${JSON.stringify(lineupData)}::jsonb,
+            lineup_last_edited_by = ${userId},
+            lineup_last_edited_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${fixtureId}
+        `;
+      }
+    }
+
+    // If this is a late submission, record violation and apply penalty
+    if (isNewSubmission && isLateSubmission) {
+      const minutesLate = Math.round((submissionTime - awayDeadline) / 60000);
+      console.log(`⚠️  LATE SUBMISSION DETECTED: ${teamId} submitted ${minutesLate} minutes late`);
+      
+      try {
+        // Record violation
+        await sql`
+          INSERT INTO team_violations (
+            team_id,
+            season_id,
+            violation_type,
+            fixture_id,
+            round_number,
+            violation_date,
+            deadline,
+            minutes_late,
+            penalty_applied,
+            penalty_amount,
+            notes
+          ) VALUES (
+            ${teamId},
+            ${seasonId},
+            'late_lineup',
+            ${fixtureId},
+            ${roundNumber},
+            NOW(),
+            ${awayDeadline.toISOString()},
+            ${minutesLate},
+            'warning_deducted',
+            1,
+            ${'Lineup submitted ' + minutesLate + ' minutes after deadline'}
+          )
+        `;
+        
+        console.log(`✅ Violation recorded for team ${teamId}`);
+        
+        // TODO: Deduct warning chance from team_seasons in Firebase
+        // This would require updating Firebase team_seasons document
+        
+      } catch (violationError) {
+        console.error('Failed to record violation:', violationError);
+        // Don't fail the request, but log the error
+      }
     }
 
     // Log the change

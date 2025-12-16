@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import LeagueStandingsTable from './LeagueStandingsTable';
 import GroupStageStandings from './GroupStageStandings';
 import KnockoutBracket from './KnockoutBracket';
+import ShareableLeaderboard from './ShareableLeaderboard';
 
 interface TournamentStandingsProps {
   tournamentId: string;
@@ -81,7 +82,7 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
     );
   }
 
-  const { format, has_knockout, standings, groupStandings, knockoutFixtures, playoff_spots } = data;
+  const { format, has_knockout, standings, groupStandings, knockoutFixtures, playoff_spots, tournament_name, season_name } = data;
 
   // Determine what to show based on format
   const showLeagueStandings = format === 'league' && standings;
@@ -91,6 +92,24 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
 
   return (
     <div className="space-y-6">
+      {/* Share Leaderboard Feature - Only show for league standings */}
+      {showLeagueStandings && standings && standings.length > 0 && (
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-3xl">📸</span>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900">Share Leaderboard</h3>
+              <p className="text-sm text-gray-600">Generate and share a beautiful image of the current standings</p>
+            </div>
+          </div>
+          <ShareableLeaderboard 
+            standings={standings}
+            tournamentName={tournament_name || 'Tournament'}
+            seasonName={season_name}
+            format={format}
+          />
+        </div>
+      )}
       {/* Tabs for combined formats (League+Knockout or Group+Knockout) */}
       {hasBothStages && (
         <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl p-4">
