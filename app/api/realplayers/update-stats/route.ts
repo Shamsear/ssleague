@@ -151,11 +151,22 @@ async function updatePlayerStats(data: {
   const current = existing[0];
   
   // Check if this fixture has already been processed for this player
-  const processedFixtures = current.processed_fixtures || [];
+  let processedFixtures = [];
+  try {
+    processedFixtures = current.processed_fixtures ? 
+      (Array.isArray(current.processed_fixtures) ? current.processed_fixtures : JSON.parse(current.processed_fixtures)) 
+      : [];
+  } catch (e) {
+    console.warn(`Failed to parse processed_fixtures for player ${player_name}, treating as empty array`);
+    processedFixtures = [];
+  }
+  
   if (processedFixtures.includes(fixture_id)) {
-    console.log(`✓ Fixture ${fixture_id} already processed for player ${player_name}, skipping`);
+    console.log(`✓ Fixture ${fixture_id} already processed for player ${player_name}, skipping duplicate update`);
     return;
   }
+  
+  console.log(`Processing fixture ${fixture_id} for player ${player_name} (${processedFixtures.length} fixtures already processed)`);
 
   // Add fixture to processed list
   const updatedProcessedFixtures = [...processedFixtures, fixture_id];

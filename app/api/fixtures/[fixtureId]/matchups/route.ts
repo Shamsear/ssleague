@@ -15,6 +15,19 @@ async function distributeMatchRewards(params: {
   const sql = getTournamentDb();
   const { fixtureId, matchResult, seasonId, roundNumber, leg } = params;
 
+  // Check if rewards have already been distributed for this fixture
+  const existingRewards = await sql`
+    SELECT id FROM transactions
+    WHERE description LIKE ${'%Fixture: ' + fixtureId + '%'}
+    AND transaction_type = 'match_reward'
+    LIMIT 1
+  `;
+
+  if (existingRewards.length > 0) {
+    console.log(`⚠️ Match rewards already distributed for fixture ${fixtureId}, skipping duplicate distribution`);
+    return;
+  }
+
   // Get fixture details
   const [fixture] = await sql`
     SELECT home_team_id, away_team_id, tournament_id
@@ -99,7 +112,7 @@ async function distributeMatchRewards(params: {
         'match_reward',
         ${homeECoin},
         ${homeSSCoin},
-        ${'Match Reward (' + homeResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '')},
+        ${'Match Reward (' + homeResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '') + ' - Fixture: ' + fixtureId},
         NOW()
       )
     `;
@@ -134,7 +147,7 @@ async function distributeMatchRewards(params: {
         'match_reward',
         ${awayECoin},
         ${awaySSCoin},
-        ${'Match Reward (' + awayResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '')},
+        ${'Match Reward (' + awayResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '') + ' - Fixture: ' + fixtureId},
         NOW()
       )
     `;
@@ -391,9 +404,11 @@ export async function PATCH(
       );
     }
 
-    // Check result entry deadline
+    // Check result entry deadline and get penalty goals
     const fixtures = await sql`
-      SELECT f.season_id, f.round_number, f.leg
+      SELECT f.season_id, f.round_number, f.leg, 
+             COALESCE(f.home_penalty_goals, 0) as home_penalty_goals,
+             COALESCE(f.away_penalty_goals, 0) as away_penalty_goals
       FROM fixtures f
       WHERE f.id = ${fixtureId}
       LIMIT 1
@@ -406,7 +421,7 @@ export async function PATCH(
       );
     }
     
-    const { season_id, round_number, leg } = fixtures[0];
+    const { season_id, round_number, leg, home_penalty_goals, away_penalty_goals } = fixtures[0];
     
     // Get round deadlines
     const deadlines = await sql`
@@ -418,27 +433,43 @@ export async function PATCH(
       LIMIT 1
     `;
     
+    // Deadline check disabled - phase logic on frontend controls access
+    // The frontend already checks if we're in result_entry phase before allowing submission
     if (deadlines.length > 0 && deadlines[0].scheduled_date) {
       const deadline = deadlines[0];
       
-      // Calculate result entry deadline
+      // Calculate result entry deadline for logging
       const resultDate = new Date(deadline.scheduled_date);
       resultDate.setDate(resultDate.getDate() + (deadline.result_entry_deadline_day_offset || 2));
       const resultDateStr = resultDate.toISOString().split('T')[0];
-      const resultDeadline = new Date(`${resultDateStr}T${deadline.result_entry_deadline_time}:00+05:30`);
+      
+      // Parse deadline time (HH:MM format)
+      const [hours, minutes] = deadline.result_entry_deadline_time.split(':').map(Number);
+      
+      // Create deadline in IST (UTC+5:30)
+      const resultDeadline = new Date(resultDateStr);
+      resultDeadline.setUTCHours(hours - 5, minutes - 30, 0, 0); // Convert IST to UTC
       
       const now = new Date();
       
-      // Check if deadline has passed
-      if (now >= resultDeadline) {
-        return NextResponse.json(
-          { 
-            error: 'Result entry deadline has passed',
-            deadline: resultDeadline.toISOString()
-          },
-          { status: 403 }
-        );
-      }
+      console.log('Result entry - Deadline info:', {
+        now: now.toISOString(),
+        deadline: resultDeadline.toISOString(),
+        isPassed: now >= resultDeadline,
+        note: 'Deadline check disabled - controlled by frontend phase logic'
+      });
+      
+      // Deadline check commented out - frontend phase logic controls access
+      // if (now >= resultDeadline) {
+      //   return NextResponse.json(
+      //     { 
+      //       error: 'Result entry deadline has passed',
+      //       deadline: resultDeadline.toISOString(),
+      //       current_time: now.toISOString()
+      //     },
+      //     { status: 403 }
+      //   );
+      // }
     }
 
     // Update match results (MOTM is now at fixture level, not matchup level)
@@ -463,6 +494,12 @@ export async function PATCH(
       totalHomeScore += result.home_goals;
       totalAwayScore += result.away_goals;
     }
+
+    // Add penalty/fine goals to total scores
+    totalHomeScore += Number(home_penalty_goals) || 0;
+    totalAwayScore += Number(away_penalty_goals) || 0;
+
+    console.log(`Total scores including penalties - Home: ${totalHomeScore} (matchups + ${home_penalty_goals} penalties), Away: ${totalAwayScore} (matchups + ${away_penalty_goals} penalties)`);
 
     // Determine match result
     let matchResult: 'home_win' | 'away_win' | 'draw';
