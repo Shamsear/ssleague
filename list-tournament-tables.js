@@ -1,7 +1,7 @@
 const { neon } = require('@neondatabase/serverless');
 require('dotenv').config({ path: '.env.local' });
 
-const sql = neon(process.env.DATABASE_URL);
+const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
 
 async function listTables() {
   const tables = await sql`
@@ -11,7 +11,7 @@ async function listTables() {
     ORDER BY table_name
   `;
   
-  console.log('Tables in database:');
+  console.log('Tournament DB tables:');
   tables.forEach(t => console.log('  -', t.table_name));
 }
 

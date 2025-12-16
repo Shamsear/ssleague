@@ -1,62 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
-// Handle missing DATABASE_URL gracefully
-const DATABASE_URL = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
-if (!DATABASE_URL) {
-  console.warn('⚠️ DATABASE_URL not configured for fix-duplicate-points route');
-}
-const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
+const sql = getTournamentDb();
 
 export async function GET(request: NextRequest) {
   try {
-    if (!sql) {
-      return NextResponse.json(
-        { error: 'Database not configured. Please set DATABASE_URL environment variable.' },
-        { status: 503 }
-      );
-    }
-
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
     if (action === 'analyze') {
-      // Find players with duplicate points by comparing player_seasons with actual round_players data
+      // Find players with duplicate stats by comparing player_seasons with actual matchup data
       const duplicates = await sql`
-        WITH player_actual_stats AS (
+        WITH all_player_matches AS (
           SELECT 
-            rp.player_id,
-            rp.season_id,
-            COUNT(DISTINCT rp.fixture_id) as actual_fixtures_played,
-            SUM(rp.points) as actual_total_points,
-            SUM(rp.goals_scored) as actual_goals,
-            SUM(rp.assists) as actual_assists,
-            SUM(CASE WHEN rp.goals_conceded = 0 THEN 1 ELSE 0 END) as actual_clean_sheets
-          FROM round_players rp
-          WHERE rp.points IS NOT NULL
-          GROUP BY rp.player_id, rp.season_id
+            home_player_id as player_id, 
+            season_id, 
+            fixture_id, 
+            home_goals as goals_scored
+          FROM matchups 
+          WHERE home_player_id IS NOT NULL AND result_entered_at IS NOT NULL
+          UNION ALL
+          SELECT 
+            away_player_id as player_id, 
+            season_id, 
+            fixture_id, 
+            away_goals as goals_scored
+          FROM matchups 
+          WHERE away_player_id IS NOT NULL AND result_entered_at IS NOT NULL
+        ),
+        player_actual_stats AS (
+          SELECT 
+            player_id,
+            season_id,
+            COUNT(DISTINCT fixture_id) as actual_matches,
+            SUM(COALESCE(goals_scored, 0)) as actual_goals
+          FROM all_player_matches
+          GROUP BY player_id, season_id
         )
         SELECT 
           ps.id,
           ps.player_id,
-          rpl.name as player_name,
+          ps.player_name,
           ps.season_id,
-          ps.total_points as current_points,
-          pas.actual_total_points as correct_points,
-          ps.total_points - pas.actual_total_points as points_difference,
+          ps.points as current_points,
           ps.goals_scored as current_goals,
-          pas.actual_goals as correct_goals,
-          ps.assists as current_assists,
-          pas.actual_assists as correct_assists,
-          array_length(ps.processed_fixtures, 1) as recorded_fixtures,
-          pas.actual_fixtures_played as actual_fixtures
+          COALESCE(pas.actual_goals, 0) as correct_goals,
+          ps.goals_scored - COALESCE(pas.actual_goals, 0) as goals_difference,
+          ps.matches_played as current_matches,
+          COALESCE(pas.actual_matches, 0) as correct_matches,
+          jsonb_array_length(COALESCE(ps.processed_fixtures, '[]'::jsonb)) as recorded_fixtures
         FROM player_seasons ps
-        JOIN player_actual_stats pas ON ps.player_id = pas.player_id AND ps.season_id = pas.season_id
-        JOIN realplayers rpl ON ps.player_id = rpl.id
-        WHERE ps.total_points != pas.actual_total_points
-          OR ps.goals_scored != pas.actual_goals
-          OR ps.assists != pas.actual_assists
-        ORDER BY points_difference DESC
+        LEFT JOIN player_actual_stats pas ON ps.player_id = pas.player_id AND ps.season_id = pas.season_id
+        WHERE ps.season_id = 'SSPSLS16'
+          AND (
+            ps.goals_scored != COALESCE(pas.actual_goals, 0)
+            OR ps.matches_played != COALESCE(pas.actual_matches, 0)
+          )
+        ORDER BY goals_difference DESC NULLS LAST
       `;
 
       return NextResponse.json({ duplicates });
@@ -74,56 +74,54 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!sql) {
-      return NextResponse.json(
-        { error: 'Database not configured. Please set DATABASE_URL environment variable.' },
-        { status: 503 }
-      );
-    }
-
     const body = await request.json();
     const { action } = body;
 
     if (action === 'fix_all') {
-      // Recalculate all player stats from round_players
+      // Recalculate all player stats from matchups table
       const result = await sql`
-        WITH player_actual_stats AS (
+        WITH all_player_matches AS (
           SELECT 
-            rp.player_id,
-            rp.season_id,
-            COUNT(DISTINCT rp.fixture_id) as fixtures_played,
-            SUM(rp.points) as total_points,
-            SUM(rp.goals_scored) as goals_scored,
-            SUM(rp.assists) as assists,
-            SUM(CASE WHEN rp.goals_conceded = 0 THEN 1 ELSE 0 END) as clean_sheets,
-            SUM(rp.goals_conceded) as goals_conceded,
-            SUM(rp.yellow_cards) as yellow_cards,
-            SUM(rp.red_cards) as red_cards,
-            array_agg(DISTINCT rp.fixture_id ORDER BY rp.fixture_id) as fixture_ids
-          FROM round_players rp
-          WHERE rp.points IS NOT NULL
-          GROUP BY rp.player_id, rp.season_id
+            home_player_id as player_id, 
+            season_id, 
+            fixture_id, 
+            home_goals as goals_scored
+          FROM matchups 
+          WHERE home_player_id IS NOT NULL AND result_entered_at IS NOT NULL
+          UNION ALL
+          SELECT 
+            away_player_id as player_id, 
+            season_id, 
+            fixture_id, 
+            away_goals as goals_scored
+          FROM matchups 
+          WHERE away_player_id IS NOT NULL AND result_entered_at IS NOT NULL
+        ),
+        player_actual_stats AS (
+          SELECT 
+            player_id,
+            season_id,
+            COUNT(DISTINCT fixture_id) as actual_matches,
+            SUM(COALESCE(goals_scored, 0)) as actual_goals,
+            jsonb_agg(DISTINCT fixture_id ORDER BY fixture_id) as fixture_ids
+          FROM all_player_matches
+          GROUP BY player_id, season_id
         )
         UPDATE player_seasons ps
         SET 
-          total_points = pas.total_points,
-          goals_scored = pas.goals_scored,
-          assists = pas.assists,
-          clean_sheets = pas.clean_sheets,
-          goals_conceded = pas.goals_conceded,
-          yellow_cards = pas.yellow_cards,
-          red_cards = pas.red_cards,
+          goals_scored = pas.actual_goals,
+          matches_played = pas.actual_matches,
           processed_fixtures = pas.fixture_ids,
           updated_at = NOW()
         FROM player_actual_stats pas
         WHERE ps.player_id = pas.player_id 
           AND ps.season_id = pas.season_id
+          AND ps.season_id = 'SSPSLS16'
           AND (
-            ps.total_points != pas.total_points
-            OR ps.goals_scored != pas.goals_scored
-            OR ps.assists != pas.assists
+            ps.goals_scored != pas.actual_goals
+            OR ps.matches_played != pas.actual_matches
           )
-        RETURNING ps.id
+        RETURNING ps.id, ps.player_name, ps.goals_scored, ps.matches_played
       `;
 
       return NextResponse.json({

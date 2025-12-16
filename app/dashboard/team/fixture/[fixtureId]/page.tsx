@@ -107,6 +107,7 @@ export default function FixturePage() {
   const [subMatchupIndex, setSubMatchupIndex] = useState<number | null>(null);
   const [subSide, setSubSide] = useState<'home' | 'away' | null>(null);
   const [subNewPlayerId, setSubNewPlayerId] = useState<string>('');
+  const [subPenaltyAmount, setSubPenaltyAmount] = useState(2); // Penalty goals to award opponent
   
   // Swap state
   const [swapMode, setSwapMode] = useState(false);
@@ -1104,12 +1105,8 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
       return 3; // default
     };
     
-    // Calculate penalty: +2 base + 1 if higher category
-    const currentPlayer = playersList.find(p => p.player_id === currentPlayerId);
-    const currentCategory = getCategoryValue(currentPlayer);
-    const newCategory = getCategoryValue(newPlayer);
-    const categoryPenalty = newCategory < currentCategory ? 1 : 0; // Lower number = higher category
-    const totalPenalty = 2 + categoryPenalty;
+    // Use the penalty amount entered by the team (stored in subPenaltyAmount state)
+    const totalPenalty = subPenaltyAmount;
     
     // No separate confirm modal - button in main modal handles confirmation
     setIsSaving(true);
@@ -1963,14 +1960,24 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               <div className="space-y-4">
                 {/* Team Totals & Winner */}
                 {matchups.some(m => m.home_goals !== null) && (() => {
-                  const homeTotalGoals = matchups.reduce((sum, m) => sum + (m.home_goals ?? 0), 0);
-                  const awayTotalGoals = matchups.reduce((sum, m) => sum + (m.away_goals ?? 0), 0);
+                  // Calculate player goals from matchups
+                  const homePlayerGoals = matchups.reduce((sum, m) => sum + (m.home_goals ?? 0), 0);
+                  const awayPlayerGoals = matchups.reduce((sum, m) => sum + (m.away_goals ?? 0), 0);
+                  
+                  // Calculate substitution penalties (awarded TO opponent)
+                  const homeSubPenalties = matchups.reduce((sum, m) => sum + (m.home_sub_penalty ?? 0), 0);
+                  const awaySubPenalties = matchups.reduce((sum, m) => sum + (m.away_sub_penalty ?? 0), 0);
+                  
+                  // Total goals including all penalties
+                  const homeTotalGoals = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
+                  const awayTotalGoals = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
+                  
                   const winner = homeTotalGoals > awayTotalGoals ? 'home' : awayTotalGoals > homeTotalGoals ? 'away' : 'draw';
 
                   return (
                     <div className="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 border-2 border-blue-300 rounded-2xl p-4 sm:p-6 shadow-xl">
                       <h3 className="text-center text-sm font-semibold text-gray-600 mb-4">Match Result</h3>
-                      <div className="grid grid-cols-3 gap-4 items-center">
+                      <div className="grid grid-cols-3 gap-4 items-center mb-4">
                         {/* Home Total */}
                         <div className={`text-center p-4 rounded-xl ${
                           winner === 'home' ? 'bg-green-500 text-white shadow-lg scale-105' : 'bg-white text-gray-700'
@@ -1978,6 +1985,14 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                           <div className="text-xs sm:text-sm font-medium mb-1">{fixture.home_team_name}</div>
                           <div className="text-3xl sm:text-4xl font-bold">{homeTotalGoals}</div>
                           {winner === 'home' && <div className="text-xs mt-1 font-semibold">✓ WINNER</div>}
+                          {/* Breakdown */}
+                          {(awaySubPenalties > 0 || homePenaltyGoals > 0) && (
+                            <div className="text-xs mt-2 opacity-90">
+                              ({homePlayerGoals}
+                              {awaySubPenalties > 0 && ` +${awaySubPenalties}s`}
+                              {homePenaltyGoals > 0 && ` +${homePenaltyGoals}f`})
+                            </div>
+                          )}
                         </div>
 
                         {/* VS or Draw */}
@@ -1998,8 +2013,22 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                           <div className="text-xs sm:text-sm font-medium mb-1">{fixture.away_team_name}</div>
                           <div className="text-3xl sm:text-4xl font-bold">{awayTotalGoals}</div>
                           {winner === 'away' && <div className="text-xs mt-1 font-semibold">✓ WINNER</div>}
+                          {/* Breakdown */}
+                          {(homeSubPenalties > 0 || awayPenaltyGoals > 0) && (
+                            <div className="text-xs mt-2 opacity-90">
+                              ({awayPlayerGoals}
+                              {homeSubPenalties > 0 && ` +${homeSubPenalties}s`}
+                              {awayPenaltyGoals > 0 && ` +${awayPenaltyGoals}f`})
+                            </div>
+                          )}
                         </div>
                       </div>
+                      {/* Legend */}
+                      {(homeSubPenalties > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0 || awayPenaltyGoals > 0) && (
+                        <div className="text-center text-xs text-gray-600 pt-2 border-t border-gray-300">
+                          s = sub penalty, f = fine
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -2407,6 +2436,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                                 setSubMatchupIndex(idx);
                                 setSubSide('home');
                                 setSubNewPlayerId('');
+                                setSubPenaltyAmount(2); // Reset to default
                                 setIsSubModalOpen(true);
                               }}
                               className="group relative px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-xs font-bold rounded-lg transition-all shadow-md hover:shadow-lg overflow-hidden"
@@ -2425,6 +2455,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                                 setSubMatchupIndex(idx);
                                 setSubSide('away');
                                 setSubNewPlayerId('');
+                                setSubPenaltyAmount(2); // Reset to default
                                 setIsSubModalOpen(true);
                               }}
                               className="group relative px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-xs font-bold rounded-lg transition-all shadow-md hover:shadow-lg overflow-hidden"
@@ -3055,53 +3086,23 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                   : matchups[subMatchupIndex].away_player_name}
               </p>
               
-              {/* Dynamic penalty calculation */}
-              {subNewPlayerId && (() => {
-                const playersList = subSide === 'home' ? homePlayers : awayPlayers;
-                const currentMatchup = matchups[subMatchupIndex];
-                const currentPlayerId = subSide === 'home' ? currentMatchup.home_player_id : currentMatchup.away_player_id;
-                
-                const getCategoryValue = (player: any): number => {
-                  if (player.category_id === 'legend') return 1;
-                  if (player.category_id === 'classic') return 2;
-                  if (typeof player.category === 'number') return player.category;
-                  if (player.category === 'legend') return 1;
-                  if (player.category === 'classic') return 2;
-                  if (player.category_name?.toLowerCase().includes('legend')) return 1;
-                  if (player.category_name?.toLowerCase().includes('classic')) return 2;
-                  return 3;
-                };
-                
-                const currentPlayer = playersList.find(p => p.player_id === currentPlayerId);
-                const newPlayer = playersList.find(p => p.player_id === subNewPlayerId);
-                
-                if (!currentPlayer || !newPlayer) return null;
-                
-                const currentCat = getCategoryValue(currentPlayer);
-                const newCat = getCategoryValue(newPlayer);
-                const catPenalty = newCat < currentCat ? 1 : 0;
-                const totalPenalty = 2 + catPenalty;
-                
-                return (
-                  <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                    <p className="text-sm font-semibold text-orange-900 mb-1">
-                      ⚠️ Substitution Penalty
-                    </p>
-                    <p className="text-xs text-orange-700">
-                      <strong>+{totalPenalty} goals</strong> will be awarded to opponent
-                    </p>
-                    <p className="text-xs text-orange-600 mt-1">
-                      (+2 base {catPenalty > 0 && '+ 1 category upgrade'})
-                    </p>
-                  </div>
-                );
-              })()}
-              
-              {!subNewPlayerId && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Select a player to see penalty calculation
+              {/* Manual penalty input */}
+              <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <label className="block text-sm font-semibold text-orange-900 mb-2">
+                  ⚠️ Penalty Goals (awarded to opponent)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={subPenaltyAmount}
+                  onChange={(e) => setSubPenaltyAmount(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 text-center text-lg font-bold border-2 border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  placeholder="Enter penalty amount"
+                />
+                <p className="text-xs text-orange-600 mt-2">
+                  Enter the number of penalty goals to award to the opponent for this substitution
                 </p>
-              )}
+              </div>
             </div>
 
             <div className="mb-6">
