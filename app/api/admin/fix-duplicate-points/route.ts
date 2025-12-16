@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.DATABASE_URL!);
+// Handle missing DATABASE_URL gracefully
+const DATABASE_URL = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
+if (!DATABASE_URL) {
+  console.warn('⚠️ DATABASE_URL not configured for fix-duplicate-points route');
+}
+const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
 
 export async function GET(request: NextRequest) {
   try {
+    if (!sql) {
+      return NextResponse.json(
+        { error: 'Database not configured. Please set DATABASE_URL environment variable.' },
+        { status: 503 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
@@ -62,6 +74,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!sql) {
+      return NextResponse.json(
+        { error: 'Database not configured. Please set DATABASE_URL environment variable.' },
+        { status: 503 }
+      );
+    }
+
     const body = await request.json();
     const { action } = body;
 
