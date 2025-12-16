@@ -8,22 +8,48 @@
 require('dotenv').config({ path: '.env.local' });
 const { neon } = require('@neondatabase/serverless');
 
-// Fantasy scoring rules
-const SCORING_RULES = {
-  goal: 5,              // Points per goal scored
-  clean_sheet: 4,       // Points for clean sheet (0 goals conceded)
-  motm: 3,              // Points for Man of the Match
-  win: 2,               // Points for winning the match
-  draw: 1,              // Points for drawing the match
-  appearance: 1,        // Points just for playing
-};
-
 async function recalculateFantasyPoints() {
   // Connect to both databases
   const tournamentDb = neon(process.env.NEON_TOURNAMENT_DB_URL);
   const fantasyDb = neon(process.env.FANTASY_DATABASE_URL);
 
   console.log('🔄 Starting fantasy points recalculation...\n');
+
+  // Fetch scoring rules from database
+  console.log('📋 Fetching scoring rules from database...');
+  const scoringRulesData = await fantasyDb`
+    SELECT rule_type, rule_name, points_value, applies_to
+    FROM fantasy_scoring_rules
+    WHERE is_active = true
+  `;
+
+  if (scoringRulesData.length === 0) {
+    throw new Error('❌ No active scoring rules found in database! Please add scoring rules to fantasy_scoring_rules table.');
+  }
+
+  // Convert to a usable format - ONLY use database values, no defaults
+  const SCORING_RULES = {};
+  scoringRulesData.forEach(rule => {
+    const key = rule.rule_type.toLowerCase();
+    if (rule.applies_to === 'player') {
+      SCORING_RULES[key] = rule.points_value;
+    }
+  });
+
+  // Validate required rules exist
+  const requiredRules = ['goals_scored', 'win', 'draw', 'match_played', 'clean_sheet', 'motm'];
+  const missingRules = requiredRules.filter(rule => SCORING_RULES[rule] === undefined);
+  
+  if (missingRules.length > 0) {
+    console.error(`❌ Missing required scoring rules: ${missingRules.join(', ')}`);
+    throw new Error(`Required scoring rules not found in database: ${missingRules.join(', ')}`);
+  }
+
+  console.log('✅ Loaded scoring rules from database:');
+  Object.keys(SCORING_RULES).forEach(key => {
+    console.log(`   ${key}: ${SCORING_RULES[key]} points`);
+  });
+  console.log();
 
   try {
     // 1. Get all completed matchups with fixture info from tournament database
@@ -92,11 +118,13 @@ async function recalculateFantasyPoints() {
       const homeIsMotm = matchup.motm_player_id === matchup.home_player_id;
 
       const homeBasePoints = 
-        (matchup.home_goals || 0) * SCORING_RULES.goal +
+        (matchup.home_goals || 0) * SCORING_RULES.goals_scored +
         (homeCleanSheet ? SCORING_RULES.clean_sheet : 0) +
         (homeIsMotm ? SCORING_RULES.motm : 0) +
         (homeWon ? SCORING_RULES.win : homeDraw ? SCORING_RULES.draw : 0) +
-        SCORING_RULES.appearance;
+        SCORING_RULES.match_played +
+        (matchup.home_goals >= 3 && SCORING_RULES.hat_trick ? SCORING_RULES.hat_trick : 0) +
+        (matchup.away_goals >= 4 && SCORING_RULES.concedes_4_plus_goals ? SCORING_RULES.concedes_4_plus_goals : 0);
 
       // Get all teams this player is in
       const homePlayerTeams = playerTeamsMap.get(matchup.home_player_id) || [];
@@ -148,11 +176,13 @@ async function recalculateFantasyPoints() {
       const awayIsMotm = matchup.motm_player_id === matchup.away_player_id;
 
       const awayBasePoints = 
-        (matchup.away_goals || 0) * SCORING_RULES.goal +
+        (matchup.away_goals || 0) * SCORING_RULES.goals_scored +
         (awayCleanSheet ? SCORING_RULES.clean_sheet : 0) +
         (awayIsMotm ? SCORING_RULES.motm : 0) +
         (awayWon ? SCORING_RULES.win : awayDraw ? SCORING_RULES.draw : 0) +
-        SCORING_RULES.appearance;
+        SCORING_RULES.match_played +
+        (matchup.away_goals >= 3 && SCORING_RULES.hat_trick ? SCORING_RULES.hat_trick : 0) +
+        (matchup.home_goals >= 4 && SCORING_RULES.concedes_4_plus_goals ? SCORING_RULES.concedes_4_plus_goals : 0);
 
       // Get all teams this player is in
       const awayPlayerTeams = playerTeamsMap.get(matchup.away_player_id) || [];

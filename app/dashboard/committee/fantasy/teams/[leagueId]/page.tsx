@@ -53,6 +53,9 @@ export default function FantasyTeamsPage() {
   const [playerData, setPlayerData] = useState<any>(null);
   const [isLoadingPlayer, setIsLoadingPlayer] = useState(false);
 
+  // Scoring rules from database
+  const [scoringRules, setScoringRules] = useState<any>(null);
+
   const { alertState, showAlert, closeAlert } = useModal();
 
   useEffect(() => {
@@ -64,6 +67,43 @@ export default function FantasyTeamsPage() {
       router.push('/dashboard');
     }
   }, [user, loading, router]);
+
+  // Fetch scoring rules from database
+  useEffect(() => {
+    const loadScoringRules = async () => {
+      try {
+        const response = await fetchWithTokenRefresh(`/api/fantasy/scoring-rules?league_id=${leagueId}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Convert array to object for easy lookup
+          const rulesMap: any = {};
+          data.rules?.forEach((rule: any) => {
+            if (rule.applies_to === 'player') {
+              rulesMap[rule.rule_type] = rule.points_value;
+            }
+          });
+          setScoringRules(rulesMap);
+        }
+      } catch (error) {
+        console.error('Error loading scoring rules:', error);
+        // Fallback to default values if API fails
+        setScoringRules({
+          goals_scored: 2,
+          clean_sheet: 6,
+          motm: 5,
+          win: 3,
+          draw: 1,
+          match_played: 1,
+          hat_trick: 5,
+          concedes_4_plus_goals: -3,
+        });
+      }
+    };
+
+    if (leagueId) {
+      loadScoringRules();
+    }
+  }, [leagueId]);
 
   useEffect(() => {
     const loadLeagueData = async () => {
@@ -98,67 +138,6 @@ export default function FantasyTeamsPage() {
     }
   }, [user, leagueId]);
 
-  const togglePlayerBreakdown = async (playerId: string) => {
-    if (expandedPlayer === playerId) {
-      setExpandedPlayer(null);
-      setPlayerData(null);
-      return;
-    }
-
-    if (!selectedTeam) {
-      console.error('No team selected');
-      return;
-    }
-
-    setExpandedPlayer(playerId);
-    setIsLoadingPlayer(true);
-
-    try {
-      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/points?team_id=${selectedTeam.id}`);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Failed to load player data:', errorData);
-        // Set empty player data instead of throwing
-        setPlayerData({ 
-          player: { total_points: 0 },
-          stats: { 
-            total_points: 0, 
-            total_goals: 0, 
-            total_clean_sheets: 0, 
-            total_motm: 0,
-            total_matches: 0,
-            average_points: 0,
-            best_performance: 0,
-            total_bonus_points: 0
-          }, 
-          matches: [] 
-        });
-        return;
-      }
-      const result = await response.json();
-      setPlayerData(result);
-    } catch (err) {
-      console.error('Error loading player:', err);
-      // Set empty player data on error
-      setPlayerData({ 
-        player: { total_points: 0 },
-        stats: { 
-          total_points: 0, 
-          total_goals: 0, 
-          total_clean_sheets: 0, 
-          total_motm: 0,
-          total_matches: 0,
-          average_points: 0,
-          best_performance: 0,
-          total_bonus_points: 0
-        }, 
-        matches: [] 
-      });
-    } finally {
-      setIsLoadingPlayer(false);
-    }
-  };
-
   const loadTeamPlayers = async (team: FantasyTeam) => {
     setSelectedTeam(team);
     setIsLoadingPlayers(true);
@@ -192,6 +171,37 @@ export default function FantasyTeamsPage() {
       setTeamPlayers([]);
     } finally {
       setIsLoadingPlayers(false);
+    }
+  };
+
+  const togglePlayerBreakdown = async (playerId: string) => {
+    // If clicking the same player, collapse it
+    if (expandedPlayer === playerId) {
+      setExpandedPlayer(null);
+      setPlayerData(null);
+      return;
+    }
+
+    // Expand new player
+    setExpandedPlayer(playerId);
+    setIsLoadingPlayer(true);
+    setPlayerData(null);
+
+    try {
+      // Fetch player match details from API
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/matches?league_id=${leagueId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load player match data');
+      }
+
+      const data = await response.json();
+      setPlayerData(data);
+    } catch (error) {
+      console.error('Error loading player data:', error);
+      setPlayerData({ error: true });
+    } finally {
+      setIsLoadingPlayer(false);
     }
   };
 
@@ -366,7 +376,7 @@ export default function FantasyTeamsPage() {
                                   )}
                                 </div>
                                 <p className="text-sm text-gray-600">
-                                  {player.matches_played} matches • {player.average_points} avg pts
+                                  {player.real_team_name || 'Real Player'}
                                 </p>
                               </div>
                             </div>
@@ -394,7 +404,7 @@ export default function FantasyTeamsPage() {
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                                     <div className="bg-purple-50 rounded-lg p-3 text-center">
                                       <TrendingUp className="w-5 h-5 text-purple-600 mx-auto mb-1" />
-                                      <p className="text-2xl font-bold text-purple-600">{playerData.player?.total_points || 0}</p>
+                                      <p className="text-2xl font-bold text-purple-600">{playerData.stats?.total_points || 0}</p>
                                       <p className="text-xs text-gray-600">Total Points</p>
                                     </div>
                                     <div className="bg-green-50 rounded-lg p-3 text-center">
@@ -441,13 +451,25 @@ export default function FantasyTeamsPage() {
                                   ) : (
                                     <div className="space-y-3 max-h-96 overflow-y-auto">
                                       {playerData.matches.map((match: any, idx: number) => {
-                                        // Calculate individual point components
-                                        const goalPoints = (match.goals_scored || 0) * 5;
-                                        const cleanSheetPoints = match.clean_sheet ? 4 : 0;
-                                        const motmPoints = match.motm ? 3 : 0;
-                                        const resultPoints = match.result === 'win' ? 2 : match.result === 'draw' ? 1 : 0;
-                                        const appearancePoints = 1;
-                                        const basePoints = goalPoints + cleanSheetPoints + motmPoints + resultPoints + appearancePoints;
+                                        // Calculate individual point components using database rules
+                                        if (!scoringRules) return null; // Wait for rules to load
+                                        
+                                        // Calculate result from actual goals (don't trust match.result field)
+                                        const playerGoals = match.goals_scored || 0;
+                                        const opponentGoals = match.goals_conceded || 0;
+                                        const won = playerGoals > opponentGoals;
+                                        const draw = playerGoals === opponentGoals;
+                                        const actualResult = won ? 'win' : draw ? 'draw' : 'loss';
+                                        
+                                        const goalPoints = playerGoals * (scoringRules.goals_scored || 0);
+                                        const cleanSheetPoints = match.clean_sheet ? (scoringRules.clean_sheet || 0) : 0;
+                                        const motmPoints = match.motm ? (scoringRules.motm || 0) : 0;
+                                        const resultPoints = won ? (scoringRules.win || 0) : draw ? (scoringRules.draw || 0) : 0;
+                                        const appearancePoints = scoringRules.match_played || 0;
+                                        const hatTrickPoints = (playerGoals >= 3 && scoringRules.hat_trick) ? scoringRules.hat_trick : 0;
+                                        const concedePoints = (opponentGoals >= 4 && scoringRules.concedes_4_plus_goals) ? scoringRules.concedes_4_plus_goals : 0;
+                                        
+                                        const basePoints = goalPoints + cleanSheetPoints + motmPoints + resultPoints + appearancePoints + hatTrickPoints + concedePoints;
                                         const multiplier = match.is_captain ? 2 : match.is_vice_captain ? 1.5 : 1;
                                         const totalPoints = Math.round(basePoints * multiplier);
 
@@ -464,8 +486,8 @@ export default function FantasyTeamsPage() {
                                                     {match.opponent_name || 'vs Opponent'}
                                                   </p>
                                                   <p className="text-xs text-gray-600">
-                                                    {match.result === 'win' ? '✅ Win' : match.result === 'draw' ? '🤝 Draw' : '❌ Loss'}
-                                                    {match.score && ` • ${match.score}`}
+                                                    {actualResult === 'win' ? '✅ Win' : actualResult === 'draw' ? '🤝 Draw' : '❌ Loss'}
+                                                    {` • ${playerGoals}-${opponentGoals}`}
                                                   </p>
                                                 </div>
                                               </div>
@@ -479,7 +501,7 @@ export default function FantasyTeamsPage() {
                                             <div className="p-3 bg-white space-y-2">
                                               <div className="grid grid-cols-2 gap-2 text-sm">
                                                 {/* Base Points */}
-                                                {goalPoints > 0 && (
+                                                {goalPoints !== 0 && (
                                                   <div className="flex items-center justify-between px-2 py-1 bg-green-50 rounded">
                                                     <span className="text-gray-700 flex items-center gap-1">
                                                       <Target className="w-3 h-3 text-green-600" />
@@ -488,7 +510,16 @@ export default function FantasyTeamsPage() {
                                                     <span className="font-semibold text-green-700">{goalPoints}pts</span>
                                                   </div>
                                                 )}
-                                                {cleanSheetPoints > 0 && (
+                                                {hatTrickPoints !== 0 && (
+                                                  <div className="flex items-center justify-between px-2 py-1 bg-orange-50 rounded">
+                                                    <span className="text-gray-700 flex items-center gap-1">
+                                                      <TrendingUp className="w-3 h-3 text-orange-600" />
+                                                      Hat-trick Bonus
+                                                    </span>
+                                                    <span className="font-semibold text-orange-700">{hatTrickPoints}pts</span>
+                                                  </div>
+                                                )}
+                                                {cleanSheetPoints !== 0 && (
                                                   <div className="flex items-center justify-between px-2 py-1 bg-blue-50 rounded">
                                                     <span className="text-gray-700 flex items-center gap-1">
                                                       <ShieldIcon className="w-3 h-3 text-blue-600" />
@@ -497,7 +528,16 @@ export default function FantasyTeamsPage() {
                                                     <span className="font-semibold text-blue-700">{cleanSheetPoints}pts</span>
                                                   </div>
                                                 )}
-                                                {motmPoints > 0 && (
+                                                {concedePoints !== 0 && (
+                                                  <div className="flex items-center justify-between px-2 py-1 bg-red-50 rounded">
+                                                    <span className="text-gray-700 flex items-center gap-1">
+                                                      <span className="text-red-600">⚠️</span>
+                                                      Conceded 4+ Goals
+                                                    </span>
+                                                    <span className="font-semibold text-red-700">{concedePoints}pts</span>
+                                                  </div>
+                                                )}
+                                                {motmPoints !== 0 && (
                                                   <div className="flex items-center justify-between px-2 py-1 bg-amber-50 rounded">
                                                     <span className="text-gray-700 flex items-center gap-1">
                                                       <Award className="w-3 h-3 text-amber-600" />
@@ -506,18 +546,20 @@ export default function FantasyTeamsPage() {
                                                     <span className="font-semibold text-amber-700">{motmPoints}pts</span>
                                                   </div>
                                                 )}
-                                                {resultPoints > 0 && (
+                                                {resultPoints !== 0 && (
                                                   <div className="flex items-center justify-between px-2 py-1 bg-purple-50 rounded">
                                                     <span className="text-gray-700">
-                                                      {match.result === 'win' ? '🏆 Win' : '🤝 Draw'}
+                                                      {actualResult === 'win' ? '🏆 Win' : '🤝 Draw'}
                                                     </span>
                                                     <span className="font-semibold text-purple-700">{resultPoints}pts</span>
                                                   </div>
                                                 )}
-                                                <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded">
-                                                  <span className="text-gray-700">⚽ Appearance</span>
-                                                  <span className="font-semibold text-gray-700">{appearancePoints}pt</span>
-                                                </div>
+                                                {appearancePoints !== 0 && (
+                                                  <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded">
+                                                    <span className="text-gray-700">⚽ Appearance</span>
+                                                    <span className="font-semibold text-gray-700">{appearancePoints}pt</span>
+                                                  </div>
+                                                )}
                                               </div>
 
                                               {/* Multiplier & Total */}

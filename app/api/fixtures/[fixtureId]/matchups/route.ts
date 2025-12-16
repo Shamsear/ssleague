@@ -362,14 +362,24 @@ export async function PUT(
       );
     }
 
-    // Update existing matchups
+    // Update existing matchups (including substitution fields)
     for (const matchup of matchups) {
       await sql`
         UPDATE matchups
         SET 
+          home_player_id = ${matchup.home_player_id},
+          home_player_name = ${matchup.home_player_name},
           away_player_id = ${matchup.away_player_id},
           away_player_name = ${matchup.away_player_name},
           match_duration = ${matchup.match_duration || 6},
+          home_original_player_id = ${matchup.home_original_player_id || null},
+          home_original_player_name = ${matchup.home_original_player_name || null},
+          home_substituted = ${matchup.home_substituted || false},
+          home_sub_penalty = ${matchup.home_sub_penalty || 0},
+          away_original_player_id = ${matchup.away_original_player_id || null},
+          away_original_player_name = ${matchup.away_original_player_name || null},
+          away_substituted = ${matchup.away_substituted || false},
+          away_sub_penalty = ${matchup.away_sub_penalty || 0},
           updated_at = NOW()
         WHERE fixture_id = ${fixtureId}
         AND position = ${matchup.position}
@@ -495,11 +505,25 @@ export async function PATCH(
       totalAwayScore += result.away_goals;
     }
 
-    // Add penalty/fine goals to total scores
-    totalHomeScore += Number(home_penalty_goals) || 0;
-    totalAwayScore += Number(away_penalty_goals) || 0;
+    // Get substitution penalties from matchups
+    const matchupsWithPenalties = await sql`
+      SELECT 
+        COALESCE(SUM(home_sub_penalty), 0) as total_home_sub_penalty,
+        COALESCE(SUM(away_sub_penalty), 0) as total_away_sub_penalty
+      FROM matchups
+      WHERE fixture_id = ${fixtureId}
+    `;
+    
+    const homeSubPenalty = Number(matchupsWithPenalties[0]?.total_home_sub_penalty) || 0;
+    const awaySubPenalty = Number(matchupsWithPenalties[0]?.total_away_sub_penalty) || 0;
 
-    console.log(`Total scores including penalties - Home: ${totalHomeScore} (matchups + ${home_penalty_goals} penalties), Away: ${totalAwayScore} (matchups + ${away_penalty_goals} penalties)`);
+    // Add penalty/fine goals to total scores
+    // Home team gets: their goals + away's substitution penalties + fine/violation goals
+    // Away team gets: their goals + home's substitution penalties + fine/violation goals
+    totalHomeScore += awaySubPenalty + (Number(home_penalty_goals) || 0);
+    totalAwayScore += homeSubPenalty + (Number(away_penalty_goals) || 0);
+
+    console.log(`Total scores including all penalties - Home: ${totalHomeScore} (goals + ${awaySubPenalty} sub penalties + ${home_penalty_goals} fine penalties), Away: ${totalAwayScore} (goals + ${homeSubPenalty} sub penalties + ${away_penalty_goals} fine penalties)`);
 
     // Determine match result
     let matchResult: 'home_win' | 'away_win' | 'draw';

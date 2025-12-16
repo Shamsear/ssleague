@@ -1116,14 +1116,14 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
         newMatchups[subMatchupIndex].home_original_player_id = currentPlayerId;
         newMatchups[subMatchupIndex].home_original_player_name = currentPlayerName;
         newMatchups[subMatchupIndex].home_player_id = subNewPlayerId;
-        newMatchups[subMatchupIndex].home_player_name = newPlayer.name;
+        newMatchups[subMatchupIndex].home_player_name = newPlayer.player_name;
         newMatchups[subMatchupIndex].home_substituted = true;
         newMatchups[subMatchupIndex].home_sub_penalty = totalPenalty;
       } else {
         newMatchups[subMatchupIndex].away_original_player_id = currentPlayerId;
         newMatchups[subMatchupIndex].away_original_player_name = currentPlayerName;
         newMatchups[subMatchupIndex].away_player_id = subNewPlayerId;
-        newMatchups[subMatchupIndex].away_player_name = newPlayer.name;
+        newMatchups[subMatchupIndex].away_player_name = newPlayer.player_name;
         newMatchups[subMatchupIndex].away_substituted = true;
         newMatchups[subMatchupIndex].away_sub_penalty = totalPenalty;
       }
@@ -1145,7 +1145,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
       showAlert({
         type: 'success',
         title: 'Substitution Complete',
-        message: `${newPlayer.name} substituted in successfully!\n+${totalPenalty} penalty goals awarded to opponent.`
+        message: `${newPlayer.player_name} substituted in successfully!\n+${totalPenalty} penalty goals awarded to opponent.`
       });
     } catch (error) {
       console.error('Error substituting:', error);
