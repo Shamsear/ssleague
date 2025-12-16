@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useTeamRegistration } from '@/contexts/TeamRegistrationContext';
+import { useTournamentContext } from '@/contexts/TournamentContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import RegisteredTeamDashboard from './RegisteredTeamDashboard';
@@ -13,6 +14,7 @@ import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 export default function TeamDashboard() {
   const { user, loading } = useAuth();
   const { setIsRegistered } = useTeamRegistration();
+  const { setSeasonId } = useTournamentContext();
   const router = useRouter();
   const [seasonStatus, setSeasonStatus] = useState<{
     hasActiveSeason: boolean;
@@ -38,6 +40,14 @@ export default function TeamDashboard() {
     seasonStatus?.seasonId || null,
     user?.uid || null
   );
+
+  // Set season ID in TournamentContext when it's loaded
+  useEffect(() => {
+    if (seasonStatus?.seasonId) {
+      console.log('📝 Setting season ID in TournamentContext:', seasonStatus.seasonId);
+      setSeasonId(seasonStatus.seasonId);
+    }
+  }, [seasonStatus?.seasonId, setSeasonId]);
 
   useEffect(() => {
     if (!loading && !user) {

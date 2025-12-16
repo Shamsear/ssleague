@@ -81,7 +81,7 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
     );
   }
 
-  const { format, has_knockout, standings, groupStandings, knockoutFixtures } = data;
+  const { format, has_knockout, standings, groupStandings, knockoutFixtures, playoff_spots } = data;
 
   // Determine what to show based on format
   const showLeagueStandings = format === 'league' && standings;
@@ -127,7 +127,7 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
               standings={standings} 
               currentUserId={currentUserId}
               showPlayoffIndicator={has_knockout}
-              playoffSpots={4}
+              playoffSpots={playoff_spots || 4}
             />
           )}
           

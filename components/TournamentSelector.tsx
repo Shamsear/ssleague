@@ -6,18 +6,36 @@ import { useTournamentContext } from '@/contexts/TournamentContext';
 import { usePermissions } from '@/hooks/usePermissions';
 
 export default function TournamentSelector() {
-  const { userSeasonId } = usePermissions();
+  const { userSeasonId, user } = usePermissions();
   const { selectedTournamentId, setSelectedTournamentId, seasonId, setSeasonId } = useTournamentContext();
+  
+  // For team users, get their registered season from context/localStorage
+  // For committee admins, use userSeasonId from permissions
+  const effectiveSeasonId = user?.role === 'team' ? seasonId : userSeasonId;
   
   // Load tournaments for current season
   const { data: tournaments, isLoading } = useTournaments({
-    seasonId: userSeasonId || undefined,
-    enabled: !!userSeasonId,
+    seasonId: effectiveSeasonId || undefined,
+    enabled: !!effectiveSeasonId,
   });
+
+  // Debug logging
+  React.useEffect(() => {
+    console.log('🔍 TournamentSelector Debug:', {
+      userRole: user?.role,
+      userSeasonId,
+      seasonId,
+      effectiveSeasonId,
+      tournamentsCount: tournaments?.length || 0,
+      selectedTournamentId,
+      isLoading
+    });
+  }, [user?.role, userSeasonId, seasonId, effectiveSeasonId, tournaments, selectedTournamentId, isLoading]);
 
   // Set season ID in context when userSeasonId changes (only if different)
   React.useEffect(() => {
     if (userSeasonId && userSeasonId !== seasonId) {
+      console.log('📝 Setting season ID in context:', userSeasonId);
       setSeasonId(userSeasonId);
     }
   }, [userSeasonId, seasonId, setSeasonId]);
@@ -27,8 +45,10 @@ export default function TournamentSelector() {
     if (tournaments && tournaments.length > 0 && !selectedTournamentId) {
       const primaryTournament = tournaments.find(t => t.is_primary);
       if (primaryTournament) {
+        console.log('🏆 Auto-selecting primary tournament:', primaryTournament.tournament_name);
         setSelectedTournamentId(primaryTournament.id);
       } else {
+        console.log('🏆 Auto-selecting first tournament:', tournaments[0].tournament_name);
         setSelectedTournamentId(tournaments[0].id);
       }
     }

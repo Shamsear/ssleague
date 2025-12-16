@@ -72,12 +72,21 @@ export async function GET(
     } else {
       // League format (or League + Knockout)
       const leagueFixtures = fixtures.filter(f => !f.knockout_round);
-      const standings = calculateLeagueStandings(leagueFixtures);
+      const standings = await calculateLeagueStandings(leagueFixtures, sql);
+      
+      // Get playoff teams from tournament settings
+      const tournamentSettings = await sql`
+        SELECT playoff_teams
+        FROM tournaments
+        WHERE id = ${tournamentId}
+      `;
+      const playoffSpots = tournamentSettings[0]?.playoff_teams || 4;
       
       return NextResponse.json({
         success: true,
         format: 'league',
         has_knockout: tournament.has_knockout_stage,
+        playoff_spots: playoffSpots,
         standings,
         knockoutFixtures: tournament.has_knockout_stage ? getKnockoutFixtures(fixtures) : null,
       });
@@ -94,7 +103,7 @@ export async function GET(
   }
 }
 
-function calculateLeagueStandings(fixtures: any[]) {
+async function calculateLeagueStandings(fixtures: any[], sql: any) {
   const teamStats: Record<string, any> = {};
 
   fixtures.forEach((fixture) => {
@@ -108,6 +117,7 @@ function calculateLeagueStandings(fixtures: any[]) {
       teamStats[homeTeamId] = {
         team_id: homeTeamId,
         team_name: fixture.home_team_name,
+        team_logo: null,
         matches_played: 0,
         wins: 0,
         draws: 0,
@@ -122,6 +132,7 @@ function calculateLeagueStandings(fixtures: any[]) {
       teamStats[awayTeamId] = {
         team_id: awayTeamId,
         team_name: fixture.away_team_name,
+        team_logo: null,
         matches_played: 0,
         wins: 0,
         draws: 0,
@@ -157,6 +168,29 @@ function calculateLeagueStandings(fixtures: any[]) {
       teamStats[awayTeamId].points += 1;
     }
   });
+
+  // Fetch team logos from Firebase
+  const teamIds = Object.keys(teamStats);
+  if (teamIds.length > 0) {
+    try {
+      const { db } = await import('@/lib/firebase/config');
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      
+      const teamsRef = collection(db, 'teams');
+      const teamsSnapshot = await getDocs(teamsRef);
+      
+      teamsSnapshot.forEach((doc) => {
+        const teamData = doc.data();
+        const teamId = doc.id;
+        
+        if (teamStats[teamId]) {
+          teamStats[teamId].team_logo = teamData.logo_url || teamData.team_logo || teamData.logoUrl || null;
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching team logos:', error);
+    }
+  }
 
   // Calculate goal difference and sort
   const standings = Object.values(teamStats).map((team: any) => ({

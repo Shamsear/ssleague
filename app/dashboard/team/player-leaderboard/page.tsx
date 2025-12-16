@@ -47,7 +47,7 @@ type SortOrder = 'asc' | 'desc';
 
 export default function PlayerLeaderboardPage() {
   const { user, loading } = useAuth();
-  const { selectedTournamentId } = useTournamentContext();
+  const { selectedTournamentId, seasonId, setSeasonId } = useTournamentContext();
   const { userSeasonId } = usePermissions();
   const router = useRouter();
   
@@ -63,13 +63,15 @@ export default function PlayerLeaderboardPage() {
   
   // Use React Query hook for player stats from Neon
   // If showOverall is true, use seasonId (all tournaments), otherwise use tournamentId (specific tournament)
+  // Use seasonId from context for team users, userSeasonId for committee admins
+  const effectiveSeasonId = user?.role === 'team' ? seasonId : userSeasonId;
+  
   const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
     tournamentId: showOverall ? undefined : selectedTournamentId,
-    seasonId: userSeasonId || ''
+    seasonId: effectiveSeasonId || ''
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
   
   const [sortField, setSortField] = useState<SortField>('points');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -83,9 +85,54 @@ export default function PlayerLeaderboardPage() {
     }
   }, [user, loading, router]);
 
+  // Fetch and set the team's season if not already set
+  useEffect(() => {
+    const fetchTeamSeason = async () => {
+      if (!user || user.role !== 'team' || seasonId) return;
+
+      try {
+        // Get active season from Firebase
+        const { db } = await import('@/lib/firebase/config');
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        
+        const seasonsRef = collection(db, 'seasons');
+        const activeSeasonQuery = query(seasonsRef, where('isActive', '==', true));
+        const snapshot = await getDocs(activeSeasonQuery);
+        
+        if (!snapshot.empty) {
+          const activeSeason = snapshot.docs[0];
+          const activeSeasonId = activeSeason.id;
+          
+          // Check if team is registered for this season
+          const teamSeasonsRef = collection(db, 'team_seasons');
+          const teamSeasonQuery = query(
+            teamSeasonsRef,
+            where('user_id', '==', user.uid),
+            where('season_id', '==', activeSeasonId),
+            where('status', '==', 'registered')
+          );
+          const teamSeasonSnapshot = await getDocs(teamSeasonQuery);
+          
+          if (!teamSeasonSnapshot.empty) {
+            console.log('📝 [Player Leaderboard] Setting team season ID:', activeSeasonId);
+            setSeasonId(activeSeasonId);
+          } else {
+            console.log('⚠️ [Player Leaderboard] Team not registered for active season');
+          }
+        } else {
+          console.log('⚠️ [Player Leaderboard] No active season found');
+        }
+      } catch (error) {
+        console.error('❌ [Player Leaderboard] Error fetching team season:', error);
+      }
+    };
+
+    fetchTeamSeason();
+  }, [user, seasonId, setSeasonId]);
+
   useEffect(() => {
     const fetchData = async () => {
-      if (!user || user.role !== 'team' || !userSeasonId) return;
+      if (!user || user.role !== 'team' || !effectiveSeasonId) return;
 
       try {
         setIsLoading(true);
@@ -137,7 +184,7 @@ export default function PlayerLeaderboardPage() {
     };
 
     fetchData();
-  }, [user, userSeasonId]);
+  }, [user, effectiveSeasonId]);
 
   // Process player stats data from Neon when it arrives
   useEffect(() => {
@@ -191,13 +238,6 @@ export default function PlayerLeaderboardPage() {
       filtered = filtered.filter((p) => p.team_id === teamFilter);
     }
 
-    // Category filter
-    if (categoryFilter === 'unassigned') {
-      filtered = filtered.filter((p) => !p.category_id);
-    } else if (categoryFilter) {
-      filtered = filtered.filter((p) => p.category_id === categoryFilter);
-    }
-
     // Sort
     filtered.sort((a, b) => {
       let aVal: any = a[sortField];
@@ -216,7 +256,7 @@ export default function PlayerLeaderboardPage() {
     });
 
     setFilteredPlayers(filtered);
-  }, [players, searchTerm, teamFilter, categoryFilter, sortField, sortOrder]);
+  }, [players, searchTerm, teamFilter, sortField, sortOrder]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -287,42 +327,66 @@ export default function PlayerLeaderboardPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold gradient-text">🏆 Player Leaderboard</h1>
-          <p className="text-gray-500 mt-1">
-            {tournament?.tournament_name ? `${tournament.tournament_name} - ` : ''}Player statistics and rankings
-          </p>
-          <div className="flex gap-4 mt-2">
-            <Link
-              href="/dashboard/team"
-              className="inline-flex items-center text-[#0066FF] hover:text-[#0052CC] text-sm"
-            >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Dashboard
-            </Link>
-            <Link
-              href="/dashboard/team/team-leaderboard"
-              className="inline-flex items-center text-purple-600 hover:text-purple-700 text-sm font-medium"
-            >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              Team Standings →
-            </Link>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-purple-50 to-pink-50">
+      <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-7xl">
+        {/* Header */}
+        <div className="mb-4 sm:mb-6">
+          {/* Back Link */}
+          <Link
+            href="/dashboard/team"
+            className="group inline-flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm text-gray-700 hover:text-purple-600 mb-4 font-medium transition-all rounded-xl shadow-sm hover:shadow-md border border-gray-200 hover:border-purple-300"
+          >
+            <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="text-sm sm:text-base">Back to Dashboard</span>
+          </Link>
+
+          {/* Title Card */}
+          <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-xl border border-white/20 p-5 sm:p-8 overflow-hidden">
+            {/* Decorative background */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full blur-3xl opacity-30 -z-10"></div>
+            
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-gray-900 via-purple-900 to-pink-900 bg-clip-text text-transparent">
+                      Player Leaderboard
+                    </h1>
+                    <p className="text-sm sm:text-base text-gray-600 mt-1">
+                      {tournament?.tournament_name ? `${tournament.tournament_name} - ` : ''}Player Rankings
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Quick Link */}
+                <Link
+                  href="/dashboard/team/team-leaderboard"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-medium transition-all mt-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  View Team Standings
+                </Link>
+              </div>
+              
+              {/* Tournament Selector */}
+              <div className="w-full sm:w-auto">
+                <TournamentSelector />
+              </div>
+            </div>
           </div>
         </div>
-        <div>
-          <TournamentSelector />
-        </div>
-      </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 backdrop-blur-md rounded-xl p-4 border border-blue-200/20">
           <div className="flex items-center justify-between">
             <div>
@@ -371,8 +435,8 @@ export default function PlayerLeaderboardPage() {
         </div>
       </div>
 
-      {/* Overall Stats Toggle */}
-      <div className="mb-4 flex justify-end">
+        {/* Overall Stats Toggle */}
+        <div className="mb-4 flex justify-end">
         <button
           onClick={() => setShowOverall(!showOverall)}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -385,10 +449,10 @@ export default function PlayerLeaderboardPage() {
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl p-6 mb-6 border border-gray-100/20">
+        {/* Filters */}
+        <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl p-6 mb-6 border border-gray-100/20">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Filters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
             <input
@@ -416,28 +480,11 @@ export default function PlayerLeaderboardPage() {
               ))}
             </select>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Category</label>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full py-2 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF]/70"
-            >
-              <option value="">All Categories</option>
-              <option value="unassigned">Unassigned</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
       </div>
 
-      {/* Leaderboard Table */}
-      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl overflow-hidden border border-gray-100/20">
+        {/* Leaderboard Table */}
+        <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl overflow-hidden border border-gray-100/20">
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
           <div className="flex items-center gap-3">
             <span className="text-3xl">👥</span>
@@ -452,11 +499,11 @@ export default function PlayerLeaderboardPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50/50">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Rank
                 </th>
                 <th 
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('name')}
                 >
                   <div className="flex items-center gap-1">
@@ -464,23 +511,21 @@ export default function PlayerLeaderboardPage() {
                     <SortIcon field="name" />
                   </div>
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Team
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Category
-                </th>
                 <th 
-                  className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('points')}
                 >
                   <div className="flex items-center justify-center gap-1">
-                    Points
+                    <span className="hidden sm:inline">Points</span>
+                    <span className="sm:hidden">Pts</span>
                     <SortIcon field="points" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('matches_played')}
                 >
                   <div className="flex items-center justify-center gap-1">
@@ -489,34 +534,34 @@ export default function PlayerLeaderboardPage() {
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('wins')}
                 >
                   <div className="flex items-center justify-center gap-1">
-                    Wins
+                    W
                     <SortIcon field="wins" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('draws')}
                 >
                   <div className="flex items-center justify-center gap-1">
-                    Draws
+                    D
                     <SortIcon field="draws" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('losses')}
                 >
                   <div className="flex items-center justify-center gap-1">
-                    Losses
+                    L
                     <SortIcon field="losses" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('win_rate')}
                 >
                   <div className="flex items-center justify-center gap-1">
@@ -538,57 +583,43 @@ export default function PlayerLeaderboardPage() {
               ) : (
                 filteredPlayers.map((player, index) => (
                   <tr key={player.id} className={`hover:bg-purple-50/50 transition-colors ${index < 3 ? 'bg-yellow-50/30' : ''}`}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                      {index === 0 && <span className="text-2xl">🥇</span>}
-                      {index === 1 && <span className="text-2xl">🥈</span>}
-                      {index === 2 && <span className="text-2xl">🥉</span>}
-                      {index > 2 && `#${index + 1}`}
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                      {index === 0 && <span className="text-xl sm:text-2xl">🥇</span>}
+                      {index === 1 && <span className="text-xl sm:text-2xl">🥈</span>}
+                      {index === 2 && <span className="text-xl sm:text-2xl">🥉</span>}
+                      {index > 2 && <span className="text-xs sm:text-sm">{`#${index + 1}`}</span>}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                       <div>
-                        <div className="text-sm font-bold text-gray-900">{player.name}</div>
-                        <div className="text-xs text-gray-500">{player.player_id}</div>
+                        <div className="text-xs sm:text-sm font-bold text-gray-900 truncate max-w-[120px] sm:max-w-none">{player.name}</div>
+                        <div className="text-[10px] sm:text-xs text-gray-500 truncate max-w-[120px] sm:max-w-none">{player.player_id}</div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         {player.team_name || (
                           <span className="text-gray-400 italic">Not assigned</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {player.category_name ? (
-                        <div className="flex items-center">
-                          <div
-                            className={`h-4 w-4 rounded-full mr-2 ${getColorClass(
-                              player.category_color || ''
-                            )}`}
-                          ></div>
-                          <span className="text-sm text-gray-900">{player.category_name}</span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 italic text-sm">Not assigned</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-purple-100 text-purple-800">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-purple-100 text-purple-800">
                         {player.points}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <td className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       <span className="text-sm text-gray-600">{player.matches_played}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="text-sm font-semibold text-green-600">{player.wins}</span>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="text-xs sm:text-sm font-semibold text-green-600">{player.wins}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       <span className="text-sm text-gray-600">{player.draws}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="text-sm font-semibold text-red-600">{player.losses}</span>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="text-xs sm:text-sm font-semibold text-red-600">{player.losses}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <td className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       <span className="text-sm font-medium text-gray-900">
                         {player.matches_played > 0
                           ? `${player.win_rate.toFixed(1)}%`
@@ -603,8 +634,8 @@ export default function PlayerLeaderboardPage() {
         </div>
       </div>
 
-      {/* Legend Info */}
-      <div className="mt-6 bg-purple-50 border border-purple-200 rounded-xl p-4">
+        {/* Legend Info */}
+        <div className="mt-6 bg-purple-50 border border-purple-200 rounded-xl p-4">
         <div className="flex items-start gap-3">
           <span className="text-2xl">📊</span>
           <div>
@@ -619,6 +650,7 @@ export default function PlayerLeaderboardPage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 interface TeamStats {
   team_id: string;
   team_name: string;
+  team_logo?: string;
   matches_played: number;
   wins: number;
   draws: number;
@@ -56,34 +57,34 @@ export default function LeagueStandingsTable({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50/50">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Rank
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Team
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   MP
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   W
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   D
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   L
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   GF
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   GA
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   GD
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   PTS
                 </th>
               </tr>
@@ -104,49 +105,66 @@ export default function LeagueStandingsTable({
                       isCurrentUser ? 'ring-2 ring-blue-400' : ''
                     }`}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                      {index === 0 && <span className="text-2xl">🥇</span>}
-                      {index === 1 && <span className="text-2xl">🥈</span>}
-                      {index === 2 && <span className="text-2xl">🥉</span>}
-                      {index > 2 && `#${index + 1}`}
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                      {index === 0 && <span className="text-xl sm:text-2xl">🥇</span>}
+                      {index === 1 && <span className="text-xl sm:text-2xl">🥈</span>}
+                      {index === 2 && <span className="text-xl sm:text-2xl">🥉</span>}
+                      {index > 2 && <span className="text-xs sm:text-sm">{`#${index + 1}`}</span>}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-bold text-gray-900">
-                          {team.team_name}
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        {/* Team Logo */}
+                        {team.team_logo ? (
+                          <img 
+                            src={team.team_logo} 
+                            alt={`${team.team_name} logo`}
+                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-gray-200 flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold text-xs sm:text-sm flex-shrink-0">
+                            {team.team_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        
+                        <div className="min-w-0">
+                          <div className="text-xs sm:text-sm font-bold text-gray-900 truncate">
+                            {team.team_name}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
+                            {isCurrentUser && (
+                              <span className="text-[10px] sm:text-xs bg-blue-100 text-blue-700 px-1.5 sm:px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                                You
+                              </span>
+                            )}
+                            {isPlayoffSpot && (
+                              <span className="text-[10px] sm:text-xs bg-green-50 text-green-600 px-1.5 sm:px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                                🎯 Playoff
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        {isCurrentUser && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                            Your Team
-                          </span>
-                        )}
-                        {isPlayoffSpot && (
-                          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium ml-2">
-                            Playoff Spot
-                          </span>
-                        )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
+                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-sm text-gray-600">
                       {team.matches_played}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-semibold text-green-600">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm font-semibold text-green-600">
                       {team.wins}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
+                    <td className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm text-gray-600">
                       {team.draws}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-semibold text-red-600">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-xs sm:text-sm font-semibold text-red-600">
                       {team.losses}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
+                    <td className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-sm text-gray-600">
                       {team.goals_for}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
+                    <td className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center text-sm text-gray-600">
                       {team.goals_against}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`text-sm font-medium ${
+                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className={`text-xs sm:text-sm font-medium ${
                         team.goal_difference > 0 ? 'text-green-600' :
                         team.goal_difference < 0 ? 'text-red-600' :
                         'text-gray-600'
@@ -154,8 +172,8 @@ export default function LeagueStandingsTable({
                         {team.goal_difference > 0 ? '+' : ''}{team.goal_difference}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-blue-100 text-blue-800">
                         {team.points}
                       </span>
                     </td>
