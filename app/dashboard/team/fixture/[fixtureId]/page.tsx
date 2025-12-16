@@ -264,21 +264,21 @@ export default function FixturePage() {
 *MATCHUPS:*
 
 ${matchups.map((m, idx) => {
+  // Format player names with substitution info
+  const homePlayerDisplay = m.home_substituted 
+    ? `${m.home_original_player_name} (${m.home_player_name})`
+    : m.home_player_name;
+  const awayPlayerDisplay = m.away_substituted 
+    ? `${m.away_original_player_name} (${m.away_player_name})`
+    : m.away_player_name;
+  
   let line = '';
   if (hasResults && m.home_goals !== null && m.away_goals !== null) {
-    line = `${idx + 1}. ${m.home_player_name} *${m.home_goals}-${m.away_goals}* ${m.away_player_name}`;
+    line = `${idx + 1}. ${homePlayerDisplay} *${m.home_goals}-${m.away_goals}* ${awayPlayerDisplay}`;
   } else {
-    line = `${idx + 1}. ${m.home_player_name} vs ${m.away_player_name}`;
+    line = `${idx + 1}. ${homePlayerDisplay} vs ${awayPlayerDisplay}`;
   }
   line += ` (${m.match_duration || 6}min)`;
-  
-  // Add substitution indicators
-  if (m.home_substituted) {
-    line += `\n   SUB H: ${m.home_original_player_name} -> ${m.home_player_name}`;
-  }
-  if (m.away_substituted) {
-    line += `\n   SUB A: ${m.away_original_player_name} -> ${m.away_player_name}`;
-  }
   
   return line;
 }).join('\n\n')}

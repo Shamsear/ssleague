@@ -439,38 +439,122 @@ export default function FantasyTeamsPage() {
                                   {playerData.matches.length === 0 ? (
                                     <p className="text-center text-gray-500 py-4">No match data yet</p>
                                   ) : (
-                                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                                      {playerData.matches.map((match: any, idx: number) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                          <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                                              <span className="font-bold text-indigo-600 text-sm">R{match.round_number}</span>
+                                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                                      {playerData.matches.map((match: any, idx: number) => {
+                                        // Calculate individual point components
+                                        const goalPoints = (match.goals_scored || 0) * 5;
+                                        const cleanSheetPoints = match.clean_sheet ? 4 : 0;
+                                        const motmPoints = match.motm ? 3 : 0;
+                                        const resultPoints = match.result === 'win' ? 2 : match.result === 'draw' ? 1 : 0;
+                                        const appearancePoints = 1;
+                                        const basePoints = goalPoints + cleanSheetPoints + motmPoints + resultPoints + appearancePoints;
+                                        const multiplier = match.is_captain ? 2 : match.is_vice_captain ? 1.5 : 1;
+                                        const totalPoints = Math.round(basePoints * multiplier);
+
+                                        return (
+                                          <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                                            {/* Match Header */}
+                                            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-indigo-50 to-blue-50">
+                                              <div className="flex items-center gap-3">
+                                                <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+                                                  <span className="font-bold text-white">R{match.round_number}</span>
+                                                </div>
+                                                <div>
+                                                  <p className="font-semibold text-gray-900">
+                                                    {match.opponent_name || 'vs Opponent'}
+                                                  </p>
+                                                  <p className="text-xs text-gray-600">
+                                                    {match.result === 'win' ? '✅ Win' : match.result === 'draw' ? '🤝 Draw' : '❌ Loss'}
+                                                    {match.score && ` • ${match.score}`}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="text-right">
+                                                <p className="text-2xl font-bold text-indigo-600">{totalPoints}</p>
+                                                <p className="text-xs text-gray-500">pts</p>
+                                              </div>
                                             </div>
-                                            <div className="flex gap-2 text-xs">
-                                              {match.goals_scored > 0 && (
-                                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
-                                                  <Target className="w-3 h-3 inline" /> {match.goals_scored}
-                                                </span>
-                                              )}
-                                              {match.clean_sheet && (
-                                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">CS</span>
-                                              )}
-                                              {match.motm && (
-                                                <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded">MOTM</span>
-                                              )}
-                                              {match.is_captain && (
-                                                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded">
-                                                  <Crown className="w-3 h-3 inline" /> {match.points_multiplier}x
-                                                </span>
-                                              )}
+
+                                            {/* Points Breakdown */}
+                                            <div className="p-3 bg-white space-y-2">
+                                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                                {/* Base Points */}
+                                                {goalPoints > 0 && (
+                                                  <div className="flex items-center justify-between px-2 py-1 bg-green-50 rounded">
+                                                    <span className="text-gray-700 flex items-center gap-1">
+                                                      <Target className="w-3 h-3 text-green-600" />
+                                                      Goals ({match.goals_scored})
+                                                    </span>
+                                                    <span className="font-semibold text-green-700">{goalPoints}pts</span>
+                                                  </div>
+                                                )}
+                                                {cleanSheetPoints > 0 && (
+                                                  <div className="flex items-center justify-between px-2 py-1 bg-blue-50 rounded">
+                                                    <span className="text-gray-700 flex items-center gap-1">
+                                                      <ShieldIcon className="w-3 h-3 text-blue-600" />
+                                                      Clean Sheet
+                                                    </span>
+                                                    <span className="font-semibold text-blue-700">{cleanSheetPoints}pts</span>
+                                                  </div>
+                                                )}
+                                                {motmPoints > 0 && (
+                                                  <div className="flex items-center justify-between px-2 py-1 bg-amber-50 rounded">
+                                                    <span className="text-gray-700 flex items-center gap-1">
+                                                      <Award className="w-3 h-3 text-amber-600" />
+                                                      MOTM
+                                                    </span>
+                                                    <span className="font-semibold text-amber-700">{motmPoints}pts</span>
+                                                  </div>
+                                                )}
+                                                {resultPoints > 0 && (
+                                                  <div className="flex items-center justify-between px-2 py-1 bg-purple-50 rounded">
+                                                    <span className="text-gray-700">
+                                                      {match.result === 'win' ? '🏆 Win' : '🤝 Draw'}
+                                                    </span>
+                                                    <span className="font-semibold text-purple-700">{resultPoints}pts</span>
+                                                  </div>
+                                                )}
+                                                <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded">
+                                                  <span className="text-gray-700">⚽ Appearance</span>
+                                                  <span className="font-semibold text-gray-700">{appearancePoints}pt</span>
+                                                </div>
+                                              </div>
+
+                                              {/* Multiplier & Total */}
+                                              <div className="pt-2 border-t border-gray-200">
+                                                <div className="flex items-center justify-between text-sm">
+                                                  <span className="text-gray-600">Base Points</span>
+                                                  <span className="font-semibold text-gray-900">{basePoints}pts</span>
+                                                </div>
+                                                {multiplier !== 1 && (
+                                                  <>
+                                                    <div className="flex items-center justify-between text-sm mt-1">
+                                                      <span className="text-gray-600 flex items-center gap-1">
+                                                        {match.is_captain ? (
+                                                          <>
+                                                            <Crown className="w-3 h-3 text-yellow-600" />
+                                                            Captain Multiplier
+                                                          </>
+                                                        ) : (
+                                                          <>
+                                                            <Star className="w-3 h-3 text-blue-600" />
+                                                            Vice-Captain Multiplier
+                                                          </>
+                                                        )}
+                                                      </span>
+                                                      <span className="font-semibold text-indigo-600">×{multiplier}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-base font-bold mt-2 pt-2 border-t border-gray-200">
+                                                      <span className="text-gray-900">Final Points</span>
+                                                      <span className="text-indigo-600">{totalPoints}pts</span>
+                                                    </div>
+                                                  </>
+                                                )}
+                                              </div>
                                             </div>
                                           </div>
-                                          <div className="text-right">
-                                            <p className="text-xl font-bold text-purple-600">{match.total_points}</p>
-                                            <p className="text-xs text-gray-500">pts</p>
-                                          </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </>
