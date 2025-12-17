@@ -147,7 +147,7 @@ export default function MyFantasyTeamPage() {
     setLoadingPlayerStats({ ...loadingPlayerStats, [playerId]: true });
 
     try {
-      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/stats?league_id=${leagueId}`);
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/matches?league_id=${leagueId}`);
       if (!response.ok) {
         const errorData = await response.text();
         console.error('API Error:', response.status, errorData);
@@ -389,7 +389,7 @@ export default function MyFantasyTeamPage() {
         {/* Recent Performance */}
         {recentRounds.length > 0 && (
           <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 mb-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Recent Performance</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Recent Player Performance</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
               {recentRounds.map((round) => (
                 <div key={round.round} className="text-center p-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl">
@@ -435,7 +435,15 @@ export default function MyFantasyTeamPage() {
 
         {/* Players List */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">My Players</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">My Players</h2>
+            <Link
+              href="/dashboard/team/fantasy/all-teams"
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              View Detailed Stats →
+            </Link>
+          </div>
           
           {players.length === 0 ? (
             <div className="text-center py-12">

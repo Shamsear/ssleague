@@ -26,15 +26,15 @@ async function recalculateFantasyTeamPoints() {
         WHERE team_id = ${team.team_id}
       `;
 
-      // Get passive team points
-      const passiveResult = await sql`
-        SELECT COALESCE(SUM(total_points), 0) as passive_points
-        FROM fantasy_team_points
+      // Get passive team points from fantasy_teams table
+      const teamInfo = await sql`
+        SELECT COALESCE(passive_points, 0) as passive_points
+        FROM fantasy_teams
         WHERE team_id = ${team.team_id}
       `;
 
       const playerPoints = Number(pointsResult[0].player_points);
-      const passivePoints = Number(passiveResult[0].passive_points);
+      const passivePoints = Number(teamInfo[0].passive_points);
       const calculatedTotal = playerPoints + passivePoints;
       const oldTotal = Number(team.old_total_points);
 

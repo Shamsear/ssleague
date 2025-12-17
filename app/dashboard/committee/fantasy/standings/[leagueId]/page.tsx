@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import ShareableFantasyLeaderboard from '@/components/fantasy/ShareableFantasyLeaderboard';
 
 interface LeaderboardEntry {
   rank: number;
@@ -16,6 +17,7 @@ interface LeaderboardEntry {
   total_points: number;
   player_count: number;
   last_round_points: number;
+  team_logo?: string;
 }
 
 export default function FantasyStandingsPage() {
@@ -105,73 +107,27 @@ export default function FantasyStandingsPage() {
             Back to League Dashboard
           </Link>
 
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-xl">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-xl">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Fantasy Standings</h1>
+                <p className="text-gray-600 mt-1">{league.name} - League Rankings</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Fantasy Standings</h1>
-              <p className="text-gray-600 mt-1">{league.name} - League Rankings</p>
-            </div>
+            
+            {leaderboard.length > 0 && (
+              <ShareableFantasyLeaderboard
+                teams={leaderboard}
+                leagueName={league.name}
+              />
+            )}
           </div>
         </div>
-
-        {/* Podium - Top 3 */}
-        {leaderboard.length >= 3 && (
-          <div className="mb-8">
-            <div className="grid grid-cols-3 gap-4 items-end max-w-4xl mx-auto">
-              {/* 2nd Place */}
-              <div className="text-center">
-                <div className="bg-white rounded-2xl shadow-xl border-2 border-gray-300 p-6 mb-2 transform hover:scale-105 transition-transform">
-                  <div className="w-16 h-16 bg-gray-300 rounded-full flex items-center justify-center text-3xl mx-auto mb-3">
-                    🥈
-                  </div>
-                  <p className="font-bold text-gray-900 text-lg mb-1">{leaderboard[1].team_name}</p>
-                  <p className="text-sm text-gray-600 mb-2">{leaderboard[1].owner_name}</p>
-                  <div className="bg-gradient-to-r from-gray-100 to-gray-200 rounded-lg p-3">
-                    <p className="text-2xl font-bold text-gray-700">{leaderboard[1].total_points}</p>
-                    <p className="text-xs text-gray-600">points</p>
-                  </div>
-                </div>
-                <div className="bg-gray-300 h-24 rounded-t-xl"></div>
-              </div>
-
-              {/* 1st Place */}
-              <div className="text-center">
-                <div className="bg-white rounded-2xl shadow-2xl border-2 border-yellow-400 p-6 mb-2 transform hover:scale-105 transition-transform">
-                  <div className="w-20 h-20 bg-yellow-400 rounded-full flex items-center justify-center text-4xl mx-auto mb-3 animate-pulse">
-                    🏆
-                  </div>
-                  <p className="font-bold text-gray-900 text-xl mb-1">{leaderboard[0].team_name}</p>
-                  <p className="text-sm text-gray-600 mb-2">{leaderboard[0].owner_name}</p>
-                  <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg p-3">
-                    <p className="text-3xl font-bold text-yellow-900">{leaderboard[0].total_points}</p>
-                    <p className="text-xs text-yellow-800">points</p>
-                  </div>
-                </div>
-                <div className="bg-yellow-400 h-32 rounded-t-xl"></div>
-              </div>
-
-              {/* 3rd Place */}
-              <div className="text-center">
-                <div className="bg-white rounded-2xl shadow-xl border-2 border-orange-400 p-6 mb-2 transform hover:scale-105 transition-transform">
-                  <div className="w-16 h-16 bg-orange-400 rounded-full flex items-center justify-center text-3xl mx-auto mb-3">
-                    🥉
-                  </div>
-                  <p className="font-bold text-gray-900 text-lg mb-1">{leaderboard[2].team_name}</p>
-                  <p className="text-sm text-gray-600 mb-2">{leaderboard[2].owner_name}</p>
-                  <div className="bg-gradient-to-r from-orange-100 to-orange-200 rounded-lg p-3">
-                    <p className="text-2xl font-bold text-orange-700">{leaderboard[2].total_points}</p>
-                    <p className="text-xs text-orange-600">points</p>
-                  </div>
-                </div>
-                <div className="bg-orange-400 h-20 rounded-t-xl"></div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Full Leaderboard Table */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
@@ -194,7 +150,6 @@ export default function FantasyStandingsPage() {
                   <tr>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rank</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Team</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Owner</th>
                     <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Players</th>
                     <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Last Round</th>
                     <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Points</th>
@@ -216,10 +171,20 @@ export default function FantasyStandingsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <p className="font-semibold text-gray-900">{entry.team_name}</p>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className="text-gray-600">{entry.owner_name}</p>
+                          <div className="flex items-center gap-3">
+                            {entry.team_logo ? (
+                              <img 
+                                src={entry.team_logo} 
+                                alt={`${entry.team_name} logo`}
+                                className="w-10 h-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold">
+                                {entry.team_name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <p className="font-semibold text-gray-900">{entry.team_name}</p>
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">

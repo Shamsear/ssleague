@@ -44,6 +44,7 @@ export default function TeamMatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [seasonId, setSeasonId] = useState<string>('');
+  const [teamId, setTeamId] = useState<string>('');
   const [phaseUpdateTrigger, setPhaseUpdateTrigger] = useState(0);
 
   // Monitor phase changes via WebSocket
@@ -107,6 +108,7 @@ export default function TeamMatchesPage() {
           // Store team_id from the first registration
           if (!teamId) {
             teamId = teamSeasonData.team_id;
+            setTeamId(teamId);
             console.log('🎯 Team ID:', teamId);
           }
           
@@ -399,7 +401,8 @@ export default function TeamMatchesPage() {
     // Show result if scores are available
     if (match.home_score === undefined || match.away_score === undefined) return null;
     
-    if (match.winner_id === user.uid) {
+    // Check if this team won (compare with team ID, not user ID)
+    if (match.winner_id === teamId) {
       return <span className="text-green-700 font-semibold">Won</span>;
     } else if (match.winner_id) {
       return <span className="text-red-700 font-semibold">Lost</span>;

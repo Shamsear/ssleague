@@ -8,6 +8,7 @@ import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
 import { Crown, Star, ChevronDown, Target, Award, TrendingUp, Shield as ShieldIcon } from 'lucide-react';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import ShareableTeamCard from '@/components/fantasy/ShareableTeamCard';
 
 interface FantasyTeam {
   id: string;
@@ -302,8 +303,21 @@ export default function FantasyTeamsPage() {
               {selectedTeam ? (
                 <>
                   <div className="mb-6 pb-4 border-b border-gray-200">
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedTeam.team_name}</h2>
-                    <p className="text-gray-600">Owner: {selectedTeam.owner_name}</p>
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h2 className="text-2xl font-bold text-gray-900">{selectedTeam.team_name}</h2>
+                        <p className="text-gray-600">Owner: {selectedTeam.owner_name}</p>
+                      </div>
+                      <ShareableTeamCard
+                        teamName={selectedTeam.team_name}
+                        ownerName={selectedTeam.owner_name}
+                        totalPoints={selectedTeam.total_points}
+                        supportedTeamName={selectedTeam.supported_team_name}
+                        passivePoints={selectedTeam.passive_points}
+                        players={teamPlayers}
+                        leagueName={league?.name}
+                      />
+                    </div>
                     <div className="flex gap-6 mt-3">
                       <div>
                         <p className="text-sm text-gray-500">Total Points</p>
