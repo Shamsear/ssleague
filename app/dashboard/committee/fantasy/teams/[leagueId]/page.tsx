@@ -63,7 +63,8 @@ export default function FantasyTeamsPage() {
       router.push('/login');
       return;
     }
-    if (!loading && user && user.role !== 'committee_admin' && user.role !== 'super_admin') {
+    // Allow committee_admin, super_admin, and team users
+    if (!loading && user && user.role !== 'committee_admin' && user.role !== 'super_admin' && user.role !== 'team') {
       router.push('/dashboard');
     }
   }, [user, loading, router]);
