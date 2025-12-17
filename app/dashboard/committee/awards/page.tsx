@@ -50,8 +50,8 @@ export default function AwardsManagementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  const tournamentId = 'SSPSLS'; // Super League - make this dynamic if needed
+  const [tournamentId, setTournamentId] = useState<string>('');
+  const [availableTournaments, setAvailableTournaments] = useState<Array<{id: string, name: string}>>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -62,32 +62,58 @@ export default function AwardsManagementPage() {
     }
   }, [user, loading, router, isCommitteeAdmin]);
 
-  // Fetch max rounds from fixtures on mount
+  // Fetch available tournaments for the season
   useEffect(() => {
-    const fetchMaxRounds = async () => {
+    const fetchTournaments = async () => {
       if (!userSeasonId) return;
       
       try {
-        const response = await fetchWithTokenRefresh(`/api/fixtures?season_id=${userSeasonId}`);
+        const response = await fetchWithTokenRefresh(`/api/tournaments?season_id=${userSeasonId}`);
         const result = await response.json();
         
-        if (result.success && result.data && result.data.length > 0) {
-          // Find the maximum round number from fixtures
-          const maxRound = Math.max(...result.data.map((f: any) => f.round_number || 0));
+        if (result.success && result.tournaments && result.tournaments.length > 0) {
+          const tournaments = result.tournaments.map((t: any) => ({
+            id: t.id,
+            name: t.tournament_name || t.id
+          }));
+          setAvailableTournaments(tournaments);
+          
+          // Set first tournament as default
+          setTournamentId(tournaments[0].id);
+          console.log(`🏆 Available tournaments:`, tournaments);
+        }
+      } catch (err) {
+        console.error('Error fetching tournaments:', err);
+      }
+    };
+    
+    fetchTournaments();
+  }, [userSeasonId]);
+
+  // Fetch max rounds when tournament changes
+  useEffect(() => {
+    const fetchMaxRounds = async () => {
+      if (!tournamentId) return;
+      
+      try {
+        const response = await fetchWithTokenRefresh(`/api/fixtures/season?tournament_id=${tournamentId}`);
+        const result = await response.json();
+        
+        if (result.fixtures && result.fixtures.length > 0) {
+          const maxRound = Math.max(...result.fixtures.map((f: any) => f.round_number || 0));
           setMaxRounds(maxRound);
-          console.log(`🎮 Found ${maxRound} rounds in fixtures`);
+          console.log(`🎮 Found ${maxRound} rounds in tournament ${tournamentId}`);
         } else {
-          // Default fallback if no fixtures found
           setMaxRounds(14);
         }
       } catch (err) {
         console.error('Error fetching rounds:', err);
-        setMaxRounds(14); // Fallback
+        setMaxRounds(14);
       }
     };
     
     fetchMaxRounds();
-  }, [userSeasonId]);
+  }, [tournamentId]);
 
   // Calculate current week from round
   useEffect(() => {
@@ -96,9 +122,9 @@ export default function AwardsManagementPage() {
 
   // Load awards and candidates when tab/round/week changes
   useEffect(() => {
-    if (!userSeasonId) return;
+    if (!userSeasonId || !tournamentId) return;
     loadData();
-  }, [activeTab, currentRound, currentWeek, userSeasonId]);
+  }, [activeTab, currentRound, currentWeek, userSeasonId, tournamentId]);
 
   const loadData = async () => {
     if (!userSeasonId) return;
@@ -245,6 +271,30 @@ export default function AwardsManagementPage() {
             Select and manage tournament awards
           </p>
         </div>
+
+        {/* Tournament Selector */}
+        {availableTournaments.length > 0 && (
+          <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl shadow-md p-4">
+            <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+              <span className="text-xl">🏟️</span>
+              Select Tournament
+            </label>
+            <select
+              value={tournamentId}
+              onChange={(e) => setTournamentId(e.target.value)}
+              className="w-full px-4 py-2.5 bg-white border-2 border-blue-300 rounded-lg font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+            >
+              {availableTournaments.map((tournament) => (
+                <option key={tournament.id} value={tournament.id}>
+                  {tournament.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-gray-600">
+              Awards are specific to each tournament. Select a tournament to view and manage its awards.
+            </p>
+          </div>
+        )}
 
         {/* Messages */}
         {error && (

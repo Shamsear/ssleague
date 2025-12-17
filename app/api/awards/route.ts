@@ -16,22 +16,8 @@ export async function GET(request: NextRequest) {
 
     const sql = getTournamentDb();
 
-    // Check if awards are enabled for the tournament
-    if (tournamentId) {
-      const settings = await sql`
-        SELECT awards_enabled FROM tournament_settings
-        WHERE tournament_id = ${tournamentId}
-        LIMIT 1
-      `;
-      
-      if (settings.length > 0 && !settings[0].awards_enabled) {
-        return NextResponse.json({
-          success: true,
-          data: [],
-          message: 'Awards system is disabled for this tournament'
-        });
-      }
-    }
+    // Skip awards_enabled check - not all tournaments have this column
+    // Awards are enabled by default if the table exists
 
     let query = `
       SELECT * FROM awards
@@ -114,19 +100,8 @@ export async function POST(request: NextRequest) {
 
     const sql = getTournamentDb();
 
-    // Check if awards are enabled for the tournament
-    const settings = await sql`
-      SELECT awards_enabled FROM tournament_settings
-      WHERE tournament_id = ${tournament_id}
-      LIMIT 1
-    `;
-    
-    if (settings.length > 0 && !settings[0].awards_enabled) {
-      return NextResponse.json(
-        { success: false, error: 'Awards system is disabled for this tournament' },
-        { status: 403 }
-      );
-    }
+    // Skip awards_enabled check - not all tournaments have this column
+    // Awards are enabled by default if the table exists
 
     // Check if award already exists
     const existing = await sql`

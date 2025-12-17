@@ -68,53 +68,48 @@ export async function GET(
       ORDER BY ft.rank ASC NULLS LAST, ft.total_points DESC
     `;
 
-    // Get team logos from Firebase
-    // supported_team_id format: SSPSLT0034_SSPSLS16 (team_id + season_id)
-    // Firebase teams collection uses just the team_id: SSPSLT0034
-    const teamIdsWithSeason = leaderboard
-      .map(entry => entry.supported_team_id)
+    // Get fantasy team logos from Firebase using fantasy team_id
+    const fantasyTeamIds = leaderboard
+      .map(entry => entry.fantasy_team_id)
       .filter(id => id != null && id !== '');
     
-    // Extract base team IDs (remove season suffix)
-    const baseTeamIds = teamIdsWithSeason.map(id => id.split('_')[0]);
-    const uniqueBaseTeamIds = [...new Set(baseTeamIds)];
-    
-    console.log('[Leaderboard API] Fetching logos for base team IDs:', uniqueBaseTeamIds);
+    console.log('[Leaderboard API] Fetching logos for fantasy team IDs:', fantasyTeamIds);
     
     let teamLogos: Record<string, string> = {};
-    if (uniqueBaseTeamIds.length > 0) {
-      // Fetch teams by document ID (base team ID without season)
-      const teamPromises = uniqueBaseTeamIds.map(teamId => 
+    if (fantasyTeamIds.length > 0) {
+      // Fetch fantasy teams by document ID (fantasy team_id)
+      const teamPromises = fantasyTeamIds.map(teamId => 
         adminDb.collection('teams').doc(teamId).get()
       );
       
       const teamDocs = await Promise.all(teamPromises);
       
       teamDocs.forEach((doc, index) => {
+        const fantasyTeamId = fantasyTeamIds[index];
         if (doc.exists) {
           const teamData = doc.data();
-          const baseTeamId = uniqueBaseTeamIds[index];
           // Check multiple possible logo field names
           const logoUrl = teamData?.logo_url || teamData?.logoUrl || teamData?.team_logo || null;
           
           if (logoUrl) {
-            // Map back to full team_season IDs
-            teamIdsWithSeason.forEach(fullId => {
-              if (fullId.startsWith(baseTeamId + '_')) {
-                teamLogos[fullId] = logoUrl;
-              }
-            });
-            console.log(`[Leaderboard API] Found logo for ${baseTeamId}:`, logoUrl);
+            teamLogos[fantasyTeamId] = logoUrl;
+            console.log(`[Leaderboard API] Found logo for fantasy team ${fantasyTeamId}:`, logoUrl);
           } else {
-            console.log(`[Leaderboard API] No logo found for ${baseTeamId}`, teamData);
+            console.log(`[Leaderboard API] No logo found for fantasy team ${fantasyTeamId}`);
           }
         } else {
-          console.log(`[Leaderboard API] Team document not found: ${uniqueBaseTeamIds[index]}`);
+          console.log(`[Leaderboard API] Fantasy team document not found: ${fantasyTeamId}`);
         }
       });
     }
     
-    console.log('[Leaderboard API] Team logos map:', teamLogos);
+    console.log('[Leaderboard API] Fantasy team logos map:', teamLogos);
+
+    // Debug: Log team mappings
+    console.log('[Leaderboard API] Team mappings:');
+    leaderboard.forEach(entry => {
+      console.log(`  ${entry.team_name}: fantasy_team_id=${entry.fantasy_team_id}, logo=${teamLogos[entry.fantasy_team_id] || 'NOT FOUND'}`);
+    });
 
     return NextResponse.json({
       success: true,
@@ -134,7 +129,8 @@ export async function GET(
         total_points: Number(entry.total_points) || 0,
         player_count: Number(entry.player_count) || 0,
         last_round_points: Number(entry.last_round_points) || 0,
-        team_logo: entry.supported_team_id ? teamLogos[entry.supported_team_id] || null : null,
+        team_logo: teamLogos[entry.fantasy_team_id] || null,
+        supported_team_id: entry.supported_team_id, // Include for debugging
       })),
       total_teams: leaderboard.length,
     });
