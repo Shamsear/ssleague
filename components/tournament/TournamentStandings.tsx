@@ -16,6 +16,8 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'standings' | 'knockout'>('standings');
+  const [selectedRound, setSelectedRound] = useState<number | null>(null);
+  const [availableRounds, setAvailableRounds] = useState<number[]>([]);
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -25,7 +27,12 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch(`/api/tournaments/${tournamentId}/standings`);
+        // Build URL with optional round filter
+        const url = selectedRound 
+          ? `/api/tournaments/${tournamentId}/standings?upToRound=${selectedRound}`
+          : `/api/tournaments/${tournamentId}/standings`;
+        
+        const response = await fetch(url);
         const result = await response.json();
 
         if (!result.success) {
@@ -49,6 +56,31 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
     };
 
     fetchStandings();
+  }, [tournamentId, selectedRound]);
+
+  // Fetch available rounds for the tournament
+  useEffect(() => {
+    if (!tournamentId) return;
+
+    const fetchRounds = async () => {
+      try {
+        const response = await fetch(`/api/tournaments/${tournamentId}/rounds`);
+        const result = await response.json();
+        
+        if (result.success && result.rounds) {
+          const roundNumbers = result.rounds
+            .map((r: any) => r.round_number)
+            .filter((n: number) => n !== null && n !== undefined)
+            .sort((a: number, b: number) => a - b);
+          
+          setAvailableRounds(roundNumbers);
+        }
+      } catch (err) {
+        console.error('Error fetching rounds:', err);
+      }
+    };
+
+    fetchRounds();
   }, [tournamentId]);
 
   if (isLoading) {
@@ -92,6 +124,74 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
 
   return (
     <div className="space-y-6">
+      {/* Round Selector - Only show for league standings */}
+      {showLeagueStandings && availableRounds.length > 0 && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 sm:p-6">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-2xl">🎯</span>
+              <label className="text-sm font-semibold text-gray-800 whitespace-nowrap">Filter by Round:</label>
+            </div>
+            
+            {/* Dropdown for mobile/small screens */}
+            <div className="w-full lg:hidden">
+              <select
+                value={selectedRound === null ? 'all' : selectedRound}
+                onChange={(e) => setSelectedRound(e.target.value === 'all' ? null : Number(e.target.value))}
+                className="w-full px-4 py-2.5 bg-white border-2 border-blue-300 rounded-lg font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+              >
+                <option value="all">📊 All Rounds (Current Standings)</option>
+                {availableRounds.map((roundNum) => (
+                  <option key={roundNum} value={roundNum}>
+                    Round {roundNum}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Buttons for larger screens */}
+            <div className="hidden lg:flex flex-wrap items-center gap-2 flex-1">
+              <button
+                onClick={() => setSelectedRound(null)}
+                className={`px-4 py-2 rounded-lg font-medium transition-all text-sm ${
+                  selectedRound === null
+                    ? 'bg-[#0066FF] text-white shadow-lg scale-105'
+                    : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-blue-300'
+                }`}
+              >
+                📊 All Rounds
+              </button>
+              <div className="h-6 w-px bg-gray-300 mx-1"></div>
+              {availableRounds.map((roundNum) => (
+                <button
+                  key={roundNum}
+                  onClick={() => setSelectedRound(roundNum)}
+                  className={`px-3.5 py-2 rounded-lg font-medium transition-all text-sm ${
+                    selectedRound === roundNum
+                      ? 'bg-[#0066FF] text-white shadow-lg scale-105'
+                      : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-blue-300'
+                  }`}
+                >
+                  R{roundNum}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Info text */}
+          {selectedRound !== null && (
+            <div className="mt-3 pt-3 border-t border-blue-200">
+              <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Showing standings after Round {selectedRound} (includes only matches up to this round)
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Share Leaderboard Feature - Only show for league standings */}
       {showLeagueStandings && standings && standings.length > 0 && (
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-6">
@@ -107,6 +207,8 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
             tournamentName={tournament_name || 'Tournament'}
             seasonName={season_name}
             format={format}
+            selectedRound={selectedRound}
+            availableRounds={availableRounds}
           />
         </div>
       )}

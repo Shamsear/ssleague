@@ -1807,15 +1807,6 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 </Link>
 
                 <Link
-                  href="/dashboard/team/fantasy/players"
-                  className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-emerald-500"
-                >
-                  <div className="text-3xl mb-2">🎯</div>
-                  <div className="font-bold text-gray-900 mb-1">Player Performance</div>
-                  <div className="text-xs sm:text-sm text-gray-600">View all player stats</div>
-                </Link>
-
-                <Link
                   href="/dashboard/team/fantasy/all-teams"
                   className="glass-card p-4 sm:p-6 rounded-xl hover:shadow-lg transition-all text-center border-l-4 border-pink-500"
                 >

@@ -14,6 +14,7 @@ interface LeaderboardEntry {
   total_points: number;
   player_count: number;
   last_round_points: number;
+  team_logo?: string;
 }
 
 export default function FantasyLeaderboardPage() {
@@ -216,12 +217,22 @@ export default function FantasyLeaderboardPage() {
                     }`}>
                       {getRankIcon(entry.rank)}
                     </div>
+                    {entry.team_logo ? (
+                      <img 
+                        src={entry.team_logo} 
+                        alt={`${entry.team_name} logo`}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg">
+                        {entry.team_name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div className="flex-1">
                       <p className={`font-bold text-gray-900 ${entry.fantasy_team_id === myTeamId ? 'text-indigo-600' : ''}`}>
                         {entry.team_name}
                         {entry.fantasy_team_id === myTeamId && <span className="ml-2 text-xs bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded-full">You</span>}
                       </p>
-                      <p className="text-sm text-gray-600">{entry.owner_name}</p>
                     </div>
                   </div>
 

@@ -14,6 +14,7 @@ interface FantasyTeam {
   player_count: number;
   supported_team_id?: string;
   supported_team_name?: string;
+  supported_team_logo?: string;
   passive_points?: number;
 }
 
@@ -290,11 +291,19 @@ export default function MyFantasyTeamPage() {
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
+              {fantasyTeam.supported_team_logo ? (
+                <img 
+                  src={fantasyTeam.supported_team_logo} 
+                  alt={`${fantasyTeam.team_name} logo`}
+                  className="w-16 h-16 rounded-2xl object-cover shadow-xl"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+              )}
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">{fantasyTeam.team_name}</h1>
                 <p className="text-gray-600 mt-1">Your Fantasy Squad</p>
@@ -328,13 +337,6 @@ export default function MyFantasyTeamPage() {
                 className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all shadow-lg"
               >
                 🏆 Leaderboard
-              </Link>
-              
-              <Link
-                href={`/dashboard/team/fantasy/players`}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all shadow-lg"
-              >
-                🎯 Player Performance
               </Link>
             </div>
           </div>
@@ -371,10 +373,23 @@ export default function MyFantasyTeamPage() {
         {fantasyTeam.supported_team_name && (
           <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl shadow-xl border border-green-200 p-6 mb-8">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Supported Team</h3>
-                <p className="text-2xl font-bold text-green-600">{fantasyTeam.supported_team_name}</p>
-                <p className="text-sm text-gray-600 mt-1">Earning passive points from team wins</p>
+              <div className="flex items-center gap-4">
+                {fantasyTeam.supported_team_logo ? (
+                  <img 
+                    src={fantasyTeam.supported_team_logo} 
+                    alt={`${fantasyTeam.supported_team_name} logo`}
+                    className="w-16 h-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-2xl">
+                    {fantasyTeam.supported_team_name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">Supported Team</h3>
+                  <p className="text-2xl font-bold text-green-600">{fantasyTeam.supported_team_name}</p>
+                  <p className="text-sm text-gray-600 mt-1">Earning passive points from team wins</p>
+                </div>
               </div>
               {fantasyTeam.passive_points !== undefined && (
                 <div className="text-right">

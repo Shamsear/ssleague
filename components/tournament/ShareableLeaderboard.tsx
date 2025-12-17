@@ -22,13 +22,17 @@ interface ShareableLeaderboardProps {
   tournamentName: string;
   seasonName?: string;
   format?: string;
+  selectedRound?: number | null;
+  availableRounds?: number[];
 }
 
 export default function ShareableLeaderboard({ 
   standings, 
   tournamentName,
   seasonName,
-  format = 'league'
+  format = 'league',
+  selectedRound = null,
+  availableRounds = []
 }: ShareableLeaderboardProps) {
   const leaderboardRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -40,11 +44,26 @@ export default function ShareableLeaderboard({
     try {
       setIsGenerating(true);
       
+      // Ensure preview is visible for rendering
+      const wasHidden = !showPreview;
+      if (wasHidden) {
+        setShowPreview(true);
+        // Wait for DOM to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
       const dataUrl = await toPng(leaderboardRef.current, {
         quality: 1,
         pixelRatio: 2,
         backgroundColor: '#ffffff',
+        cacheBust: true,
+        skipFonts: true,
       });
+
+      // Hide preview again if it was hidden
+      if (wasHidden) {
+        setShowPreview(false);
+      }
 
       // Create download link
       const link = document.createElement('a');
@@ -65,11 +84,26 @@ export default function ShareableLeaderboard({
     try {
       setIsGenerating(true);
       
+      // Ensure preview is visible for rendering
+      const wasHidden = !showPreview;
+      if (wasHidden) {
+        setShowPreview(true);
+        // Wait for DOM to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
       const dataUrl = await toPng(leaderboardRef.current, {
         quality: 1,
         pixelRatio: 2,
         backgroundColor: '#ffffff',
+        cacheBust: true,
+        skipFonts: true,
       });
+
+      // Hide preview again if it was hidden
+      if (wasHidden) {
+        setShowPreview(false);
+      }
 
       // Convert data URL to blob
       const response = await fetch(dataUrl);
@@ -178,7 +212,10 @@ export default function ShareableLeaderboard({
 
           {/* Leaderboard Title */}
           <div className="bg-white px-6 py-4 text-center">
-            <h2 className="text-2xl font-bold text-gray-800 uppercase">LEADERBOARD</h2>
+            <h2 className="text-2xl font-bold text-gray-800 uppercase">
+              LEADERBOARD
+              {selectedRound && ` - AFTER ROUND ${selectedRound}`}
+            </h2>
           </div>
 
           {/* Table */}
@@ -228,7 +265,6 @@ export default function ShareableLeaderboard({
                             src={team.team_logo} 
                             alt={`${team.team_name} logo`}
                             className="w-10 h-10 rounded object-cover flex-shrink-0"
-                            crossOrigin="anonymous"
                           />
                         ) : (
                           <div className="w-10 h-10 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">

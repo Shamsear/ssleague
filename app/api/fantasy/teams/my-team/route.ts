@@ -158,6 +158,21 @@ export async function GET(request: NextRequest) {
       points: Number(r.points),
     }));
 
+    // Fetch team logo from Firebase if supported_team_id exists
+    let teamLogo = null;
+    if (teamData.supported_team_id) {
+      const baseTeamId = teamData.supported_team_id.split('_')[0];
+      try {
+        const teamDoc = await adminDb.collection('teams').doc(baseTeamId).get();
+        if (teamDoc.exists) {
+          const firebaseTeamData = teamDoc.data();
+          teamLogo = firebaseTeamData?.logo_url || firebaseTeamData?.logoUrl || firebaseTeamData?.team_logo || null;
+        }
+      } catch (error) {
+        console.error('Error fetching team logo:', error);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       team: {
@@ -169,6 +184,7 @@ export async function GET(request: NextRequest) {
         player_count: draftedPlayers.length,
         supported_team_id: teamData.supported_team_id || null,
         supported_team_name: teamData.supported_team_name || null,
+        supported_team_logo: teamLogo,
         passive_points: Number(teamData.passive_points) || 0,
         draft_submitted: teamData.draft_submitted || false,
       },

@@ -8,6 +8,10 @@ export async function GET(
   try {
     const sql = getTournamentDb();
     const { id: tournamentId } = await params;
+    
+    // Get optional round filter from query params
+    const { searchParams } = new URL(request.url);
+    const upToRound = searchParams.get('upToRound') ? parseInt(searchParams.get('upToRound')!) : null;
 
     // Get tournament info to determine format
     const tournaments = await sql`
@@ -50,24 +54,50 @@ export async function GET(
     }
 
     // Get all completed fixtures for this tournament from Neon
-    const fixtures = await sql`
-      SELECT 
-        id,
-        home_team_id,
-        home_team_name,
-        away_team_id,
-        away_team_name,
-        home_score,
-        away_score,
-        status,
-        result,
-        group_name,
-        knockout_round
-      FROM fixtures
-      WHERE tournament_id = ${tournamentId}
-        AND status = 'completed'
-        AND result IS NOT NULL
-    `;
+    // If upToRound is specified, filter by round_number
+    let fixtures;
+    if (upToRound !== null) {
+      fixtures = await sql`
+        SELECT 
+          id,
+          home_team_id,
+          home_team_name,
+          away_team_id,
+          away_team_name,
+          home_score,
+          away_score,
+          status,
+          result,
+          group_name,
+          knockout_round,
+          round_number
+        FROM fixtures
+        WHERE tournament_id = ${tournamentId}
+          AND status = 'completed'
+          AND result IS NOT NULL
+          AND round_number <= ${upToRound}
+      `;
+    } else {
+      fixtures = await sql`
+        SELECT 
+          id,
+          home_team_id,
+          home_team_name,
+          away_team_id,
+          away_team_name,
+          home_score,
+          away_score,
+          status,
+          result,
+          group_name,
+          knockout_round,
+          round_number
+        FROM fixtures
+        WHERE tournament_id = ${tournamentId}
+          AND status = 'completed'
+          AND result IS NOT NULL
+      `;
+    }
 
     // Handle different tournament formats
     if (tournament.has_group_stage) {

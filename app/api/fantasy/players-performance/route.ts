@@ -52,12 +52,19 @@ export async function GET(request: NextRequest) {
       ORDER BY player_name ASC
     `;
 
-    // Get fantasy points aggregated by player (base points only, deduplicated)
+    // Get fantasy points aggregated by player (base points without captain/vc multipliers)
+    // Calculate base points by dividing total_points by multiplier (2 for captain, 1.5 for vc, 1 for regular)
     const fantasyPoints = await fantasySql`
       SELECT 
         real_player_id,
-        COUNT(DISTINCT fixture_id) as matches_played,
-        SUM(base_points) / COUNT(DISTINCT fixture_id) as total_base_points,
+        COUNT(DISTINCT round_number) as matches_played,
+        SUM(
+          CASE 
+            WHEN is_captain THEN total_points / 2
+            WHEN is_vice_captain THEN total_points / 1.5
+            ELSE total_points
+          END
+        ) as total_base_points,
         SUM(goals_scored) as total_goals,
         SUM(CASE WHEN is_clean_sheet THEN 1 ELSE 0 END) as clean_sheets,
         SUM(CASE WHEN is_motm THEN 1 ELSE 0 END) as motm_count
@@ -78,35 +85,34 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Combine player info with fantasy stats
-    const playersWithStats = allPlayers.map((player: any) => {
-      const stats = pointsMap.get(player.player_id) || {
-        total_base_points: 0,
-        matches_played: 0,
-        total_goals: 0,
-        clean_sheets: 0,
-        motm_count: 0,
-      };
+    // Combine player info with fantasy stats - only include active players (with matches played)
+    const playersWithStats = allPlayers
+      .map((player: any) => {
+        const stats = pointsMap.get(player.player_id);
+        
+        // Skip players with no fantasy points data
+        if (!stats) return null;
 
-      const average_points =
-        stats.matches_played > 0
-          ? Math.round((stats.total_base_points / stats.matches_played) * 10) / 10
-          : 0;
+        const average_points =
+          stats.matches_played > 0
+            ? Math.round((stats.total_base_points / stats.matches_played) * 10) / 10
+            : 0;
 
-      return {
-        real_player_id: player.player_id,
-        player_name: player.player_name,
-        real_team_name: player.real_team_name,
-        category: player.category || 'Classic',
-        star_rating: player.star_rating || 5,
-        total_base_points: stats.total_base_points,
-        matches_played: stats.matches_played,
-        average_points: average_points,
-        goals: stats.total_goals,
-        clean_sheets: stats.clean_sheets,
-        motm_count: stats.motm_count,
-      };
-    });
+        return {
+          real_player_id: player.player_id,
+          player_name: player.player_name,
+          real_team_name: player.real_team_name,
+          category: player.category || 'Classic',
+          star_rating: player.star_rating || 5,
+          total_base_points: stats.total_base_points,
+          matches_played: stats.matches_played,
+          average_points: average_points,
+          goals: stats.total_goals,
+          clean_sheets: stats.clean_sheets,
+          motm_count: stats.motm_count,
+        };
+      })
+      .filter((player) => player !== null); // Remove null entries
 
     // Sort by total base points (highest first)
     playersWithStats.sort((a, b) => b.total_base_points - a.total_base_points);
