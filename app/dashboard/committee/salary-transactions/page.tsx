@@ -9,9 +9,12 @@ import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import { usePermissions } from '@/hooks/usePermissions';
 
 interface SalaryTransaction {
+  id?: string;
   fixture_id?: string;
   round_number?: number;
   match_date?: string;
+  created_at?: string;
+  updated_at?: string;
   team_id: string;
   team_name: string;
   opponent_team_id?: string;
@@ -23,6 +26,8 @@ interface SalaryTransaction {
     points_change: number;
     star_rating: number;
     amount: number;
+    created_at?: string;
+    updated_at?: string;
   }[];
   total_salary: number;
 }
@@ -150,6 +155,62 @@ export default function CommitteeSalaryTransactionsPage() {
     if (points > 0) return '↑';
     if (points < 0) return '↓';
     return '→';
+  };
+
+  const handleDeleteTransaction = async (fixtureId?: string, teamId?: string) => {
+    if (!fixtureId || !teamId) {
+      alert('Cannot delete: missing fixture or team ID');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete ALL salary transactions for this match? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await fetchWithTokenRefresh(`/api/committee/salary-transactions?fixtureId=${fixtureId}&teamId=${teamId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        alert('All transactions deleted successfully');
+        loadTransactions();
+      } else {
+        const error = await res.json();
+        alert(`Failed to delete transactions: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting transactions:', error);
+      alert('Failed to delete transactions');
+    }
+  };
+
+  const handleDeletePlayerTransaction = async (fixtureId?: string, teamId?: string, playerId?: string) => {
+    if (!fixtureId || !teamId || !playerId) {
+      alert('Cannot delete: missing required IDs');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete this player\'s salary transaction? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await fetchWithTokenRefresh(`/api/committee/salary-transactions?fixtureId=${fixtureId}&teamId=${teamId}&playerId=${playerId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        alert('Player transaction deleted successfully');
+        loadTransactions();
+      } else {
+        const error = await res.json();
+        alert(`Failed to delete transaction: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting player transaction:', error);
+      alert('Failed to delete player transaction');
+    }
   };
 
   if (loading || isLoading) {
@@ -287,14 +348,25 @@ export default function CommitteeSalaryTransactionsPage() {
                         {txn.result || 'Match result'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3 sm:text-right">
-                      <div className="p-2 sm:p-3 rounded-xl bg-white/10">
-                        <DollarSign className="w-5 h-5 sm:w-6 sm:h-6" />
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 sm:text-right">
+                        <div className="p-2 sm:p-3 rounded-xl bg-white/10">
+                          <DollarSign className="w-5 h-5 sm:w-6 sm:h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-purple-100">Total Paid</p>
+                          <p className="text-xl sm:text-2xl font-bold">{txn.total_salary.toFixed(2)}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-purple-100">Total Paid</p>
-                        <p className="text-xl sm:text-2xl font-bold">{txn.total_salary.toFixed(2)}</p>
-                      </div>
+                      <button
+                        onClick={() => handleDeleteTransaction(txn.fixture_id, txn.team_id)}
+                        className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500 transition-colors group"
+                        title="Delete transaction"
+                      >
+                        <svg className="w-5 h-5 text-red-200 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -308,18 +380,29 @@ export default function CommitteeSalaryTransactionsPage() {
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
                             <p className="font-bold text-gray-900 mb-1">{player.player_name}</p>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-yellow-500 font-semibold">
-                                {'⭐'.repeat(player.star_rating)}
-                              </span>
-                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${player.points_change > 0 ? 'bg-green-100 text-green-700' : player.points_change < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
-                                {getPointsIcon(player.points_change)} {player.points_change > 0 ? '+' : ''}{player.points_change}
-                              </span>
+                            <div className="text-xs text-gray-600 space-y-0.5 mt-2">
+                              {player.created_at && (
+                                <div>Created: {new Date(player.created_at).toLocaleString()}</div>
+                              )}
+                              {player.updated_at && player.updated_at !== player.created_at && (
+                                <div className="text-orange-600 font-semibold">Updated: {new Date(player.updated_at).toLocaleString()}</div>
+                              )}
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs text-gray-500">Paid</p>
-                            <p className="text-lg font-bold text-red-600">{player.amount.toFixed(2)}</p>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">Paid</p>
+                              <p className="text-lg font-bold text-red-600">{player.amount.toFixed(2)}</p>
+                            </div>
+                            <button
+                              onClick={() => handleDeletePlayerTransaction(txn.fixture_id, txn.team_id, player.player_id)}
+                              className="p-2 rounded-lg bg-red-50 hover:bg-red-500 text-red-600 hover:text-white transition-colors"
+                              title="Delete"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
                         <div className="flex justify-between text-xs text-gray-600 pt-3 border-t">
@@ -341,10 +424,10 @@ export default function CommitteeSalaryTransactionsPage() {
                       <thead className="bg-gray-50 border-b-2 border-gray-200">
                         <tr>
                           <th className="px-4 lg:px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Player</th>
-                          <th className="px-4 lg:px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Rating</th>
                           <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Salary</th>
-                          <th className="px-4 lg:px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Points</th>
                           <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Paid</th>
+                          <th className="px-4 lg:px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Timestamp</th>
+                          <th className="px-4 lg:px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
@@ -353,33 +436,45 @@ export default function CommitteeSalaryTransactionsPage() {
                             <td className="px-4 lg:px-6 py-4">
                               <span className="font-semibold text-gray-900 text-sm">{player.player_name}</span>
                             </td>
-                            <td className="px-4 lg:px-6 py-4 text-center">
-                              <span className="inline-block text-yellow-500 text-sm font-bold">
-                                {'⭐'.repeat(player.star_rating)}
-                              </span>
-                            </td>
                             <td className="px-4 lg:px-6 py-4 text-right">
                               <span className="font-semibold text-gray-900 text-sm">{player.salary_per_match.toFixed(2)}</span>
                             </td>
-                            <td className="px-4 lg:px-6 py-4 text-center">
-                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${player.points_change > 0 ? 'bg-green-100 text-green-700' : player.points_change < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
-                                {getPointsIcon(player.points_change)} {player.points_change > 0 ? '+' : ''}{player.points_change}
-                              </span>
-                            </td>
                             <td className="px-4 lg:px-6 py-4 text-right">
                               <span className="font-bold text-red-600 text-sm">{player.amount.toFixed(2)}</span>
+                            </td>
+                            <td className="px-4 lg:px-6 py-4">
+                              <div className="text-xs text-gray-600 space-y-0.5">
+                                {player.created_at && (
+                                  <div>Created: {new Date(player.created_at).toLocaleString()}</div>
+                                )}
+                                {player.updated_at && player.updated_at !== player.created_at && (
+                                  <div className="text-orange-600 font-semibold">Updated: {new Date(player.updated_at).toLocaleString()}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 lg:px-6 py-4 text-center">
+                              <button
+                                onClick={() => handleDeletePlayerTransaction(txn.fixture_id, txn.team_id, player.player_id)}
+                                className="p-2 rounded-lg bg-red-50 hover:bg-red-500 text-red-600 hover:text-white transition-colors"
+                                title="Delete this player's transaction"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-gradient-to-r from-purple-50 to-indigo-50 border-t-2 border-purple-200">
                         <tr>
-                          <td colSpan={4} className="px-4 lg:px-6 py-4 text-right font-bold text-gray-900">
+                          <td colSpan={2} className="px-4 lg:px-6 py-4 text-right font-bold text-gray-900">
                             Total Salary Paid:
                           </td>
                           <td className="px-4 lg:px-6 py-4 text-right font-bold text-red-600 text-lg">
                             -{txn.total_salary.toFixed(2)}
                           </td>
+                          <td colSpan={2}></td>
                         </tr>
                       </tfoot>
                     </table>

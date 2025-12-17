@@ -67,6 +67,7 @@ export async function PATCH(
       direct_semifinal_teams,
       qualification_threshold,
       is_pure_knockout,
+      rewards,
     } = body;
 
     const result = await sql`
@@ -94,6 +95,7 @@ export async function PATCH(
         direct_semifinal_teams = COALESCE(${direct_semifinal_teams}::integer, direct_semifinal_teams),
         qualification_threshold = COALESCE(${qualification_threshold}::integer, qualification_threshold),
         is_pure_knockout = COALESCE(${is_pure_knockout}::boolean, is_pure_knockout),
+        rewards = COALESCE(${rewards ? JSON.stringify(rewards) : null}::jsonb, rewards),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *

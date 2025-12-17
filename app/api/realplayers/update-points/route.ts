@@ -360,23 +360,48 @@ export async function POST(request: NextRequest) {
     const salaryDeductions: any[] = [];
     const salaryErrors: any[] = [];
     
-    if (skip_salary_deduction) {
+    // Check if we should skip salary deduction
+    let shouldSkipSalary = skip_salary_deduction;
+    
+    if (shouldSkipSalary) {
       console.log(`\n⏭️  SKIPPING salary deduction (result edit/revert)\n`);
     } else {
       console.log(`\n💰 SALARY DEDUCTION PHASE`);
       console.log(`📊 Players to process: ${playerSalaries.length}`);
       
-      // Group by team for balance updates
-      const teamTotals = new Map<string, number>();
-      playerSalaries.forEach(p => {
-        teamTotals.set(p.team_id, (teamTotals.get(p.team_id) || 0) + p.salary);
+      // Check if salary transactions already exist for this fixture
+      console.log(`🔍 Checking for existing salary transactions for fixture ${fixture_id}...`);
+      const existingTxnsSnapshot = await adminDb.collection('transactions')
+        .where('transaction_type', 'in', ['salary', 'salary_payment'])
+        .where('currency_type', '==', 'real_player')
+        .limit(1000)
+        .get();
+      
+      const hasExistingForFixture = existingTxnsSnapshot.docs.some(doc => {
+        const metadata = doc.data().metadata || {};
+        return metadata.fixture_id === fixture_id;
       });
       
-      console.log(`Teams affected: ${Array.from(teamTotals.keys()).join(', ')}`);
-      console.log(``);
+      if (hasExistingForFixture) {
+        console.log(`⚠️  Salary transactions already exist for fixture ${fixture_id}`);
+        console.log(`⏭️  SKIPPING salary deduction to prevent duplicates\n`);
+        // Set skip flag to true
+        shouldSkipSalary = true;
+      } else {
+        console.log(`✅ No existing salary transactions found, proceeding with deductions`);
+        
+        // Group by team for balance updates
+        const teamTotals = new Map<string, number>();
+        playerSalaries.forEach(p => {
+          teamTotals.set(p.team_id, (teamTotals.get(p.team_id) || 0) + p.salary);
+        });
+        
+        console.log(`Teams affected: ${Array.from(teamTotals.keys()).join(', ')}`);
+        console.log(``);
+      }
     }
     
-    if (!skip_salary_deduction) {
+    if (!shouldSkipSalary && playerSalaries.length > 0) {
       // Process each player's salary individually
       for (const playerSalary of playerSalaries) {
         try {

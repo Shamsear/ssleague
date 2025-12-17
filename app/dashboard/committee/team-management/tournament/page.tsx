@@ -2747,6 +2747,7 @@ export default function TournamentDashboardPage() {
                         direct_semifinal_teams: editingTournament.direct_semifinal_teams,
                         qualification_threshold: editingTournament.qualification_threshold,
                         is_pure_knockout: isPureKnockout,
+                        rewards: editingTournament.rewards || null,
                       })
                     });
                     
@@ -3208,6 +3209,654 @@ export default function TournamentDashboardPage() {
                     )}
                   </div>
                   
+                  {/* Match Rewards Section */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">💰 Match Rewards</h3>
+                    <p className="text-sm text-gray-600 mb-4">Configure eCoin and SSCoin rewards for match results</p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Win Rewards */}
+                      <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                        <h4 className="font-semibold text-green-800 mb-3">🏆 Win</h4>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingTournament.rewards?.match_results?.win_ecoin || 0}
+                              onChange={(e) => setEditingTournament({
+                                ...editingTournament,
+                                rewards: {
+                                  ...editingTournament.rewards,
+                                  match_results: {
+                                    ...editingTournament.rewards?.match_results,
+                                    win_ecoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingTournament.rewards?.match_results?.win_sscoin || 0}
+                              onChange={(e) => setEditingTournament({
+                                ...editingTournament,
+                                rewards: {
+                                  ...editingTournament.rewards,
+                                  match_results: {
+                                    ...editingTournament.rewards?.match_results,
+                                    win_sscoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Draw Rewards */}
+                      <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                        <h4 className="font-semibold text-yellow-800 mb-3">🤝 Draw</h4>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingTournament.rewards?.match_results?.draw_ecoin || 0}
+                              onChange={(e) => setEditingTournament({
+                                ...editingTournament,
+                                rewards: {
+                                  ...editingTournament.rewards,
+                                  match_results: {
+                                    ...editingTournament.rewards?.match_results,
+                                    draw_ecoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingTournament.rewards?.match_results?.draw_sscoin || 0}
+                              onChange={(e) => setEditingTournament({
+                                ...editingTournament,
+                                rewards: {
+                                  ...editingTournament.rewards,
+                                  match_results: {
+                                    ...editingTournament.rewards?.match_results,
+                                    draw_sscoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Loss Rewards */}
+                      <div className="p-4 bg-red-50 rounded-xl border border-red-200">
+                        <h4 className="font-semibold text-red-800 mb-3">❌ Loss</h4>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingTournament.rewards?.match_results?.loss_ecoin || 0}
+                              onChange={(e) => setEditingTournament({
+                                ...editingTournament,
+                                rewards: {
+                                  ...editingTournament.rewards,
+                                  match_results: {
+                                    ...editingTournament.rewards?.match_results,
+                                    loss_ecoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingTournament.rewards?.match_results?.loss_sscoin || 0}
+                              onChange={(e) => setEditingTournament({
+                                ...editingTournament,
+                                rewards: {
+                                  ...editingTournament.rewards,
+                                  match_results: {
+                                    ...editingTournament.rewards?.match_results,
+                                    loss_sscoin: parseInt(e.target.value) || 0
+                                  }
+                                }
+                              })}
+                              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* League Standing Rewards Section */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">🏆 League Standing Rewards</h3>
+                    <p className="text-sm text-gray-600 mb-4">Rewards based on final league table positions (Season End)</p>
+                    
+                    <div className="space-y-3">
+                      {(editingTournament.rewards?.league_positions || []).map((pos: any, index: number) => (
+                        <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <div className="flex-shrink-0 w-20">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Position</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={pos.position}
+                              onChange={(e) => {
+                                const newPositions = [...(editingTournament.rewards?.league_positions || [])];
+                                newPositions[index] = { ...newPositions[index], position: parseInt(e.target.value) || 1 };
+                                setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    league_positions: newPositions
+                                  }
+                                });
+                              }}
+                              className="w-full px-2 py-1.5 bg-white border border-gray-300 rounded text-sm"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={pos.ecoin}
+                              onChange={(e) => {
+                                const newPositions = [...(editingTournament.rewards?.league_positions || [])];
+                                newPositions[index] = { ...newPositions[index], ecoin: parseInt(e.target.value) || 0 };
+                                setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    league_positions: newPositions
+                                  }
+                                });
+                              }}
+                              className="w-full px-2 py-1.5 bg-white border border-gray-300 rounded text-sm"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={pos.sscoin}
+                              onChange={(e) => {
+                                const newPositions = [...(editingTournament.rewards?.league_positions || [])];
+                                newPositions[index] = { ...newPositions[index], sscoin: parseInt(e.target.value) || 0 };
+                                setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    league_positions: newPositions
+                                  }
+                                });
+                              }}
+                              className="w-full px-2 py-1.5 bg-white border border-gray-300 rounded text-sm"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPositions = (editingTournament.rewards?.league_positions || []).filter((_: any, i: number) => i !== index);
+                              setEditingTournament({
+                                ...editingTournament,
+                                rewards: {
+                                  ...editingTournament.rewards,
+                                  league_positions: newPositions
+                                }
+                              });
+                            }}
+                            className="px-3 py-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newPositions = [...(editingTournament.rewards?.league_positions || []), { position: (editingTournament.rewards?.league_positions?.length || 0) + 1, ecoin: 0, sscoin: 0 }];
+                            setEditingTournament({
+                              ...editingTournament,
+                              rewards: {
+                                ...editingTournament.rewards,
+                                league_positions: newPositions
+                              }
+                            });
+                          }}
+                          className="px-4 py-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 text-sm font-medium"
+                        >
+                          + Add Position
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const numTeams = editingTournament.number_of_teams || 16;
+                            const positions = Array.from({ length: numTeams }, (_, i) => ({
+                              position: i + 1,
+                              ecoin: Math.max(0, 5000 - (i * 300)),
+                              sscoin: Math.max(0, 500 - (i * 30))
+                            }));
+                            setEditingTournament({
+                              ...editingTournament,
+                              rewards: {
+                                ...editingTournament.rewards,
+                                league_positions: positions
+                              }
+                            });
+                          }}
+                          className="px-4 py-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 text-sm font-medium"
+                        >
+                          ✨ Auto-fill All {editingTournament.number_of_teams || 16} Positions
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Knockout Stage Rewards Section - Only show if knockout stage is enabled */}
+                  {editingTournament.has_knockout_stage && (
+                    <div className="border-t border-gray-200 pt-6">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-2">🏆 Knockout Stage Rewards</h3>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Rewards for teams based on knockout stage elimination ({editingTournament.playoff_teams || 4} teams qualify)
+                      </p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {/* Dynamically show stages based on playoff_teams */}
+                        {/* Winner - Always show for any knockout */}
+                        <div className="p-4 bg-yellow-50 rounded-xl border-2 border-yellow-400">
+                          <h4 className="font-semibold text-yellow-800 mb-3">🥇 Winner</h4>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.winner?.ecoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      winner: {
+                                        ...editingTournament.rewards?.knockout_stages?.winner,
+                                        ecoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.winner?.sscoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      winner: {
+                                        ...editingTournament.rewards?.knockout_stages?.winner,
+                                        sscoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Runner-up - Always show for any knockout */}
+                        <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-400">
+                          <h4 className="font-semibold text-gray-800 mb-3">🥈 Runner-up</h4>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.runner_up?.ecoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      runner_up: {
+                                        ...editingTournament.rewards?.knockout_stages?.runner_up,
+                                        ecoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.runner_up?.sscoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      runner_up: {
+                                        ...editingTournament.rewards?.knockout_stages?.runner_up,
+                                        sscoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Semi-final Loser - Show if 4+ teams */}
+                        {(editingTournament.playoff_teams || 4) >= 4 && (
+                        <div className="p-4 bg-orange-50 rounded-xl border border-orange-300">
+                          <h4 className="font-semibold text-orange-800 mb-3">🥉 Semi-final Loser</h4>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.semi_final_loser?.ecoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      semi_final_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.semi_final_loser,
+                                        ecoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.semi_final_loser?.sscoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      semi_final_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.semi_final_loser,
+                                        sscoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        )}
+
+                        {/* Quarter-final Loser - Show if 6+ teams (with byes) or 8+ teams (standard) */}
+                        {(((editingTournament.playoff_teams || 4) >= 6 && (editingTournament.direct_semifinal_teams || 0) > 0) || 
+                          (editingTournament.playoff_teams || 4) >= 8) && (
+                        <div className="p-4 bg-blue-50 rounded-xl border border-blue-300">
+                          <h4 className="font-semibold text-blue-800 mb-3">Quarter-final Loser</h4>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.quarter_final_loser?.ecoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      quarter_final_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.quarter_final_loser,
+                                        ecoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.quarter_final_loser?.sscoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      quarter_final_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.quarter_final_loser,
+                                        sscoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        )}
+
+                        {/* Round of 16 Loser - Show if 16+ teams */}
+                        {(editingTournament.playoff_teams || 4) >= 16 && (
+                        <div className="p-4 bg-purple-50 rounded-xl border border-purple-300">
+                          <h4 className="font-semibold text-purple-800 mb-3">Round of 16 Loser</h4>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.round_of_16_loser?.ecoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      round_of_16_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.round_of_16_loser,
+                                        ecoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.round_of_16_loser?.sscoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      round_of_16_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.round_of_16_loser,
+                                        sscoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        )}
+
+                        {/* Round of 32 Loser - Show if 32+ teams */}
+                        {(editingTournament.playoff_teams || 4) >= 32 && (
+                        <div className="p-4 bg-pink-50 rounded-xl border border-pink-300">
+                          <h4 className="font-semibold text-pink-800 mb-3">Round of 32 Loser</h4>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">eCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.round_of_32_loser?.ecoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      round_of_32_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.round_of_32_loser,
+                                        ecoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">SSCoin</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editingTournament.rewards?.knockout_stages?.round_of_32_loser?.sscoin || 0}
+                                onChange={(e) => setEditingTournament({
+                                  ...editingTournament,
+                                  rewards: {
+                                    ...editingTournament.rewards,
+                                    knockout_stages: {
+                                      ...editingTournament.rewards?.knockout_stages,
+                                      round_of_32_loser: {
+                                        ...editingTournament.rewards?.knockout_stages?.round_of_32_loser,
+                                        sscoin: parseInt(e.target.value) || 0
+                                      }
+                                    }
+                                  }
+                                })}
+                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Tournament Completion Bonus Section */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">🎁 Tournament Completion Bonus</h3>
+                    <p className="text-sm text-gray-600 mb-4">Bonus reward given to all teams that complete the tournament</p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">eCoin Bonus</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingTournament.rewards?.completion_bonus?.ecoin || 0}
+                          onChange={(e) => setEditingTournament({
+                            ...editingTournament,
+                            rewards: {
+                              ...editingTournament.rewards,
+                              completion_bonus: {
+                                ...editingTournament.rewards?.completion_bonus,
+                                ecoin: parseInt(e.target.value) || 0
+                              }
+                            }
+                          })}
+                          className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">SSCoin Bonus</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingTournament.rewards?.completion_bonus?.sscoin || 0}
+                          onChange={(e) => setEditingTournament({
+                            ...editingTournament,
+                            rewards: {
+                              ...editingTournament.rewards,
+                              completion_bonus: {
+                                ...editingTournament.rewards?.completion_bonus,
+                                sscoin: parseInt(e.target.value) || 0
+                              }
+                            }
+                          })}
+                          className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div className="flex gap-3">
                     <button
                       type="submit"
@@ -3390,14 +4039,26 @@ export default function TournamentDashboardPage() {
                                   playoff_teams: settingsData.settings?.playoff_teams ?? tournament.playoff_teams ?? null,
                                   direct_semifinal_teams: settingsData.settings?.direct_semifinal_teams ?? tournament.direct_semifinal_teams ?? null,
                                   qualification_threshold: settingsData.settings?.qualification_threshold ?? tournament.qualification_threshold ?? null,
-                                  lineup_category_requirements: settingsData.settings?.lineup_category_requirements || {}
+                                  lineup_category_requirements: settingsData.settings?.lineup_category_requirements || {},
+                                  rewards: tournament.rewards || {
+                                    match_results: { win_ecoin: 0, win_sscoin: 0, draw_ecoin: 0, draw_sscoin: 0, loss_ecoin: 0, loss_sscoin: 0 },
+                                    league_positions: [],
+                                    knockout_stages: {},
+                                    completion_bonus: { ecoin: 0, sscoin: 0 }
+                                  }
                                 });
                               } catch (error) {
                                 console.error('Error fetching tournament settings:', error);
                                 setEditingTournament({
                                   ...tournament,
                                   squad_size: tournament.squad_size || 11,
-                                  lineup_category_requirements: {}
+                                  lineup_category_requirements: {},
+                                  rewards: tournament.rewards || {
+                                    match_results: { win_ecoin: 0, win_sscoin: 0, draw_ecoin: 0, draw_sscoin: 0, loss_ecoin: 0, loss_sscoin: 0 },
+                                    league_positions: [],
+                                    knockout_stages: {},
+                                    completion_bonus: { ecoin: 0, sscoin: 0 }
+                                  }
                                 });
                               }
                             }}

@@ -94,6 +94,8 @@ export async function GET(request: NextRequest) {
         team_id: data.team_id,
         team_name: teamsMap.get(data.team_id) || 'Unknown Team',
         date: data.created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+        created_at: data.created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+        updated_at: data.updated_at?.toDate?.()?.toISOString() || data.created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
         transaction_type: data.transaction_type,
         amount: data.amount || 0,
         reason: data.reason || data.description || 'Salary payment',
@@ -123,6 +125,8 @@ export async function GET(request: NextRequest) {
             fixture_id: txn.fixture_id,
             round_number: txn.round_number,
             match_date: txn.match_date,
+            created_at: txn.created_at,
+            updated_at: txn.updated_at,
             team_id: txn.team_id,
             team_name: txn.team_name,
             opponent_team_id: txn.opponent_team_id,
@@ -132,6 +136,11 @@ export async function GET(request: NextRequest) {
           };
         }
         
+        // Update timestamps to show the latest
+        if (txn.updated_at && (!acc[key].updated_at || new Date(txn.updated_at) > new Date(acc[key].updated_at))) {
+          acc[key].updated_at = txn.updated_at;
+        }
+        
         acc[key].players.push({
           player_id: txn.player_id,
           player_name: txn.player_name,
@@ -139,6 +148,8 @@ export async function GET(request: NextRequest) {
           points_change: txn.points_change,
           star_rating: txn.star_rating,
           amount: txn.amount,
+          created_at: txn.created_at,
+          updated_at: txn.updated_at,
         });
         
         acc[key].total_salary += Math.abs(txn.amount);
@@ -168,6 +179,98 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching salary transactions:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch salary transactions' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/committee/salary-transactions
+ * 
+ * Delete salary transactions
+ * Query params:
+ *   - fixtureId: Fixture ID (required)
+ *   - teamId: Team ID (required)
+ *   - playerId: Player ID (optional - if provided, deletes only that player's transaction)
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const fixtureId = searchParams.get('fixtureId');
+    const teamId = searchParams.get('teamId');
+    const playerId = searchParams.get('playerId');
+
+    if (!fixtureId || !teamId) {
+      return NextResponse.json(
+        { error: 'fixtureId and teamId are required' },
+        { status: 400 }
+      );
+    }
+
+    // Build query to find transactions
+    let query = adminDb
+      .collection('transactions')
+      .where('team_id', '==', teamId)
+      .where('transaction_type', 'in', ['salary', 'salary_payment']);
+
+    const snapshot = await query.get();
+    
+    // Filter by fixture_id and optionally player_id in memory
+    const toDelete = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      const metadata = data.metadata || {};
+      
+      // Match fixture
+      if (metadata.fixture_id !== fixtureId) return false;
+      
+      // If playerId specified, match player
+      if (playerId && metadata.player_id !== playerId) return false;
+      
+      return true;
+    });
+
+    if (toDelete.length === 0) {
+      return NextResponse.json(
+        { error: 'No matching transaction found' },
+        { status: 404 }
+      );
+    }
+
+    // If multiple duplicates found and playerId specified, only delete the first one
+    const transactionsToDelete = playerId && toDelete.length > 1 ? [toDelete[0]] : toDelete;
+    
+    console.log(`🗑️  Deleting ${transactionsToDelete.length} transaction(s) for fixture ${fixtureId}, team ${teamId}${playerId ? `, player ${playerId}` : ''}`);
+    if (toDelete.length > transactionsToDelete.length) {
+      console.log(`⚠️  Found ${toDelete.length} duplicates, deleting only 1`);
+    }
+
+    // Store deleted data for potential restoration
+    const deletedData = transactionsToDelete.map(doc => ({
+      id: doc.id,
+      data: doc.data(),
+    }));
+
+    // Delete transactions
+    const batch = adminDb.batch();
+    transactionsToDelete.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
+
+    console.log('✅ Deleted transactions:', deletedData);
+
+    return NextResponse.json({
+      success: true,
+      message: `Deleted ${transactionsToDelete.length} transaction(s)${toDelete.length > transactionsToDelete.length ? ` (${toDelete.length - transactionsToDelete.length} duplicate(s) remain)` : ''}`,
+      count: transactionsToDelete.length,
+      deleted: deletedData, // Return deleted data for potential restoration
+    });
+
+  } catch (error: any) {
+    console.error('Error deleting salary transactions:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete salary transactions' },
       { status: 500 }
     );
   }

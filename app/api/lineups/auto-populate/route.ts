@@ -31,9 +31,7 @@ export async function POST(request: NextRequest) {
         home_team_id,
         home_team_name,
         away_team_id,
-        away_team_name,
-        home_lineup,
-        away_lineup
+        away_team_name
       FROM fixtures
       WHERE season_id = ${season_id}
         AND round_number = ${round_number}
@@ -46,8 +44,17 @@ export async function POST(request: NextRequest) {
     const results = [];
 
     for (const fixture of fixtures) {
-      // Check home team
-      if (!fixture.home_lineup) {
+      // Check home team lineup in Firebase
+      const homeLineupSnapshot = await adminDb
+        .collection('fixture_lineups')
+        .where('fixture_id', '==', fixture.id)
+        .where('team_id', '==', fixture.home_team_id)
+        .limit(1)
+        .get();
+      
+      const homeLineupExists = !homeLineupSnapshot.empty;
+
+      if (!homeLineupExists) {
         const homeTeamPlayers = await getTeamPlayers(fixture.home_team_id, season_id);
         
         if (homeTeamPlayers.length === 5) {
@@ -55,15 +62,19 @@ export async function POST(request: NextRequest) {
           
           const lineup = createAutoLineup(homeTeamPlayers, 'system_auto');
           
-          await sql`
-            UPDATE fixtures
-            SET 
-              home_lineup = ${JSON.stringify(lineup)}::jsonb,
-              home_lineup_submitted_at = NOW(),
-              home_lineup_submitted_by = 'system_auto',
-              updated_at = NOW()
-            WHERE id = ${fixture.id}
-          `;
+          // Save to Firebase fixture_lineups collection
+          await adminDb.collection('fixture_lineups').add({
+            fixture_id: fixture.id,
+            team_id: fixture.home_team_id,
+            season_id: season_id,
+            selected_players: lineup.players,
+            is_locked: false,
+            submitted_by: 'system_auto',
+            submitted_at: new Date(),
+            auto_populated: true,
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
           
           autoPopulatedCount++;
           results.push({
@@ -85,8 +96,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Check away team
-      if (!fixture.away_lineup) {
+      // Check away team lineup in Firebase
+      const awayLineupSnapshot = await adminDb
+        .collection('fixture_lineups')
+        .where('fixture_id', '==', fixture.id)
+        .where('team_id', '==', fixture.away_team_id)
+        .limit(1)
+        .get();
+      
+      const awayLineupExists = !awayLineupSnapshot.empty;
+
+      if (!awayLineupExists) {
         const awayTeamPlayers = await getTeamPlayers(fixture.away_team_id, season_id);
         
         if (awayTeamPlayers.length === 5) {
@@ -94,15 +114,19 @@ export async function POST(request: NextRequest) {
           
           const lineup = createAutoLineup(awayTeamPlayers, 'system_auto');
           
-          await sql`
-            UPDATE fixtures
-            SET 
-              away_lineup = ${JSON.stringify(lineup)}::jsonb,
-              away_lineup_submitted_at = NOW(),
-              away_lineup_submitted_by = 'system_auto',
-              updated_at = NOW()
-            WHERE id = ${fixture.id}
-          `;
+          // Save to Firebase fixture_lineups collection
+          await adminDb.collection('fixture_lineups').add({
+            fixture_id: fixture.id,
+            team_id: fixture.away_team_id,
+            season_id: season_id,
+            selected_players: lineup.players,
+            is_locked: false,
+            submitted_by: 'system_auto',
+            submitted_at: new Date(),
+            auto_populated: true,
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
           
           autoPopulatedCount++;
           results.push({

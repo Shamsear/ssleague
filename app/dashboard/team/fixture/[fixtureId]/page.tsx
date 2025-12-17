@@ -3014,9 +3014,88 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                       }
                     }}
                     disabled={isSaving}
-                    className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-xl hover:from-green-700 hover:to-green-800 transition-all shadow-lg"
+                    className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-xl hover:from-green-700 hover:to-green-800 transition-all shadow-lg disabled:opacity-50"
                   >
                     {isSaving ? 'Saving...' : 'Save Results'}
+                  </button>
+                  
+                  {/* Save as Draft Button */}
+                  <button
+                    onClick={async () => {
+                      // Validate all results are entered
+                      const allResultsEntered = Object.values(matchResults).every(
+                        (r: any) => r.home_goals !== null && r.away_goals !== null
+                      );
+                      
+                      if (!allResultsEntered) {
+                        showAlert({
+                          type: 'error',
+                          title: 'Incomplete Results',
+                          message: '❌ Please enter goals for all matches before saving as draft.'
+                        });
+                        return;
+                      }
+                      
+                      setIsSaving(true);
+                      try {
+                        // Save as draft (no calculations)
+                        const results = matchups.map((m, idx) => ({
+                          position: m.position,
+                          home_goals: matchResults[idx]?.home_goals ?? 0,
+                          away_goals: matchResults[idx]?.away_goals ?? 0,
+                        }));
+
+                        const motmPlayerName = motmPlayerId ? 
+                          matchups.find(m => m.home_player_id === motmPlayerId)?.home_player_name ||
+                          matchups.find(m => m.away_player_id === motmPlayerId)?.away_player_name || null
+                          : null;
+
+                        const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/draft-results`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            results,
+                            entered_by: user!.uid,
+                            motm_player_id: motmPlayerId,
+                            motm_player_name: motmPlayerName,
+                            home_penalty_goals: homePenaltyGoals,
+                            away_penalty_goals: awayPenaltyGoals,
+                          }),
+                        });
+
+                        if (!response.ok) {
+                          const errorData = await response.json();
+                          throw new Error(errorData.error || 'Failed to save draft');
+                        }
+
+                        const draftData = await response.json();
+                        console.log('Draft saved:', draftData);
+
+                        showAlert({
+                          type: 'success',
+                          title: 'Draft Saved',
+                          message: `✅ Results saved as draft. You can submit them later.`
+                        });
+
+                        // Exit result mode
+                        setIsResultMode(false);
+                        // Reload page to show updated data
+                        window.location.reload();
+                      } catch (error) {
+                        console.error('Failed to save draft:', error);
+                        showAlert({
+                          type: 'error',
+                          title: 'Save Failed',
+                          message: 'Failed to save draft'
+                        });
+                      } finally {
+                        setIsSaving(false);
+                      }
+                    }}
+                    disabled={isSaving}
+                    className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg disabled:opacity-50"
+                  >
+                    {isSaving ? 'Saving...' : '💾 Save as Draft'}
                   </button>
                 </div>
               </div>

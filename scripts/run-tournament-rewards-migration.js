@@ -1,51 +1,44 @@
-require('dotenv').config({ path: '.env.local' });
+/**
+ * Run migration to add rewards column to tournaments table
+ */
+
+const { neon } = require('@neondatabase/serverless');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: '.env.local' });
+
+const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
 
 async function runMigration() {
-  const { Pool } = require('@neondatabase/serverless');
-  
-  const connectionString = process.env.DATABASE_URL;
-  
-  if (!connectionString) {
-    console.error('❌ DATABASE_URL not found in environment variables');
-    process.exit(1);
-  }
-
-  const pool = new Pool({ connectionString });
-
   try {
-    console.log('============================================================');
-    console.log('Tournament Rewards Migration');
-    console.log('============================================================');
-    console.log('Connecting to database...');
+    console.log('🔄 Running tournament rewards migration...\n');
     
-    const client = await pool.connect();
+    // Read the migration file
+    const migrationPath = path.join(__dirname, '..', 'migrations', 'add_tournament_rewards.sql');
+    const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
     
-    // Read migration file
-    const migrationPath = path.join(__dirname, '..', 'migrations', 'create_tournaments_table.sql');
-    console.log(`Reading migration file: ${migrationPath}`);
+    // Execute the migration using unsafe method for raw SQL
+    await sql.unsafe(migrationSQL);
     
-    const sql = fs.readFileSync(migrationPath, 'utf8');
+    console.log('✅ Migration completed successfully!\n');
     
-    console.log('Executing migration...');
-    await client.query(sql);
+    // Verify the column was added
+    const columns = await sql`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'tournaments' AND column_name = 'rewards'
+    `;
     
-    console.log('✅ Migration completed successfully!');
-    console.log('\nChanges applied:');
-    console.log('  - Created tournaments table with all columns');
-    console.log('  - Added \'rewards\' JSONB column for tournament rewards');
-    console.log('  - Added \'number_of_teams\' INTEGER column');
-    console.log('  - Created indexes for performance');
-    console.log('  - Added column comments');
-    
-    client.release();
-    await pool.end();
+    if (columns.length > 0) {
+      console.log('✅ Rewards column verified:', columns[0]);
+    } else {
+      console.log('⚠️  Rewards column not found after migration');
+    }
     
   } catch (error) {
-    console.error('❌ Error running migration:', error.message);
-    await pool.end();
-    process.exit(1);
+    console.error('❌ Migration failed:', error);
+  } finally {
+    process.exit(0);
   }
 }
 

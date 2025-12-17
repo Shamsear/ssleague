@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { getAuctionDb } from '@/lib/neon/auction-config';
 import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
+import { adminDb } from '@/lib/firebase/admin';
 
 /**
  * Distribute match rewards (eCoin & SSCoin) to teams based on match result
@@ -15,15 +17,18 @@ async function distributeMatchRewards(params: {
   const sql = getTournamentDb();
   const { fixtureId, matchResult, seasonId, roundNumber, leg } = params;
 
-  // Check if rewards have already been distributed for this fixture
-  const existingRewards = await sql`
-    SELECT id FROM transactions
-    WHERE description LIKE ${'%Fixture: ' + fixtureId + '%'}
-    AND transaction_type = 'match_reward'
-    LIMIT 1
-  `;
+  // Check if rewards have already been distributed for this fixture (in Firebase)
+  const existingRewardsSnapshot = await adminDb.collection('transactions')
+    .where('transaction_type', '==', 'match_reward')
+    .limit(1000)
+    .get();
+  
+  const hasExistingReward = existingRewardsSnapshot.docs.some(doc => {
+    const description = doc.data().description || '';
+    return description.includes(`Fixture: ${fixtureId}`);
+  });
 
-  if (existingRewards.length > 0) {
+  if (hasExistingReward) {
     console.log(`⚠️ Match rewards already distributed for fixture ${fixtureId}, skipping duplicate distribution`);
     return;
   }
@@ -87,72 +92,118 @@ async function distributeMatchRewards(params: {
 
   // Distribute rewards to home team
   if (homeECoin > 0 || homeSSCoin > 0) {
-    await sql`
-      UPDATE teams
-      SET 
-        football_budget = COALESCE(football_budget, 0) + ${homeECoin},
-        real_budget = COALESCE(real_budget, 0) + ${homeSSCoin},
-        updated_at = NOW()
-      WHERE id = ${home_team_id}
-    `;
+    // Update team budgets in Firebase
+    const teamSeasonDocId = `${home_team_id}_${seasonId}`;
+    const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonDocId);
+    const teamSeasonDoc = await teamSeasonRef.get();
+    
+    if (teamSeasonDoc.exists) {
+      const currentFootballBudget = teamSeasonDoc.data()?.football_budget || 0;
+      const currentRealBudget = teamSeasonDoc.data()?.real_player_budget || 0;
+      
+      await teamSeasonRef.update({
+        football_budget: currentFootballBudget + homeECoin,
+        real_player_budget: currentRealBudget + homeSSCoin,
+        updated_at: new Date()
+      });
 
-    // Record transaction
-    await sql`
-      INSERT INTO transactions (
-        team_id,
-        season_id,
-        transaction_type,
-        amount_football,
-        amount_real,
-        description,
-        created_at
-      ) VALUES (
-        ${home_team_id},
-        ${seasonId},
-        'match_reward',
-        ${homeECoin},
-        ${homeSSCoin},
-        ${'Match Reward (' + homeResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '') + ' - Fixture: ' + fixtureId},
-        NOW()
-      )
-    `;
+      // Also update Neon auction database teams table (football_budget only, SSCoin stays in Firebase)
+      try {
+        const auctionSql = getAuctionDb();
+        await auctionSql`
+          UPDATE teams
+          SET 
+            football_budget = COALESCE(football_budget, 0) + ${homeECoin},
+            updated_at = NOW()
+          WHERE id = ${home_team_id}
+        `;
+        console.log(`✅ Updated Neon teams table for ${home_team_id}: +${homeECoin} eCoin`);
+      } catch (neonError) {
+        console.error(`⚠️  Failed to update Neon teams table for ${home_team_id}:`, neonError);
+        // Don't fail the whole operation if Neon update fails
+      }
 
-    console.log(`✅ Distributed match rewards to home team ${home_team_id}: eCoin ${homeECoin}, SSCoin ${homeSSCoin}`);
+      // Record transaction in Firebase
+      await adminDb.collection('transactions').add({
+        team_id: home_team_id,
+        season_id: seasonId,
+        transaction_type: 'match_reward',
+        currency_type: 'mixed',
+        amount: homeECoin, // football budget
+        amount_real: homeSSCoin, // real player budget
+        description: `Match Reward (${homeResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - Fixture: ${fixtureId}`,
+        created_at: new Date(),
+        updated_at: new Date(),
+        metadata: {
+          fixture_id: fixtureId,
+          round_number: roundNumber,
+          leg: leg,
+          result: homeResult,
+          ecoin: homeECoin,
+          sscoin: homeSSCoin
+        }
+      });
+
+      console.log(`✅ Distributed match rewards to home team ${home_team_id}: eCoin ${homeECoin}, SSCoin ${homeSSCoin}`);
+    }
   }
 
   // Distribute rewards to away team
   if (awayECoin > 0 || awaySSCoin > 0) {
-    await sql`
-      UPDATE teams
-      SET 
-        football_budget = COALESCE(football_budget, 0) + ${awayECoin},
-        real_budget = COALESCE(real_budget, 0) + ${awaySSCoin},
-        updated_at = NOW()
-      WHERE id = ${away_team_id}
-    `;
+    // Update team budgets in Firebase
+    const teamSeasonDocId = `${away_team_id}_${seasonId}`;
+    const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonDocId);
+    const teamSeasonDoc = await teamSeasonRef.get();
+    
+    if (teamSeasonDoc.exists) {
+      const currentFootballBudget = teamSeasonDoc.data()?.football_budget || 0;
+      const currentRealBudget = teamSeasonDoc.data()?.real_player_budget || 0;
+      
+      await teamSeasonRef.update({
+        football_budget: currentFootballBudget + awayECoin,
+        real_player_budget: currentRealBudget + awaySSCoin,
+        updated_at: new Date()
+      });
 
-    // Record transaction
-    await sql`
-      INSERT INTO transactions (
-        team_id,
-        season_id,
-        transaction_type,
-        amount_football,
-        amount_real,
-        description,
-        created_at
-      ) VALUES (
-        ${away_team_id},
-        ${seasonId},
-        'match_reward',
-        ${awayECoin},
-        ${awaySSCoin},
-        ${'Match Reward (' + awayResult + ') - Round ' + roundNumber + (leg > 1 ? ' Leg ' + leg : '') + ' - Fixture: ' + fixtureId},
-        NOW()
-      )
-    `;
+      // Also update Neon auction database teams table (football_budget only, SSCoin stays in Firebase)
+      try {
+        const auctionSql = getAuctionDb();
+        await auctionSql`
+          UPDATE teams
+          SET 
+            football_budget = COALESCE(football_budget, 0) + ${awayECoin},
+            updated_at = NOW()
+          WHERE id = ${away_team_id}
+        `;
+        console.log(`✅ Updated Neon teams table for ${away_team_id}: +${awayECoin} eCoin`);
+      } catch (neonError) {
+        console.error(`⚠️  Failed to update Neon teams table for ${away_team_id}:`, neonError);
+        // Don't fail the whole operation if Neon update fails
+      }
 
-    console.log(`✅ Distributed match rewards to away team ${away_team_id}: eCoin ${awayECoin}, SSCoin ${awaySSCoin}`);
+      // Record transaction in Firebase
+      await adminDb.collection('transactions').add({
+        team_id: away_team_id,
+        season_id: seasonId,
+        transaction_type: 'match_reward',
+        currency_type: 'mixed',
+        amount: awayECoin, // football budget
+        amount_real: awaySSCoin, // real player budget
+        description: `Match Reward (${awayResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - Fixture: ${fixtureId}`,
+        created_at: new Date(),
+        updated_at: new Date(),
+        metadata: {
+          fixture_id: fixtureId,
+          round_number: roundNumber,
+          leg: leg,
+          result: awayResult,
+          ecoin: awayECoin,
+          sscoin: awaySSCoin
+        }
+      });
+
+      console.log(`✅ Distributed match rewards to away team ${away_team_id}: eCoin ${awayECoin}, SSCoin ${awaySSCoin}`);
+    }
   }
 }
 
