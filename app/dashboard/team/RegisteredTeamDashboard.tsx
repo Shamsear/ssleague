@@ -1167,6 +1167,12 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 <span className="whitespace-nowrap">⭐ Fantasy</span>
               </button>
             )}
+            <Link
+              href="/dashboard/team/player-stats"
+              className="flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all text-gray-600 hover:bg-white/50 rounded-t-2xl sm:rounded-t-3xl flex items-center justify-center gap-1.5 sm:gap-2"
+            >
+              <span className="whitespace-nowrap">📊 Player Stats</span>
+            </Link>
           </div>
         </div>
 

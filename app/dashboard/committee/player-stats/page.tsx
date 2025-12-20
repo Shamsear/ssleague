@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
@@ -21,6 +21,9 @@ interface PlayerStats {
   draws: number;
   losses: number;
   clean_sheets: number;
+  auction_value?: number;
+  star_rating?: number;
+  salary_per_match?: number;
 }
 
 export default function PlayerStatsPage() {
@@ -78,6 +81,11 @@ export default function PlayerStatsPage() {
   };
 
   const updatePlayerValue = (playerId: string, field: keyof PlayerStats, value: number) => {
+    // Enforce minimum points of 100
+    if (field === 'points' && value < 100) {
+      value = 100;
+    }
+    
     const currentEdits = new Map(editedPlayers);
     const playerEdits = currentEdits.get(playerId) || {};
     currentEdits.set(playerId, { ...playerEdits, [field]: value });
@@ -92,6 +100,42 @@ export default function PlayerStatsPage() {
     return player[field] as number;
   };
 
+  // Calculate star rating from points
+  const calculateStarRating = (points: number): number => {
+    if (points >= 350) return 10;
+    if (points >= 300) return 9;
+    if (points >= 250) return 8;
+    if (points >= 210) return 7;
+    if (points >= 175) return 6;
+    if (points >= 145) return 5;
+    if (points >= 120) return 4;
+    return 3;
+  };
+
+  // Calculate salary from auction value and star rating
+  const calculateSalary = (auctionValue: number, starRating: number): number => {
+    return (auctionValue / 100) * starRating / 10;
+  };
+
+  // Get predicted changes for a player
+  const getPredictedChanges = (player: PlayerStats) => {
+    const currentPoints = getPlayerValue(player, 'points');
+    const oldStarRating = player.star_rating || 3;
+    const newStarRating = calculateStarRating(currentPoints);
+    const auctionValue = player.auction_value || 0;
+    const oldSalary = parseFloat(String(player.salary_per_match || 0));
+    const newSalary = calculateSalary(auctionValue, newStarRating);
+
+    return {
+      starRatingChanged: newStarRating !== oldStarRating,
+      oldStarRating,
+      newStarRating,
+      oldSalary,
+      newSalary,
+      salaryChange: newSalary - oldSalary
+    };
+  };
+
   const saveAllChanges = async () => {
     if (editedPlayers.size === 0) {
       setEditMode(false);
@@ -104,6 +148,7 @@ export default function PlayerStatsPage() {
         const player = players.find(p => p.id === playerId);
         return {
           player_id: playerId,
+          player_name: player?.player_name,
           points: edits.points ?? player?.points ?? 0,
           base_points: edits.base_points ?? player?.base_points ?? 0,
           matches_played: edits.matches_played ?? player?.matches_played ?? 0,
@@ -116,6 +161,8 @@ export default function PlayerStatsPage() {
         };
       });
 
+      const starChanges: string[] = [];
+
       for (const update of updates) {
         const response = await fetchWithTokenRefresh('/api/committee/player-stats', {
           method: 'PUT',
@@ -126,6 +173,22 @@ export default function PlayerStatsPage() {
         if (!response.ok) {
           throw new Error('Failed to update player');
         }
+
+        const result = await response.json();
+        
+        // Track star rating changes
+        if (result.starRatingChanged) {
+          starChanges.push(
+            `${update.player_name}: ${result.oldStarRating}⭐ → ${result.newStarRating}⭐ (Salary: ${result.oldSalary} → ${result.newSalary})`
+          );
+        }
+      }
+
+      // Show notification if any star ratings changed
+      if (starChanges.length > 0) {
+        alert(
+          `✅ Updates saved!\n\n⭐ Star Rating Changes:\n${starChanges.join('\n')}\n\nSalaries have been automatically recalculated.`
+        );
       }
 
       await loadPlayers();
@@ -345,129 +408,168 @@ export default function PlayerStatsPage() {
                   const currentPoints = getPlayerValue(player, 'points');
                   const currentBasePoints = getPlayerValue(player, 'base_points');
                   const change = currentBasePoints > 0 ? currentPoints - currentBasePoints : 0;
+                  const predictions = getPredictedChanges(player);
                   
                   return (
-                    <tr 
-                      key={player.id} 
-                      className={`hover:bg-blue-50 transition-colors ${hasEdits ? 'bg-yellow-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                            {player.player_name.charAt(0)}
+                    <React.Fragment key={player.id}>
+                      <tr 
+                        className={`hover:bg-blue-50 transition-colors ${hasEdits ? 'bg-yellow-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                              {player.player_name.charAt(0)}
+                            </div>
+                            <span className="text-sm font-semibold text-gray-900">{player.player_name}</span>
                           </div>
-                          <span className="text-sm font-semibold text-gray-900">{player.player_name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{player.team || '-'}</td>
-                      <td className="px-6 py-4 text-center">
-                        {editMode ? (
-                          <input
-                            type="number"
-                            value={getPlayerValue(player, 'points')}
-                            onChange={(e) => updatePlayerValue(player.id, 'points', parseInt(e.target.value) || 0)}
-                            className="w-20 px-3 py-2 border-2 border-blue-300 rounded-lg text-center font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        ) : (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700">
-                            {player.points || 0}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {editMode ? (
-                          <input
-                            type="number"
-                            value={getPlayerValue(player, 'base_points')}
-                            onChange={(e) => updatePlayerValue(player.id, 'base_points', parseInt(e.target.value) || 0)}
-                            className="w-20 px-3 py-2 border-2 border-gray-300 rounded-lg text-center font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        ) : (
-                          <span className="text-sm font-semibold text-gray-600">{player.base_points || 0}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {currentBasePoints > 0 ? (
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
-                            change > 0 
-                              ? 'bg-green-100 text-green-700' 
-                              : change < 0
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-gray-100 text-gray-600'
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{player.team || '-'}</td>
+                        <td className="px-6 py-4 text-center">
+                          {editMode ? (
+                            <input
+                              type="number"
+                              min="100"
+                              value={getPlayerValue(player, 'points')}
+                              onChange={(e) => updatePlayerValue(player.id, 'points', parseInt(e.target.value) || 100)}
+                              className="w-20 px-3 py-2 border-2 border-blue-300 rounded-lg text-center font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700">
+                              {player.points || 0}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {editMode ? (
+                            <input
+                              type="number"
+                              value={getPlayerValue(player, 'base_points')}
+                              onChange={(e) => updatePlayerValue(player.id, 'base_points', parseInt(e.target.value) || 0)}
+                              className="w-20 px-3 py-2 border-2 border-gray-300 rounded-lg text-center font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm font-semibold text-gray-600">{player.base_points || 0}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {currentBasePoints > 0 ? (
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
+                              change > 0 
+                                ? 'bg-green-100 text-green-700' 
+                                : change < 0
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {change > 0 ? '↑' : change < 0 ? '↓' : '='} 
+                              {change > 0 ? '+' : ''}{change}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {editMode ? (
+                            <input
+                              type="number"
+                              value={getPlayerValue(player, 'matches_played')}
+                              onChange={(e) => updatePlayerValue(player.id, 'matches_played', parseInt(e.target.value) || 0)}
+                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-gray-700">{player.matches_played || 0}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {editMode ? (
+                            <input
+                              type="number"
+                              value={getPlayerValue(player, 'goals_scored')}
+                              onChange={(e) => updatePlayerValue(player.id, 'goals_scored', parseInt(e.target.value) || 0)}
+                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                              ⚽ {player.goals_scored || 0}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {editMode ? (
+                            <input
+                              type="number"
+                              value={getPlayerValue(player, 'goals_conceded')}
+                              onChange={(e) => updatePlayerValue(player.id, 'goals_conceded', parseInt(e.target.value) || 0)}
+                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm font-semibold text-red-600">{player.goals_conceded || 0}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`text-sm font-bold ${
+                            player.goal_difference > 0 ? 'text-green-600' : 
+                            player.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
                           }`}>
-                            {change > 0 ? '↑' : change < 0 ? '↓' : '='} 
-                            {change > 0 ? '+' : ''}{change}
+                            {player.goal_difference > 0 ? '+' : ''}{player.goal_difference || 0}
                           </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {editMode ? (
-                          <input
-                            type="number"
-                            value={getPlayerValue(player, 'matches_played')}
-                            onChange={(e) => updatePlayerValue(player.id, 'matches_played', parseInt(e.target.value) || 0)}
-                            className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        ) : (
-                          <span className="text-sm font-medium text-gray-700">{player.matches_played || 0}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {editMode ? (
-                          <input
-                            type="number"
-                            value={getPlayerValue(player, 'goals_scored')}
-                            onChange={(e) => updatePlayerValue(player.id, 'goals_scored', parseInt(e.target.value) || 0)}
-                            className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
-                            ⚽ {player.goals_scored || 0}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="text-sm text-gray-600 font-medium">
+                            <span className="text-green-600 font-bold">{getPlayerValue(player, 'wins')}</span>-
+                            <span className="text-gray-500">{getPlayerValue(player, 'draws')}</span>-
+                            <span className="text-red-600 font-bold">{getPlayerValue(player, 'losses')}</span>
                           </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {editMode ? (
-                          <input
-                            type="number"
-                            value={getPlayerValue(player, 'goals_conceded')}
-                            onChange={(e) => updatePlayerValue(player.id, 'goals_conceded', parseInt(e.target.value) || 0)}
-                            className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        ) : (
-                          <span className="text-sm font-semibold text-red-600">{player.goals_conceded || 0}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`text-sm font-bold ${
-                          player.goal_difference > 0 ? 'text-green-600' : 
-                          player.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
-                        }`}>
-                          {player.goal_difference > 0 ? '+' : ''}{player.goal_difference || 0}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-sm text-gray-600 font-medium">
-                          <span className="text-green-600 font-bold">{getPlayerValue(player, 'wins')}</span>-
-                          <span className="text-gray-500">{getPlayerValue(player, 'draws')}</span>-
-                          <span className="text-red-600 font-bold">{getPlayerValue(player, 'losses')}</span>
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {editMode ? (
-                          <input
-                            type="number"
-                            value={getPlayerValue(player, 'clean_sheets')}
-                            onChange={(e) => updatePlayerValue(player.id, 'clean_sheets', parseInt(e.target.value) || 0)}
-                            className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        ) : (
-                          <span className="text-sm font-semibold text-gray-700">{player.clean_sheets || 0}</span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {editMode ? (
+                            <input
+                              type="number"
+                              value={getPlayerValue(player, 'clean_sheets')}
+                              onChange={(e) => updatePlayerValue(player.id, 'clean_sheets', parseInt(e.target.value) || 0)}
+                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm font-semibold text-gray-700">{player.clean_sheets || 0}</span>
+                          )}
+                        </td>
+                      </tr>
+                      {editMode && hasEdits && predictions.starRatingChanged && (
+                        <tr key={`${player.id}-preview`} className="bg-gradient-to-r from-purple-50 to-blue-50 border-l-4 border-purple-500">
+                          <td colSpan={11} className="px-6 py-3">
+                            <div className="flex items-center gap-4 text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-gray-700">⭐ Star Rating:</span>
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">
+                                  {predictions.oldStarRating}⭐
+                                </span>
+                                <span className="text-gray-400">→</span>
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                                  {predictions.newStarRating}⭐
+                                </span>
+                              </div>
+                              <div className="h-4 w-px bg-gray-300"></div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-gray-700">💰 Salary:</span>
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">
+                                  {predictions.oldSalary.toFixed(2)}
+                                </span>
+                                <span className="text-gray-400">→</span>
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                                  {predictions.newSalary.toFixed(2)}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                                  predictions.salaryChange > 0 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {predictions.salaryChange > 0 ? '+' : ''}{predictions.salaryChange.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
