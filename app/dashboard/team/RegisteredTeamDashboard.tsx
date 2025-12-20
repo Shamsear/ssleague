@@ -1001,6 +1001,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/player-leaderboard" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 📋 Player Stats
               </Link>
+              <Link href="/dashboard/team/player-stats" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
+                ⭐ Player Point Change
+              </Link>
               <Link href="/dashboard/team/fantasy/my-team" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Fantasy
               </Link>
@@ -1167,12 +1170,6 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 <span className="whitespace-nowrap">⭐ Fantasy</span>
               </button>
             )}
-            <Link
-              href="/dashboard/team/player-stats"
-              className="flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all text-gray-600 hover:bg-white/50 rounded-t-2xl sm:rounded-t-3xl flex items-center justify-center gap-1.5 sm:gap-2"
-            >
-              <span className="whitespace-nowrap">📊 Player Stats</span>
-            </Link>
           </div>
         </div>
 
