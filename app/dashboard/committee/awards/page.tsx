@@ -434,12 +434,21 @@ export default function AwardsManagementPage() {
               {candidates.length > 0 ? 'Eligible Candidates' : 'No candidates available'}
             </h3>
             
+            {currentAward && (
+              <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded-lg">
+                <p className="text-sm text-yellow-800 font-medium">
+                  ⚠️ An award has already been given for this {['POTD', 'TOD'].includes(activeTab) ? 'round' : 'week'}. 
+                  You must remove the current award before selecting a new one.
+                </p>
+              </div>
+            )}
+            
             {loading_data ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto"></div>
               </div>
             ) : (
-              <div className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto">
+              <div className={`space-y-2 sm:space-y-3 max-h-96 overflow-y-auto ${currentAward ? 'opacity-50 pointer-events-none' : ''}`}>
                 {candidates.map((candidate, idx) => {
                   const candidateId = candidate.player_id || candidate.team_id || `candidate-${idx}`;
                   const isSelected = selectedCandidate === candidateId;
@@ -482,14 +491,20 @@ export default function AwardsManagementPage() {
           </div>
 
           {/* Action Button */}
-          {candidates.length > 0 && (
+          {candidates.length > 0 && !currentAward && (
             <button
               onClick={handleSelectAward}
               disabled={!selectedCandidate || submitting}
               className="w-full py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm sm:text-base font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Saving...' : currentAward ? 'Update Award' : 'Select Award'}
+              {submitting ? 'Saving...' : 'Select Award'}
             </button>
+          )}
+          
+          {currentAward && (
+            <div className="w-full py-3 sm:py-4 bg-gray-300 text-gray-600 text-sm sm:text-base font-bold rounded-xl text-center cursor-not-allowed">
+              Award Already Given - Remove to Select Another
+            </div>
           )}
         </div>
       </div>

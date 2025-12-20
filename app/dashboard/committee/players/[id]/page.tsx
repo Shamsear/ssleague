@@ -97,6 +97,8 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
   const [player, setPlayer] = useState<FootballPlayer | null>(null)
   const [loading, setLoading] = useState(true)
   const [imageError, setImageError] = useState(false)
+  const [awards, setAwards] = useState<any[]>([])
+  const [loadingAwards, setLoadingAwards] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -123,7 +125,7 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
 
         if (result.success && result.data.player) {
           const data = result.data.player;
-          setPlayer({
+          const playerData = {
             id: data.id.toString(),
             player_id: data.player_id || data.id.toString(),
             name: data.name,
@@ -166,7 +168,12 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
             gk_parrying: data.gk_parrying,
             gk_reflexes: data.gk_reflexes,
             gk_reach: data.gk_reach,
-          } as FootballPlayer);
+          } as FootballPlayer;
+          
+          setPlayer(playerData);
+          
+          // Fetch awards for this player
+          fetchPlayerAwards(playerData.player_id);
         } else {
           alert('Player not found');
           router.push('/dashboard/committee/players');
@@ -183,6 +190,22 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
       fetchPlayer();
     }
   }, [user, resolvedParams.id, router])
+  
+  const fetchPlayerAwards = async (playerId: string) => {
+    setLoadingAwards(true);
+    try {
+      const response = await fetch(`/api/awards?player_id=${playerId}`);
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setAwards(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching awards:', err);
+    } finally {
+      setLoadingAwards(false);
+    }
+  };
 
   const getPositionColor = (position?: string) => {
     switch (position) {
@@ -531,6 +554,51 @@ export default function PlayerDetailPage({ params }: { params: Promise<{ id: str
                 )}
               </div>
             </div>
+
+            {/* Awards Section */}
+            {awards.length > 0 && (
+              <div className="glass rounded-2xl p-6 shadow-md border border-white/20 bg-gradient-to-br from-yellow-50 to-amber-50 hover:from-yellow-100 hover:to-amber-100 transition-all duration-300">
+                <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                  <svg className="w-5 h-5 mr-2 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  🏆 Awards & Honors
+                </h3>
+                <div className="space-y-3">
+                  {awards.map((award) => (
+                    <div key={award.id} className="bg-white/80 rounded-xl p-4 shadow-sm border border-yellow-200 hover:shadow-md transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-2xl">
+                              {award.award_type === 'POTD' && '⭐'}
+                              {award.award_type === 'POTW' && '🌟'}
+                              {award.award_type === 'TOD' && '🏅'}
+                              {award.award_type === 'TOW' && '🏆'}
+                              {award.award_type === 'POTS' && '👑'}
+                              {award.award_type === 'TOTS' && '🏆'}
+                            </span>
+                            <span className="font-bold text-gray-900">
+                              {award.award_type === 'POTD' && 'Player of the Day'}
+                              {award.award_type === 'POTW' && 'Player of the Week'}
+                              {award.award_type === 'TOD' && 'Team of the Day'}
+                              {award.award_type === 'TOW' && 'Team of the Week'}
+                              {award.award_type === 'POTS' && 'Player of the Season'}
+                              {award.award_type === 'TOTS' && 'Team of the Season'}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {award.round_number && `Round ${award.round_number}`}
+                            {award.week_number && `Week ${award.week_number}`}
+                            {award.selected_at && ` • ${new Date(award.selected_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column - Stats */}
