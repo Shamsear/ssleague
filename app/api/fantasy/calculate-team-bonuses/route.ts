@@ -194,37 +194,102 @@ async function awardTeamBonus(params: {
   const draw = goals_scored === goals_conceded;
   const lost = goals_scored < goals_conceded;
   const clean_sheet = goals_conceded === 0;
-  const high_scoring = goals_scored >= 4;
+  const goal_margin = Math.abs(goals_scored - goals_conceded);
 
   const bonus_breakdown: any = {};
   let total_bonus = 0;
 
-  // Apply scoring rules that match the team's performance
-  if (won && teamScoringRules.has('win')) {
-    bonus_breakdown.win = teamScoringRules.get('win')!;
-    total_bonus += bonus_breakdown.win;
-  }
-  if (draw && teamScoringRules.has('draw')) {
-    bonus_breakdown.draw = teamScoringRules.get('draw')!;
-    total_bonus += bonus_breakdown.draw;
-  }
-  if (lost && teamScoringRules.has('loss')) {
-    bonus_breakdown.loss = teamScoringRules.get('loss')!;
-    total_bonus += bonus_breakdown.loss;
-  }
-  if (clean_sheet && teamScoringRules.has('clean_sheet')) {
-    bonus_breakdown.clean_sheet = teamScoringRules.get('clean_sheet')!;
-    total_bonus += bonus_breakdown.clean_sheet;
-  }
-  if (high_scoring && teamScoringRules.has('high_scoring')) {
-    bonus_breakdown.high_scoring = teamScoringRules.get('high_scoring')!;
-    total_bonus += bonus_breakdown.high_scoring;
-  }
+  // Apply ALL configured scoring rules dynamically
+  teamScoringRules.forEach((points, ruleType) => {
+    let applies = false;
 
+    // Check each rule type
+    switch (ruleType) {
+      // Result-based rules
+      case 'win':
+        applies = won;
+        break;
+      case 'draw':
+        applies = draw;
+        break;
+      case 'loss':
+        applies = lost;
+        break;
+
+      // Defense-based rules
+      case 'clean_sheet':
+        applies = clean_sheet;
+        break;
+      case 'concedes_4_plus_goals':
+        applies = goals_conceded >= 4;
+        break;
+      case 'concedes_6_plus_goals':
+        applies = goals_conceded >= 6;
+        break;
+      case 'concedes_8_plus_goals':
+        applies = goals_conceded >= 8;
+        break;
+      case 'concedes_10_plus_goals':
+        applies = goals_conceded >= 10;
+        break;
+      case 'concedes_15_plus_goals':
+        applies = goals_conceded >= 15;
+        break;
+
+      // Attack-based rules
+      case 'scored_4_plus_goals':
+      case 'high_scoring':
+        applies = goals_scored >= 4;
+        break;
+      case 'scored_6_plus_goals':
+        applies = goals_scored >= 6;
+        break;
+      case 'scored_8_plus_goals':
+        applies = goals_scored >= 8;
+        break;
+      case 'scored_10_plus_goals':
+        applies = goals_scored >= 10;
+        break;
+      case 'scored_15_plus_goals':
+        applies = goals_scored >= 15;
+        break;
+
+      // Margin-based rules
+      case 'big_win':
+        applies = won && goal_margin >= 3;
+        break;
+      case 'huge_win':
+        applies = won && goal_margin >= 5;
+        break;
+      case 'narrow_win':
+        applies = won && goal_margin === 1;
+        break;
+
+      // Combined rules
+      case 'shutout_win':
+        applies = won && clean_sheet;
+        break;
+
+      default:
+        // Unknown rule type - log warning but don't fail
+        console.log(`⚠️  Unknown team rule type: ${ruleType}`);
+        applies = false;
+    }
+
+    if (applies) {
+      bonus_breakdown[ruleType] = points;
+      total_bonus += points;
+    }
+  });
+
+  // Log the result even if no bonus (or negative)
   if (total_bonus === 0) {
-    console.log(`⏭️  No bonuses for team ${real_team_id} (Loss)`);
+    console.log(`⏭️  No net bonus for team ${real_team_id} (total: ${total_bonus})`);
     return;
   }
+  
+  // Note: We still award negative bonuses (penalties) if configured
+  console.log(`🎁 Team ${real_team_id} earned ${total_bonus > 0 ? '+' : ''}${total_bonus} points`);
 
   // Award bonuses to each fantasy team
   for (const fantasyTeam of fantasyTeams) {

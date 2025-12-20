@@ -485,5 +485,24 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
+    
+    // Transactions collection - tracks all financial transactions (rewards, salaries, etc.)
+    match /transactions/{transactionId} {
+      // Allow admins to read all transactions
+      // Allow teams to read their own transactions
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        (isTeam() && resource.data.team_id == request.auth.uid)
+      );
+      
+      // Only admins and system can create transactions
+      allow create: if isAdmin();
+      
+      // Only admins can update transactions
+      allow update: if isAdmin();
+      
+      // Only super admins can delete transactions
+      allow delete: if isSuperAdmin();
+    }
   }
 }

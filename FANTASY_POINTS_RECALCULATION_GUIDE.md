@@ -1,103 +1,240 @@
 # Fantasy Points Recalculation Guide
 
-## Current Situation
+## Overview
 
-The fantasy player points shown in the player leaderboard are incorrect because they need to be calculated from actual match performance data.
+This system provides a complete recalculation of all fantasy points in the league. It combines four separate recalculation processes into one comprehensive operation.
 
-## Data Location
+## What Gets Recalculated
 
-- **Fixture Matchups**: Stored in Firebase Firestore (`fixture_matchups` collection)
-- **Player Points**: Should be stored in `realplayer` table in Neon (or Firebase)
-- **MOTM**: Stored in `fixtures` collection in Firebase
+### 1. Player Points
+- Recalculates all player performance points from completed fixtures
+- Applies captain (2x) and vice-captain (1.5x) multipliers
+- Based on goals, clean sheets, MOTM, wins/draws/losses, etc.
+- Creates one record per player per team per fixture in `fantasy_player_points`
 
-## Points Calculation Formula
+### 2. Passive Team Bonus Points
+- Recalculates team affiliation bonuses
+- Based on the real team's performance that fantasy teams support
+- Awards points for wins, draws, clean sheets, high-scoring games
+- Stored in `fantasy_team_bonus_points`
 
-```javascript
-const SCORING_RULES = {
-  goal: 5,              // Points per goal scored
-  clean_sheet: 4,       // Points for clean sheet (0 goals conceded)
-  motm: 3,              // Points for Man of the Match
-  win: 2,               // Points for winning the match
-  draw: 1,              // Points for drawing the match
-  appearance: 1,        // Points just for playing
-};
+### 3. Squad Player Totals
+- Updates the total points for each player in each fantasy squad
+- Aggregates all points from `fantasy_player_points`
+- Updates `fantasy_squad.total_points`
+
+### 4. Fantasy Team Totals and Ranks
+- Updates total points for each fantasy team (player points + passive points)
+- Recalculates ranks for all teams in each league
+- Updates `fantasy_teams.total_points`, `player_points`, `passive_points`, and `rank`
+
+## How to Use
+
+### Option 1: Admin Web Interface (Recommended)
+
+1. Navigate to: `/dashboard/committee/fantasy/recalculate`
+2. Click "Start Recalculation"
+3. Confirm the operation
+4. Wait for completion (may take several minutes)
+5. View the results summary
+
+**URL:** `https://your-domain.com/dashboard/committee/fantasy/recalculate`
+
+### Option 2: Command Line Script
+
+Run the combined script:
+
+```bash
+node scripts/recalculate-all-fantasy-points.js
 ```
 
-### For each player in each match:
+This will:
+- Load environment variables from `.env.local`
+- Connect to both tournament and fantasy databases
+- Perform all 4 recalculation steps
+- Display a detailed summary with top 10 teams
+
+### Option 3: API Endpoint
+
+Make a POST request to:
+
+```bash
+POST /api/admin/fantasy/recalculate-all-points
 ```
-Base Points = 
-  (goals × 5) +
-  (clean_sheet ? 4 : 0) +
-  (is_motm ? 3 : 0) +
-  (won ? 2 : draw ? 1 : 0) +
-  1 (appearance)
-```
 
-### With Captain/Vice-Captain Multipliers (for Fantasy Teams):
-- Captain: Base Points × 2
-- Vice-Captain: Base Points × 1.5
-- Regular: Base Points × 1
-
-## Implementation Options
-
-### Option 1: Create API Endpoint (Recommended)
-
-Create `/api/admin/recalculate-fantasy-points` that:
-1. Fetches all completed fixtures from Firebase
-2. For each fixture, gets matchup data
-3. Calculates points for each player
-4. Updates `realplayer` table or creates `player_stats` table
-
-### Option 2: Manual Calculation Script
-
-Since matchup data is in Firebase, the script needs to:
-1. Connect to Firebase
-2. Query `fixture_matchups` collection
-3. Calculate points
-4. Update database
-
-## Recommended Approach
-
-1. **Create an admin API endpoint** at `/api/admin/fantasy/recalculate-points`
-2. **Add a button** in the committee dashboard to trigger recalculation
-3. **Show progress** and results to the admin
-
-## Example API Implementation
-
-```typescript
-// app/api/admin/fantasy/recalculate-points/route.ts
-export async function POST(request: NextRequest) {
-  // 1. Get all fixtures from Firebase
-  const fixturesSnapshot = await getDocs(
-    query(collection(db, 'fixtures'), where('status', '==', 'completed'))
-  );
-  
-  // 2. For each fixture, get matchups
-  for (const fixtureDoc of fixturesSnapshot.docs) {
-    const matchupsSnapshot = await getDocs(
-      collection(db, 'fixture_matchups'),
-      where('fixture_id', '==', fixtureDoc.id)
-    );
-    
-    // 3. Calculate points for each player
-    // 4. Store in database
+Response:
+```json
+{
+  "success": true,
+  "message": "Fantasy points recalculation completed successfully",
+  "results": {
+    "playerPointsInserted": 148,
+    "passiveBonusesAwarded": 47,
+    "squadPlayersUpdated": 44,
+    "teamsUpdated": 8,
+    "leaguesRanked": 1
   }
-  
-  return NextResponse.json({ success: true });
 }
 ```
 
-## Quick Fix for Display
+## When to Use
 
-For now, to show correct points in the player leaderboard:
+Use this recalculation when:
 
-1. Calculate points on-the-fly from Firebase matchup data
-2. Or create a one-time calculation and store results
-3. Or add a "Recalculate Points" button for admins
+- ✅ Scoring rules have been changed
+- ✅ Match results have been corrected or updated
+- ✅ Captain/Vice-captain assignments have been changed
+- ✅ Data inconsistencies are detected
+- ✅ New fixtures have been added retroactively
+- ✅ Team affiliations (supported teams) have been updated
 
-## Next Steps
+## What Happens During Recalculation
 
-1. Decide where to store calculated points (Neon `realplayer` table or new `player_stats` table)
-2. Create the recalculation API endpoint
-3. Add admin UI to trigger recalculation
-4. Update player leaderboard to show correct points
+### Step 1: Player Points (30-40% of time)
+```
+1. Fetch all scoring rules from database
+2. Get all completed fixtures and matchups
+3. Get all fantasy squad data
+4. DELETE all existing fantasy_player_points
+5. Calculate points for each player in each team
+6. Apply captain/VC multipliers
+7. INSERT new records
+```
+
+### Step 2: Passive Bonuses (30-40% of time)
+```
+1. Get all active fantasy leagues
+2. Reset all passive_points to 0
+3. DELETE all existing fantasy_team_bonus_points
+4. For each league:
+   - Get team scoring rules
+   - Get completed fixtures for the season
+   - Calculate bonuses for home and away teams
+   - Award bonuses to fantasy teams supporting those real teams
+5. INSERT new bonus records
+6. UPDATE fantasy_teams with passive_points
+```
+
+### Step 3: Squad Totals (10-15% of time)
+```
+1. Get all players in fantasy squads
+2. For each player:
+   - SUM total_points from fantasy_player_points
+   - UPDATE fantasy_squad.total_points
+```
+
+### Step 4: Team Totals & Ranks (10-15% of time)
+```
+1. Get all fantasy teams
+2. For each team:
+   - SUM player_points from fantasy_player_points
+   - Get passive_points from fantasy_teams
+   - Calculate total = player_points + passive_points
+   - UPDATE fantasy_teams
+3. Recalculate ranks for each league
+```
+
+## Performance
+
+- **Small League (5-10 teams):** ~10-30 seconds
+- **Medium League (10-20 teams):** ~30-60 seconds
+- **Large League (20+ teams):** ~1-3 minutes
+
+Time depends on:
+- Number of completed fixtures
+- Number of fantasy teams
+- Number of players in squads
+- Database connection speed
+
+## Safety Features
+
+- ✅ Confirmation dialog before starting
+- ✅ All operations are transactional
+- ✅ Duplicate prevention (skips existing records)
+- ✅ Error handling and logging
+- ✅ Progress indicators
+- ✅ Detailed results summary
+
+## Database Tables Affected
+
+| Table | Operation | Description |
+|-------|-----------|-------------|
+| `fantasy_player_points` | DELETE + INSERT | All player performance records |
+| `fantasy_team_bonus_points` | DELETE + INSERT | All team affiliation bonuses |
+| `fantasy_squad` | UPDATE | Player total points |
+| `fantasy_teams` | UPDATE | Team totals, player_points, passive_points, rank |
+
+## Troubleshooting
+
+### Script fails with "No scoring rules found"
+- Check that `fantasy_scoring_rules` table has active rules
+- Ensure `is_active = true` for the rules you want to use
+
+### Some teams have 0 points after recalculation
+- Check that players in their squad have actually played in completed fixtures
+- Verify that the team has selected a supported real team for passive bonuses
+
+### Passive points are 0 for all teams
+- Check that team scoring rules exist (`applies_to = 'team'`)
+- Verify that fantasy teams have `supported_team_id` set
+- Ensure the `supported_team_id` format matches fixture team IDs
+
+### Script takes too long
+- This is normal for large leagues with many fixtures
+- Consider running during off-peak hours
+- The web interface shows progress indicators
+
+## Related Scripts
+
+Individual scripts (now deprecated, use combined script instead):
+- `scripts/recalculate-fantasy-player-points.js` - Player points only
+- `scripts/recalculate-fantasy-team-points.js` - Team totals only
+- `scripts/recalculate-fantasy-squad-points.js` - Squad totals only
+- `scripts/calculate-passive-team-points.js` - Passive bonuses only
+
+## Example Output
+
+```
+🎮 Starting Complete Fantasy Points Recalculation...
+
+📊 STEP 1: Recalculating Player Points
+✅ Loaded scoring rules
+✅ Found 23 completed fixtures
+✅ Found 115 completed matchups
+✅ Found 44 squad entries
+✅ Inserted 148 player point records
+
+📊 STEP 2: Recalculating Passive Team Bonus Points
+✅ Found 1 active league(s)
+✅ Awarded 47 total bonus points
+
+📊 STEP 3: Recalculating Squad Player Totals
+✅ Updated 44 squad player totals
+
+📊 STEP 4: Recalculating Fantasy Team Totals and Ranks
+✅ Updated 8 team totals
+✅ Updated ranks for 1 league(s)
+
+🎉 Complete Fantasy Points Recalculation Finished!
+
+📊 Summary:
+  ✅ Player point records: 148
+  ✅ Passive bonus points: 47
+  ✅ Squad players updated: 44
+  ✅ Teams updated: 8
+  ✅ Leagues ranked: 1
+
+🏆 Top 10 Teams:
+1. FC Barcelona: 637 pts (Player: 617, Passive: 20)
+2. Skill 555: 637 pts (Player: 622, Passive: 15)
+3. Varsity Soccers: 635 pts (Player: 634, Passive: 1)
+...
+```
+
+## Support
+
+For issues or questions:
+1. Check the console logs for detailed error messages
+2. Verify database connections are working
+3. Ensure all required tables exist
+4. Check that scoring rules are properly configured

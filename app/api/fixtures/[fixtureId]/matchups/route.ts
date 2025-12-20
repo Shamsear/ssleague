@@ -123,26 +123,46 @@ async function distributeMatchRewards(params: {
         // Don't fail the whole operation if Neon update fails
       }
 
-      // Record transaction in Firebase
-      await adminDb.collection('transactions').add({
-        team_id: home_team_id,
-        season_id: seasonId,
-        transaction_type: 'match_reward',
-        currency_type: 'mixed',
-        amount: homeECoin, // football budget
-        amount_real: homeSSCoin, // real player budget
-        description: `Match Reward (${homeResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - Fixture: ${fixtureId}`,
-        created_at: new Date(),
-        updated_at: new Date(),
-        metadata: {
-          fixture_id: fixtureId,
-          round_number: roundNumber,
-          leg: leg,
-          result: homeResult,
-          ecoin: homeECoin,
-          sscoin: homeSSCoin
-        }
-      });
+      // Record transactions in Firebase (separate for eCoin and SSCoin)
+      if (homeECoin > 0) {
+        await adminDb.collection('transactions').add({
+          team_id: home_team_id,
+          season_id: seasonId,
+          transaction_type: 'match_reward',
+          currency_type: 'football',
+          amount: homeECoin,
+          description: `Match Reward (${homeResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - eCoin - Fixture: ${fixtureId}`,
+          created_at: new Date(),
+          updated_at: new Date(),
+          metadata: {
+            fixture_id: fixtureId,
+            round_number: roundNumber,
+            leg: leg,
+            result: homeResult,
+            currency: 'ecoin'
+          }
+        });
+      }
+
+      if (homeSSCoin > 0) {
+        await adminDb.collection('transactions').add({
+          team_id: home_team_id,
+          season_id: seasonId,
+          transaction_type: 'match_reward',
+          currency_type: 'real',
+          amount: homeSSCoin,
+          description: `Match Reward (${homeResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - SSCoin - Fixture: ${fixtureId}`,
+          created_at: new Date(),
+          updated_at: new Date(),
+          metadata: {
+            fixture_id: fixtureId,
+            round_number: roundNumber,
+            leg: leg,
+            result: homeResult,
+            currency: 'sscoin'
+          }
+        });
+      }
 
       console.log(`✅ Distributed match rewards to home team ${home_team_id}: eCoin ${homeECoin}, SSCoin ${homeSSCoin}`);
     }
@@ -181,26 +201,46 @@ async function distributeMatchRewards(params: {
         // Don't fail the whole operation if Neon update fails
       }
 
-      // Record transaction in Firebase
-      await adminDb.collection('transactions').add({
-        team_id: away_team_id,
-        season_id: seasonId,
-        transaction_type: 'match_reward',
-        currency_type: 'mixed',
-        amount: awayECoin, // football budget
-        amount_real: awaySSCoin, // real player budget
-        description: `Match Reward (${awayResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - Fixture: ${fixtureId}`,
-        created_at: new Date(),
-        updated_at: new Date(),
-        metadata: {
-          fixture_id: fixtureId,
-          round_number: roundNumber,
-          leg: leg,
-          result: awayResult,
-          ecoin: awayECoin,
-          sscoin: awaySSCoin
-        }
-      });
+      // Record transactions in Firebase (separate for eCoin and SSCoin)
+      if (awayECoin > 0) {
+        await adminDb.collection('transactions').add({
+          team_id: away_team_id,
+          season_id: seasonId,
+          transaction_type: 'match_reward',
+          currency_type: 'football',
+          amount: awayECoin,
+          description: `Match Reward (${awayResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - eCoin - Fixture: ${fixtureId}`,
+          created_at: new Date(),
+          updated_at: new Date(),
+          metadata: {
+            fixture_id: fixtureId,
+            round_number: roundNumber,
+            leg: leg,
+            result: awayResult,
+            currency: 'ecoin'
+          }
+        });
+      }
+
+      if (awaySSCoin > 0) {
+        await adminDb.collection('transactions').add({
+          team_id: away_team_id,
+          season_id: seasonId,
+          transaction_type: 'match_reward',
+          currency_type: 'real',
+          amount: awaySSCoin,
+          description: `Match Reward (${awayResult}) - Round ${roundNumber}${leg > 1 ? ' Leg ' + leg : ''} - SSCoin - Fixture: ${fixtureId}`,
+          created_at: new Date(),
+          updated_at: new Date(),
+          metadata: {
+            fixture_id: fixtureId,
+            round_number: roundNumber,
+            leg: leg,
+            result: awayResult,
+            currency: 'sscoin'
+          }
+        });
+      }
 
       console.log(`✅ Distributed match rewards to away team ${away_team_id}: eCoin ${awayECoin}, SSCoin ${awaySSCoin}`);
     }

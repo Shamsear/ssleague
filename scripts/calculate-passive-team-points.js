@@ -1,6 +1,9 @@
 /**
  * Script to calculate and award passive team points for all completed fixtures
- * This will retroactively calculate points for fantasy teams based on their supported real team's performance
+ * This will:
+ * 1. Remove all existing passive points from fantasy teams
+ * 2. Delete all existing team bonus records
+ * 3. Recalculate and award passive points based on supported real team's performance
  */
 
 require('dotenv').config({ path: '.env.local' });
@@ -10,7 +13,7 @@ async function calculatePassiveTeamPoints() {
   const fantasySql = neon(process.env.FANTASY_DATABASE_URL);
   const tournamentSql = neon(process.env.NEON_TOURNAMENT_DB_URL);
 
-  console.log('🎮 Starting passive team points calculation...\n');
+  console.log('🎮 Starting passive team points recalculation...\n');
 
   try {
     // Get all active fantasy leagues
@@ -26,6 +29,31 @@ async function calculatePassiveTeamPoints() {
     }
 
     console.log(`✅ Found ${leagues.length} active fantasy league(s)\n`);
+
+    // Step 1: Reset all passive points to 0 and adjust total_points
+    console.log('🔄 Step 1: Resetting all passive points...\n');
+    for (const league of leagues) {
+      const resetResult = await fantasySql`
+        UPDATE fantasy_teams
+        SET 
+          total_points = total_points - COALESCE(passive_points, 0),
+          passive_points = 0,
+          updated_at = NOW()
+        WHERE league_id = ${league.league_id}
+          AND passive_points > 0
+      `;
+      console.log(`   ✅ Reset passive points for league ${league.league_id}`);
+    }
+
+    // Step 2: Delete all existing team bonus records
+    console.log('\n🗑️  Step 2: Deleting all existing team bonus records...\n');
+    const deleteResult = await fantasySql`
+      DELETE FROM fantasy_team_bonus_points
+      WHERE league_id IN (SELECT league_id FROM fantasy_leagues WHERE is_active = true)
+    `;
+    console.log(`   ✅ Deleted all existing team bonus records\n`);
+
+    console.log('🎯 Step 3: Recalculating passive points from scratch...\n');
 
     for (const league of leagues) {
       console.log(`\n📊 Processing league: ${league.league_id} (Season: ${league.season_id})`);
@@ -75,21 +103,8 @@ async function calculatePassiveTeamPoints() {
       let fixturesProcessed = 0;
 
       for (const fixture of fixtures) {
-        // Check if bonuses already calculated for this fixture
-        const existingBonuses = await fantasySql`
-          SELECT COUNT(*) as count
-          FROM fantasy_team_bonus_points
-          WHERE league_id = ${league.league_id}
-            AND fixture_id = ${fixture.fixture_id}
-        `;
-
-        if (existingBonuses[0].count > 0) {
-          console.log(`   ⏭️  Fixture ${fixture.fixture_id} (Round ${fixture.round_number}) - Already processed`);
-          continue;
-        }
-
-        // Debug: Show fixture team IDs
-        console.log(`   🔍 Fixture ${fixture.fixture_id}: Home=${fixture.home_team_id}, Away=${fixture.away_team_id}`);
+        // No need to check for existing bonuses since we deleted them all
+        console.log(`   🔍 Processing Fixture ${fixture.fixture_id} (Round ${fixture.round_number}): Home=${fixture.home_team_id}, Away=${fixture.away_team_id}`);
 
         // Process home team
         const homeBonuses = await awardTeamBonus({
@@ -126,9 +141,28 @@ async function calculatePassiveTeamPoints() {
       console.log(`\n   📈 League Summary:`);
       console.log(`      - Fixtures processed: ${fixturesProcessed}`);
       console.log(`      - Total bonus points awarded: ${totalBonusesAwarded}`);
+
+      // Show updated team standings
+      const teams = await fantasySql`
+        SELECT 
+          team_name,
+          player_points,
+          passive_points,
+          total_points,
+          supported_team_name
+        FROM fantasy_teams
+        WHERE league_id = ${league.league_id}
+        ORDER BY total_points DESC
+        LIMIT 10
+      `;
+
+      console.log(`\n   🏆 Top 10 Teams After Recalculation:`);
+      teams.forEach((team, index) => {
+        console.log(`      ${index + 1}. ${team.team_name}: ${team.total_points} pts (Player: ${team.player_points || 0}, Passive: ${team.passive_points || 0}) - Supporting: ${team.supported_team_name || 'None'}`);
+      });
     }
 
-    console.log('\n\n🎉 Passive team points calculation completed!');
+    console.log('\n\n🎉 Passive team points recalculation completed!');
 
   } catch (error) {
     console.error('❌ Error calculating passive team points:', error);
@@ -237,6 +271,20 @@ async function awardTeamBonus(params) {
 
   // Award bonuses to each fantasy team
   for (const fantasyTeam of fantasyTeams) {
+    // Check if bonus already exists (to prevent duplicates)
+    const existing = await fantasySql`
+      SELECT id FROM fantasy_team_bonus_points
+      WHERE league_id = ${fantasy_league_id}
+        AND team_id = ${fantasyTeam.team_id}
+        AND fixture_id = ${fixture_id}
+      LIMIT 1
+    `;
+
+    if (existing.length > 0) {
+      console.log(`      ⏭️  Bonus already exists for ${fantasyTeam.team_name} in fixture ${fixture_id}`);
+      continue;
+    }
+
     // Record bonus in fantasy_team_bonus_points
     await fantasySql`
       INSERT INTO fantasy_team_bonus_points (

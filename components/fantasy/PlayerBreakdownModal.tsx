@@ -284,8 +284,17 @@ export default function PlayerBreakdownModal({
                           )}
                           {match.is_captain && (
                             <div className="flex items-center gap-2">
-                              <Crown className="w-4 h-4 text-yellow-600" />
-                              <span className="text-yellow-700 font-medium">{match.points_multiplier}x Captain</span>
+                              {match.points_multiplier === 200 ? (
+                                <>
+                                  <Crown className="w-4 h-4 text-yellow-600" />
+                                  <span className="text-yellow-700 font-medium">2x Captain</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Star className="w-4 h-4 text-blue-600" />
+                                  <span className="text-blue-700 font-medium">1.5x Vice-Captain</span>
+                                </>
+                              )}
                             </div>
                           )}
                           <div className="text-gray-600">

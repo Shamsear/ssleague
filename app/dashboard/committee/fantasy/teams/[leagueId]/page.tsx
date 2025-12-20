@@ -54,6 +54,11 @@ export default function FantasyTeamsPage() {
   const [playerData, setPlayerData] = useState<any>(null);
   const [isLoadingPlayer, setIsLoadingPlayer] = useState(false);
 
+  // Passive points breakdown state
+  const [showPassiveBreakdown, setShowPassiveBreakdown] = useState(false);
+  const [passiveData, setPassiveData] = useState<any>(null);
+  const [isLoadingPassive, setIsLoadingPassive] = useState(false);
+
   // Scoring rules from database
   const [scoringRules, setScoringRules] = useState<any>(null);
 
@@ -190,8 +195,13 @@ export default function FantasyTeamsPage() {
     setPlayerData(null);
 
     try {
-      // Fetch player match details from API
-      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/matches?league_id=${leagueId}`);
+      // Fetch player match details from API - pass team_id to get correct data
+      const teamId = selectedTeam?.id;
+      if (!teamId) {
+        throw new Error('No team selected');
+      }
+      
+      const response = await fetchWithTokenRefresh(`/api/fantasy/players/${playerId}/matches?league_id=${leagueId}&team_id=${teamId}`);
       
       if (!response.ok) {
         throw new Error('Failed to load player match data');
@@ -204,6 +214,36 @@ export default function FantasyTeamsPage() {
       setPlayerData({ error: true });
     } finally {
       setIsLoadingPlayer(false);
+    }
+  };
+
+  const togglePassiveBreakdown = async () => {
+    if (showPassiveBreakdown) {
+      setShowPassiveBreakdown(false);
+      setPassiveData(null);
+      return;
+    }
+
+    if (!selectedTeam) return;
+
+    setShowPassiveBreakdown(true);
+    setIsLoadingPassive(true);
+    setPassiveData(null);
+
+    try {
+      const response = await fetchWithTokenRefresh(`/api/fantasy/teams/${selectedTeam.id}/passive-breakdown`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load passive points breakdown');
+      }
+
+      const data = await response.json();
+      setPassiveData(data);
+    } catch (error) {
+      console.error('Error loading passive breakdown:', error);
+      setPassiveData({ error: true });
+    } finally {
+      setIsLoadingPassive(false);
     }
   };
 
@@ -335,22 +375,112 @@ export default function FantasyTeamsPage() {
 
                     {/* Supported Team (Passive Points) */}
                     {selectedTeam.supported_team_name && (
-                      <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border-2 border-green-200">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                              <ShieldIcon className="w-5 h-5 text-white" />
+                      <div className="mt-4">
+                        <button
+                          onClick={togglePassiveBreakdown}
+                          className="w-full p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border-2 border-green-200 hover:border-green-300 transition-all group"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                                <ShieldIcon className="w-5 h-5 text-white" />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-xs text-gray-600 font-medium">Supported Team (Passive Points)</p>
+                                <p className="text-lg font-bold text-gray-900">{selectedTeam.supported_team_name}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-600 font-medium">Supported Team (Passive Points)</p>
-                              <p className="text-lg font-bold text-gray-900">{selectedTeam.supported_team_name}</p>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="text-xs text-gray-600">Passive Points</p>
+                                <p className="text-2xl font-bold text-green-600">{selectedTeam.passive_points || 0}</p>
+                              </div>
+                              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${
+                                showPassiveBreakdown ? 'rotate-180' : ''
+                              }`} />
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs text-gray-600">Passive Points</p>
-                            <p className="text-2xl font-bold text-green-600">{selectedTeam.passive_points || 0}</p>
+                        </button>
+
+                        {/* Passive Points Breakdown */}
+                        {showPassiveBreakdown && (
+                          <div className="mt-2 p-4 bg-white border-2 border-green-200 rounded-xl">
+                            {isLoadingPassive ? (
+                              <div className="flex items-center justify-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                              </div>
+                            ) : passiveData && passiveData.stats ? (
+                              <>
+                                {/* Stats Grid */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-green-600">{passiveData.stats.total_passive_points}</p>
+                                    <p className="text-xs text-gray-600">Total Points</p>
+                                  </div>
+                                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-blue-600">{passiveData.stats.total_rounds}</p>
+                                    <p className="text-xs text-gray-600">Rounds</p>
+                                  </div>
+                                  <div className="bg-purple-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-purple-600">{passiveData.stats.average_per_round}</p>
+                                    <p className="text-xs text-gray-600">Avg/Round</p>
+                                  </div>
+                                  <div className="bg-amber-50 rounded-lg p-3 text-center">
+                                    <p className="text-2xl font-bold text-amber-600">{passiveData.stats.best_round}</p>
+                                    <p className="text-xs text-gray-600">Best Round</p>
+                                  </div>
+                                </div>
+
+                                {/* Round-by-Round Breakdown */}
+                                <h4 className="font-bold text-gray-900 mb-3">Round-by-Round Bonuses</h4>
+                                {passiveData.rounds.length === 0 ? (
+                                  <p className="text-center text-gray-500 py-4">No passive points earned yet</p>
+                                ) : (
+                                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                                    {passiveData.rounds.map((round: any, idx: number) => {
+                                      const breakdown = round.bonus_breakdown || {};
+                                      const bonusTypes = Object.keys(breakdown);
+                                      
+                                      return (
+                                        <div key={idx} className="border border-gray-200 rounded-lg p-3 bg-gradient-to-r from-green-50 to-blue-50">
+                                          <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-3">
+                                              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+                                                <span className="font-bold text-white text-sm">R{round.round_number}</span>
+                                              </div>
+                                              <div>
+                                                <p className="font-semibold text-gray-900">Round {round.round_number}</p>
+                                                <p className="text-xs text-gray-600">{round.real_team_name}</p>
+                                              </div>
+                                            </div>
+                                            <div className="text-right">
+                                              <p className="text-2xl font-bold text-green-600">+{round.total_bonus}</p>
+                                              <p className="text-xs text-gray-500">bonus pts</p>
+                                            </div>
+                                          </div>
+
+                                          {/* Bonus Breakdown */}
+                                          {bonusTypes.length > 0 && (
+                                            <div className="grid grid-cols-2 gap-2 text-sm mt-2 pt-2 border-t border-green-200">
+                                              {bonusTypes.map((type) => (
+                                                <div key={type} className="flex items-center justify-between px-2 py-1 bg-white rounded">
+                                                  <span className="text-gray-700 capitalize">{type.replace(/_/g, ' ')}</span>
+                                                  <span className="font-bold text-green-600">+{breakdown[type]}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </>
+                            ) : passiveData?.error ? (
+                              <p className="text-center text-red-600 py-4">Failed to load passive points breakdown</p>
+                            ) : null}
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -587,7 +717,7 @@ export default function FantasyTeamsPage() {
                                                   <>
                                                     <div className="flex items-center justify-between text-sm mt-1">
                                                       <span className="text-gray-600 flex items-center gap-1">
-                                                        {match.is_captain ? (
+                                                        {match.points_multiplier === 200 || multiplier === 2 ? (
                                                           <>
                                                             <Crown className="w-3 h-3 text-yellow-600" />
                                                             Captain Multiplier
