@@ -21,17 +21,17 @@ interface PlayerStats {
   draws: number;
   losses: number;
   goals: number;
-  assists: number;
   clean_sheets: number;
   potm: number;
   win_rate: number;
   average_rating: number;
   points: number;
   star_rating: number;
+  base_points?: number;
   category_name?: string;
 }
 
-type SortField = 'matches_played' | 'wins' | 'goals' | 'assists' | 'potm' | 'win_rate' | 'points' | 'star_rating';
+type SortField = 'matches_played' | 'wins' | 'goals' | 'potm' | 'win_rate' | 'points' | 'star_rating';
 
 export default function PlayerStatsPage() {
   const { user, loading } = useAuth();
@@ -118,12 +118,12 @@ export default function PlayerStatsPage() {
         draws: data.draws || 0,
         losses: data.losses || 0,
         goals: data.goals_scored || 0,
-        assists: data.assists || 0,
         clean_sheets: data.clean_sheets || 0,
         potm: data.motm_awards || 0,
         win_rate: winRate,
         average_rating: 0,
         points: data.points || 0,
+        base_points: data.base_points || 0,
         star_rating: data.star_rating || 3,
         category_name: data.category || 'Classic',
       };
@@ -186,7 +186,6 @@ export default function PlayerStatsPage() {
 
   // Top performers
   const topScorer = [...playerStats].sort((a, b) => b.goals - a.goals)[0];
-  const mostAssists = [...playerStats].sort((a, b) => b.assists - a.assists)[0];
   const mostPOTM = [...playerStats].sort((a, b) => b.potm - a.potm)[0];
   const highestPoints = [...playerStats].sort((a, b) => b.points - a.points)[0];
   const highestStars = [...playerStats].sort((a, b) => b.star_rating - a.star_rating)[0];
@@ -226,7 +225,7 @@ export default function PlayerStatsPage() {
 
       {/* Top Performers */}
       {playerStats.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {topScorer && topScorer.goals > 0 && (
             <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -236,18 +235,6 @@ export default function PlayerStatsPage() {
               <p className="text-lg font-bold text-gray-900">{topScorer.name}</p>
               <p className="text-2xl font-extrabold text-yellow-600">{topScorer.goals} Goals</p>
               <p className="text-xs text-gray-600 mt-1">{topScorer.team_name}</p>
-            </div>
-          )}
-          
-          {mostAssists && mostAssists.assists > 0 && (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">🎯</span>
-                <h3 className="text-sm font-semibold text-gray-700">Most Assists</h3>
-              </div>
-              <p className="text-lg font-bold text-gray-900">{mostAssists.name}</p>
-              <p className="text-2xl font-extrabold text-blue-600">{mostAssists.assists} Assists</p>
-              <p className="text-xs text-gray-600 mt-1">{mostAssists.team_name}</p>
             </div>
           )}
           
@@ -386,9 +373,6 @@ export default function PlayerStatsPage() {
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('goals')}>
                     Goals {sortField === 'goals' && (sortOrder === 'desc' ? '↓' : '↑')}
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('assists')}>
-                    Assists {sortField === 'assists' && (sortOrder === 'desc' ? '↓' : '↑')}
-                  </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">CS</th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('potm')}>
                     POTM {sortField === 'potm' && (sortOrder === 'desc' ? '↓' : '↑')}
@@ -398,6 +382,12 @@ export default function PlayerStatsPage() {
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('points')}>
                     Points {sortField === 'points' && (sortOrder === 'desc' ? '↓' : '↑')}
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Base Pts
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Change
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('star_rating')}>
                     Stars {sortField === 'star_rating' && (sortOrder === 'desc' ? '↓' : '↑')}
@@ -432,11 +422,6 @@ export default function PlayerStatsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        🎯 {player.assists}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         🛡️ {player.clean_sheets}
                       </span>
@@ -455,6 +440,27 @@ export default function PlayerStatsPage() {
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-green-100 to-emerald-100 text-green-800">
                         💎 {player.points}p
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className="text-sm font-medium text-gray-600">
+                        {player.base_points || 0}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      {player.base_points !== undefined && player.base_points > 0 ? (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                          player.points - player.base_points > 0 
+                            ? 'bg-green-100 text-green-700' 
+                            : player.points - player.base_points < 0
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {player.points - player.base_points > 0 ? '↑' : player.points - player.base_points < 0 ? '↓' : '='} 
+                          {player.points - player.base_points > 0 ? '+' : ''}{player.points - player.base_points}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-bold bg-gradient-to-r from-yellow-100 to-orange-100 text-orange-800">
@@ -489,7 +495,9 @@ export default function PlayerStatsPage() {
           <div><strong>CS</strong> = Clean Sheets</div>
           <div><strong>POTM</strong> = Player of the Match</div>
           <div><strong>Win %</strong> = Win Percentage</div>
-          <div><strong>Points</strong> = Lifetime Points (Max ±5/match)</div>
+          <div><strong>Points</strong> = Current Season Points (Max ±5/match)</div>
+          <div><strong>Base Pts</strong> = Starting Points (from previous season)</div>
+          <div><strong>Change</strong> = Points gained/lost this season (Current - Base)</div>
           <div><strong>Stars</strong> = Star Rating (3☆-10☆)</div>
           <div><strong>Category</strong> = Legend (Top 50%) / Classic (Bottom 50%)</div>
         </div>

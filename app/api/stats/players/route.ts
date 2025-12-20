@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
             team, team_id, category,
             matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
+            base_points,
             contract_id, contract_start_season, contract_end_season,
             is_auto_registered, registration_date,
             'modern' as data_source
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
             team, team_id, category,
             matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
+            NULL as base_points,
             NULL as contract_id, NULL as contract_start_season, NULL as contract_end_season,
             NULL as is_auto_registered, NULL as registration_date,
             'historical' as data_source
@@ -98,6 +100,7 @@ export async function GET(request: NextRequest) {
             team, team_id, category,
             matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
+            base_points,
             contract_id, contract_start_season, contract_end_season,
             is_auto_registered, registration_date
           FROM player_seasons 
@@ -110,7 +113,8 @@ export async function GET(request: NextRequest) {
             id, player_id, player_name, season_id, tournament_id,
             team, team_id, category,
             matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
-            clean_sheets, motm_awards, points, star_rating
+            clean_sheets, motm_awards, points, star_rating,
+            NULL as base_points
           FROM realplayerstats 
           WHERE player_id = ${playerId} AND tournament_id = ${tournamentId}
         `;
@@ -122,13 +126,30 @@ export async function GET(request: NextRequest) {
     else if (teamId && seasonId) {
       if (isModernSeason(seasonId)) {
         stats = await sql`
-          SELECT * FROM player_seasons 
+          SELECT 
+            id, player_id, player_name, season_id,
+            team, team_id, category,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
+            clean_sheets, motm_awards, points, star_rating,
+            base_points,
+            contract_id, contract_start_season, contract_end_season,
+            is_auto_registered, registration_date, registration_type,
+            auction_value, salary_per_match,
+            prevent_auto_promotion,
+            created_at, updated_at
+          FROM player_seasons 
           WHERE team_id = ${teamId} AND season_id = ${seasonId}
           ORDER BY points DESC
         `;
       } else {
         stats = await sql`
-          SELECT * FROM realplayerstats 
+          SELECT 
+            id, player_id, player_name, season_id, tournament_id,
+            team, team_id, category,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
+            clean_sheets, motm_awards, points, star_rating,
+            NULL as base_points
+          FROM realplayerstats 
           WHERE team_id = ${teamId} AND tournament_id = ${tournamentId}
           ORDER BY points DESC
         `;
@@ -143,6 +164,7 @@ export async function GET(request: NextRequest) {
             team, team_id, category,
             matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
             clean_sheets, motm_awards, points, star_rating,
+            base_points,
             contract_id, contract_start_season, contract_end_season,
             is_auto_registered, registration_date, registration_type,
             auction_value, salary_per_match,
@@ -166,7 +188,13 @@ export async function GET(request: NextRequest) {
         }
       } else {
         stats = await sql`
-          SELECT * FROM realplayerstats 
+          SELECT 
+            id, player_id, player_name, season_id, tournament_id,
+            team, team_id, category,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
+            clean_sheets, motm_awards, points, star_rating,
+            NULL as base_points
+          FROM realplayerstats 
           WHERE season_id = ${seasonId}
           ORDER BY points DESC
           LIMIT ${limit}
@@ -175,31 +203,83 @@ export async function GET(request: NextRequest) {
     }
     // Get season/tournament stats with filters
     else if (tournamentId) {
-      let query = `
-        SELECT * FROM realplayerstats 
-        WHERE tournament_id = $1
-      `;
-      const params = [tournamentId];
+      // Extract season from tournamentId (format: SEASON16-LEAGUE)
+      const seasonMatch = tournamentId.match(/SEASON(\d+)/);
+      const seasonNum = seasonMatch ? parseInt(seasonMatch[1]) : 0;
       
-      if (category) {
-        query += ` AND category = $${params.length + 1}`;
-        params.push(category);
-      }
-      
-      // Add sorting
-      const validSortFields = ['points', 'goals_scored', 'assists', 'motm_awards', 'matches_played'];
-      const sortField = validSortFields.includes(sortBy) ? sortBy : 'points';
-      query += ` ORDER BY ${sortField} DESC, player_name ASC LIMIT $${params.length + 1}`;
-      params.push(limit.toString());
-      
-      const { Pool } = await import('@neondatabase/serverless');
-      const pool = new Pool({ connectionString: process.env.NEON_TOURNAMENT_DB_URL });
-      
-      try {
-        const result = await pool.query(query, params);
-        stats = result.rows;
-      } finally {
-        await pool.end();
+      if (seasonNum >= 16) {
+        // Modern season: Query player_seasons table
+        const seasonIdFromTournament = tournamentId.split('-')[0]; // e.g., "SEASON16"
+        
+        const validSortFields = ['points', 'goals_scored', 'assists', 'motm_awards', 'matches_played'];
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'points';
+        
+        // Build query dynamically based on category filter
+        if (category) {
+          stats = await sql`
+            SELECT 
+              id, player_id, player_name, season_id,
+              team, team_id, category,
+              matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
+              clean_sheets, motm_awards, points, star_rating,
+              base_points,
+              contract_id, contract_start_season, contract_end_season,
+              is_auto_registered, registration_date
+            FROM player_seasons 
+            WHERE season_id = ${seasonIdFromTournament} AND category = ${category}
+            ORDER BY ${sql(sortField)} DESC, player_name ASC
+            LIMIT ${limit}
+          `;
+        } else {
+          stats = await sql`
+            SELECT 
+              id, player_id, player_name, season_id,
+              team, team_id, category,
+              matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
+              clean_sheets, motm_awards, points, star_rating,
+              base_points,
+              contract_id, contract_start_season, contract_end_season,
+              is_auto_registered, registration_date
+            FROM player_seasons 
+            WHERE season_id = ${seasonIdFromTournament}
+            ORDER BY ${sql(sortField)} DESC, player_name ASC
+            LIMIT ${limit}
+          `;
+        }
+      } else {
+        // Historical season: Query realplayerstats table
+        let query = `
+          SELECT 
+            id, player_id, player_name, season_id, tournament_id,
+            team, team_id, category,
+            matches_played, goals_scored, goals_conceded, assists, wins, draws, losses,
+            clean_sheets, motm_awards, points, star_rating,
+            NULL as base_points
+          FROM realplayerstats 
+          WHERE tournament_id = $1
+        `;
+        const params = [tournamentId];
+        
+        if (category) {
+          query += ` AND category = $${params.length + 1}`;
+          params.push(category);
+        }
+        
+        // Add sorting
+        const validSortFields = ['points', 'goals_scored', 'assists', 'motm_awards', 'matches_played'];
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'points';
+        query += ` ORDER BY ${sortField} DESC, player_name ASC LIMIT $${params.length + 1}`;
+        params.push(limit.toString());
+        
+        const { Pool } = await import('@neondatabase/serverless');
+        const pool = new Pool({ connectionString: process.env.NEON_TOURNAMENT_DB_URL });
+        
+        try {
+          const result = await pool.query(query, params);
+          stats = result.rows;
+        } finally {
+          await pool.end();
+        }
       }
     }
     else {

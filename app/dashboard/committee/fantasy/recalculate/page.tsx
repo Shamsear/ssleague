@@ -1,201 +1,254 @@
 'use client';
 
-import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
-export default function RecalculateFantasyPointsPage() {
+export default function FantasyRecalculatePage() {
+  const { user, loading } = useAuth();
   const router = useRouter();
   const [isRecalculating, setIsRecalculating] = useState(false);
-  const [results, setResults] = useState<any>(null);
+  const [progress, setProgress] = useState<string>('');
+  const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  const handleRecalculate = async () => {
-    if (!confirm('Are you sure you want to recalculate ALL fantasy points? This will:\n\n1. Delete all existing player points\n2. Delete all existing passive bonus points\n3. Recalculate everything from scratch\n4. Update all team totals and ranks\n\nThis operation may take several minutes.')) {
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+    if (!loading && user && user.role !== 'committee' && user.role !== 'superadmin') {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  const startRecalculation = async () => {
+    if (!confirm('Are you sure you want to recalculate all fantasy points? This will:\n\n1. Recalculate all player points\n2. Recalculate all passive team bonuses\n3. Update squad totals\n4. Update team totals and ranks\n\nThis may take a few minutes.')) {
       return;
     }
 
     setIsRecalculating(true);
+    setProgress('Starting recalculation...');
+    setLogs([]);
     setError(null);
-    setResults(null);
+    setSuccess(false);
 
     try {
-      const response = await fetch('/api/admin/fantasy/recalculate-all-points', {
+      const response = await fetchWithTokenRefresh('/api/admin/fantasy/recalculate-all-points', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to recalculate points');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Recalculation failed');
       }
 
-      setResults(data.results);
+      const data = await response.json();
+      
+      setProgress('Recalculation completed successfully!');
+      setLogs(data.logs || []);
+      setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Recalculation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to recalculate points');
+      setProgress('Recalculation failed');
     } finally {
       setIsRecalculating(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
+      {/* Header */}
       <div className="mb-6">
+        <Link href="/dashboard/committee/fantasy" className="text-blue-600 hover:underline mb-2 inline-block">
+          ← Back to Fantasy Dashboard
+        </Link>
+        <h1 className="text-3xl font-bold text-gray-900">Recalculate Fantasy Points</h1>
+        <p className="text-gray-600 mt-1">Recalculate all fantasy points, bonuses, and rankings</p>
+      </div>
+
+      {/* Warning Card */}
+      <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6">
+        <div className="flex items-start gap-3">
+          <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div>
+            <h3 className="font-bold text-yellow-900 mb-2">Important Information</h3>
+            <ul className="text-sm text-yellow-800 space-y-1">
+              <li>• This will recalculate ALL fantasy points from scratch</li>
+              <li>• Player points will be recalculated with captain/VC multipliers</li>
+              <li>• Passive team bonuses will be recalculated from fixture results</li>
+              <li>• Admin bonuses will be included in totals</li>
+              <li>• Team rankings will be updated</li>
+              <li>• This process may take 1-2 minutes</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* What Gets Recalculated */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">What Gets Recalculated</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">⚽</span>
+              <h3 className="font-semibold text-gray-900">Player Points</h3>
+            </div>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Match performance points</li>
+              <li>• Captain multipliers (2x)</li>
+              <li>• Vice-Captain multipliers (1.5x)</li>
+              <li>• Admin player bonuses</li>
+            </ul>
+          </div>
+
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">🏆</span>
+              <h3 className="font-semibold text-gray-900">Team Bonuses</h3>
+            </div>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Win/draw/loss bonuses</li>
+              <li>• Clean sheet bonuses</li>
+              <li>• High scoring bonuses</li>
+              <li>• Admin team bonuses</li>
+            </ul>
+          </div>
+
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">👥</span>
+              <h3 className="font-semibold text-gray-900">Squad Totals</h3>
+            </div>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Individual player totals</li>
+              <li>• Including admin bonuses</li>
+            </ul>
+          </div>
+
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">📊</span>
+              <h3 className="font-semibold text-gray-900">Team Rankings</h3>
+            </div>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Total points updated</li>
+              <li>• Rankings recalculated</li>
+              <li>• Leaderboard refreshed</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Button */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6">
         <button
-          onClick={() => router.back()}
-          className="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+          onClick={startRecalculation}
+          disabled={isRecalculating}
+          className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition-all ${
+            isRecalculating
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
+          }`}
         >
-          ← Back
+          {isRecalculating ? (
+            <span className="flex items-center justify-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+              Recalculating...
+            </span>
+          ) : (
+            'Start Recalculation'
+          )}
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h1 className="text-3xl font-bold mb-6">Recalculate Fantasy Points</h1>
-
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+      {/* Progress */}
+      {progress && (
+        <div className={`rounded-xl p-4 mb-6 ${
+          success ? 'bg-green-50 border-2 border-green-300' :
+          error ? 'bg-red-50 border-2 border-red-300' :
+          'bg-blue-50 border-2 border-blue-300'
+        }`}>
+          <div className="flex items-center gap-3">
+            {success ? (
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">Warning</h3>
-              <div className="mt-2 text-sm text-yellow-700">
-                <p>This operation will completely recalculate all fantasy points from scratch. Use this when:</p>
-                <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>Scoring rules have been changed</li>
-                  <li>Match results have been corrected</li>
-                  <li>Data inconsistencies are detected</li>
-                  <li>Captain/Vice-captain assignments have been updated</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            ) : error ? (
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">What this does</h3>
-              <div className="mt-2 text-sm text-blue-700">
-                <ol className="list-decimal list-inside space-y-1">
-                  <li><strong>Player Points:</strong> Recalculates all player performance points with captain (2x) and vice-captain (1.5x) multipliers</li>
-                  <li><strong>Passive Bonuses:</strong> Recalculates team affiliation bonuses based on supported real team performance</li>
-                  <li><strong>Squad Totals:</strong> Updates total points for each player in each fantasy squad</li>
-                  <li><strong>Team Totals:</strong> Updates total points and ranks for all fantasy teams</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-center">
-          <button
-            onClick={handleRecalculate}
-            disabled={isRecalculating}
-            className={`px-8 py-3 rounded-lg font-semibold text-white transition-colors ${
-              isRecalculating
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {isRecalculating ? (
-              <span className="flex items-center gap-2">
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Recalculating... This may take several minutes
-              </span>
             ) : (
-              'Start Recalculation'
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
             )}
-          </button>
+            <p className={`font-semibold ${
+              success ? 'text-green-900' :
+              error ? 'text-red-900' :
+              'text-blue-900'
+            }`}>
+              {progress}
+            </p>
+          </div>
         </div>
+      )}
 
-        {error && (
-          <div className="mt-6 bg-red-50 border-l-4 border-red-400 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Error</h3>
-                <div className="mt-2 text-sm text-red-700">
-                  <p>{error}</p>
-                </div>
-              </div>
-            </div>
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 mb-6">
+          <p className="text-red-900 font-semibold mb-2">Error:</p>
+          <p className="text-red-800 text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* Logs */}
+      {logs.length > 0 && (
+        <div className="bg-gray-900 rounded-xl p-4 mb-6">
+          <h3 className="text-white font-bold mb-3">Recalculation Log</h3>
+          <div className="space-y-1 max-h-96 overflow-y-auto font-mono text-xs">
+            {logs.map((log, idx) => (
+              <div key={idx} className="text-green-400">{log}</div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {results && (
-          <div className="mt-6 bg-green-50 border-l-4 border-green-400 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">Success!</h3>
-                <div className="mt-2 text-sm text-green-700">
-                  <p className="mb-3">Fantasy points have been successfully recalculated.</p>
-                  <div className="bg-white rounded p-3 space-y-2">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Player point records:</span>
-                      <span className="text-green-600 font-bold">{results.playerPointsInserted.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Passive bonus points:</span>
-                      <span className="text-green-600 font-bold">{results.passiveBonusesAwarded.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Squad players updated:</span>
-                      <span className="text-green-600 font-bold">{results.squadPlayersUpdated.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Teams updated:</span>
-                      <span className="text-green-600 font-bold">{results.teamsUpdated.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Leagues ranked:</span>
-                      <span className="text-green-600 font-bold">{results.leaguesRanked.toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {results && (
-          <div className="mt-6 flex justify-center gap-4">
-            <button
-              onClick={() => router.push('/dashboard/committee/fantasy')}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+      {/* Success Actions */}
+      {success && (
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+          <h3 className="font-bold text-gray-900 mb-4">Next Steps</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Link
+              href="/dashboard/committee/fantasy"
+              className="px-4 py-3 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors font-medium text-center"
             >
-              View Fantasy Leagues
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              View Fantasy Dashboard
+            </Link>
+            <Link
+              href="/dashboard/committee/fantasy/teams/SSPSLFLS16"
+              className="px-4 py-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium text-center"
             >
-              Recalculate Again
-            </button>
+              View Teams & Leaderboard
+            </Link>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

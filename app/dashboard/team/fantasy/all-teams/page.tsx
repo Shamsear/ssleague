@@ -416,12 +416,24 @@ export default function FantasyTeamsPage() {
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
                               </div>
                             ) : passiveData && passiveData.stats ? (
-                              <>
+                              <div>
                                 {/* Stats Grid */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                                    <p className="text-2xl font-bold text-green-600">{passiveData.stats.total_passive_points}</p>
-                                    <p className="text-xs text-gray-600">Total Points</p>
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                                  <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg p-3 text-center text-white">
+                                    <p className="text-2xl font-bold">{passiveData.stats.total_passive_points}</p>
+                                    <p className="text-xs">Total Passive</p>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-3 text-center border-2 border-green-200">
+                                    <p className="text-2xl font-bold text-green-600">
+                                      {passiveData.rounds.reduce((sum: number, r: any) => sum + (r.total_bonus || 0), 0)}
+                                    </p>
+                                    <p className="text-xs text-gray-600">Team Bonuses</p>
+                                  </div>
+                                  <div className="bg-yellow-50 rounded-lg p-3 text-center border-2 border-yellow-200">
+                                    <p className="text-2xl font-bold text-yellow-600">
+                                      {passiveData.admin_bonuses?.reduce((sum: number, b: any) => sum + (b.points || 0), 0) || 0}
+                                    </p>
+                                    <p className="text-xs text-gray-600">Admin Bonuses</p>
                                   </div>
                                   <div className="bg-blue-50 rounded-lg p-3 text-center">
                                     <p className="text-2xl font-bold text-blue-600">{passiveData.stats.total_rounds}</p>
@@ -430,10 +442,6 @@ export default function FantasyTeamsPage() {
                                   <div className="bg-purple-50 rounded-lg p-3 text-center">
                                     <p className="text-2xl font-bold text-purple-600">{passiveData.stats.average_per_round}</p>
                                     <p className="text-xs text-gray-600">Avg/Round</p>
-                                  </div>
-                                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                                    <p className="text-2xl font-bold text-amber-600">{passiveData.stats.best_round}</p>
-                                    <p className="text-xs text-gray-600">Best Round</p>
                                   </div>
                                 </div>
 
@@ -488,32 +496,32 @@ export default function FantasyTeamsPage() {
                                               <p className="text-2xl font-bold text-green-600">+{round.total_bonus}</p>
                                               <p className="text-xs text-gray-500">bonus pts</p>
                                             </div>
-           /div>
+                                          </div>
 
-
-                                        (
-                                            <div classN>
+                                          {/* Bonus Breakdown */}
+                                          {bonusTypes.length > 0 && (
+                                            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-green-200">
                                               {bonusTypes.map((type) => (
-                                                <div key={type} className="fleed">
-                          
-                                                  
+                                                <div key={type} className="flex items-center justify-between bg-white rounded px-2 py-1">
+                                                  <span className="text-xs text-gray-700 capitalize">{type.replace(/_/g, ' ')}</span>
+                                                  <span className="font-bold text-sm text-green-600">+{breakdown[type]}</span>
                                                 </div>
                                               ))}
                                             </div>
-                                )}
+                                          )}
                                         </div>
                                       );
-                          }
-                       
+                                    })}
+                                  </div>
                                 )}
-                              </>
+                              </div>
                             ) : passiveData?.error ? (
-                              <p 
+                              <p className="text-center text-red-600 py-4">Failed to load passive points breakdown</p>
                             ) : null}
                           </div>
                         )}
                       </div>
-                    )}down</p>ts breakssive poind to load pa">Faile py-4ed-600enter text-rtext-cme="classNa    </div>         })                  span>ype]}</akdown[tren-600">+{bext-greeont-bold tassName="f<span cl ')}</span>, '/_/ge(lace.rep">{typ capitalizeext-gray-700e="tn classNampa   <s                     ite round bg-whpx-2 py-1between y-ifnter justms-cex ite"r-green-200er-t borde-2 pt-2 bord mtsmap-2 text--2 gid-cols="grid gramegth > 0 &&nusTypes.lenbo   {wn */}kdonus Brea   {/* Bo                                                  <                    
+                    )}
                   </div>
 
                   {isLoadingPlayers ? (
@@ -545,10 +553,10 @@ export default function FantasyTeamsPage() {
                                 <div className="flex items-center gap-2">
                                   <p className="font-semibold text-gray-900">{player.player_name}</p>
                                   {player.is_captain && (
-                                    <Crown className="w-4 h-4 text-yellow-600" title="Captain (2x points)" />
+                                    <Crown className="w-4 h-4 text-yellow-600" />
                                   )}
                                   {player.is_vice_captain && (
-                                    <Star className="w-4 h-4 text-blue-600" title="Vice-Captain (1.5x points)" />
+                                    <Star className="w-4 h-4 text-blue-600" />
                                   )}
                                 </div>
                                 <p className="text-sm text-gray-600">

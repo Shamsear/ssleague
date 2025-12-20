@@ -412,10 +412,22 @@ export default function FantasyTeamsPage() {
                             ) : passiveData && passiveData.stats ? (
                               <>
                                 {/* Stats Grid */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                                    <p className="text-2xl font-bold text-green-600">{passiveData.stats.total_passive_points}</p>
-                                    <p className="text-xs text-gray-600">Total Points</p>
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                                  <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg p-3 text-center text-white">
+                                    <p className="text-2xl font-bold">{passiveData.stats.total_passive_points}</p>
+                                    <p className="text-xs">Total Passive</p>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-3 text-center border-2 border-green-200">
+                                    <p className="text-2xl font-bold text-green-600">
+                                      {passiveData.rounds.reduce((sum: number, r: any) => sum + (r.total_bonus || 0), 0)}
+                                    </p>
+                                    <p className="text-xs text-gray-600">Team Bonuses</p>
+                                  </div>
+                                  <div className="bg-yellow-50 rounded-lg p-3 text-center border-2 border-yellow-200">
+                                    <p className="text-2xl font-bold text-yellow-600">
+                                      {passiveData.admin_bonuses?.reduce((sum: number, b: any) => sum + (b.points || 0), 0) || 0}
+                                    </p>
+                                    <p className="text-xs text-gray-600">Admin Bonuses</p>
                                   </div>
                                   <div className="bg-blue-50 rounded-lg p-3 text-center">
                                     <p className="text-2xl font-bold text-blue-600">{passiveData.stats.total_rounds}</p>
@@ -425,11 +437,32 @@ export default function FantasyTeamsPage() {
                                     <p className="text-2xl font-bold text-purple-600">{passiveData.stats.average_per_round}</p>
                                     <p className="text-xs text-gray-600">Avg/Round</p>
                                   </div>
-                                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                                    <p className="text-2xl font-bold text-amber-600">{passiveData.stats.best_round}</p>
-                                    <p className="text-xs text-gray-600">Best Round</p>
-                                  </div>
                                 </div>
+
+                                {/* Admin Bonus Points */}
+                                {passiveData.admin_bonuses && passiveData.admin_bonuses.length > 0 && (
+                                  <div className="mb-4">
+                                    <h4 className="font-bold text-gray-900 mb-3">🎁 Admin Bonus Points</h4>
+                                    <div className="space-y-2">
+                                      {passiveData.admin_bonuses.map((bonus: any) => (
+                                        <div key={bonus.id} className="border-2 border-yellow-300 rounded-lg p-3 bg-gradient-to-r from-yellow-50 to-amber-50">
+                                          <div className="flex items-center justify-between">
+                                            <div>
+                                              <p className="font-semibold text-gray-900">{bonus.reason}</p>
+                                              <p className="text-xs text-gray-500">
+                                                Awarded: {new Date(bonus.awarded_at).toLocaleDateString()}
+                                              </p>
+                                            </div>
+                                            <div className="text-right">
+                                              <p className="text-2xl font-bold text-yellow-600">{bonus.points > 0 ? '+' : ''}{bonus.points}</p>
+                                              <p className="text-xs text-gray-500">bonus pts</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
 
                                 {/* Round-by-Round Breakdown */}
                                 <h4 className="font-bold text-gray-900 mb-3">Round-by-Round Bonuses</h4>

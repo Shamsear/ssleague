@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
         season_id,
         team,
         points,
+        base_points,
         matches_played,
         goals_scored,
         goals_conceded,
@@ -29,6 +30,18 @@ export async function GET(request: NextRequest) {
       WHERE season_id = ${season_id}
       ORDER BY points DESC, goal_difference DESC, goals_scored DESC
     `;
+
+    // Debug logging
+    console.log('[Committee Player Stats API] Season:', season_id);
+    console.log('[Committee Player Stats API] Total players:', players.length);
+    if (players.length > 0) {
+      console.log('[Committee Player Stats API] First player:', {
+        player_id: players[0].player_id,
+        player_name: players[0].player_name,
+        points: players[0].points,
+        base_points: players[0].base_points
+      });
+    }
 
     return NextResponse.json({ players });
   } catch (error) {
@@ -46,6 +59,7 @@ export async function PUT(request: NextRequest) {
     const {
       player_id,
       points,
+      base_points,
       matches_played,
       goals_scored,
       goals_conceded,
@@ -69,6 +83,7 @@ export async function PUT(request: NextRequest) {
       UPDATE player_seasons
       SET
         points = ${points},
+        base_points = ${base_points},
         matches_played = ${matches_played},
         goals_scored = ${goals_scored},
         goals_conceded = ${goals_conceded},
@@ -80,6 +95,8 @@ export async function PUT(request: NextRequest) {
         updated_at = NOW()
       WHERE id = ${player_id}
     `;
+
+    console.log('[Committee Player Stats API] Updated player:', player_id, 'base_points:', base_points);
 
     return NextResponse.json({ success: true });
   } catch (error) {

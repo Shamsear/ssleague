@@ -149,6 +149,24 @@ export async function GET(
       };
     });
 
+    // Get admin bonus points for this player
+    const adminBonuses = await fantasySql`
+      SELECT 
+        id,
+        points,
+        reason,
+        awarded_by,
+        awarded_at
+      FROM bonus_points
+      WHERE target_type = 'player'
+        AND target_id = ${playerId}
+        AND league_id = ${league_id}
+      ORDER BY awarded_at DESC
+    `;
+
+    const totalAdminBonus = adminBonuses.reduce((sum: number, b: any) => sum + (b.points || 0), 0);
+    const totalBasePoints = matchHistory.reduce((sum: number, m: any) => sum + (m.base_points || 0), 0);
+
     return NextResponse.json({
       success: true,
       player: {
@@ -158,6 +176,18 @@ export async function GET(
         category: playerData.category || 'Classic',
         star_rating: playerData.star_rating || 5,
       },
+      stats: {
+        total_matches: matchHistory.length,
+        total_base_points: totalBasePoints,
+        total_admin_bonus: totalAdminBonus,
+        total_points_with_bonus: totalBasePoints + totalAdminBonus,
+      },
+      admin_bonuses: adminBonuses.map((bonus: any) => ({
+        id: bonus.id,
+        points: bonus.points,
+        reason: bonus.reason,
+        awarded_at: bonus.awarded_at,
+      })),
       matches: matchHistory,
     });
   } catch (error) {

@@ -375,14 +375,16 @@ async function recalculateAllFantasyPoints() {
       `;
 
       const playerPoints = Number(pointsResult[0].player_points);
-      const passivePoints = Number(teamInfo[0].passive_points);
+      const passivePointsFromBonuses = Number(teamInfo[0].passive_points);
       const adminBonusPoints = Number(teamBonusPoints[0].bonus_points);
-      const calculatedTotal = playerPoints + passivePoints + adminBonusPoints;
+      const totalPassivePoints = passivePointsFromBonuses + adminBonusPoints;
+      const calculatedTotal = playerPoints + totalPassivePoints;
 
       await fantasyDb`
         UPDATE fantasy_teams
         SET 
           player_points = ${playerPoints},
+          passive_points = ${totalPassivePoints},
           total_points = ${calculatedTotal},
           updated_at = NOW()
         WHERE team_id = ${team.team_id}
