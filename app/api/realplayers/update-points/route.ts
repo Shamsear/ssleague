@@ -427,15 +427,19 @@ export async function POST(request: NextRequest) {
         
         const teamSeasonData = teamSeasonDoc.data();
         const currentBalance = teamSeasonData?.real_player_budget || 0;
+        const currentSpent = teamSeasonData?.real_player_spent || 0;
         const newBalance = currentBalance - salary;
+        const newSpent = currentSpent + salary;
         
-        // Update balance (allow negative)
+        // Update balance and spent (allow negative balance)
         await teamSeasonRef.update({
           real_player_budget: newBalance,
+          real_player_spent: newSpent,
           updated_at: new Date()
         });
         
         console.log(`   ✓ Balance: $${currentBalance.toFixed(2)} → $${newBalance.toFixed(2)}`);
+        console.log(`   ✓ Spent: $${currentSpent.toFixed(2)} → $${newSpent.toFixed(2)}`);
         
         // Log individual salary payment transaction
         await logSalaryPayment(
