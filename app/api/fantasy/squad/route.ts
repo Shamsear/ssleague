@@ -2,69 +2,64 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
 
 /**
- * GET /api/fantasy/squad?user_id=xxx
- * Get current user's fantasy squad with captain/VC info
+ * GET /api/fantasy/squad?team_id=xxx
+ * Get complete squad data for a fantasy team
  */
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get('user_id');
+    const { searchParams } = new URL(request.url);
+    const team_id = searchParams.get('team_id');
 
-    if (!userId) {
+    if (!team_id) {
       return NextResponse.json(
-        { error: 'user_id query parameter is required' },
+        { error: 'Missing team_id parameter' },
         { status: 400 }
       );
     }
 
-    // Get user's fantasy team
-    const teams = await fantasySql`
-      SELECT team_id, league_id, team_name
-      FROM fantasy_teams
-      WHERE owner_uid = ${userId} AND is_enabled = true
-      LIMIT 1
-    `;
-
-    if (teams.length === 0) {
-      return NextResponse.json(
-        { error: 'No fantasy team found' },
-        { status: 404 }
-      );
-    }
-
-    const { team_id, league_id } = teams[0];
-
-    // Get squad with captain/VC info
+    // Get squad with all details
     const squad = await fantasySql`
       SELECT 
-        squad_id as id,
+        squad_id,
+        team_id,
+        league_id,
         real_player_id,
         player_name,
         position,
-        real_team_name as team,
-        COALESCE(is_captain, false) as is_captain,
-        COALESCE(is_vice_captain, false) as is_vice_captain,
-        total_points,
+        real_team_name,
+        purchase_price,
         current_value,
+        total_points,
+        is_captain,
+        is_vice_captain,
         acquisition_type,
         acquired_at
       FROM fantasy_squad
       WHERE team_id = ${team_id}
-      ORDER BY is_captain DESC NULLS LAST, is_vice_captain DESC NULLS LAST, acquired_at ASC
+      ORDER BY acquired_at DESC
     `;
 
     return NextResponse.json({
-      squad,
-      league_id,
-      team_id,
+      success: true,
+      squad: squad.map(p => ({
+        squad_id: p.squad_id,
+        real_player_id: p.real_player_id,
+        player_name: p.player_name,
+        position: p.position || 'Unknown',
+        real_team_name: p.real_team_name || 'Unknown',
+        purchase_price: Number(p.purchase_price || 0),
+        current_value: Number(p.current_value || 0),
+        total_points: Number(p.total_points || 0),
+        is_captain: p.is_captain || false,
+        is_vice_captain: p.is_vice_captain || false,
+        acquisition_type: p.acquisition_type,
+        acquired_at: p.acquired_at,
+      })),
     });
   } catch (error) {
     console.error('Error fetching squad:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to fetch squad',
-        details: error instanceof Error ? error.message : 'Unknown error' 
-      },
+      { error: 'Failed to fetch squad', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

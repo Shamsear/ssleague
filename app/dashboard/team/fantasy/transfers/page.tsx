@@ -7,65 +7,76 @@ import Link from 'next/link';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import {
   ArrowLeftRight,
-  Shield,
   DollarSign,
   X,
   Check,
   Filter,
   AlertCircle,
   Calendar,
+  Users,
+  TrendingUp,
+  Star,
+  Search,
 } from 'lucide-react';
 
 interface Player {
+  squad_id?: string;
   real_player_id: string;
   player_name: string;
   position: string;
-  team: string;
+  real_team_name?: string;
+  team?: string;
+  team_id?: string;
   star_rating: number;
-  draft_price: number;
-  category?: string;
+  purchase_price?: number;
+  current_price?: number;
+  draft_price?: number;
+  total_points?: number;
+  is_captain?: boolean;
+  is_vice_captain?: boolean;
+  is_available?: boolean;
 }
 
-interface Transfer {
-  _id: string;
-  player_out: Player;
-  player_in: Player;
-  timestamp: string;
-  points_deducted: number;
-}
-
-interface TransferSettings {
+interface TransferWindow {
+  window_id: string;
+  window_name: string;
+  opens_at: string;
+  closes_at: string;
+  is_active: boolean;
   max_transfers_per_window: number;
-  is_transfer_window_open: boolean;
-  transfer_window_start?: string;
-  transfer_window_end?: string;
   points_cost_per_transfer: number;
 }
 
-
+interface TeamInfo {
+  team_id: string;
+  team_name: string;
+  budget_remaining: number;
+  total_budget: number;
+  squad_size: number;
+  min_squad_size: number;
+  max_squad_size: number;
+}
 
 export default function TeamTransfersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  // Only players tab now - team affiliation is set during draft only
   const [mySquad, setMySquad] = useState<Player[]>([]);
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [settings, setSettings] = useState<TransferSettings | null>(null);
-  const [selectedOut, setSelectedOut] = useState<string | null>(null);
-  const [selectedIn, setSelectedIn] = useState<string | null>(null);
-  const [filter, setFilter] = useState({ search: '' });
+  const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
+  const [window, setWindow] = useState<TransferWindow | null>(null);
+  const [transfersUsed, setTransfersUsed] = useState(0);
+  
+  const [selectedOut, setSelectedOut] = useState<Player | null>(null);
+  const [selectedIn, setSelectedIn] = useState<Player | null>(null);
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [positionFilter, setPositionFilter] = useState<string>('all');
+  const [teamFilter, setTeamFilter] = useState<string>('all');
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isTransferring, setIsTransferring] = useState(false);
-  const [transfersUsed, setTransfersUsed] = useState(0);
   const [leagueId, setLeagueId] = useState<string>('');
-  const [captainId, setCaptainId] = useState<string | null>(null);
-  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
-  const [isSavingCaptains, setIsSavingCaptains] = useState(false);
-  
-
-
 
   useEffect(() => {
     if (!loading && !user) {
@@ -85,255 +96,291 @@ export default function TeamTransfersPage() {
 
   const loadTransferData = async () => {
     try {
+      setIsLoading(true);
+
       // Get my fantasy team
       const teamRes = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user!.uid}`);
       if (teamRes.status === 404) {
         setIsLoading(false);
         return;
       }
+      
       const teamData = await teamRes.json();
-      setMySquad(teamData.players || []);
-      setLeagueId(teamData.team.fantasy_league_id);
+      const team = teamData.team;
       
-      // Set captain and vice-captain from squad
-      const captain = (teamData.players || []).find((p: any) => p.is_captain);
-      const viceCaptain = (teamData.players || []).find((p: any) => p.is_vice_captain);
-      if (captain) setCaptainId(captain.real_player_id);
-      if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
+      setLeagueId(team.fantasy_league_id);
 
-      // Get active transfer window
-      const windowsRes = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${teamData.team.fantasy_league_id}`
-      );
+      // Get full squad data from fantasy_squad table
+      const squadRes = await fetchWithTokenRefresh(`/api/fantasy/squad?team_id=${team.id}`);
+      let squad = [];
       
-      let activeWindow = null;
-      if (windowsRes.ok) {
-        const windowsData = await windowsRes.json();
-        // Find the active window
-        activeWindow = windowsData.windows?.find((w: any) => w.is_active);
-      }
-
-      // Get transfer settings for the active window
-      if (activeWindow) {
-        const settingsRes = await fetchWithTokenRefresh(`/api/fantasy/transfers/settings?window_id=${activeWindow.window_id}`
-        );
-        if (settingsRes.ok) {
-          const settingsData = await settingsRes.json();
-          setSettings(settingsData.settings);
-        }
+      if (squadRes.ok) {
+        const squadData = await squadRes.json();
+        squad = squadData.squad || [];
       } else {
-        // No active window - set settings to show window is closed
-        setSettings({
-          max_transfers_per_window: 0,
-          is_transfer_window_open: false,
-          points_cost_per_transfer: 0,
+        // Fallback to players from my-team
+        squad = teamData.players || [];
+      }
+      
+      setMySquad(squad);
+
+      // Get team info with budget
+      const teamInfoRes = await fetchWithTokenRefresh(`/api/fantasy/teams/${team.id}`);
+      if (teamInfoRes.ok) {
+        const teamInfoData = await teamInfoRes.json();
+        const teamDetails = teamInfoData.team;
+        
+        // Get league info for squad size limits
+        const leagueRes = await fetchWithTokenRefresh(`/api/fantasy/leagues/${team.fantasy_league_id}`);
+        let minSquadSize = 11;
+        let maxSquadSize = 15;
+        let totalBudget = 100;
+        
+        if (leagueRes.ok) {
+          const leagueData = await leagueRes.json();
+          const league = leagueData.league;
+          minSquadSize = Number(league.min_squad_size || 11);
+          maxSquadSize = Number(league.max_squad_size || 15);
+          totalBudget = Number(league.budget_per_team || 100);
+        }
+        
+        setTeamInfo({
+          team_id: team.id,
+          team_name: team.team_name,
+          budget_remaining: Number(teamDetails.budget_remaining || 0),
+          total_budget: totalBudget,
+          squad_size: squad.length,
+          min_squad_size: minSquadSize,
+          max_squad_size: maxSquadSize,
         });
       }
 
+      // Get active transfer window
+      const windowRes = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${team.fantasy_league_id}`);
+      if (windowRes.ok) {
+        const windowData = await windowRes.json();
+        const activeWindow = (windowData.windows || []).find((w: TransferWindow) => w.is_active);
+        
+        if (activeWindow) {
+          setWindow(activeWindow);
+
+          // Get transfers used in this window
+          const transfersRes = await fetchWithTokenRefresh(`/api/fantasy/transfers/history?team_id=${team.id}&window_id=${activeWindow.window_id}`);
+          if (transfersRes.ok) {
+            const transfersData = await transfersRes.json();
+            setTransfersUsed((transfersData.transfers || []).length);
+          }
+        }
+      }
+
       // Get available players
-      const playersRes = await fetchWithTokenRefresh(`/api/fantasy/players/available?league_id=${teamData.team.fantasy_league_id}`
-      );
+      const playersRes = await fetchWithTokenRefresh(`/api/fantasy/players/available?league_id=${team.fantasy_league_id}`);
       if (playersRes.ok) {
         const playersData = await playersRes.json();
         setAvailablePlayers(playersData.available_players || []);
       }
 
-      // Get transfer history
-      const transfersRes = await fetchWithTokenRefresh(`/api/fantasy/transfers/history?user_id=${user!.uid}`
-      );
-      if (transfersRes.ok) {
-        const transfersData = await transfersRes.json();
-        setTransfers(transfersData.transfers || []);
-        setTransfersUsed(transfersData.transfers_used || 0);
-      }
-
-
     } catch (error) {
-      console.error('Failed to load transfer data:', error);
+      console.error('Error loading transfer data:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const executeTransfer = async () => {
+    // Allow release-only if above minimum squad size
+    const isReleaseOnly = selectedOut && !selectedIn;
+    
+    if (!selectedOut && !selectedIn) {
+      alert('Please select at least one player (to release or sign)');
+      return;
+    }
 
-
-
-
-  const makeTransfer = async () => {
-    if (!selectedOut || !selectedIn) {
-      alert('Please select both players to swap');
+    if (!window) {
+      alert('No active transfer window');
       return;
     }
 
     setIsTransferring(true);
+
     try {
-      // Find the players
-      const squadPlayerToRelease = mySquad.find(p => p.real_player_id === selectedOut);
-      const playerToAdd = availablePlayers.find(p => p.real_player_id === selectedIn);
-      
-      if (!squadPlayerToRelease || !playerToAdd) {
-        alert('Invalid player selection');
-        return;
-      }
-      
-      const res = await fetchWithTokenRefresh('/api/fantasy/transfers/make-transfer', {
+      const response = await fetchWithTokenRefresh('/api/fantasy/transfers/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user!.uid,
-          player_out_id: squadPlayerToRelease.draft_id,
-          player_in_id: selectedIn,
-          player_in_name: playerToAdd.player_name,
-          player_in_position: playerToAdd.position,
-          player_in_team: playerToAdd.team,
-          player_in_price: playerToAdd.draft_price,
+          player_out_id: selectedOut?.squad_id || null,
+          player_in_id: selectedIn?.real_player_id || null,
         }),
       });
 
-      if (res.ok) {
-        alert('Transfer completed successfully!');
-        setSelectedOut(null);
-        setSelectedIn(null);
-        await loadTransferData();
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Transfer failed');
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || 'Transfer failed');
+        return;
       }
+
+      // Build success message
+      let message = '✅ Transfer completed!\n\n';
+      
+      if (data.transfer.player_out) {
+        message += `Released: ${data.transfer.player_out.name} (+€${data.transfer.player_out.refund}M)\n`;
+      }
+      
+      if (data.transfer.player_in) {
+        message += `Signed: ${data.transfer.player_in.name} (-€${data.transfer.player_in.cost}M)\n`;
+      }
+      
+      message += `\nNew Budget: €${data.transfer.new_budget}M\nTransfers Remaining: ${data.transfer.transfers_remaining}`;
+      
+      alert(message);
+
+      // Reset selections and reload
+      setSelectedOut(null);
+      setSelectedIn(null);
+      loadTransferData();
+
     } catch (error) {
-      console.error('Failed to make transfer:', error);
-      alert('Transfer failed');
+      console.error('Transfer error:', error);
+      alert('Failed to execute transfer');
     } finally {
       setIsTransferring(false);
     }
   };
 
-  const saveCaptains = async () => {
-    if (!user) return;
-
-    if (!captainId) {
-      alert('Please select a captain');
-      return;
-    }
-
-    if (!viceCaptainId) {
-      alert('Please select a vice-captain');
-      return;
-    }
-
-    if (captainId === viceCaptainId) {
-      alert('Captain and vice-captain must be different players');
-      return;
-    }
-
-    setIsSavingCaptains(true);
-    try {
-      const res = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.uid,
-          captain_player_id: captainId,
-          vice_captain_player_id: viceCaptainId,
-        }),
-      });
-
-      if (res.ok) {
-        alert('✅ Captain and Vice-Captain saved successfully!');
-        await loadTransferData();
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Failed to save captain selection');
-      }
-    } catch (error) {
-      console.error('Failed to save captains:', error);
-      alert('Failed to save captain selection');
-    } finally {
-      setIsSavingCaptains(false);
-    }
-  };
-
-  const playerOut = mySquad.find(p => p.real_player_id === selectedOut);
-  const playerIn = availablePlayers.find(p => p.real_player_id === selectedIn);
-
-  const filteredAvailable = availablePlayers.filter(player => {
-    // Filter to same position if a player out is selected
+  const calculateNewBudget = () => {
+    if (!teamInfo) return 0;
+    
+    let budget = teamInfo.budget_remaining;
+    
     if (selectedOut) {
-      const out = mySquad.find(p => p.real_player_id === selectedOut);
-      if (out && player.position !== out.position) return false;
+      budget += (selectedOut.purchase_price || 0);
     }
     
-    if (filter.search && !player.player_name.toLowerCase().includes(filter.search.toLowerCase()))
+    if (selectedIn) {
+      budget -= (selectedIn.current_price || selectedIn.draft_price || 0);
+    }
+    
+    return budget;
+  };
+
+  const canExecuteTransfer = () => {
+    if (!window || !window.is_active) return false;
+    if (!teamInfo) return false;
+    
+    // Must have at least one action (release or sign)
+    if (!selectedOut && !selectedIn) return false;
+    
+    const transfersRemaining = window.max_transfers_per_window - transfersUsed;
+    if (transfersRemaining <= 0) return false;
+    
+    // Release-only transfer
+    if (selectedOut && !selectedIn) {
+      // Can only release if above minimum squad size
+      if (teamInfo.squad_size <= teamInfo.min_squad_size) return false;
+      return true;
+    }
+    
+    // Sign-only or swap transfer
+    if (selectedIn) {
+      const newBudget = calculateNewBudget();
+      if (newBudget < 0) return false;
+      
+      // If not releasing anyone, check squad size
+      if (!selectedOut && teamInfo.squad_size >= teamInfo.max_squad_size) return false;
+    }
+    
+    return true;
+  };
+
+  // Filter available players
+  const filteredPlayers = availablePlayers.filter(player => {
+    if (searchTerm && !player.player_name.toLowerCase().includes(searchTerm.toLowerCase())) {
       return false;
+    }
+    if (positionFilter !== 'all' && player.position !== positionFilter) {
+      return false;
+    }
+    if (teamFilter !== 'all' && (player.real_team_name || player.team) !== teamFilter) {
+      return false;
+    }
     return true;
   });
 
-  const remainingTransfers = settings
-    ? settings.max_transfers_per_window - transfersUsed
-    : 0;
+  // Get unique positions and teams for filters
+  const positions = Array.from(new Set(availablePlayers.map(p => p.position))).sort();
+  const teams = Array.from(new Set(availablePlayers.map(p => p.real_team_name || p.team || 'Unknown'))).sort();
 
   if (loading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading transfers...</p>
         </div>
       </div>
     );
   }
 
-  if (!user || mySquad.length === 0) {
+  if (!user || !teamInfo) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-8">
-          <div className="w-20 h-20 bg-gradient-to-br from-gray-300 to-gray-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <X className="w-10 h-10 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">No Squad Yet</h2>
-          <p className="text-gray-600 mb-6">
-            You need to draft players first before making transfers.
-          </p>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Fantasy Team</h2>
+          <p className="text-gray-600 mb-6">You need to register for the fantasy league first.</p>
           <Link
-            href="/dashboard/team/fantasy/draft"
+            href="/dashboard/team"
             className="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
           >
-            Draft Players
+            Back to Dashboard
           </Link>
         </div>
       </div>
     );
   }
 
-  if (!settings?.is_transfer_window_open) {
+  if (!window || !window.is_active) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-8">
-          <div className="w-20 h-20 bg-gradient-to-br from-red-300 to-red-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <X className="w-10 h-10 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">Transfer Window Closed</h2>
-          <p className="text-gray-600 mb-6">Transfers are not currently available</p>
-          {settings?.transfer_window_start && (
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
-              <Calendar className="w-4 h-4" />
-              <span>Next window: {new Date(settings.transfer_window_start).toLocaleString()}</span>
-            </div>
-          )}
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
+        <div className="max-w-4xl mx-auto">
           <Link
             href="/dashboard/team/fantasy/my-team"
-            className="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+            className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors mb-6"
           >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
             Back to My Team
           </Link>
+
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8 text-center">
+            <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Transfer Window Closed</h2>
+            <p className="text-gray-600 mb-6">
+              The transfer window is currently closed. Check back when the next window opens.
+            </p>
+            <Link
+              href="/dashboard/team/fantasy/my-team"
+              className="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+            >
+              View My Team
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
+  const newBudget = calculateNewBudget();
+  const transfersRemaining = window.max_transfers_per_window - transfersUsed;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <Link
             href="/dashboard/team/fantasy/my-team"
             className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors mb-4"
@@ -344,290 +391,276 @@ export default function TeamTransfersPage() {
             Back to My Team
           </Link>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl">
+              <ArrowLeftRight className="w-8 h-8 text-white" />
+            </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Transfers</h1>
-              <p className="text-gray-600">Swap players to improve your squad</p>
+              <h1 className="text-3xl font-bold text-gray-900">Player Transfers</h1>
+              <p className="text-gray-600">{window.window_name}</p>
+            </div>
+          </div>
+
+          {/* Stats Bar */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-green-500">
+              <p className="text-sm text-gray-600 mb-1">Budget</p>
+              <p className="text-2xl font-bold text-green-600">€{teamInfo.budget_remaining}M</p>
             </div>
 
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Remaining Transfers</p>
-              <p className="text-3xl font-bold text-indigo-600">
-                {remainingTransfers}/{settings.max_transfers_per_window}
-              </p>
-              {settings.points_cost_per_transfer > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  -{settings.points_cost_per_transfer} pts per transfer
-                </p>
-              )}
+            <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-blue-500">
+              <p className="text-sm text-gray-600 mb-1">Squad Size</p>
+              <p className="text-2xl font-bold text-blue-600">{teamInfo.squad_size}</p>
+              <p className="text-xs text-gray-500 mt-1">{teamInfo.min_squad_size}-{teamInfo.max_squad_size} allowed</p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-purple-500">
+              <p className="text-sm text-gray-600 mb-1">Transfers Left</p>
+              <p className="text-2xl font-bold text-purple-600">{transfersRemaining}</p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-orange-500">
+              <p className="text-sm text-gray-600 mb-1">Points Cost</p>
+              <p className="text-2xl font-bold text-orange-600">{window.points_cost_per_transfer} pts</p>
             </div>
           </div>
         </div>
 
-        {/* Player Transfers */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
-              {/* Info Alert */}
-              {settings.points_cost_per_transfer > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
-                    <div className="text-sm text-amber-800">
-                      <p className="font-medium mb-1">Transfer Cost</p>
-                      <p>
-                        Each transfer will deduct {settings.points_cost_per_transfer} points from your total
-                        score. Choose wisely!
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Transfer Interface */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Player Out */}
-          <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <X className="w-5 h-5 text-red-600" />
-              Transfer Out
-            </h3>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {mySquad.map(player => (
-                <button
-                  key={player.real_player_id}
-                  onClick={() => setSelectedOut(player.real_player_id)}
-                  className={`w-full text-left p-3 rounded-lg border transition ${
-                    selectedOut === player.real_player_id
-                      ? 'bg-red-50 border-red-500'
-                      : 'bg-white hover:bg-gray-50 border-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Shield className="w-4 h-4 text-gray-600" />
-                    <p className="font-medium text-gray-900 text-sm">{player.player_name}</p>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-600">
-                      {player.position} • {player.team}
-                    </span>
-                    <span className="text-gray-600">${player.draft_price}M</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Transfer Summary */}
-          <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 text-center">Transfer Summary</h3>
-            <div className="space-y-4">
+        {/* Transfer Summary */}
+        {(selectedOut || selectedIn) && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl shadow-xl border-2 border-blue-200 p-6 mb-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Transfer Summary</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               {/* Player Out */}
-              <div
-                className={`p-4 rounded-lg border ${
-                  playerOut
-                    ? 'bg-red-50 border-red-200'
-                    : 'bg-gray-50 border-gray-200'
-                }`}
-              >
-                {playerOut ? (
-                  <>
-                    <p className="text-xs text-gray-600 mb-2">OUT</p>
-                    <p className="font-medium text-gray-900">{playerOut.player_name}</p>
-                    <p className="text-xs text-gray-600">
-                      {playerOut.position} • {playerOut.team}
-                    </p>
-                  </>
+              <div className="bg-white rounded-xl p-4">
+                <p className="text-sm text-gray-600 mb-2">Releasing</p>
+                {selectedOut ? (
+                  <div>
+                    <p className="font-bold text-gray-900">{selectedOut.player_name}</p>
+                    <p className="text-sm text-gray-600">{selectedOut.position} • {selectedOut.real_team_name}</p>
+                    <p className="text-green-600 font-semibold mt-2">+€{selectedOut.purchase_price}M</p>
+                  </div>
                 ) : (
-                  <p className="text-center text-gray-500 text-sm">Select player to remove</p>
+                  <p className="text-gray-400 italic">No player selected</p>
                 )}
               </div>
 
-              <div className="flex justify-center">
-                <ArrowLeftRight className="w-6 h-6 text-indigo-600" />
+              {/* Arrow */}
+              <div className="flex items-center justify-center">
+                <ArrowLeftRight className="w-8 h-8 text-blue-600" />
               </div>
 
               {/* Player In */}
-              <div
-                className={`p-4 rounded-lg border ${
-                  playerIn
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-gray-50 border-gray-200'
-                }`}
-              >
-                {playerIn ? (
-                  <>
-                    <p className="text-xs text-gray-600 mb-2">IN</p>
-                    <p className="font-medium text-gray-900">{playerIn.player_name}</p>
-                    <p className="text-xs text-gray-600">
-                      {playerIn.position} • {playerIn.team}
-                    </p>
-                  </>
+              <div className="bg-white rounded-xl p-4">
+                <p className="text-sm text-gray-600 mb-2">Signing</p>
+                {selectedIn ? (
+                  <div>
+                    <p className="font-bold text-gray-900">{selectedIn.player_name}</p>
+                    <p className="text-sm text-gray-600">{selectedIn.position} • {selectedIn.real_team_name}</p>
+                    <p className="text-red-600 font-semibold mt-2">-€{selectedIn.current_price || selectedIn.draft_price}M</p>
+                  </div>
                 ) : (
-                  <p className="text-center text-gray-500 text-sm">Select player to add</p>
+                  <p className="text-gray-400 italic">{selectedOut ? 'Release only' : 'No player selected'}</p>
                 )}
               </div>
-
-              <button
-                onClick={makeTransfer}
-                disabled={
-                  !selectedOut || !selectedIn || remainingTransfers === 0 || isTransferring
-                }
-                className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                {isTransferring ? 'Processing...' : 'Confirm Transfer'}
-              </button>
-
-              {remainingTransfers === 0 && (
-                <p className="text-center text-sm text-red-600">No transfers remaining</p>
-              )}
             </div>
-          </div>
 
-          {/* Player In */}
-          <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <Check className="w-5 h-5 text-green-600" />
-              Transfer In
-            </h3>
-
-            {/* Filter */}
-            <div className="mb-4">
-              <input
-                type="text"
-                value={filter.search}
-                onChange={e => setFilter({ ...filter, search: e.target.value })}
-                placeholder="Search..."
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm focus:ring-2 focus:ring-indigo-500"
-              />
+            {/* Budget Calculation */}
+            <div className="bg-white rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-600">Current Budget:</span>
+                <span className="font-semibold">€{teamInfo.budget_remaining}M</span>
+              </div>
               {selectedOut && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Showing {mySquad.find(p => p.real_player_id === selectedOut)?.position} players only
-                </p>
+                <div className="flex items-center justify-between mb-2 text-green-600">
+                  <span>+ Release {selectedOut.player_name}:</span>
+                  <span className="font-semibold">+€{selectedOut.purchase_price}M</span>
+                </div>
               )}
+              {selectedIn && (
+                <div className="flex items-center justify-between mb-2 text-red-600">
+                  <span>- Sign {selectedIn.player_name}:</span>
+                  <span className="font-semibold">-€{selectedIn.current_price || selectedIn.draft_price}M</span>
+                </div>
+              )}
+              <div className="border-t-2 border-gray-200 pt-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-gray-900">New Budget:</span>
+                  <span className={`text-2xl font-bold ${newBudget >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    €{newBudget}M
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {filteredAvailable.map(player => (
+            {/* Execute Button */}
+            <button
+              onClick={executeTransfer}
+              disabled={!canExecuteTransfer() || isTransferring}
+              className="w-full mt-4 px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg flex items-center justify-center gap-2"
+            >
+              {isTransferring ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Check className="w-5 h-5" />
+                  {selectedOut && !selectedIn ? 'Release Player' : selectedIn && !selectedOut ? 'Sign Player' : 'Execute Transfer'}
+                </>
+              )}
+            </button>
+
+            {!canExecuteTransfer() && (selectedOut || selectedIn) && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-800">
+                  {selectedIn && newBudget < 0 && '❌ Insufficient budget'}
+                  {transfersRemaining <= 0 && '❌ No transfers remaining'}
+                  {selectedIn && !selectedOut && teamInfo.squad_size >= teamInfo.max_squad_size && '❌ Squad full - release a player first'}
+                  {selectedOut && !selectedIn && teamInfo.squad_size <= teamInfo.min_squad_size && `❌ Cannot release - minimum squad size is ${teamInfo.min_squad_size}`}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* My Squad */}
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              My Squad ({mySquad.length})
+            </h2>
+
+            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              {mySquad.map((player) => (
                 <button
-                  key={player.real_player_id}
-                  onClick={() => setSelectedIn(player.real_player_id)}
-                  className={`w-full text-left p-3 rounded-lg border transition ${
-                    selectedIn === player.real_player_id
-                      ? 'bg-green-50 border-green-500'
-                      : 'bg-white hover:bg-gray-50 border-gray-200'
+                  key={player.squad_id}
+                  onClick={() => setSelectedOut(selectedOut?.squad_id === player.squad_id ? null : player)}
+                  className={`w-full text-left p-4 rounded-xl transition-all ${
+                    selectedOut?.squad_id === player.squad_id
+                      ? 'bg-gradient-to-r from-red-500 to-pink-600 text-white shadow-lg'
+                      : 'bg-gray-50 hover:bg-gray-100'
                   }`}
                 >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Shield className="w-4 h-4 text-gray-600" />
-                    <p className="font-medium text-gray-900 text-sm">{player.player_name}</p>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-600">
-                      {player.position} • {player.team}
-                    </span>
-                    <span className="text-green-600 font-bold">${player.draft_price}M</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className={`font-bold ${selectedOut?.squad_id === player.squad_id ? 'text-white' : 'text-gray-900'}`}>
+                          {player.player_name}
+                        </p>
+                        {player.is_captain && <span className="text-xs px-2 py-0.5 bg-yellow-400 text-yellow-900 rounded-full font-bold">C</span>}
+                        {player.is_vice_captain && <span className="text-xs px-2 py-0.5 bg-blue-400 text-blue-900 rounded-full font-bold">VC</span>}
+                      </div>
+                      <p className={`text-sm ${selectedOut?.squad_id === player.squad_id ? 'text-white/90' : 'text-gray-600'}`}>
+                        {player.position || 'Unknown'} • {player.real_team_name || 'Unknown'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-bold ${selectedOut?.squad_id === player.squad_id ? 'text-white' : 'text-gray-900'}`}>
+                        €{player.purchase_price || 0}M
+                      </p>
+                      <p className={`text-xs ${selectedOut?.squad_id === player.squad_id ? 'text-white/80' : 'text-gray-500'}`}>
+                        {player.total_points || 0} pts
+                      </p>
+                    </div>
                   </div>
                 </button>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Captain & Vice-Captain Selection */}
-        <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">⭐ Captain & Vice-Captain</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Select your captain (2x points) and vice-captain (1.5x points) from your squad
-          </p>
-          
-          <div className="space-y-2 mb-4">
-            {mySquad.map(player => (
-              <div
-                key={player.real_player_id}
-                className="p-3 bg-white rounded-lg border border-gray-200"
-              >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 flex-1">
-                    <Shield className="w-4 h-4 text-gray-600" />
-                    <p className="font-medium text-gray-900 text-sm">{player.player_name}</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-xs mb-2">
-                  <span className="text-gray-600">
-                    {player.position} • {player.team}
-                  </span>
-                  <span className="text-gray-600">${player.draft_price}M</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCaptainId(player.real_player_id)}
-                    className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition ${
-                      captainId === player.real_player_id
-                        ? 'bg-yellow-500 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {captainId === player.real_player_id ? '⭐ Captain' : 'Captain'}
-                  </button>
-                  <button
-                    onClick={() => setViceCaptainId(player.real_player_id)}
-                    className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition ${
-                      viceCaptainId === player.real_player_id
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {viceCaptainId === player.real_player_id ? '🥈 Vice' : 'Vice'}
-                  </button>
-                </div>
+          {/* Available Players */}
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Available Players ({filteredPlayers.length})
+            </h2>
+
+            {/* Filters */}
+            <div className="mb-4 space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search players..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
               </div>
-            ))}
-          </div>
 
-          <button
-            onClick={saveCaptains}
-            disabled={isSavingCaptains || !captainId || !viceCaptainId}
-            className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSavingCaptains ? 'Saving...' : '💾 Save Captain & Vice-Captain'}
-          </button>
-        </div>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  value={positionFilter}
+                  onChange={(e) => setPositionFilter(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Positions</option>
+                  {positions.map(pos => (
+                    <option key={pos} value={pos}>{pos}</option>
+                  ))}
+                </select>
 
-        {/* Transfer History */}
-        <div className="glass rounded-3xl shadow-xl backdrop-blur-md border border-white/20 p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Transfer History</h3>
-          <div className="space-y-3">
-            {transfers.map(transfer => (
-              <div
-                key={transfer._id}
-                className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200"
-              >
-                <div className="flex items-center gap-4 flex-1">
-                  <div className="flex items-center gap-2">
-                    <X className="w-4 h-4 text-red-600" />
-                    <span className="text-gray-900">{transfer.player_out.player_name}</span>
-                  </div>
-                  <ArrowLeftRight className="w-4 h-4 text-gray-400" />
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-600" />
-                    <span className="text-gray-900">{transfer.player_in.player_name}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">
-                    {new Date(transfer.timestamp).toLocaleDateString()}
-                  </p>
-                  {transfer.points_deducted > 0 && (
-                    <p className="text-xs text-red-600">-{transfer.points_deducted} pts</p>
-                  )}
-                </div>
+                <select
+                  value={teamFilter}
+                  onChange={(e) => setTeamFilter(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Teams</option>
+                  {teams.map(team => (
+                    <option key={team} value={team}>{team}</option>
+                  ))}
+                </select>
               </div>
-            ))}
+            </div>
 
-            {transfers.length === 0 && (
-              <p className="text-center text-gray-500 py-8">No transfers yet</p>
-            )}
+            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              {filteredPlayers.map((player) => (
+                <button
+                  key={player.real_player_id}
+                  onClick={() => setSelectedIn(selectedIn?.real_player_id === player.real_player_id ? null : player)}
+                  className={`w-full text-left p-4 rounded-xl transition-all ${
+                    selectedIn?.real_player_id === player.real_player_id
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                      : 'bg-gray-50 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className={`font-bold ${selectedIn?.real_player_id === player.real_player_id ? 'text-white' : 'text-gray-900'}`}>
+                          {player.player_name}
+                        </p>
+                        <div className="flex gap-0.5">
+                          {Array.from({ length: player.star_rating || 0 }).map((_, i) => (
+                            <Star key={`star-${player.real_player_id}-${i}`} className={`w-3 h-3 ${selectedIn?.real_player_id === player.real_player_id ? 'text-yellow-300 fill-yellow-300' : 'text-yellow-500 fill-yellow-500'}`} />
+                          ))}
+                        </div>
+                      </div>
+                      <p className={`text-sm ${selectedIn?.real_player_id === player.real_player_id ? 'text-white/90' : 'text-gray-600'}`}>
+                        {player.position || 'Unknown'} • {player.real_team_name || player.team || 'Unknown'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-bold ${selectedIn?.real_player_id === player.real_player_id ? 'text-white' : 'text-gray-900'}`}>
+                        €{player.current_price || player.draft_price || 0}M
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+
+              {filteredPlayers.length === 0 && (
+                <div className="text-center py-12">
+                  <Filter className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No players found</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>

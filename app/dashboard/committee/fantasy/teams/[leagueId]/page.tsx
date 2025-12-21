@@ -20,6 +20,7 @@ interface FantasyTeam {
   supported_team_id?: string;
   supported_team_name?: string;
   passive_points?: number;
+  budget_remaining?: number;
 }
 
 interface Player {
@@ -123,6 +124,13 @@ export default function FantasyTeamsPage() {
         const data = await response.json();
         setLeague(data.league);
         setTeams(data.teams || []);
+        
+        // Debug: Check budget values
+        console.log('📊 Teams loaded:', data.teams?.slice(0, 3).map((t: any) => ({
+          name: t.team_name,
+          budget: t.budget_remaining,
+          points: t.total_points
+        })));
         
         // Auto-select first team
         if (data.teams && data.teams.length > 0) {
@@ -358,7 +366,7 @@ export default function FantasyTeamsPage() {
                         leagueName={league?.name}
                       />
                     </div>
-                    <div className="flex gap-6 mt-3">
+                    <div className="flex gap-6 mt-3 flex-wrap">
                       <div>
                         <p className="text-sm text-gray-500">Total Points</p>
                         <p className="text-2xl font-bold text-indigo-600">{selectedTeam.total_points}</p>
@@ -370,6 +378,18 @@ export default function FantasyTeamsPage() {
                       <div>
                         <p className="text-sm text-gray-500">Rank</p>
                         <p className="text-2xl font-bold text-gray-900">#{selectedTeam.rank || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Budget Remaining</p>
+                        <p className={`text-2xl font-bold ${
+                          (selectedTeam.budget_remaining ?? 0) > 0 
+                            ? 'text-green-600' 
+                            : (selectedTeam.budget_remaining ?? 0) < 0 
+                            ? 'text-red-600' 
+                            : 'text-gray-900'
+                        }`}>
+                          €{selectedTeam.budget_remaining ?? 0}M
+                        </p>
                       </div>
                     </div>
 
@@ -561,7 +581,9 @@ export default function FantasyTeamsPage() {
                             <div className="flex items-center gap-4">
                               <div className="text-right">
                                 <p className="text-xl font-bold text-indigo-600">{player.total_points}</p>
-                                <p className="text-xs text-gray-500 group-hover:text-indigo-600 transition">Click for details</p>
+                                <p className="text-xs text-gray-500 group-hover:text-indigo-600 transition">
+                                  {player.purchase_price ? `€${player.purchase_price}M` : 'Click for details'}
+                                </p>
                               </div>
                               <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${
                                 expandedPlayer === player.real_player_id ? 'rotate-180' : ''
@@ -603,7 +625,11 @@ export default function FantasyTeamsPage() {
                                   </div>
 
                                   {/* Additional Stats */}
-                                  <div className="bg-gray-50 rounded-lg p-3 mb-6 grid grid-cols-4 gap-3 text-center text-sm">
+                                  <div className="bg-gray-50 rounded-lg p-3 mb-6 grid grid-cols-5 gap-3 text-center text-sm">
+                                    <div>
+                                      <p className="text-gray-600">Purchase Price</p>
+                                      <p className="font-bold text-orange-600">€{player.purchase_price || 0}M</p>
+                                    </div>
                                     <div>
                                       <p className="text-gray-600">Matches</p>
                                       <p className="font-bold text-gray-900">{playerData.stats?.total_matches || 0}</p>

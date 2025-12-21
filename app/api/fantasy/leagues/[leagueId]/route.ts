@@ -202,11 +202,12 @@ export async function GET(
         ft.supported_team_id,
         ft.supported_team_name,
         COALESCE(ft.passive_points, 0) as passive_points,
+        COALESCE(ft.budget_remaining, 0) as budget_remaining,
         COUNT(DISTINCT fs.real_player_id) as player_count
       FROM fantasy_teams ft
       LEFT JOIN fantasy_squad fs ON ft.team_id = fs.team_id
       WHERE ft.league_id = ${league.league_id}
-      GROUP BY ft.team_id, ft.team_name, ft.owner_name, ft.total_points, ft.rank, ft.draft_submitted, ft.supported_team_id, ft.supported_team_name, ft.passive_points
+      GROUP BY ft.team_id, ft.team_name, ft.owner_name, ft.total_points, ft.rank, ft.draft_submitted, ft.supported_team_id, ft.supported_team_name, ft.passive_points, ft.budget_remaining
       ORDER BY ft.rank ASC NULLS LAST, ft.total_points DESC
     `;
 
@@ -256,6 +257,7 @@ export async function GET(
         supported_team_id: team.supported_team_id || null,
         supported_team_name: team.supported_team_name || null,
         passive_points: Number(team.passive_points) || 0,
+        budget_remaining: Number(team.budget_remaining) || 0,
       })),
       scoring_rules: scoringRules.map(rule => ({
         id: rule.id,

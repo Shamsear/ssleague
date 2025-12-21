@@ -16,6 +16,7 @@ interface FantasyTeam {
   supported_team_name?: string;
   supported_team_logo?: string;
   passive_points?: number;
+  budget_remaining?: number;
 }
 
 interface Player {
@@ -364,7 +365,7 @@ export default function MyFantasyTeamPage() {
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
             <p className="text-sm text-gray-600 mb-1">League Rank</p>
             <p className="text-3xl font-bold text-purple-600">
@@ -378,8 +379,15 @@ export default function MyFantasyTeamPage() {
           </div>
 
           <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+            <p className="text-sm text-gray-600 mb-1">Budget</p>
+            <p className={`text-3xl font-bold ${(fantasyTeam.budget_remaining || 0) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+              €{fantasyTeam.budget_remaining || 0}M
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-indigo-500">
             <p className="text-sm text-gray-600 mb-1">Players</p>
-            <p className="text-3xl font-bold text-green-600">{fantasyTeam.player_count}</p>
+            <p className="text-3xl font-bold text-indigo-600">{fantasyTeam.player_count}</p>
           </div>
 
           <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-orange-500">

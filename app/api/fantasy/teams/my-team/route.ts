@@ -187,6 +187,7 @@ export async function GET(request: NextRequest) {
         supported_team_logo: teamLogo,
         passive_points: Number(teamData.passive_points) || 0,
         draft_submitted: teamData.draft_submitted || false,
+        budget_remaining: Number(teamData.budget_remaining) || 0,
       },
       players: draftedPlayers,
       recent_rounds: formattedRounds,
