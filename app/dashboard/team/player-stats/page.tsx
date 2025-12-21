@@ -535,7 +535,6 @@ export default function TeamPlayerStatsPage() {
               </tbody>
             </table>
           </div>
-            </div>
           </div>
         </div>
 
