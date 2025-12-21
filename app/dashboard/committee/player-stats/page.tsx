@@ -26,6 +26,21 @@ interface PlayerStats {
   salary_per_match?: number;
 }
 
+interface MatchdayStats {
+  matchday: number;
+  fixture_id: string;
+  player_side: 'home' | 'away';
+  home_team_name: string;
+  away_team_name: string;
+  home_player_name: string;
+  away_player_name: string;
+  goals_scored: number;
+  goals_conceded: number;
+  goal_difference: number;
+  points: number;
+  was_substitute: boolean;
+}
+
 export default function PlayerStatsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -37,6 +52,10 @@ export default function PlayerStatsPage() {
   const [editMode, setEditMode] = useState(false);
   const [editedPlayers, setEditedPlayers] = useState<Map<string, Partial<PlayerStats>>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
+  const [matchdayStats, setMatchdayStats] = useState<Map<string, MatchdayStats[]>>(new Map());
+  const [loadingMatchday, setLoadingMatchday] = useState<string | null>(null);
+  const [playerTotalPoints, setPlayerTotalPoints] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -65,11 +84,64 @@ export default function PlayerStatsPage() {
           console.log('[Player Stats Page] First player base_points:', data.players[0].base_points);
         }
         setPlayers(data.players || []);
+        
+        // Load total points for all players
+        loadAllPlayerTotalPoints(data.players || []);
       }
     } catch (error) {
       console.error('Error loading players:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAllPlayerTotalPoints = async (playersList: PlayerStats[]) => {
+    const newPlayerTotalPoints = new Map<string, number>();
+    
+    // Load total points for each player in parallel
+    const promises = playersList.map(async (player) => {
+      try {
+        const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${player.id}&season_id=SSPSLS16`);
+        if (response.ok) {
+          const data = await response.json();
+          newPlayerTotalPoints.set(player.id, data.totalPoints || 0);
+        }
+      } catch (error) {
+        console.error(`Error loading total points for ${player.player_name}:`, error);
+      }
+    });
+    
+    await Promise.all(promises);
+    setPlayerTotalPoints(newPlayerTotalPoints);
+  };
+
+  const loadMatchdayStats = async (playerId: string) => {
+    if (matchdayStats.has(playerId)) {
+      // Already loaded, just toggle
+      setExpandedPlayer(expandedPlayer === playerId ? null : playerId);
+      return;
+    }
+
+    setLoadingMatchday(playerId);
+    try {
+      const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${playerId}&season_id=SSPSLS16`);
+      if (response.ok) {
+        const data = await response.json();
+        const newMatchdayStats = new Map(matchdayStats);
+        newMatchdayStats.set(playerId, data.matchdayStats || []);
+        setMatchdayStats(newMatchdayStats);
+        
+        // Store total points for this player
+        const newPlayerTotalPoints = new Map(playerTotalPoints);
+        newPlayerTotalPoints.set(playerId, data.totalPoints || 0);
+        setPlayerTotalPoints(newPlayerTotalPoints);
+        
+        setExpandedPlayer(playerId);
+      }
+    } catch (error) {
+      console.error('Error loading matchday stats:', error);
+    } finally {
+      setLoadingMatchday(null);
     }
   };
 
@@ -80,22 +152,17 @@ export default function PlayerStatsPage() {
     setEditMode(!editMode);
   };
 
-  const updatePlayerValue = (playerId: string, field: keyof PlayerStats, value: number) => {
-    // Enforce minimum points of 100
-    if (field === 'points' && value < 100) {
-      value = 100;
-    }
-    
+  const updatePlayerValue = (playerId: string, field: keyof PlayerStats, value: number | string) => {
     const currentEdits = new Map(editedPlayers);
     const playerEdits = currentEdits.get(playerId) || {};
     currentEdits.set(playerId, { ...playerEdits, [field]: value });
     setEditedPlayers(currentEdits);
   };
 
-  const getPlayerValue = (player: PlayerStats, field: keyof PlayerStats): number => {
+  const getPlayerValue = (player: PlayerStats, field: keyof PlayerStats): number | string => {
     const edits = editedPlayers.get(player.id);
     if (edits && field in edits) {
-      return edits[field] as number;
+      return edits[field] as number | string;
     }
     return player[field] as number;
   };
@@ -119,7 +186,8 @@ export default function PlayerStatsPage() {
 
   // Get predicted changes for a player
   const getPredictedChanges = (player: PlayerStats) => {
-    const currentPoints = getPlayerValue(player, 'points');
+    const currentPointsValue = getPlayerValue(player, 'points');
+    const currentPoints = typeof currentPointsValue === 'string' ? parseInt(currentPointsValue) || 100 : currentPointsValue;
     const oldStarRating = player.star_rating || 3;
     const newStarRating = calculateStarRating(currentPoints);
     const auctionValue = player.auction_value || 0;
@@ -146,18 +214,23 @@ export default function PlayerStatsPage() {
     try {
       const updates = Array.from(editedPlayers.entries()).map(([playerId, edits]) => {
         const player = players.find(p => p.id === playerId);
+        
+        // Parse and validate values, ensuring minimum points of 100
+        const points = typeof edits.points === 'string' ? parseInt(edits.points) : edits.points;
+        const validatedPoints = Math.max(100, points ?? player?.points ?? 100);
+        
         return {
           player_id: playerId,
           player_name: player?.player_name,
-          points: edits.points ?? player?.points ?? 0,
-          base_points: edits.base_points ?? player?.base_points ?? 0,
-          matches_played: edits.matches_played ?? player?.matches_played ?? 0,
-          goals_scored: edits.goals_scored ?? player?.goals_scored ?? 0,
-          goals_conceded: edits.goals_conceded ?? player?.goals_conceded ?? 0,
-          wins: edits.wins ?? player?.wins ?? 0,
-          draws: edits.draws ?? player?.draws ?? 0,
-          losses: edits.losses ?? player?.losses ?? 0,
-          clean_sheets: edits.clean_sheets ?? player?.clean_sheets ?? 0,
+          points: validatedPoints,
+          base_points: typeof edits.base_points === 'string' ? parseInt(edits.base_points) || 0 : edits.base_points ?? player?.base_points ?? 0,
+          matches_played: typeof edits.matches_played === 'string' ? parseInt(edits.matches_played) || 0 : edits.matches_played ?? player?.matches_played ?? 0,
+          goals_scored: typeof edits.goals_scored === 'string' ? parseInt(edits.goals_scored) || 0 : edits.goals_scored ?? player?.goals_scored ?? 0,
+          goals_conceded: typeof edits.goals_conceded === 'string' ? parseInt(edits.goals_conceded) || 0 : edits.goals_conceded ?? player?.goals_conceded ?? 0,
+          wins: typeof edits.wins === 'string' ? parseInt(edits.wins) || 0 : edits.wins ?? player?.wins ?? 0,
+          draws: typeof edits.draws === 'string' ? parseInt(edits.draws) || 0 : edits.draws ?? player?.draws ?? 0,
+          losses: typeof edits.losses === 'string' ? parseInt(edits.losses) || 0 : edits.losses ?? player?.losses ?? 0,
+          clean_sheets: typeof edits.clean_sheets === 'string' ? parseInt(edits.clean_sheets) || 0 : edits.clean_sheets ?? player?.clean_sheets ?? 0,
         };
       });
 
@@ -340,63 +413,69 @@ export default function PlayerStatsPage() {
             <table className="w-full">
               <thead className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">
+                    Expand
+                  </th>
                   <th 
                     onClick={() => handleSort('player_name')}
-                    className="px-6 py-4 text-left text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     Player {sortBy === 'player_name' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
                     onClick={() => handleSort('team')}
-                    className="px-6 py-4 text-left text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     Team {sortBy === 'team' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
                     onClick={() => handleSort('points')}
-                    className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     Points {sortBy === 'points' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
                     onClick={() => handleSort('base_points')}
-                    className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     Base {sortBy === 'base_points' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider">
                     Change
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider">
+                    Total Gained
                   </th>
                   <th 
                     onClick={() => handleSort('matches_played')}
-                    className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     MP {sortBy === 'matches_played' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
                     onClick={() => handleSort('goals_scored')}
-                    className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     GS {sortBy === 'goals_scored' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
                     onClick={() => handleSort('goals_conceded')}
-                    className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     GC {sortBy === 'goals_conceded' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
                     onClick={() => handleSort('goal_difference')}
-                    className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     GD {sortBy === 'goal_difference' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider">
                     W-D-L
                   </th>
                   <th 
                     onClick={() => handleSort('clean_sheets')}
-                    className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
+                    className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-700 transition-colors"
                   >
                     CS {sortBy === 'clean_sheets' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
@@ -405,8 +484,10 @@ export default function PlayerStatsPage() {
               <tbody className="divide-y divide-gray-100">
                 {filteredPlayers.map((player, index) => {
                   const hasEdits = editedPlayers.has(player.id);
-                  const currentPoints = getPlayerValue(player, 'points');
-                  const currentBasePoints = getPlayerValue(player, 'base_points');
+                  const currentPointsValue = getPlayerValue(player, 'points');
+                  const currentPoints = typeof currentPointsValue === 'string' ? parseInt(currentPointsValue) || 100 : currentPointsValue;
+                  const currentBasePointsValue = getPlayerValue(player, 'base_points');
+                  const currentBasePoints = typeof currentBasePointsValue === 'string' ? parseInt(currentBasePointsValue) || 0 : currentBasePointsValue;
                   const change = currentBasePoints > 0 ? currentPoints - currentBasePoints : 0;
                   const predictions = getPredictedChanges(player);
                   
@@ -415,23 +496,50 @@ export default function PlayerStatsPage() {
                       <tr 
                         className={`hover:bg-blue-50 transition-colors ${hasEdits ? 'bg-yellow-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                       >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                        <td className="px-3 py-3">
+                          <button
+                            onClick={() => loadMatchdayStats(player.id)}
+                            disabled={loadingMatchday === player.id}
+                            className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                            title="View matchday breakdown"
+                          >
+                            {loadingMatchday === player.id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            ) : expandedPlayer === player.id ? (
+                              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-shrink-0 w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-xs">
                               {player.player_name.charAt(0)}
                             </div>
-                            <span className="text-sm font-semibold text-gray-900">{player.player_name}</span>
+                            <span className="text-sm font-semibold text-gray-900 truncate max-w-[150px]">{player.player_name}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{player.team || '-'}</td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-3 text-sm text-gray-600 max-w-[120px] truncate">{player.team || '-'}</td>
+                        <td className="px-4 py-4 text-center">
                           {editMode ? (
                             <input
                               type="number"
                               min="100"
                               value={getPlayerValue(player, 'points')}
-                              onChange={(e) => updatePlayerValue(player.id, 'points', parseInt(e.target.value) || 100)}
-                              className="w-20 px-3 py-2 border-2 border-blue-300 rounded-lg text-center font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              onChange={(e) => updatePlayerValue(player.id, 'points', e.target.value === '' ? '' : parseInt(e.target.value))}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (isNaN(val) || val < 100) {
+                                  updatePlayerValue(player.id, 'points', 100);
+                                }
+                              }}
+                              className="w-16 px-2 py-1 text-sm border-2 border-blue-300 rounded text-center font-bold text-blue-600 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="100"
                             />
                           ) : (
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700">
@@ -439,21 +547,28 @@ export default function PlayerStatsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           {editMode ? (
                             <input
                               type="number"
                               value={getPlayerValue(player, 'base_points')}
-                              onChange={(e) => updatePlayerValue(player.id, 'base_points', parseInt(e.target.value) || 0)}
-                              className="w-20 px-3 py-2 border-2 border-gray-300 rounded-lg text-center font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              onChange={(e) => updatePlayerValue(player.id, 'base_points', e.target.value === '' ? '' : parseInt(e.target.value))}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (isNaN(val)) {
+                                  updatePlayerValue(player.id, 'base_points', 0);
+                                }
+                              }}
+                              className="w-16 px-2 py-1 text-sm border-2 border-gray-300 rounded text-center font-semibold focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="0"
                             />
                           ) : (
                             <span className="text-sm font-semibold text-gray-600">{player.base_points || 0}</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           {currentBasePoints > 0 ? (
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
                               change > 0 
                                 ? 'bg-green-100 text-green-700' 
                                 : change < 0
@@ -467,25 +582,54 @@ export default function PlayerStatsPage() {
                             <span className="text-xs text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
+                          {playerTotalPoints.has(player.id) ? (
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${
+                              playerTotalPoints.get(player.id)! > 0 
+                                ? 'bg-green-100 text-green-700' 
+                                : playerTotalPoints.get(player.id)! < 0
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {playerTotalPoints.get(player.id)! > 0 ? '+' : ''}{playerTotalPoints.get(player.id)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-center">
                           {editMode ? (
                             <input
                               type="number"
                               value={getPlayerValue(player, 'matches_played')}
-                              onChange={(e) => updatePlayerValue(player.id, 'matches_played', parseInt(e.target.value) || 0)}
-                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              onChange={(e) => updatePlayerValue(player.id, 'matches_played', e.target.value === '' ? '' : parseInt(e.target.value))}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (isNaN(val)) {
+                                  updatePlayerValue(player.id, 'matches_played', 0);
+                                }
+                              }}
+                              className="w-12 px-1 py-1 text-sm border-2 border-gray-300 rounded text-center focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="0"
                             />
                           ) : (
                             <span className="text-sm font-medium text-gray-700">{player.matches_played || 0}</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           {editMode ? (
                             <input
                               type="number"
                               value={getPlayerValue(player, 'goals_scored')}
-                              onChange={(e) => updatePlayerValue(player.id, 'goals_scored', parseInt(e.target.value) || 0)}
-                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              onChange={(e) => updatePlayerValue(player.id, 'goals_scored', e.target.value === '' ? '' : parseInt(e.target.value))}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (isNaN(val)) {
+                                  updatePlayerValue(player.id, 'goals_scored', 0);
+                                }
+                              }}
+                              className="w-12 px-1 py-1 text-sm border-2 border-gray-300 rounded text-center focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="0"
                             />
                           ) : (
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
@@ -493,19 +637,26 @@ export default function PlayerStatsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           {editMode ? (
                             <input
                               type="number"
                               value={getPlayerValue(player, 'goals_conceded')}
-                              onChange={(e) => updatePlayerValue(player.id, 'goals_conceded', parseInt(e.target.value) || 0)}
-                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              onChange={(e) => updatePlayerValue(player.id, 'goals_conceded', e.target.value === '' ? '' : parseInt(e.target.value))}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (isNaN(val)) {
+                                  updatePlayerValue(player.id, 'goals_conceded', 0);
+                                }
+                              }}
+                              className="w-12 px-1 py-1 text-sm border-2 border-gray-300 rounded text-center focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="0"
                             />
                           ) : (
                             <span className="text-sm font-semibold text-red-600">{player.goals_conceded || 0}</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           <span className={`text-sm font-bold ${
                             player.goal_difference > 0 ? 'text-green-600' : 
                             player.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
@@ -513,26 +664,157 @@ export default function PlayerStatsPage() {
                             {player.goal_difference > 0 ? '+' : ''}{player.goal_difference || 0}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           <span className="text-sm text-gray-600 font-medium">
                             <span className="text-green-600 font-bold">{getPlayerValue(player, 'wins')}</span>-
                             <span className="text-gray-500">{getPlayerValue(player, 'draws')}</span>-
                             <span className="text-red-600 font-bold">{getPlayerValue(player, 'losses')}</span>
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           {editMode ? (
                             <input
                               type="number"
                               value={getPlayerValue(player, 'clean_sheets')}
-                              onChange={(e) => updatePlayerValue(player.id, 'clean_sheets', parseInt(e.target.value) || 0)}
-                              className="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              onChange={(e) => updatePlayerValue(player.id, 'clean_sheets', e.target.value === '' ? '' : parseInt(e.target.value))}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (isNaN(val)) {
+                                  updatePlayerValue(player.id, 'clean_sheets', 0);
+                                }
+                              }}
+                              className="w-12 px-1 py-1 text-sm border-2 border-gray-300 rounded text-center focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="0"
                             />
                           ) : (
                             <span className="text-sm font-semibold text-gray-700">{player.clean_sheets || 0}</span>
                           )}
                         </td>
                       </tr>
+                      {expandedPlayer === player.id && matchdayStats.has(player.id) && (
+                        <tr key={`${player.id}-matchday`} className="bg-gradient-to-r from-blue-50 to-purple-50">
+                          <td colSpan={12} className="px-6 py-6">
+                            <div className="bg-white rounded-xl shadow-lg p-6">
+                              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                                Matchday Breakdown - {player.player_name}
+                              </h3>
+                              <p className="text-sm text-gray-600 mb-4">
+                                Points are based on goal difference in each matchup (max +5 or -5 per match)
+                              </p>
+                              
+                              {matchdayStats.get(player.id)!.length === 0 ? (
+                                <div className="text-center py-8 text-gray-500">
+                                  <svg className="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  <p className="font-medium">No completed matches yet</p>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                      <thead className="bg-gray-100">
+                                        <tr>
+                                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Matchday</th>
+                                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Matchup</th>
+                                          <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Score</th>
+                                          <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">GD</th>
+                                          <th className="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase">Points</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-200">
+                                        {matchdayStats.get(player.id)!.map((match, idx) => (
+                                          <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-4 py-3">
+                                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                                Round {match.matchday}
+                                              </span>
+                                              {match.was_substitute && (
+                                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700" title="Substitute">
+                                                  SUB
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                              <div className="text-sm">
+                                                {match.player_side === 'home' ? (
+                                                  <>
+                                                    <span className="font-bold text-blue-600">{match.home_player_name}</span>
+                                                    <span className="text-gray-500 mx-2">vs</span>
+                                                    <span className="text-gray-700">{match.away_player_name}</span>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <span className="text-gray-700">{match.home_player_name}</span>
+                                                    <span className="text-gray-500 mx-2">vs</span>
+                                                    <span className="font-bold text-blue-600">{match.away_player_name}</span>
+                                                  </>
+                                                )}
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                  {match.home_team_name} vs {match.away_team_name}
+                                                </div>
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                              <span className="text-sm font-bold">
+                                                {match.goals_scored} - {match.goals_conceded}
+                                              </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                                                match.goal_difference > 0 
+                                                  ? 'bg-green-100 text-green-700' 
+                                                  : match.goal_difference < 0
+                                                  ? 'bg-red-100 text-red-700'
+                                                  : 'bg-gray-100 text-gray-600'
+                                              }`}>
+                                                {match.goal_difference > 0 ? '+' : ''}{match.goal_difference}
+                                              </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${
+                                                match.points > 0 
+                                                  ? 'bg-green-100 text-green-700' 
+                                                  : match.points < 0
+                                                  ? 'bg-red-100 text-red-700'
+                                                  : 'bg-gray-100 text-gray-600'
+                                              }`}>
+                                                {match.points > 0 ? '+' : ''}{match.points}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                      <tfoot className="bg-gradient-to-r from-blue-100 to-purple-100">
+                                        <tr>
+                                          <td colSpan={4} className="px-4 py-3 text-right font-bold text-gray-800">
+                                            Total Points:
+                                          </td>
+                                          <td className="px-4 py-3 text-center">
+                                            <span className={`inline-flex items-center px-4 py-2 rounded-full text-base font-bold ${
+                                              matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0) > 0
+                                                ? 'bg-green-200 text-green-800' 
+                                                : matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0) < 0
+                                                ? 'bg-red-200 text-red-800'
+                                                : 'bg-gray-200 text-gray-700'
+                                            }`}>
+                                              {matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0) > 0 ? '+' : ''}
+                                              {matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0)}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                       {editMode && hasEdits && predictions.starRatingChanged && (
                         <tr key={`${player.id}-preview`} className="bg-gradient-to-r from-purple-50 to-blue-50 border-l-4 border-purple-500">
                           <td colSpan={11} className="px-6 py-3">

@@ -33,8 +33,9 @@ const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
 /**
  * Log salary payment transaction (mimics logTransaction from transaction-logger)
  */
-async function logSalaryPayment(teamId, seasonId, salary, currentBalance, playerId, playerName, fixtureId, roundNumber) {
+async function logSalaryPayment(teamId, seasonId, salary, currentBalance, currentSpent, playerId, playerName, fixtureId, roundNumber) {
   const newBalance = currentBalance - salary;
+  const newSpent = currentSpent + salary;
   
   const transactionData = {
     team_id: teamId,
@@ -58,7 +59,7 @@ async function logSalaryPayment(teamId, seasonId, salary, currentBalance, player
   };
   
   await db.collection('transactions').add(transactionData);
-  return newBalance;
+  return { newBalance, newSpent };
 }
 
 async function createSalaryTransactions() {
