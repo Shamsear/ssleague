@@ -8,10 +8,10 @@ import { sendNotificationToSeason } from '@/lib/notifications/send-notification'
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { windowId: string } }
+  { params }: { params: Promise<{ windowId: string }> }
 ) {
   try {
-    const { windowId } = params;
+    const { windowId } = await params;
 
     // Get current window
     const windows = await fantasySql`

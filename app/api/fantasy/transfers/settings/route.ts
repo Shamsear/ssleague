@@ -78,6 +78,8 @@ export async function POST(request: NextRequest) {
       is_transfer_window_open,
     } = body;
 
+    console.log('📝 Updating transfer settings:', body);
+
     if (!window_id) {
       return NextResponse.json(
         { error: 'Missing required field: window_id' },
@@ -114,50 +116,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build update query dynamically based on provided fields
-    const updates: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Get current values first
+    const current = await fantasySql`
+      SELECT 
+        max_transfers_per_window,
+        points_cost_per_transfer,
+        transfer_window_start,
+        transfer_window_end,
+        is_active
+      FROM transfer_windows
+      WHERE window_id = ${window_id}
+      LIMIT 1
+    `;
 
-    if (max_transfers_per_window !== undefined) {
-      updates.push(`max_transfers_per_window = $${paramIndex++}`);
-      values.push(max_transfers_per_window);
-    }
+    const currentValues = current[0];
 
-    if (points_cost_per_transfer !== undefined) {
-      updates.push(`points_cost_per_transfer = $${paramIndex++}`);
-      values.push(points_cost_per_transfer);
-    }
+    // Use provided values or keep current ones
+    const newMaxTransfers = max_transfers_per_window !== undefined ? max_transfers_per_window : currentValues.max_transfers_per_window;
+    const newPointsCost = points_cost_per_transfer !== undefined ? points_cost_per_transfer : currentValues.points_cost_per_transfer;
+    const newWindowStart = transfer_window_start !== undefined ? (transfer_window_start || null) : currentValues.transfer_window_start;
+    const newWindowEnd = transfer_window_end !== undefined ? (transfer_window_end || null) : currentValues.transfer_window_end;
+    const newIsActive = is_transfer_window_open !== undefined ? is_transfer_window_open : currentValues.is_active;
 
-    if (transfer_window_start !== undefined) {
-      updates.push(`transfer_window_start = $${paramIndex++}`);
-      values.push(transfer_window_start || null);
-    }
-
-    if (transfer_window_end !== undefined) {
-      updates.push(`transfer_window_end = $${paramIndex++}`);
-      values.push(transfer_window_end || null);
-    }
-
-    if (is_transfer_window_open !== undefined) {
-      updates.push(`is_active = $${paramIndex++}`);
-      values.push(is_transfer_window_open);
-    }
-
-    if (updates.length === 0) {
-      return NextResponse.json(
-        { error: 'No fields to update' },
-        { status: 400 }
-      );
-    }
-
-    values.push(window_id);
-
-    await fantasySql.unsafe(`
+    // Update the window
+    await fantasySql`
       UPDATE transfer_windows
-      SET ${updates.join(', ')}
-      WHERE window_id = $${paramIndex}
-    `, values);
+      SET 
+        max_transfers_per_window = ${newMaxTransfers},
+        points_cost_per_transfer = ${newPointsCost},
+        transfer_window_start = ${newWindowStart},
+        transfer_window_end = ${newWindowEnd},
+        is_active = ${newIsActive}
+      WHERE window_id = ${window_id}
+    `;
+
+    console.log('✅ Transfer window updated successfully');
 
     // Fetch updated window
     const updatedWindows = await fantasySql`
@@ -185,7 +178,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error saving transfer settings:', error);
+    console.error('❌ Error saving transfer settings:', error);
     return NextResponse.json(
       { error: 'Failed to save transfer settings', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

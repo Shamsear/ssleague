@@ -75,6 +75,7 @@ export default function TransfersManagementPage() {
   }, [selectedWindowId]);
 
   const loadWindows = async () => {
+    setIsLoadingWindows(true);
     try {
       const response = await fetchWithTokenRefresh(`/api/fantasy/transfer-windows?league_id=${leagueId}`);
       if (!response.ok) throw new Error('Failed to load windows');
@@ -86,6 +87,7 @@ export default function TransfersManagementPage() {
       // Auto-select first window if available
       if (windowsList.length > 0 && !selectedWindowId) {
         setSelectedWindowId(windowsList[0].window_id);
+        // Settings will be loaded by the useEffect watching selectedWindowId
       } else if (windowsList.length === 0) {
         // No windows available, stop loading settings
         setIsLoadingSettings(false);
@@ -160,8 +162,33 @@ export default function TransfersManagementPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.settings) {
-          setSettings(data.settings);
+          // Format dates for datetime-local input (YYYY-MM-DDTHH:mm)
+          const formatDateForInput = (dateStr: string | null) => {
+            if (!dateStr) return '';
+            try {
+              const date = new Date(dateStr);
+              // Format as YYYY-MM-DDTHH:mm for datetime-local input
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              return `${year}-${month}-${day}T${hours}:${minutes}`;
+            } catch {
+              return '';
+            }
+          };
+
+          setSettings({
+            max_transfers_per_window: data.settings.max_transfers_per_window || 3,
+            transfer_window_start: formatDateForInput(data.settings.transfer_window_start),
+            transfer_window_end: formatDateForInput(data.settings.transfer_window_end),
+            is_transfer_window_open: data.settings.is_transfer_window_open || false,
+            points_cost_per_transfer: data.settings.points_cost_per_transfer || 4,
+          });
         }
+      } else {
+        console.error('Failed to fetch settings:', await res.text());
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error);
@@ -232,7 +259,7 @@ export default function TransfersManagementPage() {
     }
   };
 
-  if (loading || isLoadingWindows || isLoadingSettings) {
+  if (loading || isLoadingWindows) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -437,6 +464,11 @@ export default function TransfersManagementPage() {
                   <p className="text-lg font-medium">Please select a transfer window above</p>
                   <p className="text-sm">Settings are configured per transfer window</p>
                 </div>
+              ) : isLoadingSettings ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading settings...</p>
+                </div>
               ) : (
                 <>
               {/* Transfer Window Status */}
@@ -472,6 +504,9 @@ export default function TransfersManagementPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Maximum Transfers Per Window
+                      <span className="ml-2 text-xs text-green-600 font-semibold">
+                        (Current: {settings.max_transfers_per_window})
+                      </span>
                     </label>
                     <input
                       type="number"
@@ -494,6 +529,9 @@ export default function TransfersManagementPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Points Cost Per Transfer
+                      <span className="ml-2 text-xs text-green-600 font-semibold">
+                        (Current: {settings.points_cost_per_transfer})
+                      </span>
                     </label>
                     <input
                       type="number"
@@ -516,7 +554,7 @@ export default function TransfersManagementPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <Calendar className="w-4 h-4 inline mr-2" />
-                      Default Window Start Date
+                      Custom Window Start Date (Optional)
                     </label>
                     <input
                       type="datetime-local"
@@ -526,6 +564,29 @@ export default function TransfersManagementPage() {
                       }
                       className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                     />
+                    <p className="text-sm text-gray-500 mt-1">
+                      Leave empty to use the window's "Opens At" date
+                    </p>
+                  </div>
+
+                  {/* Window End Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Calendar className="w-4 h-4 inline mr-2" />
+                      Custom Window End Date (Optional)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={settings.transfer_window_end}
+                      onChange={e =>
+                        setSettings({ ...settings, transfer_window_end: e.target.value })
+                      }
+                      className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    />
+                    <p className="text-sm text-gray-500 mt-1">
+                      Leave empty to use the window's "Closes At" date
+                    </p>
+                  </div>
                   </div>
 
                   {/* Window End Date */}
@@ -577,8 +638,7 @@ export default function TransfersManagementPage() {
                     )}
                   </button>
                 </div>
-              </div>
-                </>
+              </>
               )}
             </div>
           )}
