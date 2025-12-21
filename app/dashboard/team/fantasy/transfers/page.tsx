@@ -55,6 +55,7 @@ interface TeamInfo {
   squad_size: number;
   min_squad_size: number;
   max_squad_size: number;
+  total_points: number;
 }
 
 export default function TeamTransfersPage() {
@@ -152,6 +153,7 @@ export default function TeamTransfersPage() {
           squad_size: squad.length,
           min_squad_size: minSquadSize,
           max_squad_size: maxSquadSize,
+          total_points: Number(teamDetails.total_points || 0),
         });
       }
 
@@ -402,7 +404,12 @@ export default function TeamTransfersPage() {
           </div>
 
           {/* Stats Bar */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-indigo-500">
+              <p className="text-sm text-gray-600 mb-1">Total Points</p>
+              <p className="text-2xl font-bold text-indigo-600">{teamInfo.total_points}</p>
+            </div>
+
             <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-green-500">
               <p className="text-sm text-gray-600 mb-1">Budget</p>
               <p className="text-2xl font-bold text-green-600">€{teamInfo.budget_remaining}M</p>
@@ -466,30 +473,57 @@ export default function TeamTransfersPage() {
               </div>
             </div>
 
-            {/* Budget Calculation */}
-            <div className="bg-white rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600">Current Budget:</span>
-                <span className="font-semibold">€{teamInfo.budget_remaining}M</span>
+            {/* Budget & Points Calculation */}
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              {/* Budget Section */}
+              <div>
+                <h4 className="font-bold text-gray-900 mb-3">Budget Impact</h4>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-600">Current Budget:</span>
+                  <span className="font-semibold">€{teamInfo.budget_remaining}M</span>
+                </div>
+                {selectedOut && (
+                  <div className="flex items-center justify-between mb-2 text-green-600">
+                    <span>+ Release {selectedOut.player_name}:</span>
+                    <span className="font-semibold">+€{selectedOut.purchase_price}M</span>
+                  </div>
+                )}
+                {selectedIn && (
+                  <div className="flex items-center justify-between mb-2 text-red-600">
+                    <span>- Sign {selectedIn.player_name}:</span>
+                    <span className="font-semibold">-€{selectedIn.current_price || selectedIn.draft_price}M</span>
+                  </div>
+                )}
+                <div className="border-t-2 border-gray-200 pt-2 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-900">New Budget:</span>
+                    <span className={`text-2xl font-bold ${newBudget >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      €{newBudget}M
+                    </span>
+                  </div>
+                </div>
               </div>
-              {selectedOut && (
-                <div className="flex items-center justify-between mb-2 text-green-600">
-                  <span>+ Release {selectedOut.player_name}:</span>
-                  <span className="font-semibold">+€{selectedOut.purchase_price}M</span>
+
+              {/* Points Section */}
+              <div className="border-t-2 border-gray-200 pt-4">
+                <h4 className="font-bold text-gray-900 mb-3">Points Impact</h4>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-600">Current Total Points:</span>
+                  <span className="font-semibold text-indigo-600">{teamInfo.total_points}</span>
                 </div>
-              )}
-              {selectedIn && (
-                <div className="flex items-center justify-between mb-2 text-red-600">
-                  <span>- Sign {selectedIn.player_name}:</span>
-                  <span className="font-semibold">-€{selectedIn.current_price || selectedIn.draft_price}M</span>
-                </div>
-              )}
-              <div className="border-t-2 border-gray-200 pt-2 mt-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-gray-900">New Budget:</span>
-                  <span className={`text-2xl font-bold ${newBudget >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    €{newBudget}M
-                  </span>
+                {window.points_cost_per_transfer > 0 && (
+                  <div className="flex items-center justify-between mb-2 text-red-600">
+                    <span>- Transfer Cost:</span>
+                    <span className="font-semibold">-{window.points_cost_per_transfer} pts</span>
+                  </div>
+                )}
+                <div className="border-t-2 border-gray-200 pt-2 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-900">New Total Points:</span>
+                    <span className="text-2xl font-bold text-indigo-600">
+                      {teamInfo.total_points - (window.points_cost_per_transfer || 0)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
