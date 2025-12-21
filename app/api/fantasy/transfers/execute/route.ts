@@ -147,13 +147,12 @@ export async function POST(request: NextRequest) {
         SELECT * FROM fantasy_players
         WHERE league_id = ${leagueId}
           AND real_player_id = ${player_in_id}
-          AND is_available = true
         LIMIT 1
       `;
 
       if (playersIn.length === 0) {
         return NextResponse.json(
-          { error: 'Player not available or already drafted' },
+          { error: 'Player not found in this league' },
           { status: 404 }
         );
       }
@@ -161,17 +160,38 @@ export async function POST(request: NextRequest) {
       playerIn = playersIn[0];
       playerCost = Number(playerIn.current_price || playerIn.draft_price);
 
-      // Check if player is already in squad
-      const existingPlayer = await fantasySql`
+      // Check if player is already in YOUR squad
+      const existingInMySquad = await fantasySql`
         SELECT * FROM fantasy_squad
         WHERE team_id = ${teamId}
           AND real_player_id = ${player_in_id}
         LIMIT 1
       `;
 
-      if (existingPlayer.length > 0) {
+      if (existingInMySquad.length > 0) {
         return NextResponse.json(
           { error: 'Player already in your squad' },
+          { status: 400 }
+        );
+      }
+
+      // Check if player is in another team's squad
+      const existingInOtherSquad = await fantasySql`
+        SELECT fs.*, ft.team_name
+        FROM fantasy_squad fs
+        JOIN fantasy_teams ft ON fs.team_id = ft.team_id
+        WHERE fs.real_player_id = ${player_in_id}
+          AND fs.team_id != ${teamId}
+          AND fs.league_id = ${leagueId}
+        LIMIT 1
+      `;
+
+      if (existingInOtherSquad.length > 0) {
+        return NextResponse.json(
+          { 
+            error: 'Player already owned by another team',
+            details: `${playerIn.player_name} is currently in ${existingInOtherSquad[0].team_name}'s squad`
+          },
           { status: 400 }
         );
       }
