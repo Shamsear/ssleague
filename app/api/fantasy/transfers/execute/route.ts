@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
     let playerCost = 0;
 
     if (player_in_id) {
+      // First, try to get from fantasy_players
       const playersIn = await fantasySql`
         SELECT * FROM fantasy_players
         WHERE league_id = ${leagueId}
@@ -151,14 +152,78 @@ export async function POST(request: NextRequest) {
       `;
 
       if (playersIn.length === 0) {
-        return NextResponse.json(
-          { error: 'Player not found in this league' },
-          { status: 404 }
-        );
+        // Player not in fantasy_players, fetch from player_seasons and add them
+        console.log(`Player ${player_in_id} not in fantasy_players, fetching from player_seasons...`);
+        
+        const playerSeasons = await fantasySql`
+          SELECT * FROM player_seasons
+          WHERE player_id = ${player_in_id}
+          LIMIT 1
+        `;
+
+        if (playerSeasons.length === 0) {
+          return NextResponse.json(
+            { error: 'Player not found in player_seasons table' },
+            { status: 404 }
+          );
+        }
+
+        const playerData = playerSeasons[0];
+        
+        // Get star pricing from league
+        const starPricing: Record<number, number> = {};
+        if (league.star_rating_prices) {
+          league.star_rating_prices.forEach((p: any) => {
+            starPricing[p.stars] = p.price;
+          });
+        } else {
+          // Default pricing if not set
+          starPricing[3] = 5;
+          starPricing[4] = 7;
+          starPricing[5] = 10;
+        }
+
+        // Calculate price based on star rating
+        const starRating = Number(playerData.star_rating || 3);
+        const calculatedPrice = starPricing[starRating] || 5;
+        
+        // Add player to fantasy_players
+        await fantasySql`
+          INSERT INTO fantasy_players (
+            league_id, real_player_id, player_name, position,
+            real_team_id, real_team_name, draft_price, current_price,
+            star_rating, is_available
+          ) VALUES (
+            ${leagueId}, ${player_in_id}, ${playerData.player_name}, ${playerData.position},
+            ${playerData.team_id}, ${playerData.team_name}, ${calculatedPrice}, ${calculatedPrice},
+            ${starRating}, true
+          )
+        `;
+
+        console.log(`✅ Added ${playerData.player_name} to fantasy_players with price €${calculatedPrice}M (${starRating}⭐)`);
+
+        // Now fetch the newly added player
+        const newPlayer = await fantasySql`
+          SELECT * FROM fantasy_players
+          WHERE league_id = ${leagueId}
+            AND real_player_id = ${player_in_id}
+          LIMIT 1
+        `;
+
+        playerIn = newPlayer[0];
+      } else {
+        playerIn = playersIn[0];
       }
 
-      playerIn = playersIn[0];
       playerCost = Number(playerIn.current_price || playerIn.draft_price);
+
+      // Validate player has required fields
+      if (!playerIn.player_name) {
+        return NextResponse.json(
+          { error: `Player data incomplete - missing player name for ID: ${player_in_id}` },
+          { status: 400 }
+        );
+      }
 
       // Check if player is already in YOUR squad
       const existingInMySquad = await fantasySql`
@@ -247,6 +312,11 @@ export async function POST(request: NextRequest) {
 
     // Add new player (if specified)
     if (player_in_id && playerIn) {
+      // Ensure we have required fields with fallbacks
+      const playerName = playerIn.player_name || 'Unknown Player';
+      const position = playerIn.position || 'Unknown';
+      const teamName = playerIn.real_team_name || 'Unknown Team';
+
       await fantasySql`
         INSERT INTO fantasy_squad (
           squad_id, team_id, league_id, real_player_id,
@@ -255,13 +325,13 @@ export async function POST(request: NextRequest) {
           is_captain, is_vice_captain
         ) VALUES (
           ${newSquadId}, ${teamId}, ${leagueId}, ${player_in_id},
-          ${playerIn.player_name}, ${playerIn.position}, ${playerIn.real_team_name},
+          ${playerName}, ${position}, ${teamName},
           ${playerCost}, ${playerCost}, 'transfer',
           false, false
         )
       `;
 
-      console.log(`✅ Signed: ${playerIn.player_name} (-€${playerCost})`);
+      console.log(`✅ Signed: ${playerName} (-€${playerCost})`);
     }
 
     // Update team budget
