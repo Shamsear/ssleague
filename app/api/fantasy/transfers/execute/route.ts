@@ -156,8 +156,12 @@ export async function POST(request: NextRequest) {
         console.log(`Player ${player_in_id} not in fantasy_players, fetching from player_seasons...`);
         
         const playerSeasons = await fantasySql`
-          SELECT * FROM player_seasons
-          WHERE player_id = ${player_in_id}
+          SELECT 
+            ps.*,
+            t.team_name as real_team_name
+          FROM player_seasons ps
+          LEFT JOIN teams t ON ps.team_id = t.id
+          WHERE ps.player_id = ${player_in_id}
           LIMIT 1
         `;
 
@@ -170,8 +174,19 @@ export async function POST(request: NextRequest) {
 
         const playerData = playerSeasons[0];
         
+        console.log('Player data from player_seasons:', {
+          player_id: playerData.player_id,
+          player_name: playerData.player_name,
+          name: playerData.name,
+          position: playerData.position,
+          team_id: playerData.team_id,
+          real_team_name: playerData.real_team_name,
+          star_rating: playerData.star_rating
+        });
+        
         // Validate player data from player_seasons
-        if (!playerData.player_name) {
+        const playerName = playerData.player_name || playerData.name;
+        if (!playerName) {
           return NextResponse.json(
             { error: `Player data incomplete in player_seasons - missing player name for ID: ${player_in_id}` },
             { status: 400 }
@@ -195,6 +210,11 @@ export async function POST(request: NextRequest) {
         const starRating = Number(playerData.star_rating || 3);
         const calculatedPrice = starPricing[starRating] || 5;
         
+        // Use player_name or name field
+        const finalPlayerName = playerData.player_name || playerData.name || 'Unknown';
+        const finalPosition = playerData.position || 'Unknown';
+        const finalTeamName = playerData.real_team_name || 'Unknown';
+        
         // Add player to fantasy_players
         await fantasySql`
           INSERT INTO fantasy_players (
@@ -202,13 +222,13 @@ export async function POST(request: NextRequest) {
             real_team_id, real_team_name, draft_price, current_price,
             star_rating, is_available
           ) VALUES (
-            ${leagueId}, ${player_in_id}, ${playerData.player_name}, ${playerData.position},
-            ${playerData.team_id}, ${playerData.team_name}, ${calculatedPrice}, ${calculatedPrice},
+            ${leagueId}, ${player_in_id}, ${finalPlayerName}, ${finalPosition},
+            ${playerData.team_id}, ${finalTeamName}, ${calculatedPrice}, ${calculatedPrice},
             ${starRating}, true
           )
         `;
 
-        console.log(`✅ Added ${playerData.player_name} to fantasy_players with price €${calculatedPrice}M (${starRating}⭐)`);
+        console.log(`✅ Added ${finalPlayerName} (${finalTeamName}) to fantasy_players with price €${calculatedPrice}M (${starRating}⭐)`);
 
         // Now fetch the newly added player
         const newPlayer = await fantasySql`
