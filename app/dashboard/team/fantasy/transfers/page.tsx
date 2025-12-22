@@ -65,7 +65,7 @@ export default function TeamTransfersPage() {
   const [mySquad, setMySquad] = useState<Player[]>([]);
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
-  const [window, setWindow] = useState<TransferWindow | null>(null);
+  const [transferWindow, setTransferWindow] = useState<TransferWindow | null>(null);
   const [transfersUsed, setTransfersUsed] = useState(0);
   
   const [selectedOut, setSelectedOut] = useState<Player | null>(null);
@@ -164,7 +164,7 @@ export default function TeamTransfersPage() {
         const activeWindow = (windowData.windows || []).find((w: TransferWindow) => w.is_active);
         
         if (activeWindow) {
-          setWindow(activeWindow);
+          setTransferWindow(activeWindow);
 
           // Get transfers used in this window
           const transfersRes = await fetchWithTokenRefresh(`/api/fantasy/transfers/history?team_id=${team.id}&window_id=${activeWindow.window_id}`);
@@ -198,7 +198,7 @@ export default function TeamTransfersPage() {
       return;
     }
 
-    if (!window) {
+    if (!transferWindow) {
       alert('No active transfer window');
       return;
     }
@@ -219,7 +219,10 @@ export default function TeamTransfersPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.error || 'Transfer failed');
+        const errorMsg = data.error || 'Transfer failed';
+        const details = data.details ? `\n\nDetails: ${data.details}` : '';
+        const message = data.message ? `\n${data.message}` : '';
+        alert(`❌ ${errorMsg}${message}${details}`);
         return;
       }
 
@@ -245,7 +248,7 @@ export default function TeamTransfersPage() {
 
     } catch (error) {
       console.error('Transfer error:', error);
-      alert('Failed to execute transfer');
+      alert(`Failed to execute transfer: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsTransferring(false);
     }
@@ -268,13 +271,13 @@ export default function TeamTransfersPage() {
   };
 
   const canExecuteTransfer = () => {
-    if (!window || !window.is_active) return false;
+    if (!transferWindow || !transferWindow.is_active) return false;
     if (!teamInfo) return false;
     
     // Must have at least one action (release or sign)
     if (!selectedOut && !selectedIn) return false;
     
-    const transfersRemaining = window.max_transfers_per_window - transfersUsed;
+    const transfersRemaining = transferWindow.max_transfers_per_window - transfersUsed;
     if (transfersRemaining <= 0) return false;
     
     // Release-only transfer
@@ -343,7 +346,7 @@ export default function TeamTransfersPage() {
     );
   }
 
-  if (!window || !window.is_active) {
+  if (!transferWindow || !transferWindow.is_active) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
         <div className="max-w-4xl mx-auto">
@@ -376,7 +379,7 @@ export default function TeamTransfersPage() {
   }
 
   const newBudget = calculateNewBudget();
-  const transfersRemaining = window.max_transfers_per_window - transfersUsed;
+  const transfersRemaining = transferWindow.max_transfers_per_window - transfersUsed;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
@@ -399,7 +402,7 @@ export default function TeamTransfersPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Player Transfers</h1>
-              <p className="text-gray-600">{window.window_name}</p>
+              <p className="text-gray-600">{transferWindow.window_name}</p>
             </div>
           </div>
 
@@ -430,7 +433,7 @@ export default function TeamTransfersPage() {
 
             <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-orange-500">
               <p className="text-sm text-gray-600 mb-1">Points Cost</p>
-              <p className="text-2xl font-bold text-orange-600">{window.points_cost_per_transfer} pts</p>
+              <p className="text-2xl font-bold text-orange-600">{transferWindow.points_cost_per_transfer} pts</p>
             </div>
           </div>
         </div>
@@ -515,17 +518,17 @@ export default function TeamTransfersPage() {
                   <span className="text-gray-600">Current Total Points:</span>
                   <span className="font-semibold text-indigo-600">{teamInfo.total_points}</span>
                 </div>
-                {window.points_cost_per_transfer > 0 && (
+                {transferWindow.points_cost_per_transfer > 0 && (
                   <div className="flex items-center justify-between mb-2 text-red-600">
                     <span>- Transfer Cost:</span>
-                    <span className="font-semibold">-{window.points_cost_per_transfer} pts</span>
+                    <span className="font-semibold">-{transferWindow.points_cost_per_transfer} pts</span>
                   </div>
                 )}
                 <div className="border-t-2 border-gray-200 pt-2 mt-2">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-gray-900">New Total Points:</span>
                     <span className="text-2xl font-bold text-indigo-600">
-                      {teamInfo.total_points - (window.points_cost_per_transfer || 0)}
+                      {teamInfo.total_points - (transferWindow.points_cost_per_transfer || 0)}
                     </span>
                   </div>
                 </div>
