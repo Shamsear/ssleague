@@ -156,12 +156,8 @@ export async function POST(request: NextRequest) {
         console.log(`Player ${player_in_id} not in fantasy_players, fetching from player_seasons...`);
         
         const playerSeasons = await fantasySql`
-          SELECT 
-            ps.*,
-            t.team_name as real_team_name
-          FROM player_seasons ps
-          LEFT JOIN teams t ON ps.team_id = t.id
-          WHERE ps.player_id = ${player_in_id}
+          SELECT * FROM player_seasons
+          WHERE player_id = ${player_in_id}
           LIMIT 1
         `;
 
@@ -177,16 +173,14 @@ export async function POST(request: NextRequest) {
         console.log('Player data from player_seasons:', {
           player_id: playerData.player_id,
           player_name: playerData.player_name,
-          name: playerData.name,
           position: playerData.position,
           team_id: playerData.team_id,
-          real_team_name: playerData.real_team_name,
+          team: playerData.team,
           star_rating: playerData.star_rating
         });
         
         // Validate player data from player_seasons
-        const playerName = playerData.player_name || playerData.name;
-        if (!playerName) {
+        if (!playerData.player_name) {
           return NextResponse.json(
             { error: `Player data incomplete in player_seasons - missing player name for ID: ${player_in_id}` },
             { status: 400 }
@@ -210,10 +204,10 @@ export async function POST(request: NextRequest) {
         const starRating = Number(playerData.star_rating || 3);
         const calculatedPrice = starPricing[starRating] || 5;
         
-        // Use player_name or name field
-        const finalPlayerName = playerData.player_name || playerData.name || 'Unknown';
+        // Get data from player_seasons columns
+        const finalPlayerName = playerData.player_name;
         const finalPosition = playerData.position || 'Unknown';
-        const finalTeamName = playerData.real_team_name || 'Unknown';
+        const finalTeamName = playerData.team || 'Unknown';
         
         // Add player to fantasy_players
         await fantasySql`
