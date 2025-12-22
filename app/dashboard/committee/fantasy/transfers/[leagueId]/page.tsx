@@ -681,7 +681,7 @@ export default function TransfersManagementPage() {
                   </button>
                 </div>
               </>
-              )}
+            )}
             </div>
           ) : activeTab === 'history' ? (
             <div className="space-y-6">
