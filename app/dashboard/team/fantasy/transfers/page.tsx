@@ -77,7 +77,12 @@ export default function TeamTransfersPage() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [isUpdatingCaptain, setIsUpdatingCaptain] = useState(false);
   const [leagueId, setLeagueId] = useState<string>('');
+  
+  const [captainId, setCaptainId] = useState<string | null>(null);
+  const [viceCaptainId, setViceCaptainId] = useState<string | null>(null);
+  const [showCaptainModal, setShowCaptainModal] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -124,6 +129,12 @@ export default function TeamTransfersPage() {
       }
       
       setMySquad(squad);
+
+      // Set current captain and vice-captain
+      const captain = squad.find((p: Player) => p.is_captain);
+      const viceCaptain = squad.find((p: Player) => p.is_vice_captain);
+      if (captain) setCaptainId(captain.real_player_id);
+      if (viceCaptain) setViceCaptainId(viceCaptain.real_player_id);
 
       // Get team info with budget
       const teamInfoRes = await fetchWithTokenRefresh(`/api/fantasy/teams/${team.id}`);
@@ -251,6 +262,41 @@ export default function TeamTransfersPage() {
       alert(`Failed to execute transfer: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsTransferring(false);
+    }
+  };
+
+  const updateCaptains = async () => {
+    if (!user) return;
+
+    setIsUpdatingCaptain(true);
+
+    try {
+      const response = await fetchWithTokenRefresh('/api/fantasy/squad/set-captain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.uid,
+          captain_player_id: captainId,
+          vice_captain_player_id: viceCaptainId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(`❌ ${data.error || 'Failed to update captains'}`);
+        return;
+      }
+
+      alert('✅ Captain and Vice-Captain updated successfully!');
+      setShowCaptainModal(false);
+      loadTransferData();
+
+    } catch (error) {
+      console.error('Captain update error:', error);
+      alert(`Failed to update captains: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsUpdatingCaptain(false);
     }
   };
 
@@ -437,6 +483,161 @@ export default function TeamTransfersPage() {
             </div>
           </div>
         </div>
+
+        {/* Captain Selection Button */}
+        <div className="mb-6">
+          <button
+            onClick={() => setShowCaptainModal(true)}
+            className="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
+          >
+            <Star className="w-5 h-5" />
+            Change Captain & Vice-Captain
+          </button>
+        </div>
+
+        {/* Captain Selection Modal */}
+        {showCaptainModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-6 rounded-t-2xl">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Star className="w-6 h-6" />
+                    Select Captain & Vice-Captain
+                  </h2>
+                  <button
+                    onClick={() => setShowCaptainModal(false)}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                <p className="text-white/90 mt-2 text-sm">
+                  Captain earns 2x points • Vice-Captain earns 1.5x points
+                </p>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Captain Selection */}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="px-3 py-1 bg-yellow-400 text-yellow-900 rounded-full text-sm font-bold">C</span>
+                    Captain (2x Points)
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {mySquad.map((player) => (
+                      <button
+                        key={`captain-${player.real_player_id}`}
+                        onClick={() => setCaptainId(player.real_player_id)}
+                        disabled={viceCaptainId === player.real_player_id}
+                        className={`w-full text-left p-4 rounded-xl transition-all ${
+                          captainId === player.real_player_id
+                            ? 'bg-gradient-to-r from-yellow-400 to-orange-400 text-gray-900 shadow-lg'
+                            : viceCaptainId === player.real_player_id
+                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-bold">{player.player_name}</p>
+                            <p className="text-sm opacity-80">
+                              {player.position} • {player.real_team_name}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold">{player.total_points || 0} pts</p>
+                            {captainId === player.real_player_id && (
+                              <Check className="w-5 h-5 ml-auto" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Vice-Captain Selection */}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="px-3 py-1 bg-blue-400 text-blue-900 rounded-full text-sm font-bold">VC</span>
+                    Vice-Captain (1.5x Points)
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {mySquad.map((player) => (
+                      <button
+                        key={`vc-${player.real_player_id}`}
+                        onClick={() => setViceCaptainId(player.real_player_id)}
+                        disabled={captainId === player.real_player_id}
+                        className={`w-full text-left p-4 rounded-xl transition-all ${
+                          viceCaptainId === player.real_player_id
+                            ? 'bg-gradient-to-r from-blue-400 to-indigo-400 text-white shadow-lg'
+                            : captainId === player.real_player_id
+                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className={`font-bold ${viceCaptainId === player.real_player_id ? 'text-white' : 'text-gray-900'}`}>
+                              {player.player_name}
+                            </p>
+                            <p className={`text-sm ${viceCaptainId === player.real_player_id ? 'text-white/90' : 'text-gray-600'}`}>
+                              {player.position} • {player.real_team_name}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className={`font-bold ${viceCaptainId === player.real_player_id ? 'text-white' : 'text-gray-900'}`}>
+                              {player.total_points || 0} pts
+                            </p>
+                            {viceCaptainId === player.real_player_id && (
+                              <Check className="w-5 h-5 ml-auto" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <button
+                    onClick={() => setShowCaptainModal(false)}
+                    className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={updateCaptains}
+                    disabled={isUpdatingCaptain || !captainId || !viceCaptainId || captainId === viceCaptainId}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  >
+                    {isUpdatingCaptain ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-5 h-5" />
+                        Confirm
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {captainId === viceCaptainId && captainId && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-800">
+                      ❌ Captain and Vice-Captain must be different players
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Transfer Summary */}
         {(selectedOut || selectedIn) && (

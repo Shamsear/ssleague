@@ -299,7 +299,7 @@ export async function GET(request: NextRequest) {
       }
 
       case 'TOW': {
-        // Similar to TOD but for entire week
+        // Get teams from fixtures in this week, sorted by cumulative performance
         if (!weekNumber) {
           return NextResponse.json(
             { success: false, error: 'week_number required for TOW' },
@@ -310,38 +310,105 @@ export async function GET(request: NextRequest) {
         const startRound = (parseInt(weekNumber) - 1) * 7 + 1;
         const endRound = parseInt(weekNumber) * 7;
 
-        const todWinners = await sql`
+        console.log(`🔍 Searching for TOW candidates: week=${weekNumber}, rounds ${startRound}-${endRound}`);
+
+        const fixtures = await sql`
           SELECT 
-            a.team_id,
-            a.team_name,
-            a.round_number,
-            a.performance_stats
-          FROM awards a
-          WHERE a.tournament_id = ${tournamentId}
-            AND a.season_id = ${seasonId}
-            AND a.award_type = 'TOD'
-            AND a.round_number >= ${startRound}
-            AND a.round_number <= ${endRound}
-          ORDER BY a.round_number
+            f.home_team_id,
+            f.home_team_name,
+            f.home_score,
+            f.away_team_id,
+            f.away_team_name,
+            f.away_score,
+            f.round_number
+          FROM fixtures f
+          WHERE f.tournament_id = ${tournamentId}
+            AND f.round_number >= ${startRound}
+            AND f.round_number <= ${endRound}
+            AND f.status = 'completed'
         `;
 
-        const teamMap = new Map();
-        todWinners.forEach((award: any) => {
-          const teamId = award.team_id;
-          if (!teamMap.has(teamId)) {
-            teamMap.set(teamId, {
-              team_id: teamId,
-              team_name: award.team_name,
-              tod_count: 0,
-              rounds: [],
+        console.log(`📊 Found ${fixtures.length} completed fixtures in week ${weekNumber}`);
+
+        const teamPerformance = new Map();
+
+        fixtures.forEach((fixture: any) => {
+          // Home team
+          if (!teamPerformance.has(fixture.home_team_id)) {
+            teamPerformance.set(fixture.home_team_id, {
+              team_id: fixture.home_team_id,
+              team_name: fixture.home_team_name,
+              goals_for: 0,
+              goals_against: 0,
+              wins: 0,
+              draws: 0,
+              losses: 0,
+              matches_played: 0,
+              rounds_played: new Set(),
             });
           }
-          const team = teamMap.get(teamId);
-          team.tod_count++;
-          team.rounds.push(award.round_number);
+          const homeTeam = teamPerformance.get(fixture.home_team_id);
+          homeTeam.goals_for += fixture.home_score;
+          homeTeam.goals_against += fixture.away_score;
+          homeTeam.matches_played++;
+          homeTeam.rounds_played.add(fixture.round_number);
+          if (fixture.home_score > fixture.away_score) homeTeam.wins++;
+          else if (fixture.home_score === fixture.away_score) homeTeam.draws++;
+          else homeTeam.losses++;
+
+          // Away team
+          if (!teamPerformance.has(fixture.away_team_id)) {
+            teamPerformance.set(fixture.away_team_id, {
+              team_id: fixture.away_team_id,
+              team_name: fixture.away_team_name,
+              goals_for: 0,
+              goals_against: 0,
+              wins: 0,
+              draws: 0,
+              losses: 0,
+              matches_played: 0,
+              rounds_played: new Set(),
+            });
+          }
+          const awayTeam = teamPerformance.get(fixture.away_team_id);
+          awayTeam.goals_for += fixture.away_score;
+          awayTeam.goals_against += fixture.home_score;
+          awayTeam.matches_played++;
+          awayTeam.rounds_played.add(fixture.round_number);
+          if (fixture.away_score > fixture.home_score) awayTeam.wins++;
+          else if (fixture.away_score === fixture.home_score) awayTeam.draws++;
+          else awayTeam.losses++;
         });
 
-        candidates = Array.from(teamMap.values());
+        candidates = Array.from(teamPerformance.values()).map((team: any) => ({
+          team_id: team.team_id,
+          team_name: team.team_name,
+          performance_stats: {
+            matches_played: team.matches_played,
+            goals_for: team.goals_for,
+            goals_against: team.goals_against,
+            goal_difference: team.goals_for - team.goals_against,
+            wins: team.wins,
+            draws: team.draws,
+            losses: team.losses,
+            rounds_played: Array.from(team.rounds_played).sort(),
+            points: (team.wins * 3) + team.draws,
+            clean_sheets: team.goals_against === 0 ? 1 : 0,
+          },
+        }));
+
+        // Sort by points, then goal difference, then goals scored
+        candidates.sort((a: any, b: any) => {
+          if (b.performance_stats.points !== a.performance_stats.points) {
+            return b.performance_stats.points - a.performance_stats.points;
+          }
+          if (b.performance_stats.goal_difference !== a.performance_stats.goal_difference) {
+            return b.performance_stats.goal_difference - a.performance_stats.goal_difference;
+          }
+          return b.performance_stats.goals_for - a.performance_stats.goals_for;
+        });
+
+        console.log(`✅ Found ${candidates.length} TOW candidates`);
         break;
       }
 
