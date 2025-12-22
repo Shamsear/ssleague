@@ -170,6 +170,14 @@ export async function POST(request: NextRequest) {
 
         const playerData = playerSeasons[0];
         
+        // Validate player data from player_seasons
+        if (!playerData.player_name) {
+          return NextResponse.json(
+            { error: `Player data incomplete in player_seasons - missing player name for ID: ${player_in_id}` },
+            { status: 400 }
+          );
+        }
+        
         // Get star pricing from league
         const starPricing: Record<number, number> = {};
         if (league.star_rating_prices) {
@@ -216,14 +224,6 @@ export async function POST(request: NextRequest) {
       }
 
       playerCost = Number(playerIn.current_price || playerIn.draft_price);
-
-      // Validate player has required fields
-      if (!playerIn.player_name) {
-        return NextResponse.json(
-          { error: `Player data incomplete - missing player name for ID: ${player_in_id}` },
-          { status: 400 }
-        );
-      }
 
       // Check if player is already in YOUR squad
       const existingInMySquad = await fantasySql`
