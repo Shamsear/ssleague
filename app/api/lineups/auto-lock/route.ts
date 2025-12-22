@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
     let awayAutoSubmitted = false;
     const awayLineup = fixture.away_lineup;
     const awayTeamId = fixture.away_team_id;
-    const seasonId = fixture.season_id;
+    // seasonId already declared above for home team
     
     // Check if away team has submitted lineup
     const awaySubmitted = awayLineup && awayLineup.players && awayLineup.players.length > 0;

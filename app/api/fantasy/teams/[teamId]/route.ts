@@ -111,6 +111,7 @@ export async function GET(
         owner_name: teamData.owner_name,
         total_points: teamData.total_points,
         rank: teamData.rank,
+        budget_remaining: teamData.budget_remaining,
       },
       players: draftedPlayers,
       recent_rounds: recentRounds,

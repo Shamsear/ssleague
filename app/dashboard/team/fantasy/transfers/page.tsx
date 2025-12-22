@@ -412,7 +412,9 @@ export default function TeamTransfersPage() {
 
             <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-green-500">
               <p className="text-sm text-gray-600 mb-1">Budget</p>
-              <p className="text-2xl font-bold text-green-600">€{teamInfo.budget_remaining}M</p>
+              <p className={`text-2xl font-bold ${teamInfo.budget_remaining < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                €{teamInfo.budget_remaining}M
+              </p>
             </div>
 
             <div className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-blue-500">
@@ -480,7 +482,9 @@ export default function TeamTransfersPage() {
                 <h4 className="font-bold text-gray-900 mb-3">Budget Impact</h4>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-gray-600">Current Budget:</span>
-                  <span className="font-semibold">€{teamInfo.budget_remaining}M</span>
+                  <span className={`font-semibold ${teamInfo.budget_remaining < 0 ? 'text-red-600' : ''}`}>
+                    €{teamInfo.budget_remaining}M
+                  </span>
                 </div>
                 {selectedOut && (
                   <div className="flex items-center justify-between mb-2 text-green-600">
