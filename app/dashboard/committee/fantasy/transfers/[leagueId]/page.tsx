@@ -30,7 +30,7 @@ export default function TransfersManagementPage() {
   const params = useParams();
   const leagueId = params.leagueId as string;
 
-  const [activeTab, setActiveTab] = useState<'windows' | 'settings'>('windows');
+  const [activeTab, setActiveTab] = useState<'windows' | 'settings' | 'history'>('windows');
   
   // Windows state
   const [windows, setWindows] = useState<TransferWindow[]>([]);
@@ -51,6 +51,11 @@ export default function TransfersManagementPage() {
   });
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Transfer history state
+  const [transfers, setTransfers] = useState<any[]>([]);
+  const [isLoadingTransfers, setIsLoadingTransfers] = useState(false);
+  const [filterWindowId, setFilterWindowId] = useState<string>('all');
 
   useEffect(() => {
     if (!loading && !user) {
@@ -73,6 +78,12 @@ export default function TransfersManagementPage() {
       fetchSettings(selectedWindowId);
     }
   }, [selectedWindowId]);
+
+  useEffect(() => {
+    if (activeTab === 'history' && leagueId) {
+      loadTransferHistory();
+    }
+  }, [activeTab, filterWindowId, leagueId]);
 
   const loadWindows = async () => {
     setIsLoadingWindows(true);
@@ -259,6 +270,26 @@ export default function TransfersManagementPage() {
     }
   };
 
+  const loadTransferHistory = async () => {
+    setIsLoadingTransfers(true);
+    try {
+      const url = filterWindowId === 'all'
+        ? `/api/fantasy/transfers/all?league_id=${leagueId}`
+        : `/api/fantasy/transfers/all?league_id=${leagueId}&window_id=${filterWindowId}`;
+      
+      const response = await fetchWithTokenRefresh(url);
+      if (!response.ok) throw new Error('Failed to load transfer history');
+      
+      const data = await response.json();
+      setTransfers(data.transfers || []);
+    } catch (error) {
+      console.error('Error loading transfer history:', error);
+      setTransfers([]);
+    } finally {
+      setIsLoadingTransfers(false);
+    }
+  };
+
   if (loading || isLoadingWindows) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -318,6 +349,17 @@ export default function TransfersManagementPage() {
             >
               <Settings className="w-5 h-5" />
               Transfer Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`flex-1 px-6 py-4 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
+                activeTab === 'history'
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <ArrowLeftRight className="w-5 h-5" />
+              Transfer History
             </button>
           </div>
         </div>
@@ -641,7 +683,119 @@ export default function TransfersManagementPage() {
               </>
               )}
             </div>
-          )}
+          ) : activeTab === 'history' ? (
+            <div className="space-y-6">
+              {/* Filter */}
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Filter by Transfer Window
+                </label>
+                <select
+                  value={filterWindowId}
+                  onChange={(e) => setFilterWindowId(e.target.value)}
+                  className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="all">All Windows</option>
+                  {windows.map((window) => (
+                    <option key={window.window_id} value={window.window_id}>
+                      {window.window_name} ({window.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Transfer List */}
+              {isLoadingTransfers ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading transfers...</p>
+                </div>
+              ) : transfers.length === 0 ? (
+                <div className="text-center py-12">
+                  <ArrowLeftRight className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 font-medium">No transfers found</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    {filterWindowId === 'all' 
+                      ? 'No transfers have been made yet'
+                      : 'No transfers in this window'}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Transfer History ({transfers.length})
+                    </h2>
+                  </div>
+
+                  <div className="space-y-3">
+                    {transfers.map((transfer) => (
+                      <div
+                        key={transfer.transfer_id}
+                        className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 className="font-bold text-gray-900">{transfer.team_name}</h3>
+                            <p className="text-sm text-gray-600">{transfer.owner_name}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-bold">
+                              {transfer.window_name}
+                            </span>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {new Date(transfer.transferred_at).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Player Out */}
+                          <div className="bg-white rounded-lg p-3">
+                            <p className="text-xs text-gray-500 mb-1">Released</p>
+                            {transfer.player_out ? (
+                              <p className="font-semibold text-gray-900">{transfer.player_out.name}</p>
+                            ) : (
+                              <p className="text-gray-400 italic">None</p>
+                            )}
+                          </div>
+
+                          {/* Arrow */}
+                          <div className="flex items-center justify-center">
+                            <ArrowLeftRight className="w-6 h-6 text-purple-600" />
+                          </div>
+
+                          {/* Player In */}
+                          <div className="bg-white rounded-lg p-3">
+                            <p className="text-xs text-gray-500 mb-1">Signed</p>
+                            {transfer.player_in ? (
+                              <div>
+                                <p className="font-semibold text-gray-900">{transfer.player_in.name}</p>
+                                <p className="text-sm text-purple-600 font-bold mt-1">
+                                  €{transfer.transfer_cost}M
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-gray-400 italic">None</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Points Deducted */}
+                        {transfer.points_deducted > 0 && (
+                          <div className="mt-3 pt-3 border-t border-purple-200">
+                            <p className="text-sm text-red-600 font-semibold">
+                              -{transfer.points_deducted} points deducted
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
