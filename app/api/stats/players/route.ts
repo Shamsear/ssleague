@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const sortBy = searchParams.get('sortBy') || 'points';
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 100;
+    const startRound = searchParams.get('startRound') ? parseInt(searchParams.get('startRound')!) : null;
+    const endRound = searchParams.get('endRound') ? parseInt(searchParams.get('endRound')!) : null;
     
     // Backward compatibility: If only seasonId provided, get primary tournament
     if (seasonId && !tournamentId) {
@@ -42,6 +44,362 @@ export async function GET(request: NextRequest) {
       const seasonNum = parseInt(season.replace(/\D/g, '')) || 0;
       return seasonNum >= 16;
     };
+
+    // If round range is specified OR if we want matchups-based stats, aggregate from matchups and fixtures tables
+    if (tournamentId && (startRound !== null || endRound !== null || searchParams.get('useMatchups') === 'true')) {
+      // Extract season number from tournament ID
+      // Supports formats: "SEASON16", "SEASON16-LEAGUE", "SSPSLS16", "SSPSLS16L", "SSPSLS16-LEAGUE"
+      const seasonMatch = tournamentId.match(/(\d+)/);
+      const seasonNum = seasonMatch ? parseInt(seasonMatch[1]) : 0;
+      
+      console.log('[Player Stats API] Entering matchups-based query block:', {
+        tournamentId,
+        seasonNum,
+        startRound,
+        endRound,
+        useMatchups: searchParams.get('useMatchups')
+      });
+      
+      if (seasonNum >= 16) {
+        // Extract just the season ID (e.g., "SSPSLS16" from "SSPSLS16L" or "SSPSLS16-LEAGUE")
+        const seasonIdFromTournament = tournamentId.includes('-') 
+          ? tournamentId.split('-')[0]  // "SEASON16-LEAGUE" -> "SEASON16"
+          : tournamentId.replace(/[A-Z]+$/, ''); // "SSPSLS16L" -> "SSPSLS16"
+        
+        console.log('[Player Stats API] Matchups-based query:', {
+          tournamentId,
+          seasonId: seasonIdFromTournament,
+          startRound,
+          endRound,
+          useMatchups: searchParams.get('useMatchups')
+        });
+        
+        // Aggregate player stats from matchups and fixtures for the specified round range
+        // We need to UNION home and away player stats
+        if (startRound !== null && endRound !== null) {
+          stats = await sql`
+            WITH player_match_stats AS (
+              -- Home players
+              SELECT 
+                m.home_player_id as player_id,
+                m.home_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.home_goals as goals,
+                m.away_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.home_goals > m.away_goals THEN 'win'
+                  WHEN m.home_goals < m.away_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.away_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.home_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND f.round_number >= ${startRound}
+                AND f.round_number <= ${endRound}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+              
+              UNION ALL
+              
+              -- Away players
+              SELECT 
+                m.away_player_id as player_id,
+                m.away_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.away_goals as goals,
+                m.home_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.away_goals > m.home_goals THEN 'win'
+                  WHEN m.away_goals < m.home_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.home_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.away_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND f.round_number >= ${startRound}
+                AND f.round_number <= ${endRound}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+            )
+            SELECT 
+              pms.player_id,
+              MAX(pms.player_name) as player_name,
+              ${seasonIdFromTournament} as season_id,
+              MAX(ps.team) as team,
+              MAX(ps.team_id) as team_id,
+              MAX(ps.category) as category,
+              COUNT(DISTINCT pms.fixture_id) as matches_played,
+              SUM(CASE WHEN pms.result = 'win' THEN 1 ELSE 0 END) as wins,
+              SUM(CASE WHEN pms.result = 'draw' THEN 1 ELSE 0 END) as draws,
+              SUM(CASE WHEN pms.result = 'loss' THEN 1 ELSE 0 END) as losses,
+              SUM(pms.goals) as goals_scored,
+              SUM(pms.goals_conceded) as goals_conceded,
+              SUM(pms.assists) as assists,
+              SUM(pms.clean_sheet) as clean_sheets,
+              SUM(pms.motm) as motm_awards,
+              0 as points,
+              MAX(ps.star_rating) as star_rating,
+              MAX(ps.base_points) as base_points
+            FROM player_match_stats pms
+            LEFT JOIN player_seasons ps ON pms.player_id = ps.player_id AND ps.season_id = ${seasonIdFromTournament}
+            GROUP BY pms.player_id
+            ORDER BY goals_scored DESC, motm_awards DESC
+            LIMIT ${limit}
+          `;
+        } else if (startRound !== null) {
+          stats = await sql`
+            WITH player_match_stats AS (
+              -- Home players
+              SELECT 
+                m.home_player_id as player_id,
+                m.home_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.home_goals as goals,
+                m.away_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.home_goals > m.away_goals THEN 'win'
+                  WHEN m.home_goals < m.away_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.away_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.home_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND f.round_number >= ${startRound}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+              
+              UNION ALL
+              
+              -- Away players
+              SELECT 
+                m.away_player_id as player_id,
+                m.away_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.away_goals as goals,
+                m.home_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.away_goals > m.home_goals THEN 'win'
+                  WHEN m.away_goals < m.home_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.home_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.away_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND f.round_number >= ${startRound}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+            )
+            SELECT 
+              pms.player_id,
+              MAX(pms.player_name) as player_name,
+              ${seasonIdFromTournament} as season_id,
+              MAX(ps.team) as team,
+              MAX(ps.team_id) as team_id,
+              MAX(ps.category) as category,
+              COUNT(DISTINCT pms.fixture_id) as matches_played,
+              SUM(CASE WHEN pms.result = 'win' THEN 1 ELSE 0 END) as wins,
+              SUM(CASE WHEN pms.result = 'draw' THEN 1 ELSE 0 END) as draws,
+              SUM(CASE WHEN pms.result = 'loss' THEN 1 ELSE 0 END) as losses,
+              SUM(pms.goals) as goals_scored,
+              SUM(pms.goals_conceded) as goals_conceded,
+              SUM(pms.assists) as assists,
+              SUM(pms.clean_sheet) as clean_sheets,
+              SUM(pms.motm) as motm_awards,
+              0 as points,
+              MAX(ps.star_rating) as star_rating,
+              MAX(ps.base_points) as base_points
+            FROM player_match_stats pms
+            LEFT JOIN player_seasons ps ON pms.player_id = ps.player_id AND ps.season_id = ${seasonIdFromTournament}
+            GROUP BY pms.player_id
+            ORDER BY goals_scored DESC, motm_awards DESC
+            LIMIT ${limit}
+          `;
+        } else if (endRound !== null) {
+          stats = await sql`
+            WITH player_match_stats AS (
+              -- Home players
+              SELECT 
+                m.home_player_id as player_id,
+                m.home_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.home_goals as goals,
+                m.away_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.home_goals > m.away_goals THEN 'win'
+                  WHEN m.home_goals < m.away_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.away_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.home_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND f.round_number <= ${endRound}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+              
+              UNION ALL
+              
+              -- Away players
+              SELECT 
+                m.away_player_id as player_id,
+                m.away_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.away_goals as goals,
+                m.home_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.away_goals > m.home_goals THEN 'win'
+                  WHEN m.away_goals < m.home_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.home_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.away_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND f.round_number <= ${endRound}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+            )
+            SELECT 
+              pms.player_id,
+              MAX(pms.player_name) as player_name,
+              ${seasonIdFromTournament} as season_id,
+              MAX(ps.team) as team,
+              MAX(ps.team_id) as team_id,
+              MAX(ps.category) as category,
+              COUNT(DISTINCT pms.fixture_id) as matches_played,
+              SUM(CASE WHEN pms.result = 'win' THEN 1 ELSE 0 END) as wins,
+              SUM(CASE WHEN pms.result = 'draw' THEN 1 ELSE 0 END) as draws,
+              SUM(CASE WHEN pms.result = 'loss' THEN 1 ELSE 0 END) as losses,
+              SUM(pms.goals) as goals_scored,
+              SUM(pms.goals_conceded) as goals_conceded,
+              SUM(pms.assists) as assists,
+              SUM(pms.clean_sheet) as clean_sheets,
+              SUM(pms.motm) as motm_awards,
+              0 as points,
+              MAX(ps.star_rating) as star_rating,
+              MAX(ps.base_points) as base_points
+            FROM player_match_stats pms
+            LEFT JOIN player_seasons ps ON pms.player_id = ps.player_id AND ps.season_id = ${seasonIdFromTournament}
+            GROUP BY pms.player_id
+            ORDER BY goals_scored DESC, motm_awards DESC
+            LIMIT ${limit}
+          `;
+        } else {
+          // No round range specified - get all rounds
+          console.log('[Player Stats API] Querying all rounds for season:', seasonIdFromTournament);
+          
+          stats = await sql`
+            WITH player_match_stats AS (
+              -- Home players
+              SELECT 
+                m.home_player_id as player_id,
+                m.home_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.home_goals as goals,
+                m.away_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.home_goals > m.away_goals THEN 'win'
+                  WHEN m.home_goals < m.away_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.away_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.home_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+              
+              UNION ALL
+              
+              -- Away players
+              SELECT 
+                m.away_player_id as player_id,
+                m.away_player_name as player_name,
+                f.id as fixture_id,
+                f.round_number,
+                m.away_goals as goals,
+                m.home_goals as goals_conceded,
+                0 as assists,
+                CASE 
+                  WHEN m.away_goals > m.home_goals THEN 'win'
+                  WHEN m.away_goals < m.home_goals THEN 'loss'
+                  ELSE 'draw'
+                END as result,
+                CASE WHEN m.home_goals = 0 THEN 1 ELSE 0 END as clean_sheet,
+                CASE WHEN f.motm_player_id = m.away_player_id THEN 1 ELSE 0 END as motm
+              FROM matchups m
+              INNER JOIN fixtures f ON m.fixture_id = f.id
+              WHERE f.season_id = ${seasonIdFromTournament}
+                AND m.home_goals IS NOT NULL
+                AND m.away_goals IS NOT NULL
+            )
+            SELECT 
+              pms.player_id,
+              MAX(pms.player_name) as player_name,
+              ${seasonIdFromTournament} as season_id,
+              MAX(ps.team) as team,
+              MAX(ps.team_id) as team_id,
+              MAX(ps.category) as category,
+              COUNT(DISTINCT pms.fixture_id) as matches_played,
+              SUM(CASE WHEN pms.result = 'win' THEN 1 ELSE 0 END) as wins,
+              SUM(CASE WHEN pms.result = 'draw' THEN 1 ELSE 0 END) as draws,
+              SUM(CASE WHEN pms.result = 'loss' THEN 1 ELSE 0 END) as losses,
+              SUM(pms.goals) as goals_scored,
+              SUM(pms.goals_conceded) as goals_conceded,
+              SUM(pms.assists) as assists,
+              SUM(pms.clean_sheet) as clean_sheets,
+              SUM(pms.motm) as motm_awards,
+              0 as points,
+              MAX(ps.star_rating) as star_rating,
+              MAX(ps.base_points) as base_points
+            FROM player_match_stats pms
+            LEFT JOIN player_seasons ps ON pms.player_id = ps.player_id AND ps.season_id = ${seasonIdFromTournament}
+            GROUP BY pms.player_id
+            ORDER BY goals_scored DESC, motm_awards DESC
+            LIMIT ${limit}
+          `;
+          
+          console.log('[Player Stats API] All rounds query returned:', stats?.length || 0, 'players');
+        }
+        
+        console.log('[Player Stats API] Matchups-based results:', stats?.length || 0, 'players');
+      } else {
+        console.log('[Player Stats API] Historical season, returning empty');
+        // Historical seasons don't have matchups data, return empty
+        stats = [];
+      }
+      
+      return NextResponse.json({
+        success: true,
+        data: stats,
+        count: stats.length
+      });
+    }
 
     // Get all season stats for a specific player (player details page) - OPTIMIZED
     if (playerId && !seasonId) {

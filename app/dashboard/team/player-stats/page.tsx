@@ -215,10 +215,10 @@ export default function TeamPlayerStatsPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl md:rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-          <div className="overflow-x-auto -mx-3 sm:mx-0">
-            <div className="inline-block min-w-full align-middle">
-              <table className="min-w-full divide-y divide-gray-200">
+        {/* Desktop Table - Hidden on small screens */}
+        <div className="hidden sm:block bg-white rounded-xl md:rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gradient-to-r from-blue-600 to-purple-600 text-white sticky top-0 z-10">
                   <tr>
                     <th className="px-2 sm:px-3 md:px-4 py-2 md:py-3 text-left text-[10px] sm:text-xs font-bold uppercase tracking-tight whitespace-nowrap">
@@ -535,7 +535,201 @@ export default function TeamPlayerStatsPage() {
               </tbody>
             </table>
           </div>
-          </div>
+        </div>
+
+        {/* Mobile Cards - Shown only on small screens */}
+        <div className="sm:hidden space-y-3">
+          {filteredPlayers.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl shadow-xl">
+              <svg className="w-16 h-16 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+              <h3 className="text-lg font-semibold text-gray-600 mb-2">No Players Found</h3>
+              <p className="text-sm text-gray-500">Try adjusting your search</p>
+            </div>
+          ) : (
+            filteredPlayers.map((player, index) => {
+              const change = player.base_points > 0 ? player.points - player.base_points : 0;
+              const totalPoints = playerTotalPoints.get(player.id) || 0;
+              
+              return (
+                <div 
+                  key={player.id}
+                  className="bg-white rounded-xl p-4 shadow-md border border-gray-200"
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                        {player.player_name.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-gray-900 truncate">{player.player_name}</h3>
+                        <p className="text-xs text-gray-500 truncate">{player.team || 'Unassigned'}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => loadMatchdayStats(player.id)}
+                      disabled={loadingMatchday === player.id}
+                      className="flex-shrink-0 p-2 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {loadingMatchday === player.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      ) : expandedPlayer === player.id ? (
+                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Points Row */}
+                  <div className="grid grid-cols-3 gap-2 mb-3 pb-3 border-b border-gray-200">
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">Points</p>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700">
+                        {player.points || 0}
+                      </span>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">Base</p>
+                      <p className="text-sm font-semibold text-gray-600">{player.base_points || 0}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">Change</p>
+                      {player.base_points > 0 ? (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                          change > 0 ? 'bg-green-100 text-green-700' : change < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {change > 0 ? '↑' : change < 0 ? '↓' : '='} {change > 0 ? '+' : ''}{change}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">Total Gained</p>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                        totalPoints > 0 ? 'bg-green-100 text-green-700' : totalPoints < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {totalPoints > 0 ? '+' : ''}{totalPoints}
+                      </span>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">Played</p>
+                      <p className="text-sm font-bold text-gray-900">{player.matches_played || 0}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">⚽ Goals</p>
+                      <p className="text-sm font-bold text-green-700">{player.goals_scored || 0}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">🥅 Conceded</p>
+                      <p className="text-sm font-bold text-red-600">{player.goals_conceded || 0}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">GD</p>
+                      <p className={`text-sm font-bold ${
+                        player.goal_difference > 0 ? 'text-green-600' : player.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
+                      }`}>
+                        {player.goal_difference > 0 ? '+' : ''}{player.goal_difference || 0}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">W-D-L</p>
+                      <p className="text-xs font-medium">
+                        <span className="text-green-600 font-bold">{player.wins}</span>-
+                        <span className="text-gray-500">{player.draws}</span>-
+                        <span className="text-red-600 font-bold">{player.losses}</span>
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-1">🧤 Clean</p>
+                      <p className="text-sm font-bold text-blue-600">{player.clean_sheets || 0}</p>
+                    </div>
+                  </div>
+
+                  {/* Expanded Matchday Stats */}
+                  {expandedPlayer === player.id && matchdayStats.has(player.id) && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Matchday Breakdown
+                      </h4>
+                      {matchdayStats.get(player.id)!.length === 0 ? (
+                        <p className="text-xs text-gray-500 text-center py-4">No completed matches yet</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {matchdayStats.get(player.id)!.map((match, idx) => (
+                            <div key={idx} className="bg-gray-50 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                  R{match.matchday}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                                  match.points > 0 ? 'bg-green-100 text-green-700' : match.points < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {match.points > 0 ? '+' : ''}{match.points}
+                                </span>
+                              </div>
+                              <div className="text-xs">
+                                {match.player_side === 'home' ? (
+                                  <>
+                                    <p className="font-bold text-blue-600 truncate">{match.home_player_name}</p>
+                                    <p className="text-gray-500">vs</p>
+                                    <p className="text-gray-700 truncate">{match.away_player_name}</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="text-gray-700 truncate">{match.home_player_name}</p>
+                                    <p className="text-gray-500">vs</p>
+                                    <p className="font-bold text-blue-600 truncate">{match.away_player_name}</p>
+                                  </>
+                                )}
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+                                  <span className="text-xs font-bold">{match.goals_scored}-{match.goals_conceded}</span>
+                                  <span className={`text-xs font-bold ${
+                                    match.goal_difference > 0 ? 'text-green-600' : match.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
+                                  }`}>
+                                    GD: {match.goal_difference > 0 ? '+' : ''}{match.goal_difference}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="bg-gradient-to-r from-blue-100 to-purple-100 rounded-lg p-3 mt-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-bold text-gray-800">Total Points:</span>
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${
+                                matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0) > 0
+                                  ? 'bg-green-200 text-green-800' 
+                                  : matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0) < 0
+                                  ? 'bg-red-200 text-red-800'
+                                  : 'bg-gray-200 text-gray-700'
+                              }`}>
+                                {matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0) > 0 ? '+' : ''}
+                                {matchdayStats.get(player.id)!.reduce((sum, m) => sum + m.points, 0)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
 
         {filteredPlayers.length === 0 && (

@@ -5,8 +5,6 @@ import { useTournamentContext } from '@/contexts/TournamentContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { db } from '@/lib/firebase/config';
-import { collection, query, getDocs } from 'firebase/firestore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { usePlayerStats } from '@/hooks';
 import { useTournament } from '@/hooks/useTournaments';
@@ -22,6 +20,7 @@ interface PlayerStats {
   category_name?: string;
   category_color?: string;
   points: number;
+  base_points?: number;
   matches_played: number;
   wins: number;
   losses: number;
@@ -29,6 +28,10 @@ interface PlayerStats {
   win_rate: number;
   goals: number;
   assists: number;
+  goals_conceded: number;
+  clean_sheets: number;
+  potm: number;
+  points_change?: number; // For most improved tab
 }
 
 interface Team {
@@ -44,6 +47,7 @@ interface Category {
 
 type SortField = 'points' | 'matches_played' | 'wins' | 'losses' | 'draws' | 'win_rate' | 'name';
 type SortOrder = 'asc' | 'desc';
+type TabType = 'all' | 'golden-boot' | 'golden-glove' | 'rankings' | 'most-improved';
 
 export default function PlayerLeaderboardPage() {
   const { user, loading } = useAuth();
@@ -60,6 +64,7 @@ export default function PlayerLeaderboardPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showOverall, setShowOverall] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('all');
   
   // Use React Query hook for player stats from Neon
   // If showOverall is true, use seasonId (all tournaments), otherwise use tournamentId (specific tournament)
@@ -68,7 +73,7 @@ export default function PlayerLeaderboardPage() {
   
   const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
     tournamentId: showOverall ? undefined : selectedTournamentId,
-    seasonId: effectiveSeasonId || ''
+    seasonId: effectiveSeasonId || '',
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
@@ -155,31 +160,10 @@ export default function PlayerLeaderboardPage() {
         if (teamsData.success) {
           setTeams(teamsData.data);
         }
-
-        // Fetch all realplayer to get team and category assignments
-        const realPlayersQuery = query(collection(db, 'realplayer'));
-        const realPlayersSnapshot = await getDocs(realPlayersQuery);
-        const playersInfoMap = new Map();
-        
-        realPlayersSnapshot.forEach((doc) => {
-          const data = doc.data();
-          if (data.player_id) {
-            playersInfoMap.set(data.player_id, {
-              id: doc.id,
-              team_id: data.team_id,
-              team_name: data.team_name || 'Unassigned',
-              category_id: data.category_id,
-              category_name: data.category_name || 'Unknown',
-              category_color: categoriesData.success ? categoriesData.data.find((c: Category) => c.id === data.category_id)?.color : undefined,
-              points: data.points || 0
-            });
-          }
-        });
-
-        // Store playersInfoMap for later use
-        (window as any).playersInfoMap = playersInfoMap;
       } catch (error) {
         console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -190,29 +174,30 @@ export default function PlayerLeaderboardPage() {
   useEffect(() => {
     if (!playerStatsData || playerStatsData.length === 0) return;
     
-    const playersInfoMap = (window as any).playersInfoMap || new Map();
-    
     const playersData: PlayerStats[] = playerStatsData.map((data: any) => {
-      const playerInfo = playersInfoMap.get(data.player_id) || {};
       const winRate = data.matches_played > 0 ? (data.wins / data.matches_played) * 100 : 0;
       
       return {
-        id: data.id,
+        id: data.id || data.player_id,
         player_id: data.player_id,
         name: data.player_name,
-        team_id: data.team_id || playerInfo.team_id,
-        team_name: data.team || playerInfo.team_name || 'Unassigned',
-        category_id: playerInfo.category_id,
-        category_name: data.category || playerInfo.category_name || 'Unknown',
-        category_color: playerInfo.category_color,
+        team_id: data.team_id,
+        team_name: data.team || 'Unassigned',
+        category_id: data.category_id,
+        category_name: data.category || 'Unknown',
+        category_color: undefined,
         matches_played: data.matches_played || 0,
         wins: data.wins || 0,
         draws: data.draws || 0,
         losses: data.losses || 0,
-        points: data.points || playerInfo.points || 0,
+        points: data.points || 0,
+        base_points: data.base_points || 0,
         win_rate: winRate,
         goals: data.goals_scored || 0,
         assists: data.assists || 0,
+        goals_conceded: data.goals_conceded || 0,
+        clean_sheets: data.clean_sheets || 0,
+        potm: data.motm_awards || 0,
       };
     });
 
@@ -222,8 +207,44 @@ export default function PlayerLeaderboardPage() {
   useEffect(() => {
     let filtered = [...players];
 
-    // Search filter
-    if (searchTerm) {
+    // Tab filter
+    if (activeTab === 'golden-boot') {
+      // Top 10 goal scorers
+      filtered = filtered
+        .filter(p => p.goals > 0)
+        .sort((a, b) => b.goals - a.goals)
+        .slice(0, 10);
+    } else if (activeTab === 'golden-glove') {
+      // Top 10 clean sheet keepers
+      filtered = filtered
+        .filter(p => p.matches_played > 0)
+        .sort((a, b) => {
+          if (b.clean_sheets !== a.clean_sheets) {
+            return b.clean_sheets - a.clean_sheets;
+          }
+          return a.goals_conceded - b.goals_conceded;
+        })
+        .slice(0, 10);
+    } else if (activeTab === 'rankings') {
+      // Top 20 by points
+      filtered = filtered
+        .sort((a, b) => b.points - a.points)
+        .slice(0, 20);
+    } else if (activeTab === 'most-improved') {
+      // Top 10 most improved (highest positive points change)
+      filtered = filtered
+        .filter(p => p.base_points && p.base_points > 0)
+        .map(p => ({
+          ...p,
+          id: p.id || p.player_id, // Ensure id is always present
+          points_change: p.points - (p.base_points || 0)
+        }))
+        .sort((a: any, b: any) => b.points_change - a.points_change)
+        .slice(0, 10);
+    }
+
+    // Search filter (only for 'all' tab)
+    if (activeTab === 'all' && searchTerm) {
       filtered = filtered.filter(
         (p) =>
           p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -231,32 +252,36 @@ export default function PlayerLeaderboardPage() {
       );
     }
 
-    // Team filter
-    if (teamFilter === 'unassigned') {
-      filtered = filtered.filter((p) => !p.team_id);
-    } else if (teamFilter) {
-      filtered = filtered.filter((p) => p.team_id === teamFilter);
+    // Team filter (only for 'all' tab)
+    if (activeTab === 'all') {
+      if (teamFilter === 'unassigned') {
+        filtered = filtered.filter((p) => !p.team_id);
+      } else if (teamFilter) {
+        filtered = filtered.filter((p) => p.team_id === teamFilter);
+      }
     }
 
-    // Sort
-    filtered.sort((a, b) => {
-      let aVal: any = a[sortField];
-      let bVal: any = b[sortField];
+    // Sort (only for 'all' tab)
+    if (activeTab === 'all') {
+      filtered.sort((a, b) => {
+        let aVal: any = a[sortField];
+        let bVal: any = b[sortField];
 
-      if (sortField === 'name') {
-        aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
-      }
+        if (sortField === 'name') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
 
-      if (sortOrder === 'asc') {
-        return aVal > bVal ? 1 : -1;
-      } else {
-        return aVal < bVal ? 1 : -1;
-      }
-    });
+        if (sortOrder === 'asc') {
+          return aVal > bVal ? 1 : -1;
+        } else {
+          return aVal < bVal ? 1 : -1;
+        }
+      });
+    }
 
     setFilteredPlayers(filtered);
-  }, [players, searchTerm, teamFilter, sortField, sortOrder]);
+  }, [players, searchTerm, teamFilter, sortField, sortOrder, activeTab]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -449,53 +474,135 @@ export default function PlayerLeaderboardPage() {
         </button>
       </div>
 
-        {/* Filters */}
-        <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl p-6 mb-6 border border-gray-100/20">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Filters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by name or ID..."
-              className="w-full py-2 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF]/70"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Team</label>
-            <select
-              value={teamFilter}
-              onChange={(e) => setTeamFilter(e.target.value)}
-              className="w-full py-2 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF]/70"
-            >
-              <option value="">All Teams</option>
-              <option value="unassigned">Unassigned</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.team_name}
-                </option>
-              ))}
-            </select>
-          </div>
+      {/* Tabs */}
+      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl p-2 border border-gray-100/20 mb-6">
+        <div className="flex gap-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'all'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            📊 All Players
+          </button>
+          <button
+            onClick={() => setActiveTab('golden-boot')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'golden-boot'
+                ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            ⚽ Golden Boot
+          </button>
+          <button
+            onClick={() => setActiveTab('golden-glove')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'golden-glove'
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            🧤 Golden Glove
+          </button>
+          <button
+            onClick={() => setActiveTab('rankings')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'rankings'
+                ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            🏆 Top Rankings
+          </button>
+          <button
+            onClick={() => setActiveTab('most-improved')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'most-improved'
+                ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            📈 Most Improved
+          </button>
         </div>
       </div>
+
+        {/* Filters - Only show for 'all' tab */}
+        {activeTab === 'all' && (
+          <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl p-6 mb-6 border border-gray-100/20">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Filters</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by name or ID..."
+                  className="w-full py-2 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF]/70"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Team</label>
+                <select
+                  value={teamFilter}
+                  onChange={(e) => setTeamFilter(e.target.value)}
+                  className="w-full py-2 px-4 bg-white/60 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0066FF]/30 focus:border-[#0066FF]/70"
+                >
+                  <option value="">All Teams</option>
+                  <option value="unassigned">Unassigned</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.team_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Leaderboard Table */}
         <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl overflow-hidden border border-gray-100/20">
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">👥</span>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">Player Rankings</h3>
-              <p className="text-sm text-gray-600">{filteredPlayers.length} players competing</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">
+                {activeTab === 'golden-boot' && '⚽'}
+                {activeTab === 'golden-glove' && '🧤'}
+                {activeTab === 'rankings' && '🏆'}
+                {activeTab === 'most-improved' && '📈'}
+                {activeTab === 'all' && '👥'}
+              </span>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {activeTab === 'golden-boot' && 'Golden Boot - Top Scorers'}
+                  {activeTab === 'golden-glove' && 'Golden Glove - Clean Sheet Leaders'}
+                  {activeTab === 'rankings' && 'Top 20 Rankings'}
+                  {activeTab === 'most-improved' && 'Most Improved Players'}
+                  {activeTab === 'all' && 'Player Rankings'}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {activeTab === 'golden-boot' && 'Top 10 players by goals scored'}
+                  {activeTab === 'golden-glove' && 'Top 10 players by clean sheets'}
+                  {activeTab === 'rankings' && 'Top 20 players by points'}
+                  {activeTab === 'most-improved' && 'Top 10 players with highest points gain'}
+                  {activeTab === 'all' && `${filteredPlayers.length} players competing`}
+                </p>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600">
+              <span className="font-semibold">{filteredPlayers.length}</span> / {players.length} Players
             </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Desktop Table - Hidden on mobile */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50/50">
               <tr>
@@ -511,7 +618,7 @@ export default function PlayerLeaderboardPage() {
                     <SortIcon field="name" />
                   </div>
                 </th>
-                <th className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Team
                 </th>
                 <th 
@@ -519,13 +626,12 @@ export default function PlayerLeaderboardPage() {
                   onClick={() => handleSort('points')}
                 >
                   <div className="flex items-center justify-center gap-1">
-                    <span className="hidden sm:inline">Points</span>
-                    <span className="sm:hidden">Pts</span>
+                    {activeTab === 'most-improved' ? 'Points Change' : 'Points'}
                     <SortIcon field="points" />
                   </div>
                 </th>
                 <th 
-                  className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('matches_played')}
                 >
                   <div className="flex items-center justify-center gap-1">
@@ -543,7 +649,7 @@ export default function PlayerLeaderboardPage() {
                   </div>
                 </th>
                 <th 
-                  className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('draws')}
                 >
                   <div className="flex items-center justify-center gap-1">
@@ -561,7 +667,7 @@ export default function PlayerLeaderboardPage() {
                   </div>
                 </th>
                 <th 
-                  className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
+                  className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100/50 transition-colors"
                   onClick={() => handleSort('win_rate')}
                 >
                   <div className="flex items-center justify-center gap-1">
@@ -569,12 +675,24 @@ export default function PlayerLeaderboardPage() {
                     <SortIcon field="win_rate" />
                   </div>
                 </th>
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  ⚽ GS
+                </th>
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  🥅 GC
+                </th>
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  🧤 CS
+                </th>
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  ⭐ POTM
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white/60 divide-y divide-gray-200/50">
               {filteredPlayers.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={13} className="px-6 py-12 text-center text-gray-500">
                     <span className="text-6xl mb-4 block">👤</span>
                     <h3 className="text-lg font-medium text-gray-600 mb-2">No Players Found</h3>
                     <p className="text-sm">Try adjusting your filters</p>
@@ -582,48 +700,79 @@ export default function PlayerLeaderboardPage() {
                 </tr>
               ) : (
                 filteredPlayers.map((player, index) => (
-                  <tr key={player.id} className={`hover:bg-purple-50/50 transition-colors ${index < 3 ? 'bg-yellow-50/30' : ''}`}>
+                  <tr key={player.id || player.player_id || `player-${index}`} className={`hover:bg-purple-50/50 transition-colors ${index < 3 ? 'bg-yellow-50/30' : ''}`}>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                      {index === 0 && <span className="text-xl sm:text-2xl">🥇</span>}
-                      {index === 1 && <span className="text-xl sm:text-2xl">🥈</span>}
-                      {index === 2 && <span className="text-xl sm:text-2xl">🥉</span>}
-                      {index > 2 && <span className="text-xs sm:text-sm">{`#${index + 1}`}</span>}
+                      {index === 0 && <span className="text-2xl">🥇</span>}
+                      {index === 1 && <span className="text-2xl">🥈</span>}
+                      {index === 2 && <span className="text-2xl">🥉</span>}
+                      {index > 2 && <span className="text-sm">{`#${index + 1}`}</span>}
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4">
                       <div>
-                        <div className="text-xs sm:text-sm font-bold text-gray-900 truncate max-w-[120px] sm:max-w-none">{player.name}</div>
-                        <div className="text-[10px] sm:text-xs text-gray-500 truncate max-w-[120px] sm:max-w-none">{player.player_id}</div>
+                        <div className="text-sm font-bold text-gray-900">{player.name}</div>
+                        <div className="text-xs text-gray-500">{player.player_id}</div>
                       </div>
                     </td>
-                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {player.team_name || (
-                          <span className="text-gray-400 italic">Not assigned</span>
-                        )}
+                        {player.team_name || <span className="text-gray-400 italic">Not assigned</span>}
                       </div>
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
-                      <span className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-purple-100 text-purple-800">
-                        {player.points}
-                      </span>
+                      {activeTab === 'most-improved' && player.points_change !== undefined ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span 
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${
+                              player.points_change > 0 
+                                ? 'bg-green-100 text-green-800' 
+                                : player.points_change < 0
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {player.points_change > 0 ? '+' : ''}{player.points_change}
+                          </span>
+                          <span className="text-[10px] text-gray-500">
+                            {player.base_points} → {player.points}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-purple-100 text-purple-800">
+                          {player.points}
+                        </span>
+                      )}
                     </td>
-                    <td className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       <span className="text-sm text-gray-600">{player.matches_played}</span>
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
-                      <span className="text-xs sm:text-sm font-semibold text-green-600">{player.wins}</span>
+                      <span className="text-sm font-semibold text-green-600">{player.wins}</span>
                     </td>
-                    <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       <span className="text-sm text-gray-600">{player.draws}</span>
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
-                      <span className="text-xs sm:text-sm font-semibold text-red-600">{player.losses}</span>
+                      <span className="text-sm font-semibold text-red-600">{player.losses}</span>
                     </td>
-                    <td className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
                       <span className="text-sm font-medium text-gray-900">
-                        {player.matches_played > 0
-                          ? `${player.win_rate.toFixed(1)}%`
-                          : '-'}
+                        {player.matches_played > 0 ? `${player.win_rate.toFixed(1)}%` : '-'}
+                      </span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                        ⚽ {player.goals || 0}
+                      </span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="text-sm font-semibold text-red-600">{player.goals_conceded || 0}</span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="text-sm font-semibold text-blue-600">{player.clean_sheets || 0}</span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
+                        ⭐ {player.potm || 0}
                       </span>
                     </td>
                   </tr>
@@ -631,6 +780,107 @@ export default function PlayerLeaderboardPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards - Shown only on mobile */}
+        <div className="md:hidden space-y-4">
+          {filteredPlayers.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <span className="text-6xl mb-4 block">👤</span>
+              <h3 className="text-lg font-medium text-gray-600 mb-2">No Players Found</h3>
+              <p className="text-sm">Try adjusting your filters</p>
+            </div>
+          ) : (
+            filteredPlayers.map((player, index) => (
+              <div 
+                key={player.id || player.player_id || `player-${index}`}
+                className={`bg-white/80 backdrop-blur-sm rounded-xl p-4 shadow-md border-2 transition-all ${
+                  index < 3 ? 'border-yellow-400 bg-yellow-50/50' : 'border-gray-200'
+                }`}
+              >
+                {/* Header with Rank and Name */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl font-bold">
+                      {index === 0 && '🥇'}
+                      {index === 1 && '🥈'}
+                      {index === 2 && '🥉'}
+                      {index > 2 && <span className="text-gray-600">#{index + 1}</span>}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">{player.name}</h3>
+                      <p className="text-xs text-gray-500">{player.player_id}</p>
+                      <p className="text-xs text-gray-600 mt-0.5">{player.team_name || 'Not assigned'}</p>
+                    </div>
+                  </div>
+                  {activeTab === 'most-improved' && player.points_change !== undefined ? (
+                    <div className="text-right">
+                      <span 
+                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
+                          player.points_change > 0 
+                            ? 'bg-green-100 text-green-800' 
+                            : player.points_change < 0
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {player.points_change > 0 ? '+' : ''}{player.points_change}
+                      </span>
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        {player.base_points} → {player.points}
+                      </p>
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-purple-100 text-purple-800">
+                      {player.points}
+                    </span>
+                  )}
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-200">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">Played</p>
+                    <p className="text-sm font-bold text-gray-900">{player.matches_played}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">Wins</p>
+                    <p className="text-sm font-bold text-green-600">{player.wins}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">Draws</p>
+                    <p className="text-sm font-bold text-gray-600">{player.draws}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">Losses</p>
+                    <p className="text-sm font-bold text-red-600">{player.losses}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">Win %</p>
+                    <p className="text-sm font-bold text-gray-900">
+                      {player.matches_played > 0 ? `${player.win_rate.toFixed(1)}%` : '-'}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">⚽ Goals</p>
+                    <p className="text-sm font-bold text-green-700">{player.goals || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">🥅 Conceded</p>
+                    <p className="text-sm font-bold text-red-600">{player.goals_conceded || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">🧤 Clean</p>
+                    <p className="text-sm font-bold text-blue-600">{player.clean_sheets || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">⭐ POTM</p>
+                    <p className="text-sm font-bold text-purple-600">{player.potm || 0}</p>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -644,9 +894,12 @@ export default function PlayerLeaderboardPage() {
               <div><strong>Points:</strong> Overall score accumulated</div>
               <div><strong>Played:</strong> Total matches played</div>
               <div><strong>Win %:</strong> Percentage of matches won</div>
-              <div><strong>🥇🥈🥉:</strong> Top 3 players highlighted</div>
               <div><strong>W/D/L:</strong> Wins, Draws, Losses</div>
-              <div><strong>Filter:</strong> Search by name, team, or category</div>
+              <div><strong>GS:</strong> Goals Scored</div>
+              <div><strong>GC:</strong> Goals Conceded</div>
+              <div><strong>CS:</strong> Clean Sheets</div>
+              <div><strong>POTM:</strong> Player of the Match awards</div>
+              <div><strong>🥇🥈🥉:</strong> Top 3 players highlighted</div>
             </div>
           </div>
         </div>

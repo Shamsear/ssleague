@@ -5,8 +5,6 @@ import { useTournamentContext } from '@/contexts/TournamentContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { db } from '@/lib/firebase/config';
-import { collection, query, getDocs } from 'firebase/firestore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { usePlayerStats } from '@/hooks';
 import { useTournament } from '@/hooks/useTournaments';
@@ -32,6 +30,7 @@ interface PlayerStats {
 }
 
 type SortField = 'matches_played' | 'wins' | 'goals' | 'goals_conceded' | 'potm' | 'win_rate' | 'points' | 'star_rating';
+type TabType = 'all' | 'golden-boot' | 'golden-glove' | 'rankings' | 'most-improved';
 
 export default function PlayerStatsPage() {
   const { user, loading } = useAuth();
@@ -44,12 +43,15 @@ export default function PlayerStatsPage() {
   
   const [playerStats, setPlayerStats] = useState<PlayerStats[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<PlayerStats[]>([]);
-  
-  // Use React Query hook for player stats from Neon - now uses tournamentId
-  const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
+  const [activeTab, setActiveTab] = useState<TabType>('all');
+
+  // Use React Query hook for player stats from Neon - fetches from player_seasons table
+  const { data: playerStatsData, isLoading: statsLoading, isFetching } = usePlayerStats({
     tournamentId: selectedTournamentId,
-    seasonId: userSeasonId || '' // Fallback for backward compatibility
+    seasonId: userSeasonId || '',
   });
+  
+  console.log('[Player Stats Page] Stats loading:', statsLoading, 'Fetching:', isFetching, 'Data count:', playerStatsData?.length || 0);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('matches_played');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -63,48 +65,9 @@ export default function PlayerStatsPage() {
     }
   }, [user, loading, router]);
 
-  useEffect(() => {
-    const fetchPlayerStats = async () => {
-      if (!user || user.role !== 'committee_admin' || !userSeasonId) return;
-
-      try {
-        // Fetch all teams to get team names
-        const teamsQuery = query(collection(db, 'teams'));
-        const teamsSnapshot = await getDocs(teamsQuery);
-        const teamsMap = new Map();
-        teamsSnapshot.forEach((doc) => {
-          const data = doc.data();
-          teamsMap.set(doc.id, data.name || data.team_name || 'Unassigned');
-        });
-        
-        // Fetch all realplayer to get team assignments
-        const realPlayersQuery = query(collection(db, 'realplayer'));
-        const realPlayersSnapshot = await getDocs(realPlayersQuery);
-        const playersTeamMap = new Map();
-        realPlayersSnapshot.forEach((doc) => {
-          const data = doc.data();
-          if (data.player_id) {
-            // Use team_name directly from realplayer collection
-            const teamName = data.team_name || 'Unassigned';
-            playersTeamMap.set(data.player_id, teamName);
-          }
-        });
-        
-        // Store team map for later use
-        (window as any).playersTeamMap = playersTeamMap;
-      } catch (error) {
-        console.error('Error fetching player stats:', error);
-      }
-    };
-
-    fetchPlayerStats();
-  }, [user, userSeasonId]);
-
   // Process player stats data from Neon when it arrives
   useEffect(() => {
     if (!playerStatsData || playerStatsData.length === 0) return;
-    
-    const playersTeamMap = (window as any).playersTeamMap || new Map();
     
     const players: PlayerStats[] = playerStatsData.map((data: any) => {
       const winRate = data.matches_played > 0 ? (data.wins / data.matches_played) * 100 : 0;
@@ -112,7 +75,7 @@ export default function PlayerStatsPage() {
       return {
         player_id: data.player_id,
         name: data.player_name,
-        team_name: data.team || playersTeamMap.get(data.player_id) || 'Unassigned',
+        team_name: data.team || 'Unassigned',
         matches_played: data.matches_played || 0,
         wins: data.wins || 0,
         draws: data.draws || 0,
@@ -136,8 +99,46 @@ export default function PlayerStatsPage() {
   useEffect(() => {
     let filtered = [...playerStats];
 
-    // Search filter
-    if (searchTerm) {
+    // Tab filter
+    if (activeTab === 'golden-boot') {
+      // Top 10 goal scorers
+      filtered = filtered
+        .filter(p => p.goals > 0)
+        .sort((a, b) => b.goals - a.goals)
+        .slice(0, 10);
+    } else if (activeTab === 'golden-glove') {
+      // Top 10 clean sheet keepers
+      // Sort by: 1) Most clean sheets, 2) Fewest goals conceded (as tiebreaker)
+      filtered = filtered
+        .filter(p => p.matches_played > 0)
+        .sort((a, b) => {
+          // Primary: Clean sheets (descending)
+          if (b.clean_sheets !== a.clean_sheets) {
+            return b.clean_sheets - a.clean_sheets;
+          }
+          // Secondary: Goals conceded (ascending - fewer is better)
+          return a.goals_conceded - b.goals_conceded;
+        })
+        .slice(0, 10);
+    } else if (activeTab === 'rankings') {
+      // Top 20 by points
+      filtered = filtered
+        .sort((a, b) => b.points - a.points)
+        .slice(0, 20);
+    } else if (activeTab === 'most-improved') {
+      // Top 10 most improved (highest positive points change)
+      filtered = filtered
+        .filter(p => p.base_points && p.base_points > 0)
+        .map(p => ({
+          ...p,
+          points_change: p.points - (p.base_points || 0)
+        }))
+        .sort((a, b) => b.points_change - a.points_change)
+        .slice(0, 10);
+    }
+
+    // Search filter (only for 'all' tab)
+    if (activeTab === 'all' && searchTerm) {
       filtered = filtered.filter((p) =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.player_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -145,20 +146,22 @@ export default function PlayerStatsPage() {
       );
     }
 
-    // Sort
-    filtered.sort((a, b) => {
-      const aVal = a[sortField];
-      const bVal = b[sortField];
-      
-      if (sortOrder === 'asc') {
-        return aVal > bVal ? 1 : -1;
-      } else {
-        return aVal < bVal ? 1 : -1;
-      }
-    });
+    // Sort (only for 'all' tab)
+    if (activeTab === 'all') {
+      filtered.sort((a, b) => {
+        const aVal = a[sortField];
+        const bVal = b[sortField];
+        
+        if (sortOrder === 'asc') {
+          return aVal > bVal ? 1 : -1;
+        } else {
+          return aVal < bVal ? 1 : -1;
+        }
+      });
+    }
 
     setFilteredPlayers(filtered);
-  }, [playerStats, searchTerm, sortField, sortOrder]);
+  }, [playerStats, searchTerm, sortField, sortOrder, activeTab]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -346,14 +349,71 @@ export default function PlayerStatsPage() {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl p-2 border border-gray-100/20 mb-6">
+        <div className="flex gap-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'all'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            📊 All Players
+          </button>
+          <button
+            onClick={() => setActiveTab('golden-boot')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'golden-boot'
+                ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            ⚽ Golden Boot
+          </button>
+          <button
+            onClick={() => setActiveTab('golden-glove')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'golden-glove'
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            🧤 Golden Glove
+          </button>
+          <button
+            onClick={() => setActiveTab('rankings')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'rankings'
+                ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            🏆 Top Rankings
+          </button>
+          <button
+            onClick={() => setActiveTab('most-improved')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'most-improved'
+                ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            📈 Most Improved
+          </button>
+        </div>
+      </div>
+
       {/* Search and Filters */}
-      <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl p-4 border border-gray-100/20 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search players by name, ID, or team..."
-              value={searchTerm}
+      {activeTab === 'all' && (
+        <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl p-4 border border-gray-100/20 mb-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="Search players by name, ID, or team..."
+                value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             />
@@ -412,14 +472,28 @@ export default function PlayerStatsPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Player Stats Table */}
       <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-2xl overflow-hidden border border-gray-100/20">
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Player Performance</h2>
-              <p className="text-sm text-gray-600 mt-1">Detailed statistics for all players</p>
+              <h2 className="text-xl font-bold text-gray-900">
+                {activeTab === 'golden-boot' && '⚽ Golden Boot - Top Scorers'}
+                {activeTab === 'golden-glove' && '🧤 Golden Glove - Clean Sheet Leaders'}
+                {activeTab === 'rankings' && '🏆 Top 20 Rankings'}
+                {activeTab === 'most-improved' && '📈 Most Improved Players'}
+                {activeTab === 'all' && 'Player Performance'}
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {activeTab === 'golden-boot' && 'Top 10 players by goals scored'}
+                {activeTab === 'golden-glove' && 'Top 10 players by clean sheets'}
+                {activeTab === 'rankings' && 'Top 20 players by points'}
+                {activeTab === 'most-improved' && 'Top 10 players with highest points gain'}
+                {activeTab === 'all' && 'Detailed statistics for all players'}
+                {roundRange !== 'all' && ` (Rounds ${roundRange})`}
+              </p>
             </div>
             <div className="text-sm text-gray-600">
               <span className="font-semibold">{filteredPlayers.length}</span> / {playerStats.length} Players
@@ -503,7 +577,7 @@ export default function PlayerStatsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        🥅 {player.goals_conceded}
+                        🥅 {player.goals_conceded || 0}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">

@@ -16,6 +16,9 @@ export function usePlayerStats(params: {
   category?: string;
   sortBy?: 'points' | 'goals_scored' | 'assists' | 'motm_awards' | 'matches_played';
   limit?: number;
+  startRound?: number;
+  endRound?: number;
+  useMatchups?: boolean;
 }) {
   return useQuery({
     queryKey: ['player-stats', params],
@@ -28,15 +31,24 @@ export function usePlayerStats(params: {
       if (params.category) searchParams.append('category', params.category);
       if (params.sortBy) searchParams.append('sortBy', params.sortBy);
       if (params.limit) searchParams.append('limit', params.limit.toString());
+      if (params.startRound) searchParams.append('startRound', params.startRound.toString());
+      if (params.endRound) searchParams.append('endRound', params.endRound.toString());
+      if (params.useMatchups) searchParams.append('useMatchups', 'true');
       
-      const response = await fetch(`/api/stats/players?${searchParams}`);
+      const url = `/api/stats/players?${searchParams}`;
+      console.log('[usePlayerStats] Fetching:', url);
+      
+      const response = await fetch(url);
       const data = await response.json();
+      
+      console.log('[usePlayerStats] Response:', { success: data.success, count: data.count || data.data?.length || 0 });
       
       if (!data.success) throw new Error(data.error);
       return data.data;
     },
     enabled: !!(params.tournamentId || params.seasonId || params.playerId), // Enable if tournamentId, seasonId, or playerId is provided
-    staleTime: 5 * 60 * 1000, // 5 minutes - consistent with global config
+    staleTime: 0, // Always refetch to ensure round range changes are reflected
+    refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
 
