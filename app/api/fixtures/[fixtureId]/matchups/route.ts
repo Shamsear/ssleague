@@ -391,6 +391,39 @@ export async function POST(
       WHERE id = ${fixtureId}
     `;
 
+    // Lock home team lineup when matchups are created
+    // Home team lineup locks when they submit matchups (no time deadline)
+    const homeLineup = fixture.home_lineup;
+    if (homeLineup && !homeLineup.locked) {
+      await sql`
+        UPDATE fixtures
+        SET 
+          home_lineup = jsonb_set(
+            home_lineup,
+            '{locked}',
+            'true'::jsonb
+          ),
+          home_lineup = jsonb_set(
+            home_lineup,
+            '{locked_at}',
+            to_jsonb(${new Date().toISOString()}::text)
+          ),
+          home_lineup = jsonb_set(
+            home_lineup,
+            '{locked_by}',
+            to_jsonb(${created_by}::text)
+          ),
+          home_lineup = jsonb_set(
+            home_lineup,
+            '{locked_reason}',
+            to_jsonb('Matchups created'::text)
+          ),
+          updated_at = NOW()
+        WHERE id = ${fixtureId}
+      `;
+      console.log('🔒 Locked home lineup for fixture (matchups created):', fixtureId);
+    }
+
     // Send FCM notification
     try {
       const notificationBody = wasOverwritten

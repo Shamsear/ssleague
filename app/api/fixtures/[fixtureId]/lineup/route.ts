@@ -137,6 +137,15 @@ export async function POST(
       );
     }
 
+    // Check if lineup is already locked in database
+    const existingLineup = isHomeTeam ? fixture.home_lineup : fixture.away_lineup;
+    if (existingLineup && existingLineup.locked === true) {
+      return NextResponse.json(
+        { success: false, error: 'Lineup is locked and cannot be modified.' },
+        { status: 403 }
+      );
+    }
+
     // Get round deadlines from Neon to determine phase
     const seasonId = fixture.season_id;
     const roundNumber = fixture.round_number;
@@ -334,7 +343,7 @@ export async function POST(
 
     // If this is a late submission, record violation and apply penalty
     if (isNewSubmission && isLateSubmission) {
-      const minutesLate = Math.round((submissionTime - awayDeadline) / 60000);
+      const minutesLate = Math.round((submissionTime.getTime() - awayDeadline.getTime()) / 60000);
       console.log(`⚠️  LATE SUBMISSION DETECTED: ${teamId} submitted ${minutesLate} minutes late`);
       
       try {
@@ -478,6 +487,15 @@ export async function PUT(
     if (!isHomeTeam && !isAwayTeam) {
       return NextResponse.json(
         { success: false, error: 'Not authorized for this fixture' },
+        { status: 403 }
+      );
+    }
+
+    // Check if lineup is already locked in database
+    const existingLineup = isHomeTeam ? fixture.home_lineup : fixture.away_lineup;
+    if (existingLineup && existingLineup.locked === true) {
+      return NextResponse.json(
+        { success: false, error: 'Lineup is locked and cannot be modified.' },
         { status: 403 }
       );
     }

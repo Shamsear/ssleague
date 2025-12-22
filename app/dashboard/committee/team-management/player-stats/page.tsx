@@ -21,6 +21,7 @@ interface PlayerStats {
   draws: number;
   losses: number;
   goals: number;
+  goals_conceded: number;
   clean_sheets: number;
   potm: number;
   win_rate: number;
@@ -28,10 +29,9 @@ interface PlayerStats {
   points: number;
   star_rating: number;
   base_points?: number;
-  category_name?: string;
 }
 
-type SortField = 'matches_played' | 'wins' | 'goals' | 'potm' | 'win_rate' | 'points' | 'star_rating';
+type SortField = 'matches_played' | 'wins' | 'goals' | 'goals_conceded' | 'potm' | 'win_rate' | 'points' | 'star_rating';
 
 export default function PlayerStatsPage() {
   const { user, loading } = useAuth();
@@ -118,6 +118,7 @@ export default function PlayerStatsPage() {
         draws: data.draws || 0,
         losses: data.losses || 0,
         goals: data.goals_scored || 0,
+        goals_conceded: data.goals_conceded || 0,
         clean_sheets: data.clean_sheets || 0,
         potm: data.motm_awards || 0,
         win_rate: winRate,
@@ -125,7 +126,6 @@ export default function PlayerStatsPage() {
         points: data.points || 0,
         base_points: data.base_points || 0,
         star_rating: data.star_rating || 3,
-        category_name: data.category || 'Classic',
       };
     });
 
@@ -166,6 +166,76 @@ export default function PlayerStatsPage() {
     } else {
       setSortField(field);
       setSortOrder('desc');
+    }
+  };
+
+  const exportToExcel = async () => {
+    try {
+      // Dynamically import xlsx
+      const XLSX = await import('xlsx');
+      
+      // Prepare data for export
+      const exportData = filteredPlayers.map((player, index) => ({
+        'Rank': index + 1,
+        'Player Name': player.name,
+        'Player ID': player.player_id,
+        'Team': player.team_name,
+        'Matches Played': player.matches_played,
+        'Wins': player.wins,
+        'Draws': player.draws,
+        'Losses': player.losses,
+        'Goals Scored': player.goals,
+        'Goals Conceded': player.goals_conceded,
+        'Clean Sheets': player.clean_sheets,
+        'POTM Awards': player.potm,
+        'Win Rate (%)': player.win_rate.toFixed(2),
+        'Current Points': player.points,
+        'Base Points': player.base_points || 0,
+        'Points Change': player.base_points ? player.points - player.base_points : 0,
+        'Star Rating': player.star_rating
+      }));
+
+      // Create worksheet
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      
+      // Set column widths
+      const columnWidths = [
+        { wch: 6 },  // Rank
+        { wch: 25 }, // Player Name
+        { wch: 15 }, // Player ID
+        { wch: 20 }, // Team
+        { wch: 15 }, // Matches Played
+        { wch: 8 },  // Wins
+        { wch: 8 },  // Draws
+        { wch: 8 },  // Losses
+        { wch: 12 }, // Goals Scored
+        { wch: 14 }, // Goals Conceded
+        { wch: 12 }, // Clean Sheets
+        { wch: 12 }, // POTM Awards
+        { wch: 12 }, // Win Rate
+        { wch: 14 }, // Current Points
+        { wch: 12 }, // Base Points
+        { wch: 14 }, // Points Change
+        { wch: 12 }  // Star Rating
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      // Create workbook
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Player Stats');
+
+      // Generate filename with tournament and date
+      const tournamentName = tournament?.name || 'Tournament';
+      const date = new Date().toISOString().split('T')[0];
+      const filename = `${tournamentName}_Player_Stats_${date}.xlsx`;
+
+      // Save file
+      XLSX.writeFile(workbook, filename);
+      
+      console.log(`✅ Exported ${exportData.length} players to ${filename}`);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert('Failed to export to Excel. Please try again.');
     }
   };
 
@@ -288,7 +358,7 @@ export default function PlayerStatsPage() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => handleSort('matches_played')}
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
@@ -328,6 +398,16 @@ export default function PlayerStatsPage() {
               }`}
             >
               Sort by Stars {sortField === 'star_rating' && (sortOrder === 'desc' ? '↓' : '↑')}
+            </button>
+            <button
+              onClick={exportToExcel}
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors bg-green-600 text-white hover:bg-green-700 flex items-center gap-2"
+              title="Export to Excel"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export Excel
             </button>
           </div>
         </div>
@@ -373,6 +453,9 @@ export default function PlayerStatsPage() {
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('goals')}>
                     Goals {sortField === 'goals' && (sortOrder === 'desc' ? '↓' : '↑')}
                   </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('goals_conceded')}>
+                    GC {sortField === 'goals_conceded' && (sortOrder === 'desc' ? '↓' : '↑')}
+                  </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">CS</th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('potm')}>
                     POTM {sortField === 'potm' && (sortOrder === 'desc' ? '↓' : '↑')}
@@ -391,9 +474,6 @@ export default function PlayerStatsPage() {
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('star_rating')}>
                     Stars {sortField === 'star_rating' && (sortOrder === 'desc' ? '↓' : '↑')}
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Category
                   </th>
                 </tr>
               </thead>
@@ -419,6 +499,11 @@ export default function PlayerStatsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                         ⚽ {player.goals}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        🥅 {player.goals_conceded}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -467,15 +552,6 @@ export default function PlayerStatsPage() {
                         {'⭐'.repeat(Math.min(player.star_rating, 10))}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        player.category_name === 'Legend' 
-                          ? 'bg-gradient-to-r from-purple-100 to-pink-100 text-purple-800' 
-                          : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {player.category_name === 'Legend' ? '👑 Legend' : '🎯 Classic'}
-                      </span>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -492,6 +568,7 @@ export default function PlayerStatsPage() {
           <div><strong>W</strong> = Wins</div>
           <div><strong>D</strong> = Draws</div>
           <div><strong>L</strong> = Losses</div>
+          <div><strong>GC</strong> = Goals Conceded</div>
           <div><strong>CS</strong> = Clean Sheets</div>
           <div><strong>POTM</strong> = Player of the Match</div>
           <div><strong>Win %</strong> = Win Percentage</div>
@@ -499,7 +576,6 @@ export default function PlayerStatsPage() {
           <div><strong>Base Pts</strong> = Starting Points (from previous season)</div>
           <div><strong>Change</strong> = Points gained/lost this season (Current - Base)</div>
           <div><strong>Stars</strong> = Star Rating (3☆-10☆)</div>
-          <div><strong>Category</strong> = Legend (Top 50%) / Classic (Bottom 50%)</div>
         </div>
       </div>
     </div>
