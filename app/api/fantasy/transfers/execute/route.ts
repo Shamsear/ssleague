@@ -175,26 +175,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check if player is in another team's squad
-      const existingInOtherSquad = await fantasySql`
-        SELECT fs.*, ft.team_name
-        FROM fantasy_squad fs
-        JOIN fantasy_teams ft ON fs.team_id = ft.team_id
-        WHERE fs.real_player_id = ${player_in_id}
-          AND fs.team_id != ${teamId}
-          AND fs.league_id = ${leagueId}
-        LIMIT 1
-      `;
-
-      if (existingInOtherSquad.length > 0) {
-        return NextResponse.json(
-          { 
-            error: 'Player already owned by another team',
-            details: `${playerIn.player_name} is currently in ${existingInOtherSquad[0].team_name}'s squad`
-          },
-          { status: 400 }
-        );
-      }
+      // Note: Multiple teams CAN own the same player in fantasy leagues
+      // This is intentional - no restriction on shared ownership
     }
 
     // Calculate new budget
@@ -315,27 +297,18 @@ export async function POST(request: NextRequest) {
       )
     `;
 
-    // Update player availability
+    // Update player statistics (times drafted)
     if (player_in_id && playerIn) {
       await fantasySql`
         UPDATE fantasy_players
-        SET is_available = false,
-            times_drafted = times_drafted + 1,
+        SET times_drafted = times_drafted + 1,
             updated_at = NOW()
         WHERE league_id = ${leagueId}
           AND real_player_id = ${player_in_id}
       `;
     }
 
-    if (releasedPlayer) {
-      await fantasySql`
-        UPDATE fantasy_players
-        SET is_available = true,
-            updated_at = NOW()
-        WHERE league_id = ${leagueId}
-          AND real_player_id = ${releasedPlayer.real_player_id}
-      `;
-    }
+    // Note: We don't update is_available since multiple teams can own the same player
 
     console.log(`✅ Transfer completed. New budget: €${newBudget}`);
 
