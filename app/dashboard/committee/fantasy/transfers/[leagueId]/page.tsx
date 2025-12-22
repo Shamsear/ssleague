@@ -476,7 +476,7 @@ export default function TransfersManagementPage() {
                 </ul>
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'settings' ? (
             <div className="space-y-6">
               {/* Window Selector */}
               <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
