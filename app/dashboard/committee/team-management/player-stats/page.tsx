@@ -44,6 +44,7 @@ export default function PlayerStatsPage() {
   const [playerStats, setPlayerStats] = useState<PlayerStats[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<PlayerStats[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('all');
+  const [roundRange, setRoundRange] = useState<string>('all');
 
   // Use React Query hook for player stats from Neon - fetches from player_seasons table
   const { data: playerStatsData, isLoading: statsLoading, isFetching } = usePlayerStats({

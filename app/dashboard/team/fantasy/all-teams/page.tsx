@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useModal } from '@/hooks/useModal';
 import AlertModal from '@/components/modals/AlertModal';
-import { Crown, Star, ChevronDown, Target, Award, TrendingUp, Shield as ShieldIcon } from 'lucide-react';
+import { Crown, Star, ChevronDown, Target, Award, TrendingUp, Shield as ShieldIcon, ArrowLeftRight } from 'lucide-react';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface FantasyTeam {
@@ -46,6 +46,11 @@ export default function FantasyTeamsPage() {
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingPlayers, setIsLoadingPlayers] = useState(false);
+
+  // Transferred players state
+  const [transferredPlayers, setTransferredPlayers] = useState<any[]>([]);
+  const [showTransferredPlayers, setShowTransferredPlayers] = useState(false);
+  const [isLoadingTransferred, setIsLoadingTransferred] = useState(false);
 
   // Expandable player state
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
@@ -167,6 +172,7 @@ export default function FantasyTeamsPage() {
   const loadTeamPlayers = async (team: FantasyTeam) => {
     setSelectedTeam(team);
     setIsLoadingPlayers(true);
+    setShowTransferredPlayers(false); // Reset transferred players view
 
     try {
       const response = await fetchWithTokenRefresh(`/api/fantasy/teams/${team.id}`);
@@ -198,6 +204,40 @@ export default function FantasyTeamsPage() {
     } finally {
       setIsLoadingPlayers(false);
     }
+  };
+
+  const loadTransferredPlayers = async () => {
+    if (!selectedTeam) return;
+
+    setIsLoadingTransferred(true);
+
+    try {
+      const response = await fetchWithTokenRefresh(`/api/fantasy/teams/${selectedTeam.id}/transferred-players`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load transferred players');
+      }
+
+      const data = await response.json();
+      setTransferredPlayers(data.transferred_players || []);
+    } catch (error) {
+      console.error('Error loading transferred players:', error);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to load transferred players',
+      });
+      setTransferredPlayers([]);
+    } finally {
+      setIsLoadingTransferred(false);
+    }
+  };
+
+  const toggleTransferredPlayers = () => {
+    if (!showTransferredPlayers && transferredPlayers.length === 0) {
+      loadTransferredPlayers();
+    }
+    setShowTransferredPlayers(!showTransferredPlayers);
   };
 
   const togglePlayerBreakdown = async (playerId: string) => {
@@ -818,6 +858,90 @@ export default function FantasyTeamsPage() {
                           )}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Transferred Players Section */}
+                  {selectedTeam && (
+                    <div className="mt-6 pt-6 border-t border-gray-200">
+                      <button
+                        onClick={toggleTransferredPlayers}
+                        className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-xl border-2 border-orange-200 hover:border-orange-300 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
+                            <ArrowLeftRight className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-bold text-gray-900">Transferred Out Players</p>
+                            <p className="text-sm text-gray-600">View players who left this team</p>
+                          </div>
+                        </div>
+                        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${
+                          showTransferredPlayers ? 'rotate-180' : ''
+                        }`} />
+                      </button>
+
+                      {showTransferredPlayers && (
+                        <div className="mt-4">
+                          {isLoadingTransferred ? (
+                            <div className="text-center py-8">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+                              <p className="mt-3 text-gray-600">Loading transferred players...</p>
+                            </div>
+                          ) : transferredPlayers.length === 0 ? (
+                            <div className="text-center py-8 bg-gray-50 rounded-xl">
+                              <p className="text-gray-500">No players have been transferred out yet</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {transferredPlayers.map((player: any, index: number) => (
+                                <div key={`transferred-${player.player_id}-${index}`} className="border-2 border-orange-200 rounded-xl overflow-hidden bg-gradient-to-r from-orange-50 to-red-50">
+                                  <div className="p-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-4 flex-1">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center text-white font-bold">
+                                          <ArrowLeftRight className="w-5 h-5" />
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className="font-bold text-gray-900">{player.player_name}</p>
+                                          <p className="text-sm text-gray-600">
+                                            Transferred: {new Date(player.transferred_at).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-2xl font-bold text-orange-600">{player.total_points}</p>
+                                        <p className="text-xs text-gray-500">points earned</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-4 gap-2 mt-4 pt-4 border-t border-orange-200">
+                                      <div className="text-center">
+                                        <p className="text-xs text-gray-600">Matches</p>
+                                        <p className="font-bold text-gray-900">{player.matches_played}</p>
+                                      </div>
+                                      <div className="text-center">
+                                        <p className="text-xs text-gray-600">Avg Points</p>
+                                        <p className="font-bold text-orange-600">{player.average_points}</p>
+                                      </div>
+                                      <div className="text-center">
+                                        <p className="text-xs text-gray-600">Goals</p>
+                                        <p className="font-bold text-green-600">{player.total_goals}</p>
+                                      </div>
+                                      <div className="text-center">
+                                        <p className="text-xs text-gray-600">MOTM</p>
+                                        <p className="font-bold text-amber-600">{player.motm_count}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
