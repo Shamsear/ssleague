@@ -38,6 +38,7 @@ export default function PlayerStatsByRoundPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRound, setSelectedRound] = useState<string>('all');
   const [maxRounds, setMaxRounds] = useState(0);
+  const [activeTab, setActiveTab] = useState<'all' | 'golden-boot' | 'golden-glove' | 'top-20'>('all');
 
   useEffect(() => {
     if (!loading && !user) {
@@ -94,10 +95,33 @@ export default function PlayerStatsByRoundPage() {
     loadStats();
   }, [selectedTournamentId, userSeasonId, selectedRound]);
 
-  const filteredPlayers = playerStats.filter((player) =>
+  // Filter players based on active tab
+  let filteredPlayers = playerStats.filter((player) =>
     player.player_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     player.team_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Apply tab filters
+  if (activeTab === 'golden-boot') {
+    filteredPlayers = filteredPlayers
+      .filter(p => p.goals_scored > 0)
+      .sort((a, b) => b.goals_scored - a.goals_scored)
+      .slice(0, 10);
+  } else if (activeTab === 'golden-glove') {
+    filteredPlayers = filteredPlayers
+      .filter(p => p.matches_played > 0)
+      .sort((a, b) => {
+        if (b.clean_sheets !== a.clean_sheets) {
+          return b.clean_sheets - a.clean_sheets;
+        }
+        return a.goals_conceded - b.goals_conceded;
+      })
+      .slice(0, 10);
+  } else if (activeTab === 'top-20') {
+    filteredPlayers = filteredPlayers
+      .sort((a, b) => b.points - a.points)
+      .slice(0, 20);
+  }
 
   const exportToExcel = async () => {
     try {
@@ -212,20 +236,67 @@ export default function PlayerStatsByRoundPage() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="mb-6 flex gap-2 flex-wrap">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              activeTab === 'all'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            All Players
+          </button>
+          <button
+            onClick={() => setActiveTab('golden-boot')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              activeTab === 'golden-boot'
+                ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            ⚽ Golden Boot
+          </button>
+          <button
+            onClick={() => setActiveTab('golden-glove')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              activeTab === 'golden-glove'
+                ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            🧤 Golden Glove
+          </button>
+          <button
+            onClick={() => setActiveTab('top-20')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              activeTab === 'top-20'
+                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            🏆 Top 20
+          </button>
+        </div>
+
         {/* Search and Export */}
         <div className="mb-6 flex gap-4">
-          <div className="flex-1 relative">
-            <input
-              type="text"
-              placeholder="Search players or teams..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-3 pl-12 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <svg className="w-5 h-5 text-gray-400 absolute left-4 top-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+          {activeTab === 'all' && (
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                placeholder="Search players or teams..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-3 pl-12 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <svg className="w-5 h-5 text-gray-400 absolute left-4 top-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+          )}
+          {activeTab !== 'all' && <div className="flex-1"></div>}
           <button
             onClick={exportToExcel}
             disabled={filteredPlayers.length === 0}
@@ -340,6 +411,9 @@ export default function PlayerStatsByRoundPage() {
         <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
           <p className="text-sm text-gray-700">
             <span className="font-semibold">{filteredPlayers.length}</span> players shown
+            {activeTab === 'golden-boot' && ' • Top 10 goal scorers'}
+            {activeTab === 'golden-glove' && ' • Top 10 clean sheet leaders'}
+            {activeTab === 'top-20' && ' • Top 20 by points'}
             {selectedRound !== 'all' && ` • Cumulative stats from Round 1 to Round ${selectedRound}`}
             {selectedRound === 'all' && ` • All rounds (complete season)`}
           </p>
