@@ -115,14 +115,36 @@ export default function PlayerStatsByRoundPage() {
   if (activeTab === 'golden-boot') {
     filteredPlayers = filteredPlayers
       .filter(p => p.goals_scored > 0)
-      .sort((a, b) => b.goals_scored - a.goals_scored)
+      .map(player => ({
+        ...player,
+        goals_per_match: player.matches_played > 0 
+          ? Math.round((player.goals_scored / player.matches_played) * 100) / 100 
+          : 0
+      }))
+      .sort((a: any, b: any) => {
+        // Sort by goals first, then by goals per match ratio
+        if (b.goals_scored !== a.goals_scored) {
+          return b.goals_scored - a.goals_scored;
+        }
+        return b.goals_per_match - a.goals_per_match;
+      })
       .slice(0, 10);
   } else if (activeTab === 'golden-glove') {
     filteredPlayers = filteredPlayers
       .filter(p => p.matches_played > 0)
-      .sort((a, b) => {
+      .map(player => ({
+        ...player,
+        clean_sheet_ratio: player.matches_played > 0 
+          ? Math.round((player.clean_sheets / player.matches_played) * 100) 
+          : 0
+      }))
+      .sort((a: any, b: any) => {
+        // Sort by clean sheets first, then by clean sheet ratio, then by fewest goals conceded
         if (b.clean_sheets !== a.clean_sheets) {
           return b.clean_sheets - a.clean_sheets;
+        }
+        if (b.clean_sheet_ratio !== a.clean_sheet_ratio) {
+          return b.clean_sheet_ratio - a.clean_sheet_ratio;
         }
         return a.goals_conceded - b.goals_conceded;
       })
@@ -416,6 +438,12 @@ export default function PlayerStatsByRoundPage() {
                   {activeTab === 'golden-ball' && (
                     <th className="px-4 py-3 text-center text-xs font-bold uppercase">Score</th>
                   )}
+                  {activeTab === 'golden-boot' && (
+                    <th className="px-4 py-3 text-center text-xs font-bold uppercase">G/M</th>
+                  )}
+                  {activeTab === 'golden-glove' && (
+                    <th className="px-4 py-3 text-center text-xs font-bold uppercase">CS%</th>
+                  )}
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">Pts</th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">MP</th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">W</th>
@@ -452,6 +480,20 @@ export default function PlayerStatsByRoundPage() {
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700">
                             {(player as any).overallScore}
+                          </span>
+                        </td>
+                      )}
+                      {activeTab === 'golden-boot' && (
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">
+                            {(player as any).goals_per_match}
+                          </span>
+                        </td>
+                      )}
+                      {activeTab === 'golden-glove' && (
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                            {(player as any).clean_sheet_ratio}%
                           </span>
                         </td>
                       )}
@@ -517,8 +559,8 @@ export default function PlayerStatsByRoundPage() {
           <p className="text-sm text-gray-700">
             <span className="font-semibold">{filteredPlayers.length}</span> players shown
             {activeTab === 'by-week' && ` • Week ${selectedWeek} (Rounds ${(selectedWeek - 1) * 7 + 1}-${Math.min(selectedWeek * 7, maxRounds)})`}
-            {activeTab === 'golden-boot' && ' • Top 10 goal scorers'}
-            {activeTab === 'golden-glove' && ' • Top 10 clean sheet leaders'}
+            {activeTab === 'golden-boot' && ' • Top 10 goal scorers (sorted by goals, then goals/match ratio)'}
+            {activeTab === 'golden-glove' && ' • Top 10 clean sheet leaders (sorted by clean sheets, then CS%, then fewest GA)'}
             {activeTab === 'golden-ball' && ' • Top 20 best overall players (min. 3 matches)'}
             {activeTab === 'top-20' && ' • Top 20 by points'}
             {activeTab !== 'by-week' && selectedRound !== 'all' && ` • Cumulative stats from Round 1 to Round ${selectedRound}`}
@@ -527,6 +569,16 @@ export default function PlayerStatsByRoundPage() {
           {activeTab === 'golden-ball' && (
             <p className="text-xs text-gray-600 mt-2">
               Scoring: Points (40%) • Goals (20%) • Win Rate (20%) • MOTM (10%) • Clean Sheets (10%)
+            </p>
+          )}
+          {activeTab === 'golden-boot' && (
+            <p className="text-xs text-gray-600 mt-2">
+              G/M = Goals per Match ratio
+            </p>
+          )}
+          {activeTab === 'golden-glove' && (
+            <p className="text-xs text-gray-600 mt-2">
+              CS% = Clean Sheet percentage (clean sheets / matches played × 100)
             </p>
           )}
         </div>
