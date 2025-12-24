@@ -38,7 +38,8 @@ export default function PlayerStatsByRoundPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRound, setSelectedRound] = useState<string>('all');
   const [maxRounds, setMaxRounds] = useState(0);
-  const [activeTab, setActiveTab] = useState<'all' | 'golden-boot' | 'golden-glove' | 'top-20'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'golden-boot' | 'golden-glove' | 'golden-ball' | 'top-20' | 'by-week'>('all');
+  const [selectedWeek, setSelectedWeek] = useState<number>(1);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -77,9 +78,18 @@ export default function PlayerStatsByRoundPage() {
       
       setIsLoading(true);
       try {
-        const response = await fetchWithTokenRefresh(
-          `/api/committee/player-stats-by-round?tournament_id=${selectedTournamentId}&season_id=${userSeasonId}&round_number=${selectedRound}`
-        );
+        let url = `/api/committee/player-stats-by-round?tournament_id=${selectedTournamentId}&season_id=${userSeasonId}`;
+        
+        if (activeTab === 'by-week') {
+          // For week view, calculate round range
+          const startRound = (selectedWeek - 1) * 7 + 1;
+          const endRound = selectedWeek * 7;
+          url += `&round_number=${endRound}`; // Use cumulative up to end of week
+        } else {
+          url += `&round_number=${selectedRound}`;
+        }
+        
+        const response = await fetchWithTokenRefresh(url);
         
         if (response.ok) {
           const data = await response.json();
@@ -93,7 +103,7 @@ export default function PlayerStatsByRoundPage() {
     };
 
     loadStats();
-  }, [selectedTournamentId, userSeasonId, selectedRound]);
+  }, [selectedTournamentId, userSeasonId, selectedRound, activeTab, selectedWeek]);
 
   // Filter players based on active tab
   let filteredPlayers = playerStats.filter((player) =>
@@ -117,6 +127,40 @@ export default function PlayerStatsByRoundPage() {
         return a.goals_conceded - b.goals_conceded;
       })
       .slice(0, 10);
+  } else if (activeTab === 'golden-ball') {
+    // Golden Ball: Best overall players based on multiple criteria
+    // Scoring system: Points (40%), Goals (20%), Win Rate (20%), MOTM (10%), Clean Sheets (10%)
+    filteredPlayers = filteredPlayers
+      .filter(p => p.matches_played >= 3) // Minimum 3 matches played
+      .map(player => {
+        // Normalize each stat to 0-100 scale
+        const maxPoints = Math.max(...playerStats.map(p => p.points));
+        const maxGoals = Math.max(...playerStats.map(p => p.goals_scored));
+        const maxMotm = Math.max(...playerStats.map(p => p.motm_awards));
+        const maxCleanSheets = Math.max(...playerStats.map(p => p.clean_sheets));
+        
+        const pointsScore = maxPoints > 0 ? (player.points / maxPoints) * 100 : 0;
+        const goalsScore = maxGoals > 0 ? (player.goals_scored / maxGoals) * 100 : 0;
+        const winRateScore = player.win_rate; // Already 0-100
+        const motmScore = maxMotm > 0 ? (player.motm_awards / maxMotm) * 100 : 0;
+        const cleanSheetScore = maxCleanSheets > 0 ? (player.clean_sheets / maxCleanSheets) * 100 : 0;
+        
+        // Weighted average
+        const overallScore = (
+          pointsScore * 0.40 +
+          goalsScore * 0.20 +
+          winRateScore * 0.20 +
+          motmScore * 0.10 +
+          cleanSheetScore * 0.10
+        );
+        
+        return {
+          ...player,
+          overallScore: Math.round(overallScore * 10) / 10
+        };
+      })
+      .sort((a: any, b: any) => b.overallScore - a.overallScore)
+      .slice(0, 20);
   } else if (activeTab === 'top-20') {
     filteredPlayers = filteredPlayers
       .sort((a, b) => b.points - a.points)
@@ -201,40 +245,42 @@ export default function PlayerStatsByRoundPage() {
           <TournamentSelector />
         </div>
 
-        {/* Round Selector */}
-        <div className="mb-6 bg-white rounded-xl shadow-lg p-4">
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Select Round (Cumulative Stats)
-          </label>
-          <p className="text-xs text-gray-500 mb-3">
-            Shows cumulative statistics from Round 1 up to the selected round
-          </p>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setSelectedRound('all')}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                selectedRound === 'all'
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              All Rounds
-            </button>
-            {Array.from({ length: maxRounds }, (_, i) => i + 1).map((round) => (
+        {/* Round Selector (hidden for By Week tab) */}
+        {activeTab !== 'by-week' && (
+          <div className="mb-6 bg-white rounded-xl shadow-lg p-4">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Select Round (Cumulative Stats)
+            </label>
+            <p className="text-xs text-gray-500 mb-3">
+              Shows cumulative statistics from Round 1 up to the selected round
+            </p>
+            <div className="flex gap-2 flex-wrap">
               <button
-                key={round}
-                onClick={() => setSelectedRound(round.toString())}
+                onClick={() => setSelectedRound('all')}
                 className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                  selectedRound === round.toString()
+                  selectedRound === 'all'
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Up to R{round}
+                All Rounds
               </button>
-            ))}
+              {Array.from({ length: maxRounds }, (_, i) => i + 1).map((round) => (
+                <button
+                  key={round}
+                  onClick={() => setSelectedRound(round.toString())}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                    selectedRound === round.toString()
+                      ? 'bg-blue-600 text-white shadow-lg'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Up to R{round}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tabs */}
         <div className="mb-6 flex gap-2 flex-wrap">
@@ -247,6 +293,16 @@ export default function PlayerStatsByRoundPage() {
             }`}
           >
             All Players
+          </button>
+          <button
+            onClick={() => setActiveTab('by-week')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              activeTab === 'by-week'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            📅 By Week
           </button>
           <button
             onClick={() => setActiveTab('golden-boot')}
@@ -269,6 +325,16 @@ export default function PlayerStatsByRoundPage() {
             🧤 Golden Glove
           </button>
           <button
+            onClick={() => setActiveTab('golden-ball')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              activeTab === 'golden-ball'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            ⚡ Golden Ball
+          </button>
+          <button
             onClick={() => setActiveTab('top-20')}
             className={`px-4 py-2 rounded-lg font-semibold transition-all ${
               activeTab === 'top-20'
@@ -279,6 +345,35 @@ export default function PlayerStatsByRoundPage() {
             🏆 Top 20
           </button>
         </div>
+
+        {/* Week Selector (only for By Week tab) */}
+        {activeTab === 'by-week' && (
+          <div className="mb-6 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-xl shadow-lg p-4 border-2 border-cyan-200">
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Select Week (7 rounds per week)
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {Array.from({ length: Math.ceil(maxRounds / 7) }, (_, i) => i + 1).map((week) => {
+                const startRound = (week - 1) * 7 + 1;
+                const endRound = Math.min(week * 7, maxRounds);
+                return (
+                  <button
+                    key={week}
+                    onClick={() => setSelectedWeek(week)}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                      selectedWeek === week
+                        ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    Week {week}
+                    <span className="block text-xs opacity-80">R{startRound}-{endRound}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Search and Export */}
         <div className="mb-6 flex gap-4">
@@ -318,6 +413,9 @@ export default function PlayerStatsByRoundPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase">Rank</th>
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase">Player</th>
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase">Team</th>
+                  {activeTab === 'golden-ball' && (
+                    <th className="px-4 py-3 text-center text-xs font-bold uppercase">Score</th>
+                  )}
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">Pts</th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">MP</th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">W</th>
@@ -350,6 +448,13 @@ export default function PlayerStatsByRoundPage() {
                         <p className="font-semibold text-gray-900">{player.player_name}</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{player.team_name}</td>
+                      {activeTab === 'golden-ball' && (
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700">
+                            {(player as any).overallScore}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-center">
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700">
                           {player.points}
@@ -411,12 +516,19 @@ export default function PlayerStatsByRoundPage() {
         <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
           <p className="text-sm text-gray-700">
             <span className="font-semibold">{filteredPlayers.length}</span> players shown
+            {activeTab === 'by-week' && ` • Week ${selectedWeek} (Rounds ${(selectedWeek - 1) * 7 + 1}-${Math.min(selectedWeek * 7, maxRounds)})`}
             {activeTab === 'golden-boot' && ' • Top 10 goal scorers'}
             {activeTab === 'golden-glove' && ' • Top 10 clean sheet leaders'}
+            {activeTab === 'golden-ball' && ' • Top 20 best overall players (min. 3 matches)'}
             {activeTab === 'top-20' && ' • Top 20 by points'}
-            {selectedRound !== 'all' && ` • Cumulative stats from Round 1 to Round ${selectedRound}`}
-            {selectedRound === 'all' && ` • All rounds (complete season)`}
+            {activeTab !== 'by-week' && selectedRound !== 'all' && ` • Cumulative stats from Round 1 to Round ${selectedRound}`}
+            {activeTab !== 'by-week' && selectedRound === 'all' && ` • All rounds (complete season)`}
           </p>
+          {activeTab === 'golden-ball' && (
+            <p className="text-xs text-gray-600 mt-2">
+              Scoring: Points (40%) • Goals (20%) • Win Rate (20%) • MOTM (10%) • Clean Sheets (10%)
+            </p>
+          )}
         </div>
       </div>
     </div>
