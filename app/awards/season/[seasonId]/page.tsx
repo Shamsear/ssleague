@@ -45,17 +45,10 @@ interface Trophy {
     instagram_post_url?: string;
 }
 
-interface TeamInfo {
-    id: string;
-    team_name: string;
-    season_id: string;
-}
-
-export default function TeamSeasonAwardsPage() {
+export default function SeasonAwardsPage() {
     const params = useParams();
-    const teamId = params.id as string;
+    const seasonId = params.seasonId as string;
 
-    const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
     const [awards, setAwards] = useState<Award[]>([]);
     const [playerAwards, setPlayerAwards] = useState<PlayerAward[]>([]);
     const [trophies, setTrophies] = useState<Trophy[]>([]);
@@ -66,64 +59,33 @@ export default function TeamSeasonAwardsPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch team details to get season_id
-                const teamRes = await fetch(`/api/teams/${teamId}/details`);
-                const teamData = await teamRes.json();
+                // Fetch all awards for this season
+                const [awardsRes, playerAwardsRes, trophiesRes] = await Promise.all([
+                    fetch(`/api/awards?season_id=${seasonId}`),
+                    fetch(`/api/player-awards?season_id=${seasonId}`),
+                    fetch(`/api/trophies?season_id=${seasonId}`)
+                ]);
 
-                if (teamData.success && teamData.data) {
-                    const team = teamData.data.team;
-                    const seasonBreakdown = teamData.data.seasonBreakdown;
+                const [awardsData, playerAwardsData, trophiesData] = await Promise.all([
+                    awardsRes.json(),
+                    playerAwardsRes.json(),
+                    trophiesRes.json()
+                ]);
 
-                    // Get the most recent season (first in the array since it's ordered DESC)
-                    const activeSeason = seasonBreakdown && seasonBreakdown.length > 0
-                        ? seasonBreakdown[0]
-                        : null;
-
-                    if (activeSeason) {
-                        setTeamInfo({
-                            id: team.id,
-                            team_name: team.team_name,
-                            season_id: activeSeason.season_id
-                        });
-
-                        const seasonId = activeSeason.season_id;
-
-                        // Fetch all awards for this season
-                        const [awardsRes, playerAwardsRes, trophiesRes] = await Promise.all([
-                            fetch(`/api/awards?season_id=${seasonId}`),
-                            fetch(`/api/player-awards?season_id=${seasonId}`),
-                            fetch(`/api/trophies?season_id=${seasonId}`)
-                        ]);
-
-                        const [awardsData, playerAwardsData, trophiesData] = await Promise.all([
-                            awardsRes.json(),
-                            playerAwardsRes.json(),
-                            trophiesRes.json()
-                        ]);
-
-                        if (awardsData.success) setAwards(awardsData.data || []);
-                        if (playerAwardsData.success) setPlayerAwards(playerAwardsData.awards || []);
-                        if (trophiesData.success) setTrophies(trophiesData.trophies || []);
-                    } else {
-                        // No seasons found for this team
-                        setTeamInfo({
-                            id: team.id,
-                            team_name: team.team_name,
-                            season_id: ''
-                        });
-                    }
-                }
+                if (awardsData.success) setAwards(awardsData.data || []);
+                if (playerAwardsData.success) setPlayerAwards(playerAwardsData.awards || []);
+                if (trophiesData.success) setTrophies(trophiesData.trophies || []);
             } catch (error) {
-                console.error('Error fetching team awards:', error);
+                console.error('Error fetching season awards:', error);
             } finally {
                 setLoading(false);
             }
         };
 
-        if (teamId) {
+        if (seasonId) {
             fetchData();
         }
-    }, [teamId]);
+    }, [seasonId]);
 
     // Clean player awards (same logic as public awards page)
     const cleanedPlayerAwards = Array.isArray(playerAwards) ? playerAwards.filter(award => {
@@ -212,7 +174,7 @@ export default function TeamSeasonAwardsPage() {
                         else if (key === 'motm') { label = 'MOTM'; colorClass = 'bg-yellow-50 text-yellow-800 border-yellow-200'; }
 
                         return (
-                            <div key={key} className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs font-semibold shadow-sm ${colorClass}`}>
+                            <div key={originalKey} className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs font-semibold shadow-sm ${colorClass}`}>
                                 <span className="capitalize">{label}:</span>
                                 <span className="font-bold">{String(value)}</span>
                             </div>
@@ -244,19 +206,6 @@ export default function TeamSeasonAwardsPage() {
         );
     }
 
-    if (!teamInfo) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 py-8 px-4 flex items-center justify-center">
-                <div className="text-center">
-                    <h1 className="text-2xl font-bold text-gray-900 mb-4">Team Not Found</h1>
-                    <Link href="/teams" className="text-blue-600 hover:underline">
-                        Back to Teams
-                    </Link>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 py-4 sm:py-8 px-3 sm:px-4 lg:px-6">
             <div className="container mx-auto max-w-[1600px]">
@@ -264,7 +213,7 @@ export default function TeamSeasonAwardsPage() {
                 <header className="mb-6 sm:mb-10">
                     <div className="flex items-center gap-3 mb-4">
                         <Link
-                            href={`/teams/${teamId}`}
+                            href="/awards"
                             className="text-blue-600 hover:text-blue-800 transition-colors"
                         >
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -272,11 +221,11 @@ export default function TeamSeasonAwardsPage() {
                             </svg>
                         </Link>
                         <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-black bg-gradient-to-r from-yellow-600 via-orange-600 to-red-600 bg-clip-text text-transparent leading-tight">
-                            {teamInfo.team_name}
+                            Season Awards & Trophies
                         </h1>
                     </div>
                     <p className="text-base sm:text-lg lg:text-xl text-gray-700 font-medium mb-2">
-                        Season Awards & Trophies - {teamInfo.season_id}
+                        {seasonId}
                     </p>
                     <p className="text-sm sm:text-base text-gray-600">
                         All awards and trophies given during this season
@@ -410,7 +359,7 @@ export default function TeamSeasonAwardsPage() {
                             );
                         })}
 
-                        {/* Player Awards */}
+                        {/* Player Awards - Reusing same component structure from public awards page */}
                         {activeTab === 'awards' && cleanedPlayerAwards.map((award, index) => {
                             const isWinner = award.award_position?.toLowerCase().includes('winner');
                             const isRunnerUp = award.award_position?.toLowerCase().includes('runner');

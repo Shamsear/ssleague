@@ -1001,7 +1001,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/player-leaderboard" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 📋 Player Stats
               </Link>
-              <Link href={`/teams/${team.id}/awards`} className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600 transition-all text-xs sm:text-sm font-medium text-center">
+              <Link href={`/awards/season/${seasonStatus.seasonId}`} className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600 transition-all text-xs sm:text-sm font-medium text-center">
                 🏅 Season Awards
               </Link>
               <Link href="/dashboard/team/player-stats" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
@@ -1103,8 +1103,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <button
               onClick={() => setActiveTab('auctions')}
               className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'auctions'
-                  ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
-                  : 'text-gray-600 hover:bg-white/50'
+                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                : 'text-gray-600 hover:bg-white/50'
                 } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
@@ -1119,8 +1119,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <button
               onClick={() => setActiveTab('squad')}
               className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'squad'
-                  ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white'
-                  : 'text-gray-600 hover:bg-white/50'
+                ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white'
+                : 'text-gray-600 hover:bg-white/50'
                 } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
@@ -1135,8 +1135,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <button
               onClick={() => setActiveTab('results')}
               className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'results'
-                  ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
-                  : 'text-gray-600 hover:bg-white/50'
+                ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
+                : 'text-gray-600 hover:bg-white/50'
                 } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
@@ -1151,8 +1151,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <button
               onClick={() => setActiveTab('overview')}
               className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'overview'
-                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
-                  : 'text-gray-600 hover:bg-white/50'
+                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                : 'text-gray-600 hover:bg-white/50'
                 } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="whitespace-nowrap">📈 Overview</span>
@@ -1161,8 +1161,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <button
                 onClick={() => setActiveTab('fantasy')}
                 className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'fantasy'
-                    ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
-                    : 'text-gray-600 hover:bg-white/50'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
+                  : 'text-gray-600 hover:bg-white/50'
                   } rounded-t-2xl sm:rounded-t-3xl`}
               >
                 <span className="whitespace-nowrap">⭐ Fantasy</span>
@@ -1491,8 +1491,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                                 <div className="font-bold text-gray-900 mb-1">{player.name}</div>
                                 <div className="flex items-center gap-2">
                                   <span className={`px-2 py-1 rounded-lg text-xs font-medium ${player.category === 'legend'
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-gray-100 text-gray-700'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-700'
                                     }`}>
                                     {player.category === 'legend' ? '⭐ Legend' : 'Classic'}
                                   </span>
