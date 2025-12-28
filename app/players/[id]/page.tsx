@@ -13,6 +13,7 @@ interface PlayerData {
   player_id?: string;
   name: string;
   category?: string;
+  star_rating?: number;
   team?: string;
   team_id?: string;
   season_id?: string;
@@ -45,22 +46,22 @@ interface PlayerData {
   potm_awards?: Array<{ month: string; year: string }>;
   ranking?: number;
   round_performance?: any;
-  
+
   // Trophy/Award fields (arrays for unlimited trophies)
   category_trophies?: string[];
   individual_trophies?: string[];
-  
+
   // Team trophy fields
   has_league_trophy?: boolean;
   team_rank?: number;
   cup_achievement?: string;
-  
+
   // Direct stats (may be at root level)
   played?: number;
   points?: number;
   goals_scored?: number;
   clean_sheets?: number;
-  
+
   // Stats object from realplayers
   stats?: {
     matches_played: number;
@@ -108,12 +109,12 @@ export default function PlayerDetailPage() {
 
   const playerId = params.id as string;
   const [firebaseSeasons, setFirebaseSeasons] = useState<any[]>([]);
-  
+
   // Use React Query hook for player stats from Neon
   const { data: playerStatsData, isLoading: statsLoading } = usePlayerStats({
     playerId: playerId
   });
-  
+
   // Fetch seasons from cache or Firebase
   useEffect(() => {
     const fetchSeasons = async () => {
@@ -121,7 +122,7 @@ export default function PlayerDetailPage() {
         // Try to get from localStorage cache first (expires after 1 hour)
         const cached = localStorage.getItem('seasons_cache');
         const cacheTime = localStorage.getItem('seasons_cache_time');
-        
+
         if (cached && cacheTime) {
           const cacheAge = Date.now() - parseInt(cacheTime);
           if (cacheAge < 3600000) { // 1 hour
@@ -129,7 +130,7 @@ export default function PlayerDetailPage() {
             return;
           }
         }
-        
+
         // Fetch from Firebase if no cache or expired
         const seasonsRef = collection(db, 'seasons');
         const seasonsSnapshot = await getDocs(seasonsRef);
@@ -137,11 +138,11 @@ export default function PlayerDetailPage() {
           id: doc.id,
           ...doc.data()
         }));
-        
+
         // Cache the results
         localStorage.setItem('seasons_cache', JSON.stringify(seasonsData));
         localStorage.setItem('seasons_cache_time', Date.now().toString());
-        
+
         setFirebaseSeasons(seasonsData);
       } catch (error) {
         console.error('Error fetching seasons:', error);
@@ -149,23 +150,23 @@ export default function PlayerDetailPage() {
     };
     fetchSeasons();
   }, []);
-  
+
   // Fetch player awards for currently selected season
   const currentSeasonIdForAwards = selectedView === 'season' && selectedSeasonId ? selectedSeasonId : null;
   const { data: playerAwards = [], isLoading: awardsLoading } = usePlayerAwards(
     playerId,
     currentSeasonIdForAwards || undefined
   );
-  
+
   // Fetch team trophies and stats for currently selected season
-  const currentTeamId = selectedView === 'season' && selectedSeasonId ? 
+  const currentTeamId = selectedView === 'season' && selectedSeasonId ?
     allSeasonData.find(s => (s.season_id || s.id) === selectedSeasonId)?.team_id : null;
-  
+
   const { data: teamTrophies = [], isLoading: trophiesLoading } = useTeamTrophies(
     currentTeamId || undefined,
     currentSeasonIdForAwards || undefined
   );
-  
+
   const { data: teamStats, isLoading: teamStatsLoading } = useTeamSeasonStats(
     currentTeamId || undefined,
     currentSeasonIdForAwards || undefined
@@ -180,50 +181,50 @@ export default function PlayerDetailPage() {
         setError(null);
         return;
       }
-      
+
       // Wait for Firebase seasons to load before filtering
       if (firebaseSeasons.length === 0) {
         return;
       }
-      
+
       // Only show error if done loading and no data
       if (!playerStatsData || playerStatsData.length === 0) {
         setError('No season stats found for this player');
         return;
       }
-      
+
       // Clear error when we have data
       setError(null);
-      
+
       // Only show seasons that exist in Firebase and have started
       const startedSeasons = playerStatsData.filter((statsData: any) => {
         const seasonId = statsData.season_id;
-        
+
         // Find the season in Firebase
         const fbSeason = firebaseSeasons.find(s => s.id === seasonId);
-        
+
         // If season not found in Firebase, exclude it
         if (!fbSeason) return false;
-        
+
         // Check if season has started
         if (fbSeason.start_date) {
           const startDate = fbSeason.start_date.toDate ? fbSeason.start_date.toDate() : new Date(fbSeason.start_date);
           const now = new Date();
           return startDate <= now;
         }
-        
+
         // If no start_date field, check status (for backward compatibility)
         // Only include if status is 'active' or 'completed', NOT if it's 'upcoming'
         if (fbSeason.status === 'active' || fbSeason.status === 'completed') {
           return true;
         }
-        
+
         // For very old seasons without start_date or status, include them
         // (This handles seasons created before these fields existed)
         const seasonNum = parseInt(seasonId.replace(/\D/g, '')) || 0;
         return seasonNum < 16; // Only auto-include pre-S16 seasons
       });
-      
+
       // Fetch photo_url from API (single read instead of query)
       let photoUrl: string | undefined;
       try {
@@ -248,51 +249,53 @@ export default function PlayerDetailPage() {
       } catch (error) {
         console.error('Error fetching player photo:', error);
       }
-      
+
       // Process all season data from Neon
       const allData = startedSeasons.map((statsData: any) => {
-      const seasonName = statsData.season_name || statsData.season_id;
-      
-      const matchesPlayed = statsData.matches_played || 0;
-      const goalsScored = statsData.goals_scored || 0;
-      const goalsConceded = statsData.goals_conceded || 0;
-      const wins = statsData.wins || 0;
-      
-      return {
-        ...statsData,
-        id: statsData.id || statsData.player_id,
-        name: statsData.player_name || 'Unknown Player',
-        player_id: statsData.player_id,
-        season_name: seasonName,
-        team: statsData.team,
-        team_id: statsData.team_id,
-        category: statsData.category,
-        photo_url: photoUrl,
-        // Add photo positioning from stored data
-        ...((window as any).__playerPhotoSettings || {}),
-        stats: {
-          matches_played: matchesPlayed,
-          matches_won: wins,
-          matches_lost: statsData.losses || 0,
-          matches_drawn: statsData.draws || 0,
-          goals_scored: goalsScored,
-          goals_conceded: goalsConceded,
-          assists: statsData.assists || 0,
-          clean_sheets: statsData.clean_sheets || 0,
-          points: statsData.points || 0,
-          // Calculate derived stats
-          net_goals: goalsScored - goalsConceded,
-          goals_per_game: matchesPlayed > 0 ? (goalsScored / matchesPlayed).toFixed(2) : '0.00',
-          conceded_per_game: matchesPlayed > 0 ? (goalsConceded / matchesPlayed).toFixed(2) : '0.00',
-          win_rate: matchesPlayed > 0 
-            ? parseFloat(((wins / matchesPlayed) * 100).toFixed(1))
-            : 0
-        }
-      };
-    });
-    
+        const seasonName = statsData.season_name || statsData.season_id;
+
+        const matchesPlayed = statsData.matches_played || 0;
+        const goalsScored = statsData.goals_scored || 0;
+        const goalsConceded = statsData.goals_conceded || 0;
+        const wins = statsData.wins || 0;
+
+        return {
+          ...statsData,
+          id: statsData.id || statsData.player_id,
+          name: statsData.player_name || 'Unknown Player',
+          player_id: statsData.player_id,
+          season_id: statsData.season_id,
+          season_name: seasonName,
+          team: statsData.team,
+          team_id: statsData.team_id,
+          category: statsData.category,
+          star_rating: statsData.star_rating,
+          photo_url: photoUrl,
+          // Add photo positioning from stored data
+          ...((window as any).__playerPhotoSettings || {}),
+          stats: {
+            matches_played: matchesPlayed,
+            matches_won: wins,
+            matches_lost: statsData.losses || 0,
+            matches_drawn: statsData.draws || 0,
+            goals_scored: goalsScored,
+            goals_conceded: goalsConceded,
+            assists: statsData.assists || 0,
+            clean_sheets: statsData.clean_sheets || 0,
+            points: statsData.points || 0,
+            // Calculate derived stats
+            net_goals: goalsScored - goalsConceded,
+            goals_per_game: matchesPlayed > 0 ? (goalsScored / matchesPlayed).toFixed(2) : '0.00',
+            conceded_per_game: matchesPlayed > 0 ? (goalsConceded / matchesPlayed).toFixed(2) : '0.00',
+            win_rate: matchesPlayed > 0
+              ? parseFloat(((wins / matchesPlayed) * 100).toFixed(1))
+              : 0
+          }
+        };
+      });
+
       setAllSeasonData(allData);
-      
+
       // Set the first season as default
       if (allData.length > 0) {
         setPlayer(allData[0]);
@@ -301,11 +304,11 @@ export default function PlayerDetailPage() {
         // If we have data but all seasons were filtered out, show message
         setError('No active seasons found for this player');
       }
-      
+
       // Mark data as loaded
       setPlayerDataLoaded(true);
     };
-    
+
     processPlayerData();
   }, [playerStatsData, statsLoading, firebaseSeasons, playerId]);
 
@@ -321,7 +324,7 @@ export default function PlayerDetailPage() {
       console.error('Error fetching season name:', err);
     }
   };
-  
+
   const fetchMatchHistory = async (playerId: string, teamId?: string) => {
     try {
       // This is a simplified version - adjust based on your actual data structure
@@ -423,7 +426,7 @@ export default function PlayerDetailPage() {
       assists: 0,
       points: 0,
     };
-    
+
     const overall = allSeasonData.reduce((acc, seasonData) => {
       const s = (seasonData.stats || {}) as any;
       return {
@@ -448,7 +451,7 @@ export default function PlayerDetailPage() {
       assists: 0,
       points: 0,
     } as any);
-    
+
     // Calculate derived stats
     if (overall.matches_played > 0) {
       overall.goals_per_game = (overall.goals_scored / overall.matches_played).toFixed(2);
@@ -456,16 +459,16 @@ export default function PlayerDetailPage() {
       overall.win_rate = Math.round((overall.matches_won / overall.matches_played) * 100);
     }
     overall.net_goals = overall.goals_scored - overall.goals_conceded;
-    
+
     return overall;
   };
-  
+
   const overallStats = calculateOverallStats();
-  
+
   // Get stats based on selected view
   let displayStats;
   let currentSeasonData = player;
-  
+
   if (selectedView === 'overall') {
     displayStats = overallStats;
   } else if (selectedView === 'all-seasons') {
@@ -483,11 +486,11 @@ export default function PlayerDetailPage() {
   } else {
     displayStats = player.stats || {};
   }
-  
+
   const stats = displayStats;
-  
+
   const goalDifference = stats.net_goals || ((stats.goals_scored || 0) - (stats.goals_conceded || 0));
-  const winRate = stats.win_rate || (stats.matches_played && stats.matches_played > 0 
+  const winRate = stats.win_rate || (stats.matches_played && stats.matches_played > 0
     ? parseFloat((((stats.matches_won || 0) / stats.matches_played) * 100).toFixed(1))
     : 0);
   const goalsPerGame = stats.goals_per_game || (stats.matches_played && stats.matches_played > 0
@@ -509,7 +512,7 @@ export default function PlayerDetailPage() {
               </svg>
               <span>Back to Players</span>
             </Link>
-            
+
             <div className="flex items-center gap-3">
               <span className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-600">
                 Player ID: {player.player_id || player.id}
@@ -521,7 +524,7 @@ export default function PlayerDetailPage() {
               )}
             </div>
           </div>
-          
+
           {/* View Tabs */}
           {allSeasonData.length > 0 && (
             <div className="mb-6 bg-white rounded-xl p-2 shadow-sm border border-gray-200">
@@ -532,46 +535,44 @@ export default function PlayerDetailPage() {
                     setSelectedView('overall');
                     setSelectedSeasonId(null);
                   }}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                    selectedView === 'overall'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${selectedView === 'overall'
+                    ? 'bg-green-500 text-white shadow-md'
+                    : 'text-gray-600 hover:bg-gray-100'
+                    }`}
                 >
                   Overall Stats
                 </button>
-                
+
                 {/* All Seasons Tab */}
                 <button
                   onClick={() => {
                     setSelectedView('all-seasons');
                     setSelectedSeasonId(null);
                   }}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                    selectedView === 'all-seasons'
-                      ? 'bg-purple-500 text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${selectedView === 'all-seasons'
+                    ? 'bg-purple-500 text-white shadow-md'
+                    : 'text-gray-600 hover:bg-gray-100'
+                    }`}
                 >
                   All Seasons ({allSeasonData.length})
                 </button>
-                
+
                 {/* Divider */}
                 {allSeasonData.length > 0 && (
                   <div className="flex items-center px-2">
                     <div className="h-6 w-px bg-gray-300"></div>
                   </div>
                 )}
-                
+
                 {/* Individual Season Tabs */}
                 {allSeasonData.map((seasonData, index) => {
                   const isCurrentSeason = index === 0;
                   // Use season_id (not document id) as the unique identifier
                   const seasonId = seasonData.season_id || seasonData.id;
                   const isSelected = selectedView === 'season' && selectedSeasonId === seasonId;
-                  
+
                   console.log(`Tab ${index}: season_id=${seasonData.season_id}, seasonId=${seasonId}, selectedSeasonId=${selectedSeasonId}, isSelected=${isSelected}`);
-                  
+
                   return (
                     <button
                       key={`${seasonData.player_id || playerId}-${seasonData.season_id}-${seasonData.id}-${index}`}
@@ -584,11 +585,10 @@ export default function PlayerDetailPage() {
                           await fetchSeasonName(seasonData.season_id);
                         }
                       }}
-                      className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                        isSelected
-                          ? 'bg-blue-500 text-white shadow-md'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
+                      className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${isSelected
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'text-gray-600 hover:bg-gray-100'
+                        }`}
                     >
                       {seasonData.season_name || seasonData.season_id || `Season ${allSeasonData.length - index}`}
                       {isCurrentSeason && (
@@ -620,7 +620,7 @@ export default function PlayerDetailPage() {
                     posXSquare={player.photo_position_x_square}
                     posYSquare={player.photo_position_y_square}
                   />
-                  
+
                   {/* POTM Badge */}
                   {player.is_potm && (
                     <div className="absolute top-0 left-0 bg-amber-500 text-white text-xs font-bold py-1 px-2 rounded-br-lg">
@@ -638,15 +638,53 @@ export default function PlayerDetailPage() {
                     </div>
                   )}
 
-                  {/* Player Category - Season Specific */}
-                  {currentSeasonData.category && (
-                    <div className="mb-4">
-                      <span className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${getCategoryColor(currentSeasonData.category)}`}>
-                        Category: {currentSeasonData.category}
-                      </span>
-                    </div>
-                  )}
-                  
+                  {/* Player Category/Star Rating - Only for Individual Season View */}
+                  {selectedView === 'season' && selectedSeasonId && (() => {
+                    // Determine season number
+                    const getSeasonNumber = (seasonId: string | undefined): number => {
+                      if (!seasonId) return 0;
+                      const match = seasonId.match(/\d+/);
+                      return match ? parseInt(match[0]) : 0;
+                    };
+
+                    const seasonNumber = getSeasonNumber(currentSeasonData.season_id);
+                    const isNewSeason = seasonNumber >= 16;
+
+                    if (isNewSeason && currentSeasonData.star_rating !== undefined && currentSeasonData.star_rating !== null) {
+                      // Season 16+: Show star rating (3-10 scale)
+                      const starRating = currentSeasonData.star_rating;
+
+                      // Color based on rating
+                      const getRatingColor = (rating: number): string => {
+                        if (rating >= 9) return 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 text-green-800';
+                        if (rating >= 7) return 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 text-blue-800';
+                        if (rating >= 5) return 'bg-gradient-to-r from-yellow-50 to-amber-50 border-amber-300 text-amber-800';
+                        return 'bg-gradient-to-r from-orange-50 to-red-50 border-orange-300 text-orange-800';
+                      };
+
+                      return (
+                        <div className="mb-4">
+                          <div className={`px-3 py-2 rounded-lg text-sm font-medium border-2 ${getRatingColor(starRating)}`}>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">⭐ Star Rating:</span>
+                              <span className="text-2xl font-bold">{starRating}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    } else if (!isNewSeason && currentSeasonData.category) {
+                      // Season 15 and below: Show category
+                      return (
+                        <div className="mb-4">
+                          <span className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${getCategoryColor(currentSeasonData.category)}`}>
+                            Category: {currentSeasonData.category}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {/* Season Info for individual season view */}
                   {selectedView === 'season' && selectedSeasonId && currentSeasonData.season_name && (
                     <div className="mb-4">
@@ -781,23 +819,21 @@ export default function PlayerDetailPage() {
                     </svg>
                     Season-by-Season Breakdown
                   </h3>
-                  
+
                   <div className="space-y-4">
                     {allSeasonData.map((seasonData, index) => {
                       const seasonStats = (seasonData.stats || {}) as any;
                       const isCurrentSeason = index === 0;
-                      
+
                       return (
-                        <div key={`all-seasons-${seasonData.player_id || playerId}-${seasonData.season_id || seasonData.id}-${index}`} className={`rounded-xl p-5 border-2 ${
-                          isCurrentSeason 
-                            ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300' 
-                            : 'bg-white/50 border-gray-200'
-                        }`}>
+                        <div key={`all-seasons-${seasonData.player_id || playerId}-${seasonData.season_id || seasonData.id}-${index}`} className={`rounded-xl p-5 border-2 ${isCurrentSeason
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300'
+                          : 'bg-white/50 border-gray-200'
+                          }`}>
                           <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                                isCurrentSeason ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
-                              }`}>
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${isCurrentSeason ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
+                                }`}>
                                 {allSeasonData.length - index}
                               </div>
                               <div className="flex-1">
@@ -820,7 +856,7 @@ export default function PlayerDetailPage() {
                               </span>
                             )}
                           </div>
-                          
+
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div className="bg-white/60 rounded-lg p-3 text-center">
                               <p className="text-xs text-gray-500 mb-1">Matches</p>
@@ -841,7 +877,7 @@ export default function PlayerDetailPage() {
                               <p className="text-xl font-bold text-indigo-600">{seasonStats.points || seasonStats.total_points || 0}</p>
                             </div>
                           </div>
-                          
+
                           <div className="grid grid-cols-3 gap-3 mt-3">
                             <div className="bg-white/60 rounded-lg p-3 text-center">
                               <p className="text-xs text-gray-500 mb-1">Conceded</p>
@@ -849,10 +885,9 @@ export default function PlayerDetailPage() {
                             </div>
                             <div className="bg-white/60 rounded-lg p-3 text-center">
                               <p className="text-xs text-gray-500 mb-1">Net Goals</p>
-                              <p className={`text-lg font-bold ${
-                                (seasonStats.net_goals || 0) > 0 ? 'text-green-600' : 
+                              <p className={`text-lg font-bold ${(seasonStats.net_goals || 0) > 0 ? 'text-green-600' :
                                 (seasonStats.net_goals || 0) < 0 ? 'text-red-600' : 'text-gray-600'
-                              }`}>
+                                }`}>
                                 {(seasonStats.net_goals || 0) > 0 ? '+' : ''}{seasonStats.net_goals || 0}
                               </p>
                             </div>
@@ -867,153 +902,150 @@ export default function PlayerDetailPage() {
                   </div>
                 </div>
               )}
-              
+
               {/* Stats Display (Overall or Individual Season) */}
               {selectedView !== 'all-seasons' && (
-              <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
-                <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
-                  <svg className="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  {selectedView === 'overall' ? 'Overall Statistics' : 
-                   selectedView === 'season' && selectedSeasonId ? 
-                   `Statistics - ${currentSeasonData.season_name || currentSeasonData.season_id || 'Season'}` : 
-                   `Statistics - ${seasonName}`}
-                </h3>
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    {selectedView === 'overall' ? 'Overall Statistics' :
+                      selectedView === 'season' && selectedSeasonId ?
+                        `Statistics - ${currentSeasonData.season_name || currentSeasonData.season_id || 'Season'}` :
+                        `Statistics - ${seasonName}`}
+                  </h3>
 
-                {/* Points display - Only for individual seasons, not overall */}
-                {selectedView === 'season' && (
-                  <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
-                      <p className="text-3xl font-bold text-blue-800">{stats.points || stats.total_points || 0}</p>
+                  {/* Points display - Only for individual seasons, not overall */}
+                  {selectedView === 'season' && (
+                    <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 shadow-sm border-2 border-blue-200 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-blue-700 font-medium">TOTAL POINTS</p>
+                        <p className="text-3xl font-bold text-blue-800">{stats.points || stats.total_points || 0}</p>
+                      </div>
+                      {selectedSeasonId === allSeasonData[0]?.id && currentSeasonData.ranking && (
+                        <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
+                          <p className="text-xs text-gray-500">League Ranking</p>
+                          <p className="text-xl font-bold text-primary">#{player.ranking}</p>
+                        </div>
+                      )}
                     </div>
-                    {selectedSeasonId === allSeasonData[0]?.id && currentSeasonData.ranking && (
-                      <div className="bg-white px-4 py-2 rounded-lg shadow-sm">
-                        <p className="text-xs text-gray-500">League Ranking</p>
-                        <p className="text-xl font-bold text-primary">#{player.ranking}</p>
+                  )}
+
+                  {/* Main Stats Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
+                      <p className="text-xs text-gray-500 mb-1">Matches</p>
+                      <p className="text-2xl font-bold text-dark">{stats.matches_played || 0}</p>
+                    </div>
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
+                      <p className="text-xs text-gray-500 mb-1">Goals</p>
+                      <p className="text-2xl font-bold text-primary">{stats.goals_scored || 0}</p>
+                    </div>
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
+                      <p className="text-xs text-gray-500 mb-1">Clean Sheets</p>
+                      <p className="text-2xl font-bold text-blue-600">{stats.clean_sheets || 0}</p>
+                    </div>
+                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
+                      <p className="text-xs text-gray-500 mb-1">Net Goals</p>
+                      <p className={`text-2xl font-bold ${(stats.net_goals || 0) > 0 ? 'text-green-600' :
+                        (stats.net_goals || 0) < 0 ? 'text-red-600' : 'text-gray-600'
+                        }`}>
+                        {(stats.net_goals || 0) > 0 ? '+' : ''}{stats.net_goals || 0}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Secondary Stats Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Win Rate</p>
+                      <p className="text-2xl font-bold text-green-600">{winRate}%</p>
+                    </div>
+                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Goals/Game</p>
+                      <p className="text-2xl font-bold text-orange-600">{goalsPerGame}</p>
+                    </div>
+                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-1">Conceded/Game</p>
+                      <p className="text-2xl font-bold text-red-600">{typeof stats.conceded_per_game === 'number' ? stats.conceded_per_game.toFixed(2) : (stats.conceded_per_game || '0.00')}</p>
+                    </div>
+                    {stats.average_rating > 0 && (
+                      <div className="bg-white/40 rounded-xl p-4 text-center">
+                        <p className="text-xs text-gray-500 mb-1">Avg Rating</p>
+                        <p className="text-2xl font-bold text-amber-600">{stats.average_rating.toFixed(1)}</p>
                       </div>
                     )}
                   </div>
-                )}
 
-                {/* Main Stats Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                  <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
-                    <p className="text-xs text-gray-500 mb-1">Matches</p>
-                    <p className="text-2xl font-bold text-dark">{stats.matches_played || 0}</p>
-                  </div>
-                  <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
-                    <p className="text-xs text-gray-500 mb-1">Goals</p>
-                    <p className="text-2xl font-bold text-primary">{stats.goals_scored || 0}</p>
-                  </div>
-                  <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
-                    <p className="text-xs text-gray-500 mb-1">Clean Sheets</p>
-                    <p className="text-2xl font-bold text-blue-600">{stats.clean_sheets || 0}</p>
-                  </div>
-                  <div className="glass-card rounded-xl bg-white/30 p-4 text-center transform hover:scale-105 transition-all duration-300">
-                    <p className="text-xs text-gray-500 mb-1">Net Goals</p>
-                    <p className={`text-2xl font-bold ${
-                      (stats.net_goals || 0) > 0 ? 'text-green-600' : 
-                      (stats.net_goals || 0) < 0 ? 'text-red-600' : 'text-gray-600'
-                    }`}>
-                      {(stats.net_goals || 0) > 0 ? '+' : ''}{stats.net_goals || 0}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Secondary Stats Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-white/40 rounded-xl p-4 text-center">
-                    <p className="text-xs text-gray-500 mb-1">Win Rate</p>
-                    <p className="text-2xl font-bold text-green-600">{winRate}%</p>
-                  </div>
-                  <div className="bg-white/40 rounded-xl p-4 text-center">
-                    <p className="text-xs text-gray-500 mb-1">Goals/Game</p>
-                    <p className="text-2xl font-bold text-orange-600">{goalsPerGame}</p>
-                  </div>
-                  <div className="bg-white/40 rounded-xl p-4 text-center">
-                    <p className="text-xs text-gray-500 mb-1">Conceded/Game</p>
-                    <p className="text-2xl font-bold text-red-600">{typeof stats.conceded_per_game === 'number' ? stats.conceded_per_game.toFixed(2) : (stats.conceded_per_game || '0.00')}</p>
-                  </div>
-                  {stats.average_rating > 0 && (
-                    <div className="bg-white/40 rounded-xl p-4 text-center">
-                      <p className="text-xs text-gray-500 mb-1">Avg Rating</p>
-                      <p className="text-2xl font-bold text-amber-600">{stats.average_rating.toFixed(1)}</p>
+                  {/* Goals Stats */}
+                  {(stats.goals_conceded !== undefined || stats.net_goals !== undefined || stats.conceded_per_game !== undefined) && (
+                    <div className="mt-6">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Goal Statistics</h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-red-50 rounded-xl p-4 text-center border border-red-100">
+                          <p className="text-xs text-red-700 mb-1">Conceded</p>
+                          <p className="text-2xl font-bold text-red-600">{stats.goals_conceded || 0}</p>
+                          {stats.conceded_per_game && (
+                            <p className="text-xs text-red-500 mt-1">{stats.conceded_per_game} per game</p>
+                          )}
+                        </div>
+                        <div className={`rounded-xl p-4 text-center border ${goalDifference > 0
+                          ? 'bg-green-50 border-green-100'
+                          : goalDifference < 0
+                            ? 'bg-red-50 border-red-100'
+                            : 'bg-gray-50 border-gray-100'
+                          }`}>
+                          <p className="text-xs text-gray-600 mb-1">Goal Difference</p>
+                          <p className={`text-2xl font-bold ${goalDifference > 0 ? 'text-green-600' : goalDifference < 0 ? 'text-red-600' : 'text-gray-600'
+                            }`}>
+                            {goalDifference > 0 ? '+' : ''}{goalDifference}
+                          </p>
+                        </div>
+                        <div className="bg-green-50 rounded-xl p-4 text-center border border-green-100">
+                          <p className="text-xs text-green-700 mb-1">Goals For</p>
+                          <p className="text-2xl font-bold text-green-600">{stats.goals_scored || 0}</p>
+                          {stats.goals_per_game && (
+                            <p className="text-xs text-green-500 mt-1">{stats.goals_per_game} per game</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
-                </div>
 
-                {/* Goals Stats */}
-                {(stats.goals_conceded !== undefined || stats.net_goals !== undefined || stats.conceded_per_game !== undefined) && (
+                  {/* Performance Progress Bars */}
                   <div className="mt-6">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Goal Statistics</h4>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-red-50 rounded-xl p-4 text-center border border-red-100">
-                        <p className="text-xs text-red-700 mb-1">Conceded</p>
-                        <p className="text-2xl font-bold text-red-600">{stats.goals_conceded || 0}</p>
-                        {stats.conceded_per_game && (
-                          <p className="text-xs text-red-500 mt-1">{stats.conceded_per_game} per game</p>
-                        )}
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Performance Metrics</h4>
+
+                    {/* Goals per Game */}
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs text-gray-600">Goals per Game</span>
+                        <span className="text-xs font-bold text-gray-700">{goalsPerGame}</span>
                       </div>
-                      <div className={`rounded-xl p-4 text-center border ${
-                        goalDifference > 0 
-                          ? 'bg-green-50 border-green-100' 
-                          : goalDifference < 0 
-                          ? 'bg-red-50 border-red-100' 
-                          : 'bg-gray-50 border-gray-100'
-                      }`}>
-                        <p className="text-xs text-gray-600 mb-1">Goal Difference</p>
-                        <p className={`text-2xl font-bold ${
-                          goalDifference > 0 ? 'text-green-600' : goalDifference < 0 ? 'text-red-600' : 'text-gray-600'
-                        }`}>
-                          {goalDifference > 0 ? '+' : ''}{goalDifference}
-                        </p>
-                      </div>
-                      <div className="bg-green-50 rounded-xl p-4 text-center border border-green-100">
-                        <p className="text-xs text-green-700 mb-1">Goals For</p>
-                        <p className="text-2xl font-bold text-green-600">{stats.goals_scored || 0}</p>
-                        {stats.goals_per_game && (
-                          <p className="text-xs text-green-500 mt-1">{stats.goals_per_game} per game</p>
-                        )}
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="h-2.5 bg-gradient-to-r from-primary to-blue-600 rounded-full transition-all duration-1000"
+                          style={{ width: `${Math.min(parseFloat(goalsPerGame as string) * 50, 100)}%` }}
+                        ></div>
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {/* Performance Progress Bars */}
-                <div className="mt-6">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Performance Metrics</h4>
-
-                  {/* Goals per Game */}
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs text-gray-600">Goals per Game</span>
-                      <span className="text-xs font-bold text-gray-700">{goalsPerGame}</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                      <div
-                        className="h-2.5 bg-gradient-to-r from-primary to-blue-600 rounded-full transition-all duration-1000"
-                        style={{ width: `${Math.min(parseFloat(goalsPerGame as string) * 50, 100)}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  {/* Win Percentage */}
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs text-gray-600">Win Percentage</span>
-                      <span className="text-xs font-bold text-gray-700">{winRate}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                      <div
-                        className="h-2.5 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full transition-all duration-1000"
-                        style={{ width: `${winRate}%` }}
-                      ></div>
+                    {/* Win Percentage */}
+                    <div className="mb-4">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs text-gray-600">Win Percentage</span>
+                        <span className="text-xs font-bold text-gray-700">{winRate}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="h-2.5 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full transition-all duration-1000"
+                          style={{ width: `${winRate}%` }}
+                        ></div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
               )}
 
               {/* Team Trophies - Only for Individual Season View */}
@@ -1028,7 +1060,7 @@ export default function PlayerDetailPage() {
                   <p className="text-xs text-gray-500 mb-4">
                     {currentSeasonData.season_name || 'This Season'} - with {currentSeasonData.team}
                   </p>
-                  
+
                   {/* League Position from teamstats */}
                   {teamStats && teamStats.position && (
                     <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -1052,18 +1084,18 @@ export default function PlayerDetailPage() {
                       const isLeague = trophy.trophy_type === 'league';
                       const isCup = trophy.trophy_type === 'cup';
                       const isRunnerUp = trophy.trophy_type === 'runner_up';
-                      
+
                       const bgGradient = isLeague
                         ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300'
                         : isCup
-                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300'
-                        : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-300';
-                      
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300'
+                          : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-300';
+
                       const iconBg = isLeague
                         ? 'bg-green-500'
                         : isCup
-                        ? 'bg-blue-500'
-                        : 'bg-gray-400';
+                          ? 'bg-blue-500'
+                          : 'bg-gray-400';
 
                       return (
                         <div key={trophy.id} className={`glass rounded-xl p-4 border-2 ${bgGradient}`}>
@@ -1074,10 +1106,9 @@ export default function PlayerDetailPage() {
                               </svg>
                             </div>
                             <div className="flex-1">
-                              <p className={`text-xs font-semibold mb-1 ${
-                                isLeague ? 'text-green-700' :
+                              <p className={`text-xs font-semibold mb-1 ${isLeague ? 'text-green-700' :
                                 isCup ? 'text-blue-700' : 'text-gray-700'
-                              }`}>
+                                }`}>
                                 🏆 Team Trophy
                               </p>
                               <p className="text-sm font-bold text-gray-900">{trophy.trophy_name}</p>
@@ -1111,24 +1142,33 @@ export default function PlayerDetailPage() {
 
                   <div className="space-y-3">
                     {playerAwards.map((award) => {
+                      // Determine which table structure this award is from
+                      const isNewTable = award.round_number !== undefined || award.week_number !== undefined;
+
+                      // For new table: award_category contains the award name
+                      // For old table: award_type contains the award name, award_category is "category"/"individual"
+                      const awardName = isNewTable ? award.award_category : award.award_type;
+                      const awardTypeCategory = isNewTable ? 'individual' : award.award_category;
+
+                      // Determine styling based on award position (old table) or default to winner (new table)
                       const isWinner = award.award_position?.toLowerCase() === 'winner' || !award.award_position;
                       const bgGradient = isWinner
                         ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-400'
                         : award.award_position?.toLowerCase() === 'runner-up'
-                        ? 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-300'
-                        : 'bg-gradient-to-r from-orange-50 to-amber-50 border-orange-300';
-                      
+                          ? 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-300'
+                          : 'bg-gradient-to-r from-orange-50 to-amber-50 border-orange-300';
+
                       const iconBg = isWinner
                         ? 'bg-purple-500'
                         : award.award_position?.toLowerCase() === 'runner-up'
-                        ? 'bg-gray-400'
-                        : 'bg-orange-500';
-                      
+                          ? 'bg-gray-400'
+                          : 'bg-orange-500';
+
                       const textColor = isWinner
                         ? 'text-purple-700'
                         : award.award_position?.toLowerCase() === 'runner-up'
-                        ? 'text-gray-700'
-                        : 'text-orange-700';
+                          ? 'text-gray-700'
+                          : 'text-orange-700';
 
                       return (
                         <div key={award.id} className={`glass rounded-xl p-4 border-2 ${bgGradient}`}>
@@ -1141,20 +1181,31 @@ export default function PlayerDetailPage() {
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-1">
                                 <p className={`text-xs font-semibold ${textColor}`}>
-                                  {award.award_category === 'category' ? '🎯 Category Award' : '🌟 Individual Award'}
+                                  {awardTypeCategory === 'category' ? '🎯 Category Award' : '🌟 Individual Award'}
                                 </p>
                                 {award.award_position && (
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                    isWinner ? 'bg-purple-100 text-purple-700' :
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isWinner ? 'bg-purple-100 text-purple-700' :
                                     award.award_position.toLowerCase() === 'runner-up' ? 'bg-gray-200 text-gray-700' :
-                                    'bg-orange-100 text-orange-700'
-                                  }`}>
+                                      'bg-orange-100 text-orange-700'
+                                    }`}>
                                     {award.award_position}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm font-bold text-gray-900">{award.award_type}</p>
-                              {award.player_category && (
+                              <p className="text-sm font-bold text-gray-900">{awardName}</p>
+
+                              {/* Show round/week info for new table awards */}
+                              {isNewTable && (award.round_number || award.week_number) && (
+                                <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                                  </svg>
+                                  {award.round_number ? `Round ${award.round_number}` : `Week ${award.week_number}`}
+                                </p>
+                              )}
+
+                              {/* Show player category for old table awards */}
+                              {!isNewTable && award.player_category && (
                                 <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
                                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.788l1.599.799L11 4.323V3a1 1 0 011-1zm-5 8.274l-.818 2.552c-.25.78.057 1.62.754 2.062.629.4 1.446.45 2.122.085.577-.312.998-.835 1.187-1.452l.818-2.552-4.063-1.094zm10 0l-4.063 1.094.818 2.552c.189.617.61 1.14 1.187 1.452.676.365 1.493.315 2.122-.085.697-.442 1.004-1.282.754-2.062L15 10.274z" clipRule="evenodd" />
@@ -1162,14 +1213,88 @@ export default function PlayerDetailPage() {
                                   {award.player_category}
                                 </p>
                               )}
+
                               {award.performance_stats && Object.keys(award.performance_stats).length > 0 && (
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {Object.entries(award.performance_stats).map(([key, value]) => (
-                                    <span key={key} className="text-xs bg-white/70 px-2 py-1 rounded-md">
-                                      <span className="font-medium text-gray-600">{key}:</span>{' '}
-                                      <span className="font-bold text-gray-900">{String(value)}</span>
-                                    </span>
-                                  ))}
+                                <div className="mt-3 space-y-2">
+                                  {Object.entries(award.performance_stats)
+                                    .filter(([key]) => key.toLowerCase() !== 'match_score')
+                                    .map(([key, value]) => {
+                                      // Format stat labels
+                                      const formatStatLabel = (k: string): string => {
+                                        const labelMap: Record<string, string> = {
+                                          'motm': 'Man of the Match',
+                                          'potm': 'Player of the Match',
+                                          'goals': 'Goals',
+                                          'assists': 'Assists',
+                                          'clean_sheets': 'Clean Sheets',
+                                          'matchup': 'Matchup',
+                                          'saves': 'Saves',
+                                          'rating': 'Rating',
+                                          'points': 'Points',
+                                        };
+                                        return labelMap[k.toLowerCase()] || k.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                                      };
+
+                                      const formatStatValue = (k: string, v: any): string => {
+                                        if (typeof v === 'boolean') {
+                                          return v ? '✓ Yes' : '✗ No';
+                                        }
+                                        return String(v);
+                                      };
+
+                                      const getStatIcon = (k: string) => {
+                                        const iconMap: Record<string, string> = {
+                                          'motm': '⭐',
+                                          'potm': '⭐',
+                                          'goals': '⚽',
+                                          'assists': '🎯',
+                                          'clean_sheets': '🧤',
+                                          'matchup': '🆚',
+                                          'saves': '🛡️',
+                                          'rating': '📈',
+                                          'points': '💯',
+                                        };
+                                        return iconMap[k.toLowerCase()] || '📌';
+                                      };
+
+                                      const getStatColor = (k: string): string => {
+                                        if (k.toLowerCase() === 'motm' || k.toLowerCase() === 'potm') {
+                                          return 'bg-amber-50 border-amber-200 text-amber-900';
+                                        }
+                                        if (k.toLowerCase() === 'goals') {
+                                          return 'bg-green-50 border-green-200 text-green-900';
+                                        }
+                                        if (k.toLowerCase() === 'assists') {
+                                          return 'bg-blue-50 border-blue-200 text-blue-900';
+                                        }
+                                        if (k.toLowerCase() === 'matchup') {
+                                          return 'bg-purple-50 border-purple-200 text-purple-900';
+                                        }
+                                        return 'bg-gray-50 border-gray-200 text-gray-900';
+                                      };
+
+                                      const isMatchInfo = key.toLowerCase() === 'matchup';
+
+                                      if (isMatchInfo) {
+                                        return (
+                                          <div key={key} className={`text-xs px-3 py-2 rounded-lg border ${getStatColor(key)}`}>
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="text-sm">{getStatIcon(key)}</span>
+                                              <span className="font-semibold">{formatStatLabel(key)}:</span>
+                                            </div>
+                                            <div className="mt-1 font-bold text-sm">{formatStatValue(key, value)}</div>
+                                          </div>
+                                        );
+                                      }
+
+                                      return (
+                                        <div key={key} className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${getStatColor(key)}`}>
+                                          <span>{getStatIcon(key)}</span>
+                                          <span className="font-semibold">{formatStatLabel(key)}:</span>
+                                          <span className="font-bold">{formatStatValue(key, value)}</span>
+                                        </div>
+                                      );
+                                    })}
                                 </div>
                               )}
                               {award.notes && (
@@ -1199,13 +1324,12 @@ export default function PlayerDetailPage() {
                       <div key={roundKey} className="glass rounded-xl p-4 bg-white/40 hover:bg-white/50 transition-all duration-300">
                         <div className="flex justify-between items-center mb-3">
                           <h4 className="text-sm font-semibold text-gray-700 capitalize">{roundKey}</h4>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            roundData.wins > roundData.losses
-                              ? 'bg-green-100 text-green-800'
-                              : roundData.wins < roundData.losses
+                          <span className={`text-xs px-2 py-1 rounded-full ${roundData.wins > roundData.losses
+                            ? 'bg-green-100 text-green-800'
+                            : roundData.wins < roundData.losses
                               ? 'bg-red-100 text-red-800'
                               : 'bg-yellow-100 text-yellow-800'
-                          }`}>
+                            }`}>
                             {roundData.matches} Matches
                           </span>
                         </div>
@@ -1221,13 +1345,12 @@ export default function PlayerDetailPage() {
                           </div>
                           <div className="bg-white/50 rounded-lg p-2">
                             <p className="text-xs text-gray-500 mb-1">GD</p>
-                            <p className={`text-lg font-bold ${
-                              roundData.goal_difference > 0
-                                ? 'text-green-600'
-                                : roundData.goal_difference < 0
+                            <p className={`text-lg font-bold ${roundData.goal_difference > 0
+                              ? 'text-green-600'
+                              : roundData.goal_difference < 0
                                 ? 'text-red-600'
                                 : 'text-gray-600'
-                            }`}>
+                              }`}>
                               {roundData.goal_difference}
                             </p>
                           </div>
@@ -1281,11 +1404,10 @@ export default function PlayerDetailPage() {
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-800">
                               {match.opponent ? `vs ${match.opponent}` : `Match ${match.match_number}`}
                             </td>
-                            <td className={`px-4 py-2 whitespace-nowrap text-sm font-medium ${
-                              match.result === 'win' ? 'text-green-600' :
+                            <td className={`px-4 py-2 whitespace-nowrap text-sm font-medium ${match.result === 'win' ? 'text-green-600' :
                               match.result === 'loss' ? 'text-red-600' :
-                              'text-amber-500'
-                            }`}>
+                                'text-amber-500'
+                              }`}>
                               {match.result.charAt(0).toUpperCase() + match.result.slice(1)}
                             </td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-center text-green-600 font-medium">
@@ -1294,11 +1416,10 @@ export default function PlayerDetailPage() {
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-center text-red-600 font-medium">
                               {match.opponent_goals}
                             </td>
-                            <td className={`px-4 py-2 whitespace-nowrap text-sm text-center font-medium ${
-                              match.player_goals - match.opponent_goals > 0 ? 'text-green-600' :
+                            <td className={`px-4 py-2 whitespace-nowrap text-sm text-center font-medium ${match.player_goals - match.opponent_goals > 0 ? 'text-green-600' :
                               match.player_goals - match.opponent_goals < 0 ? 'text-red-600' :
-                              'text-gray-600'
-                            }`}>
+                                'text-gray-600'
+                              }`}>
                               {match.player_goals - match.opponent_goals}
                             </td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-center text-amber-600 font-medium">

@@ -36,22 +36,22 @@ export default function AwardsManagementPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
-  
+
   const [activeTab, setActiveTab] = useState<AwardTab>('POTD');
   const [currentRound, setCurrentRound] = useState(1);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [maxRounds, setMaxRounds] = useState(0);
-  
+
   const [awards, setAwards] = useState<Award[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null);
-  
+
   const [loading_data, setLoadingData] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [tournamentId, setTournamentId] = useState<string>('');
-  const [availableTournaments, setAvailableTournaments] = useState<Array<{id: string, name: string}>>([]);
+  const [availableTournaments, setAvailableTournaments] = useState<Array<{ id: string, name: string }>>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -66,18 +66,18 @@ export default function AwardsManagementPage() {
   useEffect(() => {
     const fetchTournaments = async () => {
       if (!userSeasonId) return;
-      
+
       try {
         const response = await fetchWithTokenRefresh(`/api/tournaments?season_id=${userSeasonId}`);
         const result = await response.json();
-        
+
         if (result.success && result.tournaments && result.tournaments.length > 0) {
           const tournaments = result.tournaments.map((t: any) => ({
             id: t.id,
             name: t.tournament_name || t.id
           }));
           setAvailableTournaments(tournaments);
-          
+
           // Set first tournament as default
           setTournamentId(tournaments[0].id);
           console.log(`🏆 Available tournaments:`, tournaments);
@@ -86,7 +86,7 @@ export default function AwardsManagementPage() {
         console.error('Error fetching tournaments:', err);
       }
     };
-    
+
     fetchTournaments();
   }, [userSeasonId]);
 
@@ -94,11 +94,11 @@ export default function AwardsManagementPage() {
   useEffect(() => {
     const fetchMaxRounds = async () => {
       if (!tournamentId) return;
-      
+
       try {
         const response = await fetchWithTokenRefresh(`/api/fixtures/season?tournament_id=${tournamentId}`);
         const result = await response.json();
-        
+
         if (result.fixtures && result.fixtures.length > 0) {
           const maxRound = Math.max(...result.fixtures.map((f: any) => f.round_number || 0));
           setMaxRounds(maxRound);
@@ -111,7 +111,7 @@ export default function AwardsManagementPage() {
         setMaxRounds(14);
       }
     };
-    
+
     fetchMaxRounds();
   }, [tournamentId]);
 
@@ -128,10 +128,10 @@ export default function AwardsManagementPage() {
 
   const loadData = async () => {
     if (!userSeasonId) return;
-    
+
     setLoadingData(true);
     setError(null);
-    
+
     try {
       // Load existing award for current context
       const awardParams = new URLSearchParams({
@@ -166,7 +166,7 @@ export default function AwardsManagementPage() {
       const candidatesRes = await fetchWithTokenRefresh(`/api/awards/eligible?${candidateParams}`);
       const candidatesData = await candidatesRes.json();
       setCandidates(candidatesData.success ? candidatesData.data : []);
-      
+
     } catch (err) {
       console.error('Error loading data:', err);
       setError('Failed to load awards data');
@@ -183,7 +183,7 @@ export default function AwardsManagementPage() {
     setSuccess(null);
 
     try {
-      const candidate = candidates.find(c => 
+      const candidate = candidates.find(c =>
         (c.player_id === selectedCandidate) || (c.team_id === selectedCandidate)
       );
 
@@ -302,7 +302,7 @@ export default function AwardsManagementPage() {
             <p className="text-sm sm:text-base text-red-800">{error}</p>
           </div>
         )}
-        
+
         {success && (
           <div className="mb-4 p-3 sm:p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
             <p className="text-sm sm:text-base text-green-800">{success}</p>
@@ -323,11 +323,10 @@ export default function AwardsManagementPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-xs sm:text-base transition-all whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
-                    : 'bg-white text-gray-700 hover:bg-gray-100'
-                }`}
+                className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-xs sm:text-base transition-all whitespace-nowrap ${activeTab === tab.id
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
               >
                 <span className="hidden sm:inline">{tab.icon} </span>
                 {tab.label}
@@ -358,11 +357,10 @@ export default function AwardsManagementPage() {
                       <button
                         key={round}
                         onClick={() => setCurrentRound(round)}
-                        className={`px-2 sm:px-4 py-1 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap ${
-                          currentRound === round
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-gray-700 hover:bg-gray-100'
-                        }`}
+                        className={`px-2 sm:px-4 py-1 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap ${currentRound === round
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-100'
+                          }`}
                       >
                         R{round}
                       </button>
@@ -390,11 +388,10 @@ export default function AwardsManagementPage() {
                   <button
                     key={week}
                     onClick={() => setCurrentWeek(week)}
-                    className={`px-3 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-semibold ${
-                      currentWeek === week
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
+                    className={`px-3 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-semibold ${currentWeek === week
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-100'
+                      }`}
                   >
                     Week {week}
                   </button>
@@ -431,37 +428,44 @@ export default function AwardsManagementPage() {
           {/* Candidates List */}
           <div className="mb-4 sm:mb-6">
             <h3 className="text-sm sm:text-lg font-bold text-gray-900 mb-3">
-              {candidates.length > 0 ? 'Eligible Candidates' : 'No candidates available'}
+              {currentAward ? `Winner: ${currentAward.player_name || currentAward.team_name}` : candidates.length > 0 ? 'Eligible Candidates' : 'No candidates available'}
             </h3>
-            
+
             {currentAward && (
               <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded-lg">
                 <p className="text-sm text-yellow-800 font-medium">
-                  ⚠️ An award has already been given for this {['POTD', 'TOD'].includes(activeTab) ? 'round' : 'week'}. 
+                  ⚠️ An award has already been given for this {['POTD', 'TOD'].includes(activeTab) ? 'round' : 'week'}.
                   You must remove the current award before selecting a new one.
                 </p>
               </div>
             )}
-            
+
             {loading_data ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto"></div>
               </div>
+            ) : currentAward ? (
+              <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-gray-200">
+                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <p className="text-gray-500 font-medium">Candidate selection is locked</p>
+                <p className="text-sm text-gray-400 mt-2">Remove the current award to select a different winner</p>
+              </div>
             ) : (
-              <div className={`space-y-2 sm:space-y-3 max-h-96 overflow-y-auto ${currentAward ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto">
                 {candidates.map((candidate, idx) => {
                   const candidateId = candidate.player_id || candidate.team_id || `candidate-${idx}`;
                   const isSelected = selectedCandidate === candidateId;
-                  
+
                   return (
                     <div
                       key={candidateId}
                       onClick={() => setSelectedCandidate(candidateId)}
-                      className={`p-3 sm:p-4 rounded-xl cursor-pointer transition-all ${
-                        isSelected
-                          ? 'bg-blue-100 border-2 border-blue-500'
-                          : 'bg-white border border-gray-200 hover:border-blue-300'
-                      }`}
+                      className={`p-3 sm:p-4 rounded-xl cursor-pointer transition-all ${isSelected
+                        ? 'bg-blue-100 border-2 border-blue-500'
+                        : 'bg-white border border-gray-200 hover:border-blue-300'
+                        }`}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex-1">
@@ -500,7 +504,7 @@ export default function AwardsManagementPage() {
               {submitting ? 'Saving...' : 'Select Award'}
             </button>
           )}
-          
+
           {currentAward && (
             <div className="w-full py-3 sm:py-4 bg-gray-300 text-gray-600 text-sm sm:text-base font-bold rounded-xl text-center cursor-not-allowed">
               Award Already Given - Remove to Select Another

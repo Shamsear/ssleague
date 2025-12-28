@@ -4,11 +4,11 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 // PATCH - Update player award Instagram link
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const sql = getTournamentDb();
-    const awardId = params.id;
+    const { id: awardId } = await params;
     const body = await request.json();
     const { instagram_link, instagram_post_url } = body;
 
@@ -36,11 +36,11 @@ export async function PATCH(
 // DELETE - Remove a player award
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const sql = getTournamentDb();
-    const awardId = params.id;
+    const { id: awardId } = await params;
 
     // Get award details before deleting (to update awards_count)
     const award = await sql`

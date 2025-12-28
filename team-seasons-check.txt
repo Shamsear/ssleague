@@ -1,0 +1,22 @@
+
+🔍 Checking all data for team: SSPSLT0013
+
+📊 Team Stats (teamstats table):
+
+Found 5 seasons in teamstats:
+  - SSPSLS17: Psychoz (0 matches, 0 pts, pos: N/A)
+  - SSPSLS16: Psychoz (10 matches, 22 pts, pos: 3)
+  - SSPSLS15: Psychoz (34 matches, 40 pts, pos: 13)
+  - SSPSLS13: Psychoz (38 matches, 87 pts, pos: 1)
+  - SSPSLS12: Psychoz (38 matches, 62 pts, pos: 8)
+
+👥 Real Players (realplayerstats table):
+
+Found 1 seasons with players in realplayerstats:
+  - SSPSLS12: 4 players
+
+👥 Modern Players (player_seasons table):
+
+Found 2 seasons with players in player_seasons:
+  - SSPSLS17: 5 players
+  - SSPSLS16: 5 players

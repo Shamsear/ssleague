@@ -1,0 +1,35 @@
+
+🔍 Checking realplayerstats for team: SSPSLT0013
+
+Found 1 seasons for team SSPSLT0013:
+  - SSPSLS12 (team: Psychoz)
+
+🔍 Checking S15 specifically:
+
+Found 0 players in S15:
+
+📊 Total stats:
+
+Total records in realplayerstats: 538
+
+Distinct teams (53):
+  - SSPSLT0001: Classic Tens
+  - SSPSLT0002: Manchester United
+  - SSPSLT0003: Red Panthers
+  - SSPSLT0004: Red Hawks
+  - SSPSLT0004: Red Hawks FC
+  - SSPSLT0005: Tm Asgardians
+  - SSPSLT0007: Barcelona
+  - SSPSLT0007: FC Barcelona
+  - SSPSLT0008: La Masia FC
+  - SSPSLT0008: La Masia
+  - SSPSLT0009: Qatar Gladiators
+  - SSPSLT0010: Varsity Soccers
+  - SSPSLT0011: Spartans United
+  - SSPSLT0012: Red Stallions FC
+  - SSPSLT0012: Red Stallions
+  - SSPSLT0013: Psychoz
+  - SSPSLT0014: Black Panthers
+  - SSPSLT0015: Legends
+  - SSPSLT0015: Legends FC
+  - SSPSLT0016: Blue Strikers

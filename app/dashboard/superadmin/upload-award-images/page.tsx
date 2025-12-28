@@ -18,6 +18,7 @@ interface PlayerAward {
   id: string;
   award_type: string;
   player_name: string;
+  team_name?: string;
   award_position?: string;
   season_id?: string;
   instagram_link?: string;
@@ -41,7 +42,7 @@ export default function UploadAwardImagesPage() {
   const [uploadedUrl, setUploadedUrl] = useState<string>('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [instagramPostUrl, setInstagramPostUrl] = useState<string>('');
-  
+
   // Award selection
   const [awardType, setAwardType] = useState<'award' | 'player_award' | 'trophy'>('award');
   const [awards, setAwards] = useState<Award[]>([]);
@@ -85,7 +86,7 @@ export default function UploadAwardImagesPage() {
       allAwards.forEach((a: any) => a.season_id && seasonSet.add(a.season_id));
       allPlayerAwards.forEach((a: any) => a.season_id && seasonSet.add(a.season_id));
       allTrophies.forEach((t: any) => t.season_id && seasonSet.add(t.season_id));
-      
+
       if (seasonSet.size > 0) {
         const uniqueSeasons = Array.from(seasonSet).sort().reverse();
         setSeasons(uniqueSeasons);
@@ -100,10 +101,10 @@ export default function UploadAwardImagesPage() {
   // Get current image for selected item
   const getCurrentImage = () => {
     if (!selectedItemId) return null;
-    
+
     // Convert selectedItemId to number for comparison (since DB returns numbers)
     const numericId = typeof selectedItemId === 'string' ? parseInt(selectedItemId, 10) : selectedItemId;
-    
+
     if (awardType === 'award') {
       const award = awards.find(a => a.id == numericId);
       return award?.instagram_link || null;
@@ -120,10 +121,10 @@ export default function UploadAwardImagesPage() {
   // Get current Instagram post URL for selected item
   const getCurrentInstagramUrl = () => {
     if (!selectedItemId) return null;
-    
+
     // Convert selectedItemId to number for comparison (since DB returns numbers)
     const numericId = typeof selectedItemId === 'string' ? parseInt(selectedItemId, 10) : selectedItemId;
-    
+
     if (awardType === 'award') {
       const award = awards.find(a => a.id == numericId);
       return award?.instagram_post_url || null;
@@ -143,7 +144,7 @@ export default function UploadAwardImagesPage() {
       setSelectedFile(file);
       setUploadedUrl('');
       setMessage(null);
-      
+
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -185,18 +186,18 @@ export default function UploadAwardImagesPage() {
 
       const imageUrl = uploadData.url;
       setUploadedUrl(imageUrl);
-      
+
       // Show duplicate message if applicable
       if (uploadData.isDuplicate) {
-        setMessage({ 
-          type: 'success', 
-          text: '⚠️ This image already exists in ImageKit. Using existing file to avoid duplicates.' 
+        setMessage({
+          type: 'success',
+          text: '⚠️ This image already exists in ImageKit. Using existing file to avoid duplicates.'
         });
       }
 
       // Update database
       let updateEndpoint = '';
-      let updateBody: any = { 
+      let updateBody: any = {
         instagram_link: imageUrl,
         instagram_post_url: instagramPostUrl || null
       };
@@ -319,34 +320,49 @@ export default function UploadAwardImagesPage() {
             >
               <option value="">-- Select {awardType === 'award' ? 'Award' : awardType === 'player_award' ? 'Player Award' : 'Trophy'} --</option>
               {awardType === 'award' && Array.isArray(awards) && awards
-                .filter(award => !selectedSeason || award.season_id === selectedSeason)
+                .filter(award => (!selectedSeason || award.season_id === selectedSeason) && (award.player_name || award.team_name))
                 .map((award) => (
-                <option key={award.id} value={award.id}>
-                  {award.instagram_link ? '📸 ' : '⬜ '}
-                  {award.award_type} - {award.player_name || award.team_name} 
-                  {award.round_number ? ` (Round ${award.round_number})` : ''}
-                  {award.week_number ? ` (Week ${award.week_number})` : ''}
-                  {!selectedSeason ? ` [${award.season_id}]` : ''}
-                </option>
-              ))}
+                  <option key={award.id} value={award.id}>
+                    {award.instagram_link ? '📸 ' : '⬜ '}
+                    {award.award_type} - {award.player_name || award.team_name}
+                    {award.round_number ? ` (Round ${award.round_number})` : ''}
+                    {award.week_number ? ` (Week ${award.week_number})` : ''}
+                    {!selectedSeason ? ` [${award.season_id}]` : ''}
+                  </option>
+                ))}
               {awardType === 'player_award' && Array.isArray(playerAwards) && playerAwards
-                .filter(award => !selectedSeason || award.season_id === selectedSeason)
+                .filter(award => {
+                  if (selectedSeason && award.season_id !== selectedSeason) return false;
+                  // Skip empty/generic entries
+                  const type = award.award_type?.trim();
+                  if (!award.player_name && !award.team_name) return false;
+                  if (!type || type === 'Category') return false;
+
+                  // Skip short-term awards that are best handled in the main awards table
+                  const excludedTypes = ['POTD', 'TOD', 'POTW', 'TOTW', 'MOTM', 'Man of the Match', 'Player of the Day', 'Team of the Day'];
+                  if (excludedTypes.some(t => {
+                    const upperType = type.toUpperCase();
+                    return upperType === t || upperType.includes('PLAYER OF THE DAY');
+                  })) return false;
+
+                  return true;
+                })
                 .map((award) => (
-                <option key={award.id} value={award.id}>
-                  {award.instagram_link ? '📸 ' : '⬜ '}
-                  {award.award_type} - {award.player_name} {award.award_position ? `(${award.award_position})` : ''}
-                  {!selectedSeason ? ` [${award.season_id}]` : ''}
-                </option>
-              ))}
+                  <option key={award.id} value={award.id}>
+                    {award.instagram_link ? '📸 ' : '⬜ '}
+                    {award.award_type} - {award.player_name} {award.award_position ? `(${award.award_position})` : ''}
+                    {!selectedSeason ? ` [${award.season_id}]` : ''}
+                  </option>
+                ))}
               {awardType === 'trophy' && Array.isArray(trophies) && trophies
                 .filter(trophy => !selectedSeason || trophy.season_id === selectedSeason)
                 .map((trophy) => (
-                <option key={trophy.id} value={trophy.id}>
-                  {trophy.instagram_link ? '📸 ' : '⬜ '}
-                  {trophy.trophy_name} - {trophy.team_name} ({trophy.trophy_type})
-                  {!selectedSeason ? ` [${trophy.season_id}]` : ''}
-                </option>
-              ))}
+                  <option key={trophy.id} value={trophy.id}>
+                    {trophy.instagram_link ? '📸 ' : '⬜ '}
+                    {trophy.trophy_name} - {trophy.team_name} ({trophy.trophy_type})
+                    {!selectedSeason ? ` [${trophy.season_id}]` : ''}
+                  </option>
+                ))}
             </select>
           </div>
         </div>
@@ -458,11 +474,10 @@ export default function UploadAwardImagesPage() {
           <button
             onClick={handleUpload}
             disabled={!selectedFile || !selectedItemId || uploading}
-            className={`w-full py-3 px-4 rounded-lg font-semibold text-white transition ${
-              !selectedFile || !selectedItemId || uploading
-                ? 'bg-gray-400 cursor-not-allowed'
-                : getCurrentImage() ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
+            className={`w-full py-3 px-4 rounded-lg font-semibold text-white transition ${!selectedFile || !selectedItemId || uploading
+              ? 'bg-gray-400 cursor-not-allowed'
+              : getCurrentImage() ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
           >
             {uploading ? (
               <span className="flex items-center justify-center">
@@ -480,9 +495,8 @@ export default function UploadAwardImagesPage() {
           {/* Message */}
           {message && (
             <div
-              className={`mt-4 p-4 rounded-lg ${
-                message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-              }`}
+              className={`mt-4 p-4 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}
             >
               {message.text}
             </div>
@@ -530,7 +544,7 @@ export default function UploadAwardImagesPage() {
               {/* SQL Examples */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <p className="text-sm font-semibold text-gray-700 mb-2">SQL Examples:</p>
-                
+
                 <div className="space-y-2 text-sm">
                   <div>
                     <p className="text-gray-600 mb-1">For Awards:</p>

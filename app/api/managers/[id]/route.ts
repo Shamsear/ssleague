@@ -11,10 +11,10 @@ const imagekit = new ImageKit({
 // GET - Get single manager by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const db = getTournamentDb();
     const result = await db.query(
@@ -45,10 +45,10 @@ export async function GET(
 // PUT - Update manager
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const {
       name,
@@ -182,10 +182,10 @@ export async function PUT(
 // DELETE - Delete manager
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const db = getTournamentDb();
 

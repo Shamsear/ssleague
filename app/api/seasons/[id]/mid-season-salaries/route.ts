@@ -9,23 +9,23 @@ import { deductMidSeasonSalaries } from '@/lib/firebase/multiSeasonTeams';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const seasonId = params.id;
-    
+    const { id: seasonId } = await params;
+
     if (!seasonId) {
       return NextResponse.json(
         { error: 'Season ID is required' },
         { status: 400 }
       );
     }
-    
+
     console.log(`Starting mid-season salary deduction for season ${seasonId}...`);
-    
+
     // Deduct mid-season salaries
     const result = await deductMidSeasonSalaries(seasonId);
-    
+
     return NextResponse.json({
       success: true,
       message: 'Mid-season salary deduction completed',
@@ -40,13 +40,13 @@ export async function POST(
         formula: 'Deduction = salary_per_half_season for each player',
       }
     });
-    
+
   } catch (error: any) {
     console.error('Error deducting mid-season salaries:', error);
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to deduct mid-season salaries',
-        details: error.message 
+        details: error.message
       },
       { status: 500 }
     );
@@ -60,18 +60,18 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const seasonId = params.id;
-    
+    const { id: seasonId } = await params;
+
     if (!seasonId) {
       return NextResponse.json(
         { error: 'Season ID is required' },
         { status: 400 }
       );
     }
-    
+
     // This would need implementation to calculate without deducting
     // For now, just return information
     return NextResponse.json({
@@ -81,13 +81,13 @@ export async function GET(
       action: 'Use POST to actually deduct mid-season salaries',
       timing: 'Should be triggered at halfway point (e.g., after round 19 of 38 rounds)'
     });
-    
+
   } catch (error: any) {
     console.error('Error previewing mid-season salaries:', error);
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to preview mid-season salaries',
-        details: error.message 
+        details: error.message
       },
       { status: 500 }
     );

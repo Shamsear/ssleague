@@ -5,11 +5,11 @@ import { getTournamentDb } from '@/lib/neon/tournament-config'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { action } = await request.json()
-    const requestId = params.id
+    const { id: requestId } = await params
 
     if (!action || !['approve', 'reject'].includes(action)) {
       return NextResponse.json(
@@ -46,7 +46,7 @@ export async function POST(
       // Check if player is already registered in Neon
       const sql = getTournamentDb();
       const registrationId = `${requestData.player_id}_${requestData.season_id}`;
-      
+
       const existingPlayerCheck = await sql`
         SELECT id FROM player_seasons WHERE id = ${registrationId}
       `;
@@ -59,7 +59,7 @@ export async function POST(
           .where('player_id', '==', requestData.player_id)
           .limit(1)
           .get()
-        
+
         if (!playerSnapshot.empty) {
           playerName = playerSnapshot.docs[0].data().name
         }
@@ -70,7 +70,7 @@ export async function POST(
         const nextSeasonId = `${seasonPrefix}${seasonNumber + 1}`;
         const nextRegistrationId = `${requestData.player_id}_${nextSeasonId}`;
         const contractId = `contract_${requestData.player_id}_${requestData.season_id}_${Date.now()}`;
-        
+
         // Create player registration for CURRENT season in Neon
         await sql`
           INSERT INTO player_seasons (
@@ -90,7 +90,7 @@ export async function POST(
             NOW(), NOW()
           )
         `;
-        
+
         // Create player registration for NEXT season (auto-registered)
         await sql`
           INSERT INTO player_seasons (
@@ -110,7 +110,7 @@ export async function POST(
             NOW(), NOW()
           )
         `;
-        
+
         // Update permanent player data in Firebase realplayers
         await adminDb.collection('realplayers').doc(requestData.player_id).set({
           player_id: requestData.player_id,
@@ -121,7 +121,7 @@ export async function POST(
           registration_date: FieldValue.serverTimestamp(),
           updated_at: FieldValue.serverTimestamp()
         }, { merge: true });
-        
+
         console.log(`✅ Committee registered player ${requestData.player_id} for ${requestData.season_id} with contract ${contractId}`)
       }
 

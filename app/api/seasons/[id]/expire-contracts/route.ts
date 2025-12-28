@@ -9,23 +9,23 @@ import { removeExpiredContracts } from '@/lib/firebase/multiSeasonPlayers';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const seasonId = params.id;
-    
+    const { id: seasonId } = await params;
+
     if (!seasonId) {
       return NextResponse.json(
         { error: 'Season ID is required' },
         { status: 400 }
       );
     }
-    
+
     console.log(`Starting contract expiry process for season ${seasonId}...`);
-    
+
     // Remove expired contracts
     const result = await removeExpiredContracts(seasonId);
-    
+
     return NextResponse.json({
       success: true,
       message: 'Contract expiry process completed',
@@ -40,13 +40,13 @@ export async function POST(
         footballPlayers: result.removed > 0 ? 'Expired contracts removed' : 'No expired contracts found',
       }
     });
-    
+
   } catch (error: any) {
     console.error('Error expiring contracts:', error);
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to expire contracts',
-        details: error.message 
+        details: error.message
       },
       { status: 500 }
     );
@@ -60,18 +60,18 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const seasonId = params.id;
-    
+    const { id: seasonId } = await params;
+
     if (!seasonId) {
       return NextResponse.json(
         { error: 'Season ID is required' },
         { status: 400 }
       );
     }
-    
+
     // This would need implementation to query without updating
     // For now, just return information
     return NextResponse.json({
@@ -80,13 +80,13 @@ export async function GET(
       info: 'This endpoint would show which contracts will expire without actually expiring them',
       action: 'Use POST to actually expire contracts'
     });
-    
+
   } catch (error: any) {
     console.error('Error previewing contract expiry:', error);
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to preview contract expiry',
-        details: error.message 
+        details: error.message
       },
       { status: 500 }
     );

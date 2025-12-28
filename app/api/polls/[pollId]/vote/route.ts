@@ -7,12 +7,12 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { pollId: string } }
+  { params }: { params: Promise<{ pollId: string }> }
 ) {
   try {
-    const pollId = params.pollId;
+    const { pollId } = await params;
     const body = await request.json();
-    
+
     const {
       selected_option_id,
       voter_name,
@@ -106,9 +106,9 @@ export async function POST(
     }
 
     // Get IP address from request
-    const ip_address = request.headers.get('x-forwarded-for') || 
-                      request.headers.get('x-real-ip') || 
-                      'unknown';
+    const ip_address = request.headers.get('x-forwarded-for') ||
+      request.headers.get('x-real-ip') ||
+      'unknown';
 
     // STRICT CHECK: Has this device already voted?
     const existingVote = await sql`
@@ -121,10 +121,10 @@ export async function POST(
 
     if (existingVote.length > 0) {
       const existing = existingVote[0];
-      
+
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: `This device has already voted as "${existing.voter_name}"`,
           already_voted: true,
           voter_name: existing.voter_name,
@@ -147,7 +147,7 @@ export async function POST(
 
     // Create vote
     const vote_id = `vote_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     await sql`
       INSERT INTO poll_votes (
         vote_id, poll_id, voter_name, 
@@ -236,10 +236,10 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { pollId: string } }
+  { params }: { params: Promise<{ pollId: string }> }
 ) {
   try {
-    const pollId = params.pollId;
+    const { pollId } = await params;
     const { searchParams } = new URL(request.url);
     const device_fingerprint = searchParams.get('device_fingerprint');
 

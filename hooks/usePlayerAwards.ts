@@ -1,16 +1,28 @@
 import { useQuery } from '@tanstack/react-query';
 
 export interface PlayerAward {
-  id: number;
+  id: number | string;
   player_id: string;
-  player_name: string;
+  player_name?: string;
   season_id: string;
-  award_category: string;  // e.g., "Golden Boot", "Best Defender"
-  award_type: string;      // "category" or "individual"
+
+  // Fields from both tables
+  award_category?: string;  // e.g., "Golden Boot", "Best Defender" (or award_type from new table)
+  award_type?: string;      // "category" or "individual" (old table) OR award name (new table)
+
+  // Old table specific fields
   award_position?: string | null;
   player_category?: string | null;
-  performance_stats?: Record<string, any> | null;
   awarded_by?: string | null;
+
+  // New table specific fields
+  round_number?: number | null;
+  week_number?: number | null;
+  team_id?: string | null;
+  team_name?: string | null;
+
+  // Common fields
+  performance_stats?: Record<string, any> | null;
   notes?: string | null;
   created_at?: Date;
   updated_at?: Date;
@@ -33,7 +45,7 @@ export function usePlayerAwards(playerId?: string, seasonId?: string) {
       });
 
       const response = await fetch(`/api/player-awards?${params}`);
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch player awards');
       }
@@ -63,7 +75,7 @@ export function useSeasonAwards(seasonId?: string, awardCategory?: string) {
       }
 
       const response = await fetch(`/api/player-awards?${params}`);
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch season awards');
       }

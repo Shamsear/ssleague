@@ -51,7 +51,7 @@ interface TeamSeasonData {
   season_name: string;
   logo_url?: string;
   manager_name?: string;
-  
+
   stats: {
     matches_played: number;
     wins: number;
@@ -65,7 +65,8 @@ interface TeamSeasonData {
     position?: number;
     form?: string;
   };
-  
+  trophies?: any;
+
   players?: Array<{
     player_id: string;
     player_name: string;
@@ -84,6 +85,8 @@ export default function TeamDetailPage() {
   const [realPlayers, setRealPlayers] = useState<RealPlayer[]>([]);
   const [loadingFootballPlayers, setLoadingFootballPlayers] = useState(false);
   const [loadingRealPlayers, setLoadingRealPlayers] = useState(false);
+  const [awards, setAwards] = useState<any[]>([]);
+  const [loadingAwards, setLoadingAwards] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedView, setSelectedView] = useState<'overall' | 'all-seasons' | 'season'>('overall');
@@ -98,12 +101,32 @@ export default function TeamDetailPage() {
   useEffect(() => {
     // Only fetch players when a specific season is selected
     if (selectedView === 'season' && selectedSeasonId) {
-      fetchFootballPlayers(selectedSeasonId);
+      // Check if this is a modern season (S16+)
+      const seasonNum = parseInt(selectedSeasonId?.match(/\d+/)?.[0] || '0');
+      const isModernSeason = seasonNum >= 16;
+
+      // Only fetch football players for modern seasons (S16+)
+      if (isModernSeason) {
+        fetchFootballPlayers(selectedSeasonId);
+      } else {
+        // Clear football players for older seasons
+        setFootballPlayers([]);
+      }
+
+      // Always fetch real players for any season
       fetchRealPlayers(selectedSeasonId);
+
+      // Fetch awards for modern seasons (S16+)
+      if (isModernSeason) {
+        fetchAwards(selectedSeasonId);
+      } else {
+        setAwards([]);
+      }
     } else {
       // Clear players when not viewing a specific season
       setFootballPlayers([]);
       setRealPlayers([]);
+      setAwards([]);
     }
   }, [selectedView, selectedSeasonId, teamId]);
 
@@ -166,6 +189,25 @@ export default function TeamDetailPage() {
       setRealPlayers([]);
     } finally {
       setLoadingRealPlayers(false);
+    }
+  };
+
+  const fetchAwards = async (seasonId: string) => {
+    try {
+      setLoadingAwards(true);
+      const response = await fetch(`/api/teams/${teamId}/awards?seasonId=${seasonId}`);
+      const data = await response.json();
+
+      if (data.success && data.data && data.data.awards) {
+        setAwards(data.data.awards);
+      } else {
+        setAwards([]);
+      }
+    } catch (err) {
+      console.error('Error fetching awards:', err);
+      setAwards([]);
+    } finally {
+      setLoadingAwards(false);
     }
   };
 
@@ -240,11 +282,11 @@ export default function TeamDetailPage() {
   }
 
   const overallStats = calculateOverallStats();
-  
+
   // Get stats based on selected view
   let displayStats;
   let currentSeasonData = team;
-  
+
   if (selectedView === 'overall') {
     displayStats = overallStats;
   } else if (selectedView === 'all-seasons') {
@@ -262,8 +304,8 @@ export default function TeamDetailPage() {
   }
 
   const stats = displayStats;
-  const winRate = stats.matches_played > 0 
-    ? Math.round((stats.wins / stats.matches_played) * 100) 
+  const winRate = stats.matches_played > 0
+    ? Math.round((stats.wins / stats.matches_played) * 100)
     : 0;
   const goalsPerGame = stats.matches_played > 0
     ? (stats.goals_for / stats.matches_played).toFixed(2)
@@ -287,7 +329,7 @@ export default function TeamDetailPage() {
               </svg>
               <span>Back to Teams</span>
             </Link>
-            
+
             <div className="flex items-center gap-3">
               <span className="px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-600">
                 Team ID: {team.team_id}
@@ -310,42 +352,40 @@ export default function TeamDetailPage() {
                     setSelectedView('overall');
                     setSelectedSeasonId(null);
                   }}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                    selectedView === 'overall'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${selectedView === 'overall'
+                    ? 'bg-green-500 text-white shadow-md'
+                    : 'text-gray-600 hover:bg-gray-100'
+                    }`}
                 >
                   Overall Stats
                 </button>
-                
+
                 {/* All Seasons Tab */}
                 <button
                   onClick={() => {
                     setSelectedView('all-seasons');
                     setSelectedSeasonId(null);
                   }}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                    selectedView === 'all-seasons'
-                      ? 'bg-purple-500 text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${selectedView === 'all-seasons'
+                    ? 'bg-purple-500 text-white shadow-md'
+                    : 'text-gray-600 hover:bg-gray-100'
+                    }`}
                 >
                   All Seasons ({allSeasonData.length})
                 </button>
-                
+
                 {/* Divider */}
                 {allSeasonData.length > 0 && (
                   <div className="flex items-center px-2">
                     <div className="h-6 w-px bg-gray-300"></div>
                   </div>
                 )}
-                
+
                 {/* Individual Season Tabs */}
                 {allSeasonData.map((seasonData, index) => {
                   const isCurrentSeason = index === 0;
                   const isSelected = selectedView === 'season' && selectedSeasonId === seasonData.season_id;
-                  
+
                   return (
                     <button
                       key={`${seasonData.team_id}-${seasonData.season_id}-${index}`}
@@ -353,11 +393,10 @@ export default function TeamDetailPage() {
                         setSelectedView('season');
                         setSelectedSeasonId(seasonData.season_id);
                       }}
-                      className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                        isSelected
-                          ? 'bg-blue-500 text-white shadow-md'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
+                      className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${isSelected
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'text-gray-600 hover:bg-gray-100'
+                        }`}
                     >
                       {seasonData.season_name || `Season ${allSeasonData.length - index}`}
                       {isCurrentSeason && (
@@ -395,7 +434,7 @@ export default function TeamDetailPage() {
                 <div className="text-center">
                   <h1 className="text-2xl font-bold text-dark mb-1">{currentSeasonData.team_name}</h1>
                   <p className="text-sm text-gray-500 mb-4">{team.team_code}</p>
-                  
+
                   {currentSeasonData.manager_name && (
                     <div className="mb-4">
                       <span className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
@@ -403,7 +442,7 @@ export default function TeamDetailPage() {
                       </span>
                     </div>
                   )}
-                  
+
                   {/* Season Info */}
                   {selectedView === 'season' && selectedSeasonId && (
                     <div className="mb-4">
@@ -487,23 +526,21 @@ export default function TeamDetailPage() {
                     </svg>
                     Season-by-Season Breakdown
                   </h3>
-                  
+
                   <div className="space-y-4">
                     {allSeasonData.map((seasonData, index) => {
                       const isCurrentSeason = index === 0;
                       const s = seasonData.stats;
-                      
+
                       return (
-                        <div key={`all-seasons-${seasonData.team_id}-${seasonData.season_id}-${index}`} className={`rounded-xl p-5 border-2 ${
-                          isCurrentSeason 
-                            ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300' 
-                            : 'bg-white/50 border-gray-200'
-                        }`}>
+                        <div key={`all-seasons-${seasonData.team_id}-${seasonData.season_id}-${index}`} className={`rounded-xl p-5 border-2 ${isCurrentSeason
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300'
+                          : 'bg-white/50 border-gray-200'
+                          }`}>
                           <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                                isCurrentSeason ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
-                              }`}>
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${isCurrentSeason ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
+                                }`}>
                                 {allSeasonData.length - index}
                               </div>
                               <div>
@@ -521,7 +558,7 @@ export default function TeamDetailPage() {
                               </span>
                             )}
                           </div>
-                          
+
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div className="bg-white/60 rounded-lg p-3 text-center">
                               <p className="text-xs text-gray-500 mb-1">Matches</p>
@@ -575,10 +612,9 @@ export default function TeamDetailPage() {
                     </div>
                     <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
                       <p className="text-xs text-gray-500 mb-1">GD</p>
-                      <p className={`text-2xl font-bold ${
-                        stats.goal_difference > 0 ? 'text-green-600' : 
+                      <p className={`text-2xl font-bold ${stats.goal_difference > 0 ? 'text-green-600' :
                         stats.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
-                      }`}>
+                        }`}>
                         {stats.goal_difference > 0 ? '+' : ''}{stats.goal_difference}
                       </p>
                     </div>
@@ -630,7 +666,7 @@ export default function TeamDetailPage() {
                     </svg>
                     Real Players {realPlayers.length > 0 && `(${realPlayers.length})`}
                   </h3>
-                  
+
                   {loadingRealPlayers ? (
                     <div className="text-center py-8">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -651,19 +687,26 @@ export default function TeamDetailPage() {
                           // Check if this is a modern season (S16+) to show rating column
                           const seasonNum = parseInt(selectedSeasonId?.match(/\d+/)?.[0] || '0');
                           const isModernSeason = seasonNum >= 16;
-                          
+
+                          // For S16+, check if any player has a category
+                          // For S15 and below, always show category
+                          const hasCategory = isModernSeason
+                            ? realPlayers.some(p => p.category && p.category.trim() !== '')
+                            : true;
+
                           return (
                             <table className="w-full">
                               <thead>
                                 <tr className="border-b-2 border-gray-200">
                                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Player</th>
-                                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Category</th>
+                                  {hasCategory && (
+                                    <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Category</th>
+                                  )}
                                   {isModernSeason && (
                                     <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Rating</th>
                                   )}
                                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Matches</th>
                                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Goals</th>
-                                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Assists</th>
                                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Points</th>
                                 </tr>
                               </thead>
@@ -682,25 +725,25 @@ export default function TeamDetailPage() {
                                           </div>
                                         </div>
                                       </td>
-                                      <td className="text-center py-3 px-4">
-                                        <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded">
-                                          {player.category || 'N/A'}
-                                        </span>
-                                      </td>
+                                      {hasCategory && (
+                                        <td className="text-center py-3 px-4">
+                                          <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded">
+                                            {player.category || 'N/A'}
+                                          </span>
+                                        </td>
+                                      )}
                                       {isModernSeason && (
                                         <td className="text-center py-3 px-4">
-                                          <div className="flex items-center justify-center gap-1">
-                                            {[...Array(5)].map((_, i) => (
-                                              <span key={i} className={`text-sm ${i < (player.star_rating || 0) ? 'text-yellow-500' : 'text-gray-300'}`}>
-                                                ★
-                                              </span>
-                                            ))}
-                                          </div>
+                                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${(player.star_rating || 0) >= 8 ? 'bg-yellow-100 text-yellow-800' :
+                                            (player.star_rating || 0) >= 6 ? 'bg-blue-100 text-blue-800' :
+                                              'bg-gray-100 text-gray-700'
+                                            }`}>
+                                            {player.star_rating || 0}
+                                          </span>
                                         </td>
                                       )}
                                       <td className="text-center py-3 px-4 text-gray-700">{player.matches_played || 0}</td>
                                       <td className="text-center py-3 px-4 text-green-600 font-semibold">{player.goals_scored || 0}</td>
-                                      <td className="text-center py-3 px-4 text-blue-600 font-semibold">{player.assists || 0}</td>
                                       <td className="text-center py-3 px-4 text-indigo-600 font-bold">{player.points || 0}</td>
                                     </tr>
                                   ))}
@@ -709,10 +752,10 @@ export default function TeamDetailPage() {
                           );
                         })()}
                       </div>
-                      
+
                       {/* Summary Stats */}
                       <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           <div className="bg-blue-50 rounded-lg p-3 text-center">
                             <p className="text-xs text-blue-700 font-medium mb-1">Total Players</p>
                             <p className="text-xl font-bold text-blue-800">{realPlayers.length}</p>
@@ -721,12 +764,6 @@ export default function TeamDetailPage() {
                             <p className="text-xs text-green-700 font-medium mb-1">Total Goals</p>
                             <p className="text-xl font-bold text-green-800">
                               {realPlayers.reduce((sum, p) => sum + (p.goals_scored || 0), 0)}
-                            </p>
-                          </div>
-                          <div className="bg-purple-50 rounded-lg p-3 text-center">
-                            <p className="text-xs text-purple-700 font-medium mb-1">Total Assists</p>
-                            <p className="text-xl font-bold text-purple-800">
-                              {realPlayers.reduce((sum, p) => sum + (p.assists || 0), 0)}
                             </p>
                           </div>
                           <div className="bg-indigo-50 rounded-lg p-3 text-center">
@@ -742,198 +779,352 @@ export default function TeamDetailPage() {
                 </div>
               )}
 
-              {/* Football Players Section (eFootball) - Season-specific */}
-              {selectedView === 'season' && selectedSeasonId && (
-                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
-                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
-                    <svg className="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Football Players (eFootball) {footballPlayers.length > 0 && `(${footballPlayers.length})`}
-                  </h3>
-                  
-                  {loadingFootballPlayers ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
-                      <p className="text-gray-600 mt-2">Loading players...</p>
-                    </div>
-                  ) : footballPlayers.length === 0 ? (
-                    <div className="text-center py-8">
-                      <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* Awards Section (Season 16+ only) */}
+              {selectedView === 'season' && selectedSeasonId && (() => {
+                const seasonNum = parseInt(selectedSeasonId?.match(/\d+/)?.[0] || '0');
+                return seasonNum >= 16;
+              })() && (
+                  <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                    <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                      <svg className="w-5 h-5 mr-2 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      Awards {awards.length > 0 && `(${awards.length})`}
+                    </h3>
+
+                    {loadingAwards ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto"></div>
+                        <p className="text-gray-600 mt-2">Loading awards...</p>
+                      </div>
+                    ) : awards.length === 0 ? (
+                      <div className="text-center py-8">
+                        <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                        <p className="text-gray-600 text-lg font-medium">No awards won this season</p>
+                        <p className="text-gray-500 text-sm mt-2">Awards will appear here when they are given.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {awards.map((award: any, index: number) => {
+                          // Map award types to readable labels
+                          const awardTypeLabels: Record<string, string> = {
+                            'season_player': 'Player of the Season',
+                            'season_team': 'Team of the Season',
+                            'potm': 'Player of the Month',
+                            'totw': 'Team of the Week',
+                            'TOD': 'Team of the Day',
+                            'TOW': 'Team of the Week',
+                            'POTD': 'Player of the Day',
+                            'POTW': 'Player of the Week'
+                          };
+
+                          // Map specific styles for each award type
+                          const getStyle = (type: string) => {
+                            const t = type.toLowerCase();
+                            if (t.includes('season')) return 'from-amber-50 to-yellow-50 border-amber-200';
+                            if (t.includes('team') || t === 'tod' || t === 'tow' || t === 'totw') return 'from-emerald-50 to-green-50 border-emerald-200';
+                            if (t.includes('player') || t === 'potd' || t === 'potw' || t === 'potm') return 'from-blue-50 to-cyan-50 border-blue-200';
+                            return 'from-gray-50 to-gray-100 border-gray-200';
+                          };
+
+                          // Helper to format stats
+                          const renderStats = (rawStats: any) => {
+                            if (!rawStats) return null;
+                            let stats;
+                            try {
+                              stats = typeof rawStats === 'string' ? JSON.parse(rawStats) : rawStats;
+                            } catch (e) { return null; }
+                            if (!stats || typeof stats !== 'object') return null;
+
+                            // Define which stats to show and how
+                            const allowedStats = [
+                              'wins', 'draws', 'losses', 'goals_for', 'goals',
+                              'goals_against', 'goal_difference', 'clean_sheet',
+                              'motm', 'assists', 'matchup'
+                            ];
+
+                            return (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {/* Special Badge for Clean Sheet */}
+                                {(stats.clean_sheet === true || stats.clean_sheet === 'true' || stats.clean_sheets > 0) && (
+                                  <span className="px-2 py-1 bg-teal-100 text-teal-800 rounded border border-teal-200 text-xs font-bold flex items-center shadow-sm">
+                                    🛡️ Clean Sheet
+                                  </span>
+                                )}
+
+                                {/* Special Display for Matchup */}
+                                {stats.matchup && (
+                                  <div className="w-full text-xs font-medium text-gray-600 italic mb-1 border-l-2 border-blue-300 pl-2">
+                                    {stats.matchup}
+                                  </div>
+                                )}
+
+                                {/* Standard Stats */}
+                                {Object.entries(stats).map(([originalKey, value]: [string, any]) => {
+                                  const key = originalKey.toLowerCase();
+                                  // Skip unwanted or empty values
+                                  if (!allowedStats.includes(key)) return null;
+                                  if (value === null || value === '' || value === undefined) return null;
+                                  if (key === 'clean_sheet' || key === 'matchup') return null; // Handled above
+                                  if (key.includes('played')) return null; // Skip rounds/matches played count often redundant
+
+                                  // Format Labels
+                                  let label = key.replace(/_/g, ' ');
+                                  let suffix = '';
+                                  let colorClass = 'bg-white text-gray-700 border-gray-200';
+
+                                  if (key === 'wins') { label = 'W'; colorClass = 'bg-green-100 text-green-800 border-green-200'; }
+                                  else if (key === 'losses') { label = 'L'; colorClass = 'bg-red-50 text-red-800 border-red-200'; }
+                                  else if (key === 'draws') { label = 'D'; colorClass = 'bg-gray-100 text-gray-800 border-gray-200'; }
+                                  else if (key === 'goals_for' || key === 'goals') { label = 'Goals'; colorClass = 'bg-blue-50 text-blue-800 border-blue-200'; }
+                                  else if (key === 'goals_against') { label = 'Conc'; colorClass = 'bg-orange-50 text-orange-800 border-orange-200'; }
+                                  else if (key === 'goal_difference') { label = 'GD'; colorClass = 'bg-indigo-50 text-indigo-800 border-indigo-200'; }
+                                  else if (key === 'motm') { label = 'MOTM'; suffix = '🏆'; colorClass = 'bg-yellow-50 text-yellow-800 border-yellow-200'; }
+
+                                  return (
+                                    <span key={originalKey} className={`px-2 py-1 ${colorClass} rounded border text-xs font-semibold shadow-sm flex items-center`}>
+                                      {label}: {value} {suffix}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
+                          };
+
+                          return (
+                            <div
+                              key={award.id || index}
+                              className={`bg-gradient-to-br ${getStyle(award.award_type)} rounded-xl p-4 border shadow-sm hover:shadow-md transition-shadow`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="p-2 bg-white/50 rounded-full shadow-sm">
+                                  <span className="text-2xl block leading-none">🏆</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-start">
+                                    <h4 className="font-bold text-gray-900 text-sm uppercase tracking-wide">
+                                      {awardTypeLabels[award.award_type] || award.award_type}
+                                    </h4>
+                                    <span className="text-[10px] font-bold text-gray-500 bg-white/60 px-2 py-0.5 rounded-full uppercase">
+                                      {award.round_number ? `Round ${award.round_number}` : award.week_number ? `Week ${award.week_number}` : 'Season'}
+                                    </span>
+                                  </div>
+
+                                  {award.player_name && (
+                                    <p className="text-sm text-gray-800 font-bold mt-0.5 truncate">
+                                      {award.player_name}
+                                    </p>
+                                  )}
+
+                                  {renderStats(award.performance_stats)}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+
+              {/* Football Players Section (eFootball) - Season-specific, only for S16+ */}
+              {selectedView === 'season' && selectedSeasonId && (() => {
+                const seasonNum = parseInt(selectedSeasonId?.match(/\d+/)?.[0] || '0');
+                const isModernSeason = seasonNum >= 16;
+                return isModernSeason;
+              })() && (
+                  <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                    <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                      <svg className="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <p className="text-gray-600 text-lg font-medium">No football players found for this season</p>
-                      <p className="text-gray-500 text-sm mt-2">This team may not have acquired any eFootball players in this season.</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b-2 border-gray-200">
-                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Player</th>
-                            <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Position</th>
-                            <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Rating</th>
-                            <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Club</th>
-                            <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Style</th>
-                            <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Price</th>
-                            <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Stats</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {footballPlayers
-                            .sort((a, b) => b.purchase_price - a.purchase_price)
-                            .map((player, index) => (
-                            <tr key={player.player_id} className={`border-b border-gray-100 hover:bg-green-50 transition-colors ${index < 3 ? 'bg-green-50/30' : ''}`}>
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-2">
-                                  <div>
-                                    <div className="font-medium text-gray-900">{player.player_name}</div>
-                                    {player.nationality && (
-                                      <div className="text-xs text-gray-500">{player.nationality}</div>
-                                    )}
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="text-center py-3 px-4">
-                                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
-                                  {player.position || 'N/A'}
-                                </span>
-                              </td>
-                              <td className="text-center py-3 px-4">
-                                <span className={`font-bold text-lg ${
-                                  player.overall_rating >= 85 ? 'text-purple-600' :
-                                  player.overall_rating >= 80 ? 'text-blue-600' :
-                                  player.overall_rating >= 75 ? 'text-green-600' :
-                                  'text-gray-600'
-                                }`}>
-                                  {player.overall_rating}
-                                </span>
-                              </td>
-                              <td className="text-center py-3 px-4 text-sm text-gray-700">
-                                {player.club || 'Free Agent'}
-                              </td>
-                              <td className="text-center py-3 px-4 text-xs text-gray-600">
-                                {player.playing_style || '-'}
-                              </td>
-                              <td className="text-center py-3 px-4">
-                                <span className="font-semibold text-orange-600">
-                                  €{player.purchase_price}
-                                </span>
-                              </td>
-                              <td className="text-center py-3 px-4">
-                                <div className="flex gap-1 justify-center text-xs">
-                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded" title="Speed">
-                                    SPD {player.speed || '-'}
-                                  </span>
-                                  <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded" title="Ball Control">
-                                    BC {player.ball_control || '-'}
-                                  </span>
-                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded" title="Finishing">
-                                    FIN {player.finishing || '-'}
-                                  </span>
-                                </div>
-                              </td>
+                      Football Players (eFootball) {footballPlayers.length > 0 && `(${footballPlayers.length})`}
+                    </h3>
+
+                    {loadingFootballPlayers ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+                        <p className="text-gray-600 mt-2">Loading players...</p>
+                      </div>
+                    ) : footballPlayers.length === 0 ? (
+                      <div className="text-center py-8">
+                        <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-gray-600 text-lg font-medium">No football players found for this season</p>
+                        <p className="text-gray-500 text-sm mt-2">This team may not have acquired any eFootball players in this season.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b-2 border-gray-200">
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Player</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Position</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Rating</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Club</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Style</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Price</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Stats</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      
-                      {/* Summary Stats */}
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className="bg-green-50 rounded-lg p-3 text-center">
-                            <p className="text-xs text-green-700 font-medium mb-1">Total Players</p>
-                            <p className="text-xl font-bold text-green-800">{footballPlayers.length}</p>
-                          </div>
-                          <div className="bg-orange-50 rounded-lg p-3 text-center">
-                            <p className="text-xs text-orange-700 font-medium mb-1">Total Spent</p>
-                            <p className="text-xl font-bold text-orange-800">
-                              €{footballPlayers.reduce((sum, p) => sum + p.purchase_price, 0)}
-                            </p>
-                          </div>
-                          <div className="bg-purple-50 rounded-lg p-3 text-center">
-                            <p className="text-xs text-purple-700 font-medium mb-1">Avg Rating</p>
-                            <p className="text-xl font-bold text-purple-800">
-                              {(footballPlayers.reduce((sum, p) => sum + p.overall_rating, 0) / footballPlayers.length).toFixed(1)}
-                            </p>
-                          </div>
-                          <div className="bg-blue-50 rounded-lg p-3 text-center">
-                            <p className="text-xs text-blue-700 font-medium mb-1">Top Rating</p>
-                            <p className="text-xl font-bold text-blue-800">
-                              {Math.max(...footballPlayers.map(p => p.overall_rating))}
-                            </p>
+                          </thead>
+                          <tbody>
+                            {footballPlayers
+                              .sort((a, b) => b.purchase_price - a.purchase_price)
+                              .map((player, index) => (
+                                <tr key={player.player_id} className={`border-b border-gray-100 hover:bg-green-50 transition-colors ${index < 3 ? 'bg-green-50/30' : ''}`}>
+                                  <td className="py-3 px-4">
+                                    <div className="flex items-center gap-2">
+                                      <div>
+                                        <div className="font-medium text-gray-900">{player.player_name}</div>
+                                        {player.nationality && (
+                                          <div className="text-xs text-gray-500">{player.nationality}</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="text-center py-3 px-4">
+                                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                      {player.position || 'N/A'}
+                                    </span>
+                                  </td>
+                                  <td className="text-center py-3 px-4">
+                                    <span className={`font-bold text-lg ${player.overall_rating >= 85 ? 'text-purple-600' :
+                                      player.overall_rating >= 80 ? 'text-blue-600' :
+                                        player.overall_rating >= 75 ? 'text-green-600' :
+                                          'text-gray-600'
+                                      }`}>
+                                      {player.overall_rating}
+                                    </span>
+                                  </td>
+                                  <td className="text-center py-3 px-4 text-sm text-gray-700">
+                                    {player.club || 'Free Agent'}
+                                  </td>
+                                  <td className="text-center py-3 px-4 text-xs text-gray-600">
+                                    {player.playing_style || '-'}
+                                  </td>
+                                  <td className="text-center py-3 px-4">
+                                    <span className="font-semibold text-orange-600">
+                                      €{player.purchase_price}
+                                    </span>
+                                  </td>
+                                  <td className="text-center py-3 px-4">
+                                    <div className="flex gap-1 justify-center text-xs">
+                                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded" title="Speed">
+                                        SPD {player.speed || '-'}
+                                      </span>
+                                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded" title="Ball Control">
+                                        BC {player.ball_control || '-'}
+                                      </span>
+                                      <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded" title="Finishing">
+                                        FIN {player.finishing || '-'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+
+                        {/* Summary Stats */}
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-green-50 rounded-lg p-3 text-center">
+                              <p className="text-xs text-green-700 font-medium mb-1">Total Players</p>
+                              <p className="text-xl font-bold text-green-800">{footballPlayers.length}</p>
+                            </div>
+                            <div className="bg-orange-50 rounded-lg p-3 text-center">
+                              <p className="text-xs text-orange-700 font-medium mb-1">Total Spent</p>
+                              <p className="text-xl font-bold text-orange-800">
+                                €{footballPlayers.reduce((sum, p) => sum + p.purchase_price, 0)}
+                              </p>
+                            </div>
+                            <div className="bg-purple-50 rounded-lg p-3 text-center">
+                              <p className="text-xs text-purple-700 font-medium mb-1">Avg Rating</p>
+                              <p className="text-xl font-bold text-purple-800">
+                                {(footballPlayers.reduce((sum, p) => sum + p.overall_rating, 0) / footballPlayers.length).toFixed(1)}
+                              </p>
+                            </div>
+                            <div className="bg-blue-50 rounded-lg p-3 text-center">
+                              <p className="text-xs text-blue-700 font-medium mb-1">Top Rating</p>
+                              <p className="text-xl font-bold text-blue-800">
+                                {Math.max(...footballPlayers.map(p => p.overall_rating))}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Trophies Section */}
-              {((selectedView === 'overall' && allSeasonData.some(s => s.trophies && s.trophies.length > 0)) || 
-                (selectedView === 'season' && currentSeasonData.trophies && currentSeasonData.trophies.length > 0)) && (
-                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
-                  <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
-                    <svg className="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                    </svg>
-                    {selectedView === 'overall' ? 'All Trophies' : 'Trophies Won This Season'}
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {selectedView === 'overall' ? (
-                      allSeasonData.flatMap(seasonData => 
-                        (seasonData.trophies || []).map((trophy: any) => ({
-                          ...trophy,
-                          season: seasonData.season_name
-                        }))
-                      ).map((trophy: any) => (
-                        <div key={trophy.id} className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-4 border-2 border-yellow-300 shadow-sm">
-                          <div className="flex items-center gap-3">
-                            <span className="text-3xl">🏆</span>
-                            <div className="flex-1">
-                              <h4 className="font-bold text-gray-900 text-lg">{trophy.trophy_name}</h4>
-                              {trophy.trophy_position && (
-                                <p className="text-sm text-orange-600 font-bold">
-                                  {trophy.trophy_position}
-                                </p>
-                              )}
-                              {trophy.position && (
-                                <p className="text-xs text-gray-600">
-                                  League Position: #{trophy.position}
-                                </p>
-                              )}
-                              <p className="text-xs text-gray-500 mt-1">{trophy.season}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      currentSeasonData.trophies?.map((trophy: any) => (
-                        <div key={trophy.id} className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-4 border-2 border-yellow-300 shadow-sm">
-                          <div className="flex items-center gap-3">
-                            <span className="text-3xl">🏆</span>
-                            <div className="flex-1">
-                              <h4 className="font-bold text-gray-900 text-lg">{trophy.trophy_name}</h4>
-                              {trophy.trophy_position && (
-                                <p className="text-sm text-orange-600 font-bold">
-                                  {trophy.trophy_position}
-                                </p>
-                              )}
-                              {trophy.position && (
-                                <p className="text-xs text-gray-600">
-                                  League Position: #{trophy.position}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))
                     )}
                   </div>
-                </div>
-              )}
+                )}
+
+              {/* Trophies Section */}
+              {((selectedView === 'overall' && allSeasonData.some(s => s.trophies && s.trophies.length > 0)) ||
+                (selectedView === 'season' && currentSeasonData.trophies && currentSeasonData.trophies.length > 0)) && (
+                  <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                    <h3 className="text-lg font-semibold text-dark mb-4 flex items-center">
+                      <svg className="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      {selectedView === 'overall' ? 'All Trophies' : 'Trophies Won This Season'}
+                    </h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {selectedView === 'overall' ? (
+                        allSeasonData.flatMap(seasonData =>
+                          (seasonData.trophies || []).map((trophy: any) => ({
+                            ...trophy,
+                            season: seasonData.season_name
+                          }))
+                        ).map((trophy: any) => (
+                          <div key={trophy.id} className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-4 border-2 border-yellow-300 shadow-sm">
+                            <div className="flex items-center gap-3">
+                              <span className="text-3xl">🏆</span>
+                              <div className="flex-1">
+                                <h4 className="font-bold text-gray-900 text-lg">{trophy.trophy_name}</h4>
+                                {trophy.trophy_position && (
+                                  <p className="text-sm text-orange-600 font-bold">
+                                    {trophy.trophy_position}
+                                  </p>
+                                )}
+                                {trophy.position && (
+                                  <p className="text-xs text-gray-600">
+                                    League Position: #{trophy.position}
+                                  </p>
+                                )}
+                                <p className="text-xs text-gray-500 mt-1">{trophy.season}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        currentSeasonData.trophies?.map((trophy: any) => (
+                          <div key={trophy.id} className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-4 border-2 border-yellow-300 shadow-sm">
+                            <div className="flex items-center gap-3">
+                              <span className="text-3xl">🏆</span>
+                              <div className="flex-1">
+                                <h4 className="font-bold text-gray-900 text-lg">{trophy.trophy_name}</h4>
+                                {trophy.trophy_position && (
+                                  <p className="text-sm text-orange-600 font-bold">
+                                    {trophy.trophy_position}
+                                  </p>
+                                )}
+                                {trophy.position && (
+                                  <p className="text-xs text-gray-600">
+                                    League Position: #{trophy.position}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
             </div>
           </div>
         </div>

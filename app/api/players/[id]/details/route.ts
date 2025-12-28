@@ -9,28 +9,28 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const playerId = params.id;
-    
+    const { id: playerId } = await params;
+
     // Query for player by player_id
     const playersSnapshot = await adminDb
       .collection('realplayers')
       .where('player_id', '==', playerId)
       .limit(1)
       .get();
-    
+
     if (playersSnapshot.empty) {
       return NextResponse.json(
         { success: false, error: 'Player not found' },
         { status: 404 }
       );
     }
-    
+
     const playerDoc = playersSnapshot.docs[0];
     const playerData = playerDoc.data();
-    
+
     return NextResponse.json({
       success: true,
       player: {

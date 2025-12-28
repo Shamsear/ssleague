@@ -5,10 +5,10 @@ const VALID_REACTIONS = ['like', 'dislike', 'love', 'funny', 'wow', 'sad', 'angr
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { newsId: string } }
+  { params }: { params: Promise<{ newsId: string }> }
 ) {
   try {
-    const { newsId } = params;
+    const { newsId } = await params;
     const { reaction_type, device_fingerprint, user_id } = await request.json();
 
     if (!VALID_REACTIONS.includes(reaction_type)) {
@@ -108,10 +108,10 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { newsId: string } }
+  { params }: { params: Promise<{ newsId: string }> }
 ) {
   try {
-    const { newsId } = params;
+    const { newsId } = await params;
     const { searchParams } = new URL(request.url);
     const device_fingerprint = searchParams.get('device_fingerprint');
 

@@ -37,6 +37,25 @@ export async function GET(request: NextRequest) {
 
         console.log(`🔍 Searching for POTD candidates: tournament=${tournamentId}, round=${roundNumber}`);
 
+        // First, check if an award has already been given for this round
+        const existingAward = await sql`
+          SELECT player_id, player_name
+          FROM awards
+          WHERE tournament_id = ${tournamentId}
+            AND award_type = 'POTD'
+            AND round_number = ${parseInt(roundNumber)}
+        `;
+
+        if (existingAward.length > 0) {
+          console.log(`⚠️ POTD award already given for round ${roundNumber} to ${existingAward[0].player_name}`);
+          // Return empty candidates list since award is already given
+          return NextResponse.json({
+            success: true,
+            data: [],
+            message: 'Award already given for this round'
+          });
+        }
+
         const fixtures = await sql`
           SELECT 
             f.id as fixture_id,
@@ -78,7 +97,7 @@ export async function GET(request: NextRequest) {
             let playerGoals = 0;
             let playerTeam = '';
             let matchupDetails = '';
-            
+
             if (matchups.length > 0) {
               const matchup = matchups[0];
               if (matchup.home_player_id === fixture.motm_player_id) {
@@ -127,6 +146,24 @@ export async function GET(request: NextRequest) {
 
         console.log(`🔍 Searching for POTW candidates: week=${weekNumber}, rounds ${startRound}-${endRound}`);
 
+        // First, check if an award has already been given for this week
+        const existingAward = await sql`
+          SELECT player_id, player_name
+          FROM awards
+          WHERE tournament_id = ${tournamentId}
+            AND award_type = 'POTW'
+            AND week_number = ${parseInt(weekNumber)}
+        `;
+
+        if (existingAward.length > 0) {
+          console.log(`⚠️ POTW award already given for week ${weekNumber} to ${existingAward[0].player_name}`);
+          return NextResponse.json({
+            success: true,
+            data: [],
+            message: 'Award already given for this week'
+          });
+        }
+
         // Get all matchups from this week
         const matchups = await sql`
           SELECT 
@@ -149,7 +186,7 @@ export async function GET(request: NextRequest) {
 
         // Aggregate stats for each player
         const playerMap = new Map();
-        
+
         matchups.forEach((matchup: any) => {
           // Process home player
           if (matchup.home_player_id) {
@@ -215,6 +252,24 @@ export async function GET(request: NextRequest) {
             { success: false, error: 'round_number required for TOD' },
             { status: 400 }
           );
+        }
+
+        // First, check if an award has already been given for this round
+        const existingAward = await sql`
+          SELECT team_id, team_name
+          FROM awards
+          WHERE tournament_id = ${tournamentId}
+            AND award_type = 'TOD'
+            AND round_number = ${parseInt(roundNumber)}
+        `;
+
+        if (existingAward.length > 0) {
+          console.log(`⚠️ TOD award already given for round ${roundNumber} to ${existingAward[0].team_name}`);
+          return NextResponse.json({
+            success: true,
+            data: [],
+            message: 'Award already given for this round'
+          });
         }
 
         const fixtures = await sql`
@@ -311,6 +366,24 @@ export async function GET(request: NextRequest) {
         const endRound = parseInt(weekNumber) * 7;
 
         console.log(`🔍 Searching for TOW candidates: week=${weekNumber}, rounds ${startRound}-${endRound}`);
+
+        // First, check if an award has already been given for this week
+        const existingAward = await sql`
+          SELECT team_id, team_name
+          FROM awards
+          WHERE tournament_id = ${tournamentId}
+            AND award_type = 'TOW'
+            AND week_number = ${parseInt(weekNumber)}
+        `;
+
+        if (existingAward.length > 0) {
+          console.log(`⚠️ TOW award already given for week ${weekNumber} to ${existingAward[0].team_name}`);
+          return NextResponse.json({
+            success: true,
+            data: [],
+            message: 'Award already given for this week'
+          });
+        }
 
         const fixtures = await sql`
           SELECT 

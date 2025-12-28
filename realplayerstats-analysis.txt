@@ -1,0 +1,95 @@
+
+================================================================================
+COMPREHENSIVE ANALYSIS OF REALPLAYERSTATS TABLE
+================================================================================
+
+📊 Total Records: 538
+
+📋 Table Schema:
+
+  - id: character varying (nullable: NO)
+  - player_id: character varying (nullable: NO)
+  - player_name: character varying (nullable: NO)
+  - season_id: character varying (nullable: NO)
+  - team: character varying (nullable: YES)
+  - team_id: character varying (nullable: YES)
+  - category: character varying (nullable: YES)
+  - matches_played: integer (nullable: YES)
+  - matches_won: integer (nullable: YES)
+  - matches_lost: integer (nullable: YES)
+  - matches_drawn: integer (nullable: YES)
+  - goals_scored: integer (nullable: YES)
+  - goals_conceded: integer (nullable: YES)
+  - assists: integer (nullable: YES)
+  - clean_sheets: integer (nullable: YES)
+  - own_goals: integer (nullable: YES)
+  - saves: integer (nullable: YES)
+  - penalties_saved: integer (nullable: YES)
+  - wins: integer (nullable: YES)
+  - draws: integer (nullable: YES)
+  - losses: integer (nullable: YES)
+  - motm_awards: integer (nullable: YES)
+  - points: real (nullable: YES)
+  - star_rating: integer (nullable: YES)
+  - trophies: jsonb (nullable: YES)
+  - created_at: timestamp without time zone (nullable: YES)
+  - updated_at: timestamp without time zone (nullable: YES)
+  - tournament_id: text (nullable: NO)
+  - participation_type: character varying (nullable: YES)
+  - match_played: boolean (nullable: YES)
+  - lineup_id: character varying (nullable: YES)
+
+📅 Season Distribution:
+
+Found 5 distinct seasons:
+  - SSPSLS11: 104 players across 19 teams
+  - SSPSLS12: 105 players across 15 teams
+  - SSPSLS13: 105 players across 16 teams
+  - SSPSLS14: 128 players across 18 teams
+  - SSPSLS15: 96 players across 16 teams
+
+🔍 Season S15 Deep Dive:
+
+Total S15 records: 0
+
+🔍 Checking for SSPSLS15 (typo pattern):
+
+Total SSPSLS15 records: 96
+
+SSPSLS15 Teams (18):
+  - SSPSLT0001 (Classic Tens): 5 players
+  - SSPSLT0002 (Manchester United): 5 players
+  - SSPSLT0003 (Red Panthers): 5 players
+  - SSPSLT0004 (Red Hawks FC): 5 players
+  - SSPSLT0005 (Tm Asgardians): 5 players
+  - SSPSLT0007 (FC Barcelona): 5 players
+  - SSPSLT0008 (La Masia): 5 players
+  - SSPSLT0009 (Qatar Gladiators): 6 players
+  - SSPSLT0010 (Varsity Soccers): 5 players
+  - SSPSLT0011 (Spartans United): 6 players
+  - SSPSLT0012 (Red Stallions FC): 5 players
+  - SSPSLT0014 (Black Panthers): 6 players
+  - SSPSLT0015 (Legends FC): 5 players
+  - SSPSLT0016 (Blue Strikers): 6 players
+  - SSPSLT0017 (Kattu Komban FC): 6 players
+  - SSPSLT0018 (Titans FC): 5 players
+  - null (Azzuri FC): 6 players
+  - null (Psychoz): 5 players
+
+❌ SSPSLT0013 NOT found in SSPSLS15
+
+🔍 All Unique Season IDs:
+
+Found 5 unique season IDs:
+  - SSPSLS11
+  - SSPSLS12
+  - SSPSLS13
+  - SSPSLS14
+  - SSPSLS15
+
+🔍 Team SSPSLT0013 in ALL seasons:
+
+Found 1 seasons for SSPSLT0013:
+  - SSPSLS12 (Psychoz): 4 players
+
+================================================================================

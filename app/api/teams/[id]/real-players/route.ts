@@ -17,17 +17,17 @@ export async function GET(
     const { id: teamId } = await params;
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get('seasonId');
-    
+
     const sql = getTournamentDb();
 
     // Determine if we need to query modern or historical tables
-    let modernPlayers = [];
-    let historicalPlayers = [];
+    let modernPlayers: any[] = [];
+    let historicalPlayers: any[] = [];
 
     if (seasonId) {
       // Extract season number to determine which table to query
       const seasonNum = parseInt(seasonId.match(/\d+/)?.[0] || '0');
-      
+
       if (seasonNum >= 16) {
         // Season 16+: Query player_seasons table
         modernPlayers = await sql`
@@ -60,6 +60,18 @@ export async function GET(
         `;
       } else {
         // Season 1-15: Query realplayerstats table
+        // First, get the team name from teamstats for this season
+        // This is needed because some historical data has NULL team_id but valid team names
+        const teamInfo = await sql`
+          SELECT team_name
+          FROM teamstats
+          WHERE team_id = ${teamId} AND season_id = ${seasonId}
+          LIMIT 1
+        `;
+
+        const teamName = teamInfo.length > 0 ? teamInfo[0].team_name : null;
+        // Query realplayerstats matching either team_id OR team name
+        // This handles cases where team_id might be NULL but team name is present
         historicalPlayers = await sql`
           SELECT 
             player_id,
@@ -79,8 +91,11 @@ export async function GET(
             motm_awards,
             points
           FROM realplayerstats
-          WHERE team_id = ${teamId}
-            AND season_id = ${seasonId}
+          WHERE season_id = ${seasonId}
+            AND (
+              team_id = ${teamId}
+              ${teamName ? sql`OR team = ${teamName}` : sql``}
+            )
           ORDER BY points DESC, player_name ASC
         `;
       }
@@ -117,28 +132,30 @@ export async function GET(
           ORDER BY season_id DESC, points DESC, player_name ASC
         `,
         // Historical seasons (1-15)
+        // Use LEFT JOIN with teamstats to match by team name when team_id is NULL
         sql`
-          SELECT 
-            player_id,
-            player_name,
-            team_id,
-            team as team_name,
-            season_id,
-            category,
-            star_rating,
-            matches_played,
-            goals_scored,
-            assists,
-            wins,
-            draws,
-            losses,
-            clean_sheets,
-            motm_awards,
-            points,
+          SELECT DISTINCT
+            rps.player_id,
+            rps.player_name,
+            rps.team_id,
+            rps.team as team_name,
+            rps.season_id,
+            rps.category,
+            rps.star_rating,
+            rps.matches_played,
+            rps.goals_scored,
+            rps.assists,
+            rps.wins,
+            rps.draws,
+            rps.losses,
+            rps.clean_sheets,
+            rps.motm_awards,
+            rps.points,
             'historical' as data_source
-          FROM realplayerstats
-          WHERE team_id = ${teamId}
-          ORDER BY season_id DESC, points DESC, player_name ASC
+          FROM realplayerstats rps
+          LEFT JOIN teamstats ts ON rps.season_id = ts.season_id AND rps.team = ts.team_name
+          WHERE rps.team_id = ${teamId} OR ts.team_id = ${teamId}
+          ORDER BY rps.season_id DESC, rps.points DESC, rps.player_name ASC
         `
       ]);
     }

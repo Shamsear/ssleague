@@ -6,7 +6,7 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await request.json();
@@ -24,7 +24,7 @@ export async function PUT(
       photoFileId,
     } = body;
 
-    const ownerId = params.id;
+    const { id: ownerId } = await params;
 
     const sql = getTournamentDb();
 
@@ -127,10 +127,10 @@ export async function PUT(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ownerId = params.id;
+    const { id: ownerId } = await params;
     const sql = getTournamentDb();
 
     const result = await sql`
@@ -162,10 +162,10 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ownerId = params.id;
+    const { id: ownerId } = await params;
     const sql = getTournamentDb();
 
     // Check if owner exists

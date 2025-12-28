@@ -5,11 +5,11 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 // PATCH - Update trophy Instagram link
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const sql = getTournamentDb();
-    const trophyId = params.id;
+    const { id: trophyId } = await params;
     const body = await request.json();
     const { instagram_link, instagram_post_url } = body;
 
@@ -35,10 +35,11 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const trophyId = parseInt(params.id);
+    const { id } = await params;
+    const trophyId = parseInt(id);
 
     if (isNaN(trophyId)) {
       return NextResponse.json(
