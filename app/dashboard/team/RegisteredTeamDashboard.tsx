@@ -245,7 +245,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     closeConfirm,
     handleConfirm,
   } = useModal();
-  
+
   const timerRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
   const bulkTimerRefs = useRef<{ [key: number]: NodeJS.Timeout }>({});
   const previousDataRef = useRef<string>('');
@@ -255,51 +255,51 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
 
   // Fetch dashboard data
   const fetchDashboard = useCallback(async (showLoader = true, bustCache = false) => {
-      if (!seasonStatus?.seasonId) return;
-      if (showLoader) setIsLoading(true);
+    if (!seasonStatus?.seasonId) return;
+    if (showLoader) setIsLoading(true);
 
-      try {
-        const params = new URLSearchParams({ 
-          season_id: seasonStatus.seasonId,
-          ...(bustCache && { bust_cache: 'true' }) // ⚡ Bust cache on live updates
-        });
-        const response = await fetchWithTokenRefresh(`/api/team/dashboard?${params}`, {
-          headers: { 'Cache-Control': 'no-cache' },
-        });
-        
-        if (!response.ok) {
-          let errorMessage = `Server error (${response.status})`;
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-          } catch {
-            errorMessage = response.status === 404 
-              ? 'Team not registered for this season' 
-              : `Unable to load dashboard (${response.status})`;
-          }
-          setError(errorMessage);
-          return;
+    try {
+      const params = new URLSearchParams({
+        season_id: seasonStatus.seasonId,
+        ...(bustCache && { bust_cache: 'true' }) // ⚡ Bust cache on live updates
+      });
+      const response = await fetchWithTokenRefresh(`/api/team/dashboard?${params}`, {
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = response.status === 404
+            ? 'Team not registered for this season'
+            : `Unable to load dashboard (${response.status})`;
         }
-
-        const { success, data } = await response.json();
-
-        if (success) {
-          const dataString = JSON.stringify(data);
-          if (dataString !== previousDataRef.current) {
-            previousDataRef.current = dataString;
-            setDashboardData(data);
-            setError(null);
-          }
-        } else {
-          setError(data?.error || 'Failed to load dashboard data');
-        }
-      } catch (err) {
-        console.error('Error fetching dashboard:', err);
-        setError('Unable to connect to the server');
-      } finally {
-        if (showLoader) setIsLoading(false);
+        setError(errorMessage);
+        return;
       }
-    }, [seasonStatus?.seasonId]);
+
+      const { success, data } = await response.json();
+
+      if (success) {
+        const dataString = JSON.stringify(data);
+        if (dataString !== previousDataRef.current) {
+          previousDataRef.current = dataString;
+          setDashboardData(data);
+          setError(null);
+        }
+      } else {
+        setError(data?.error || 'Failed to load dashboard data');
+      }
+    } catch (err) {
+      console.error('Error fetching dashboard:', err);
+      setError('Unable to connect to the server');
+    } finally {
+      if (showLoader) setIsLoading(false);
+    }
+  }, [seasonStatus?.seasonId]);
 
   // Update ref whenever fetchDashboard changes
   useEffect(() => {
@@ -330,24 +330,24 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     if (!seasonStatus?.seasonId) return;
 
     const { listenToSeasonRoundUpdates, listenToSquadUpdates, listenToWalletUpdates } = require('@/lib/realtime/listeners');
-    
+
     console.log('🔴 [Team Dashboard] Setting up Firebase listeners for season:', seasonStatus.seasonId);
-    
+
     // Listen to round updates (started, finalized, status changes)
     const unsubRounds = listenToSeasonRoundUpdates(seasonStatus.seasonId, (message: any) => {
       console.log('🔴 [Team Dashboard] Round update:', message.type, message);
-      
+
       // Handle finalization completion event
       if (message.event_type === 'finalization_complete' && message.finalized) {
         console.log('🎉 [Team Dashboard] Round finalization completed:', message.round_id);
-        
+
         // Show notification to user
         showAlert({
           type: 'success',
           title: 'Round Finalized! 🎉',
           message: `Auction results are now available. ${message.allocations_count || 0} player(s) have been allocated. Check your dashboard for updates!`,
         });
-        
+
         // Also try browser notification if available
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           new Notification('Round Finalized! 🎉', {
@@ -356,18 +356,18 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             tag: `round-finalized-${message.round_id}`,
           });
         }
-        
+
         // Refetch dashboard to show new results
         fetchDashboard(false, true); // Bust cache for fresh data
         return;
       }
-      
+
       // Refetch dashboard immediately without loader for any round event
       if (message.type === 'round_started' ||
-          message.type === 'round_finalized' ||
-          message.type === 'round_status_changed' ||
-          message.type === 'round_updated' ||
-          message.type === 'bid_submitted') {
+        message.type === 'round_finalized' ||
+        message.type === 'round_status_changed' ||
+        message.type === 'round_updated' ||
+        message.type === 'bid_submitted') {
         fetchDashboard(false, true); // Bust cache for fresh data
       }
     });
@@ -375,7 +375,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     // Listen to squad updates (player acquired/refunded)
     const unsubSquads = listenToSquadUpdates(seasonStatus.seasonId, (event: any) => {
       console.log('📦 [Team Dashboard] Squad update:', event);
-      
+
       // Refetch if it's for this team or affects any team (could be tiebreaker result)
       if (!dashboardData?.team?.id || event.team_id === dashboardData.team.id) {
         fetchDashboard(false, true);
@@ -385,7 +385,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
     // Listen to wallet updates (balance changes)
     const unsubWallets = listenToWalletUpdates(seasonStatus.seasonId, (event: any) => {
       console.log('💰 [Team Dashboard] Wallet update:', event);
-      
+
       // Refetch if it's for this team
       if (!dashboardData?.team?.id || event.team_id === dashboardData.team.id) {
         fetchDashboard(false, true);
@@ -409,11 +409,11 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
 
     const updateTimers = () => {
       const now = Date.now();
-      
+
       // Only update every second to reduce re-renders
       if (now - lastUpdate >= 1000) {
         lastUpdate = now;
-        
+
         const newTimeRemaining: { [key: string]: number } = {};
         let hasActiveTimers = false;
 
@@ -427,7 +427,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
         });
 
         setTimeRemaining(newTimeRemaining);
-        
+
         // Continue animation loop only if there are active timers
         if (hasActiveTimers) {
           animationFrameId = requestAnimationFrame(updateTimers);
@@ -456,11 +456,11 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
 
     const updateBulkTimers = () => {
       const now = Date.now();
-      
+
       // Only update every second to reduce re-renders
       if (now - lastUpdate >= 1000) {
         lastUpdate = now;
-        
+
         const newBulkTimeRemaining: { [key: number]: number } = {};
         let hasActiveTimers = false;
 
@@ -474,7 +474,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
         });
 
         setBulkTimeRemaining(newBulkTimeRemaining);
-        
+
         // Continue animation loop only if there are active timers
         if (hasActiveTimers) {
           animationFrameId = requestAnimationFrame(updateBulkTimers);
@@ -509,9 +509,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
       confirmText: 'Delete',
       cancelText: 'Cancel'
     });
-    
+
     if (!confirmed) return;
-    
+
     const bidToDelete = dashboardData?.activeBids.find(b => b.id === bidId);
     if (!bidToDelete) return;
 
@@ -531,14 +531,14 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
         },
       };
     });
-    
+
     try {
       const response = await fetchWithTokenRefresh(`/api/team/bids/${bidId}`, {
         method: 'DELETE',
       });
-      
+
       const data = await response.json();
-      
+
       if (!data.success) {
         setDashboardData(prev => {
           if (!prev) return prev;
@@ -612,8 +612,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
           </div>
           <h3 className="text-xl font-bold text-gray-800 mb-2">Unable to load dashboard</h3>
           <p className="text-gray-600 text-sm mb-6">{error || 'There was an error loading your team data.'}</p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
           >
             Refresh Page
@@ -647,11 +647,11 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-7xl">
-      
+
         {/* Hero Section - Fully Responsive */}
         <div className="glass rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 shadow-xl border border-white/20 bg-gradient-to-br from-blue-600/10 via-purple-600/5 to-pink-600/10">
           <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 sm:gap-6">
-            
+
             {/* Team Logo & Name - Mobile Optimized */}
             <div className="flex items-center gap-3 sm:gap-4 flex-1 w-full lg:w-auto">
               <div className="relative flex-shrink-0">
@@ -665,7 +665,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   </div>
                 )}
               </div>
-              
+
               <div className="flex-1 min-w-0">
                 <h1 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 mb-1 truncate">{team.name}</h1>
                 {seasonStatus && (
@@ -854,7 +854,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
 
         {/* Quick Actions Grid - Fully Responsive */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 lg:mb-8">
-          
+
           {/* Auction Card */}
           <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-white/20 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
@@ -868,7 +868,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             <div className="space-y-2">
               {/* Quick Links to Active Auctions */}
               {activeRounds.filter(r => r.round_type !== 'bulk').map(round => (
-                <Link 
+                <Link
                   key={round.id}
                   href={`/dashboard/team/round/${round.id}`}
                   className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-xs sm:text-sm font-medium text-center"
@@ -876,9 +876,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   🔥 Round #{round.round_number}{round.position ? ` - ${round.position.includes(',') ? round.position.split(',').join(' + ') : round.position}` : ''}
                 </Link>
               ))}
-              
+
               {activeRounds.filter(r => r.round_type === 'bulk').map(round => (
-                <Link 
+                <Link
                   key={round.id}
                   href={`/dashboard/team/bulk-round/${round.id}`}
                   className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 transition-all text-xs sm:text-sm font-medium text-center"
@@ -886,19 +886,19 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   ⚡ Bulk Round #{round.round_number}
                 </Link>
               ))}
-              
+
               {/* Pending Rounds - Not clickable, just informational */}
               {pendingRounds && pendingRounds.length > 0 && pendingRounds.map(round => (
-                <div 
+                <div
                   key={round.id}
                   className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-yellow-100 text-yellow-700 text-xs sm:text-sm font-medium text-center cursor-not-allowed"
                 >
                   ⏳ Round #{round.round_number} - Results Pending
                 </div>
               ))}
-              
+
               {activeBulkRounds.map(bulkRound => (
-                <Link 
+                <Link
                   key={bulkRound.id}
                   href={`/dashboard/team/bulk-round/${bulkRound.id}`}
                   className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 transition-all text-xs sm:text-sm font-medium text-center"
@@ -906,9 +906,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   ⚡ Bulk Auction
                 </Link>
               ))}
-              
+
               {tiebreakers.filter(t => !t.is_bulk).map(tiebreaker => (
-                <Link 
+                <Link
                   key={tiebreaker.id}
                   href={`/dashboard/team/tiebreaker/${tiebreaker.id}`}
                   className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600 transition-all text-xs sm:text-sm font-medium text-center animate-pulse"
@@ -916,9 +916,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   ⚠️ Tiebreaker - {tiebreaker.player.name}
                 </Link>
               ))}
-              
+
               {tiebreakers.filter(t => t.is_bulk).map(tiebreaker => (
-                <Link 
+                <Link
                   key={tiebreaker.id}
                   href={`/dashboard/team/bulk-tiebreaker/${tiebreaker.id}`}
                   className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-red-500 to-pink-500 text-white hover:from-red-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center animate-pulse"
@@ -926,23 +926,23 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   🚨 Bulk Tiebreaker - {tiebreaker.player.name}
                 </Link>
               ))}
-              
+
               {activeBids.length > 0 && (
                 <button onClick={() => setActiveTab('auctions')} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200 transition-all text-xs sm:text-sm font-medium text-center">
                   📋 {activeBids.length} Active Bid{activeBids.length > 1 ? 's' : ''}
                 </button>
               )}
-              
+
               {activeRounds.length === 0 && activeBulkRounds.length === 0 && tiebreakers.length === 0 && activeBids.length === 0 && (!pendingRounds || pendingRounds.length === 0) && (
                 <div className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-500 text-xs sm:text-sm text-center">No active auctions</div>
               )}
-              
+
               {roundResults.length > 0 && (
                 <button onClick={() => setActiveTab('results')} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                   📊 View Results
                 </button>
               )}
-              
+
               <Link href="/dashboard/team/auction-results" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 transition-all text-xs sm:text-sm font-medium text-center">
                 🎯 Auction Results
               </Link>
@@ -1000,6 +1000,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               </Link>
               <Link href="/dashboard/team/player-leaderboard" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 📋 Player Stats
+              </Link>
+              <Link href={`/teams/${team.id}/awards`} className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600 transition-all text-xs sm:text-sm font-medium text-center">
+                🏅 Season Awards
               </Link>
               <Link href="/dashboard/team/player-stats" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Player Point Change
@@ -1059,36 +1062,36 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 {tiebreakers.length} pending
               </span>
             </div>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
               {tiebreakers.map(tiebreaker => {
                 console.log('🔍 Tiebreaker data:', { id: tiebreaker.id, round_type: tiebreaker.round_type, is_bulk: tiebreaker.is_bulk, round_id: tiebreaker.round_id });
                 return (
-                <div key={tiebreaker.id} className={`glass-card p-3 sm:p-4 rounded-xl border-l-4 ${!tiebreaker.new_amount ? 'border-red-400' : 'border-green-400'}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block w-8 h-8 rounded-lg bg-gray-100 text-gray-700 text-xs flex items-center justify-center font-medium">{tiebreaker.player.position}</span>
-                        <div className="font-medium text-dark truncate">{tiebreaker.player.name}</div>
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 mt-1">Round #{tiebreaker.round_id}</div>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <div className="text-xs px-2 py-1 bg-white/30 rounded-lg">
-                          Original: <span className="font-medium">£{tiebreaker.original_amount.toLocaleString()}</span>
+                  <div key={tiebreaker.id} className={`glass-card p-3 sm:p-4 rounded-xl border-l-4 ${!tiebreaker.new_amount ? 'border-red-400' : 'border-green-400'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-8 h-8 rounded-lg bg-gray-100 text-gray-700 text-xs flex items-center justify-center font-medium">{tiebreaker.player.position}</span>
+                          <div className="font-medium text-dark truncate">{tiebreaker.player.name}</div>
                         </div>
-                        {tiebreaker.new_amount && (
-                          <div className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-lg">
-                            New: <span className="font-medium">£{tiebreaker.new_amount.toLocaleString()}</span>
+                        <div className="text-xs sm:text-sm text-gray-600 mt-1">Round #{tiebreaker.round_id}</div>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <div className="text-xs px-2 py-1 bg-white/30 rounded-lg">
+                            Original: <span className="font-medium">£{tiebreaker.original_amount.toLocaleString()}</span>
                           </div>
-                        )}
+                          {tiebreaker.new_amount && (
+                            <div className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-lg">
+                              New: <span className="font-medium">£{tiebreaker.new_amount.toLocaleString()}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
+                      <Link href={`/dashboard/team/${tiebreaker.is_bulk ? 'bulk-tiebreaker' : 'tiebreaker'}/${tiebreaker.id}`} className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium ${!tiebreaker.new_amount ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors whitespace-nowrap`}>
+                        {tiebreaker.new_amount ? 'View' : 'Resolve'}
+                      </Link>
                     </div>
-                    <Link href={`/dashboard/team/${tiebreaker.is_bulk ? 'bulk-tiebreaker' : 'tiebreaker'}/${tiebreaker.id}`} className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium ${!tiebreaker.new_amount ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors whitespace-nowrap`}>
-                      {tiebreaker.new_amount ? 'View' : 'Resolve'}
-                    </Link>
                   </div>
-                </div>
-              );
+                );
               })}
             </div>
           </div>
@@ -1099,11 +1102,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
           <div className="flex min-w-max sm:min-w-0">
             <button
               onClick={() => setActiveTab('auctions')}
-              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${
-                activeTab === 'auctions'
+              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'auctions'
                   ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
                   : 'text-gray-600 hover:bg-white/50'
-              } rounded-t-2xl sm:rounded-t-3xl`}
+                } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
                 🔥 Auctions
@@ -1116,11 +1118,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             </button>
             <button
               onClick={() => setActiveTab('squad')}
-              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${
-                activeTab === 'squad'
+              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'squad'
                   ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white'
                   : 'text-gray-600 hover:bg-white/50'
-              } rounded-t-2xl sm:rounded-t-3xl`}
+                } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
                 ⚽ Squad
@@ -1133,11 +1134,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             </button>
             <button
               onClick={() => setActiveTab('results')}
-              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${
-                activeTab === 'results'
+              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'results'
                   ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
                   : 'text-gray-600 hover:bg-white/50'
-              } rounded-t-2xl sm:rounded-t-3xl`}
+                } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
                 📊 Results
@@ -1150,22 +1150,20 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             </button>
             <button
               onClick={() => setActiveTab('overview')}
-              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${
-                activeTab === 'overview'
+              className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'overview'
                   ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
                   : 'text-gray-600 hover:bg-white/50'
-              } rounded-t-2xl sm:rounded-t-3xl`}
+                } rounded-t-2xl sm:rounded-t-3xl`}
             >
               <span className="whitespace-nowrap">📈 Overview</span>
             </button>
             {dashboardData?.hasFantasyTeam && (
               <button
                 onClick={() => setActiveTab('fantasy')}
-                className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${
-                  activeTab === 'fantasy'
+                className={`flex-1 sm:flex-none px-4 sm:px-6 lg:px-8 py-3 sm:py-4 text-xs sm:text-sm lg:text-base font-medium transition-all ${activeTab === 'fantasy'
                     ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
                     : 'text-gray-600 hover:bg-white/50'
-                } rounded-t-2xl sm:rounded-t-3xl`}
+                  } rounded-t-2xl sm:rounded-t-3xl`}
               >
                 <span className="whitespace-nowrap">⭐ Fantasy</span>
               </button>
@@ -1175,7 +1173,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
 
         {/* Tab Content - Fully Responsive */}
         <div className="glass rounded-b-2xl sm:rounded-b-3xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8">
-          
+
           {/* Auctions Tab */}
           {activeTab === 'auctions' && (
             <div className="space-y-4 sm:space-y-6">
@@ -1195,60 +1193,60 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   {activeRounds.map(round => {
                     console.log('🔍 Round data:', { id: round.id, round_type: round.round_type, round_number: round.round_number });
                     return (
-                    <div key={round.id} className="glass-card rounded-xl sm:rounded-2xl p-4 sm:p-6 border-l-4 border-orange-500">
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-lg sm:text-xl font-bold text-gray-900">
-                              Round #{round.round_number}{round.round_type === 'bulk' ? ' - Bulk Bidding' : (round.position ? ` - ${round.position.includes(',') ? round.position.split(',').join(' + ') : round.position}` : '')}
-                            </h3>
-                            {round.round_type === 'bulk' && (
-                              <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold">
-                                ⚡ BULK
+                      <div key={round.id} className="glass-card rounded-xl sm:rounded-2xl p-4 sm:p-6 border-l-4 border-orange-500">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+                                Round #{round.round_number}{round.round_type === 'bulk' ? ' - Bulk Bidding' : (round.position ? ` - ${round.position.includes(',') ? round.position.split(',').join(' + ') : round.position}` : '')}
+                              </h3>
+                              {round.round_type === 'bulk' && (
+                                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold">
+                                  ⚡ BULK
+                                </span>
+                              )}
+                              {round.submission_status?.submitted ? (
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-100 text-green-700 text-xs font-medium">
+                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                  </svg>
+                                  <span>Submitted ({round.submission_status.bid_count} bids)</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-yellow-100 text-yellow-700 text-xs font-medium">
+                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                  </svg>
+                                  <span>Not Submitted</span>
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                              {round.round_type === 'bulk'
+                                ? `${round.player_count || 0} players • Fixed price bidding`
+                                : `${round.player_count || 0} players • Max ${round.max_bids_per_team || 0} bids per team`
+                              }
+                            </p>
+                          </div>
+                          {round.end_time && (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100">
+                              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <span className="text-sm font-bold text-red-600">
+                                {formatTime(timeRemaining[round.id] || 0)}
                               </span>
-                            )}
-                            {round.submission_status?.submitted ? (
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-100 text-green-700 text-xs font-medium">
-                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                </svg>
-                                <span>Submitted ({round.submission_status.bid_count} bids)</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-yellow-100 text-yellow-700 text-xs font-medium">
-                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                </svg>
-                                <span>Not Submitted</span>
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                            {round.round_type === 'bulk' 
-                              ? `${round.player_count || 0} players • Fixed price bidding` 
-                              : `${round.player_count || 0} players • Max ${round.max_bids_per_team || 0} bids per team`
-                            }
-                          </p>
+                            </div>
+                          )}
                         </div>
-                        {round.end_time && (
-                          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100">
-                            <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="text-sm font-bold text-red-600">
-                              {formatTime(timeRemaining[round.id] || 0)}
-                            </span>
-                          </div>
-                        )}
+                        <Link
+                          href={round.round_type === 'bulk' ? `/dashboard/team/bulk-round/${round.id}` : `/dashboard/team/round/${round.id}`}
+                          className="block w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-center font-medium"
+                        >
+                          {round.round_type === 'bulk' ? 'Enter Bulk Round →' : 'Enter Round →'}
+                        </Link>
                       </div>
-                      <Link 
-                        href={round.round_type === 'bulk' ? `/dashboard/team/bulk-round/${round.id}` : `/dashboard/team/round/${round.id}`}
-                        className="block w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all text-center font-medium"
-                      >
-                        {round.round_type === 'bulk' ? 'Enter Bulk Round →' : 'Enter Round →'}
-                      </Link>
-                    </div>
-                  );
+                    );
                   })}
 
                   {/* Pending Rounds - Results Not Yet Available */}
@@ -1362,7 +1360,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   </div>
                   <h3 className="text-lg font-bold text-gray-700 mb-2">No Players Yet</h3>
                   <p className="text-sm text-gray-500 mb-4">Start bidding in auctions to build your squad</p>
-                  <button 
+                  <button
                     onClick={() => setActiveTab('auctions')}
                     className="px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all font-medium"
                   >
@@ -1492,11 +1490,10 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                               <div>
                                 <div className="font-bold text-gray-900 mb-1">{player.name}</div>
                                 <div className="flex items-center gap-2">
-                                  <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                                    player.category === 'legend' 
+                                  <span className={`px-2 py-1 rounded-lg text-xs font-medium ${player.category === 'legend'
                                       ? 'bg-yellow-100 text-yellow-800'
                                       : 'bg-gray-100 text-gray-700'
-                                  }`}>
+                                    }`}>
                                     {player.category === 'legend' ? '⭐ Legend' : 'Classic'}
                                   </span>
                                   <span className="text-xs text-gray-600">
@@ -1554,8 +1551,8 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                   {/* Results Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                     {roundResults.map(result => (
-                      <div 
-                        key={result.id} 
+                      <div
+                        key={result.id}
                         className="glass-card p-4 rounded-xl border-l-4 border-green-500 hover:shadow-lg transition-shadow"
                       >
                         <div className="flex items-start gap-3">
@@ -1580,7 +1577,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
           {activeTab === 'overview' && (
             <div className="space-y-4 sm:space-y-6">
               <h3 className="text-lg sm:text-xl font-bold text-gray-900">Team Overview</h3>
-              
+
               {/* Owner and Manager Section */}
               {(dashboardData?.owner || dashboardData?.manager) && (
                 <div>
@@ -1675,7 +1672,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
                       <div className="text-sm text-gray-600 mb-2">Success Rate</div>
                       <div className="text-3xl font-bold text-green-600">
-                        {roundResults.length > 0 
+                        {roundResults.length > 0
                           ? `${Math.round((roundResults.filter(r => r.won).length / roundResults.length) * 100)}%`
                           : '0%'
                         }
@@ -1709,7 +1706,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                     <div className="glass-card p-4 sm:p-6 rounded-xl text-center">
                       <div className="text-sm text-gray-600 mb-2">Success Rate</div>
                       <div className="text-3xl font-bold text-green-600">
-                        {roundResults.length > 0 
+                        {roundResults.length > 0
                           ? `${Math.round((roundResults.filter(r => r.won).length / roundResults.length) * 100)}%`
                           : '0%'
                         }
