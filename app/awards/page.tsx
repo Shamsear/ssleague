@@ -164,7 +164,7 @@ export default function PublicAwardsPage() {
       if (item.season_id) allSeasons.add(item.season_id);
     });
 
-    return Array.from(allSeasons).sort();
+    return Array.from(allSeasons).sort().reverse();
   };
 
   // Get filtered data based on active tab and selected season
@@ -179,14 +179,37 @@ export default function PublicAwardsPage() {
       return items.filter(item => item.season_id === selectedSeason);
     };
 
+    // Sort by season (latest first) and then by date
+    const sortBySeasonAndDate = (items: any[]) => {
+      return [...items].sort((a, b) => {
+        // First sort by season (descending - latest first)
+        if (a.season_id && b.season_id) {
+          // Extract numeric part from season IDs (e.g., "SSPSLS16" -> 16)
+          const aNum = parseInt(a.season_id.match(/\d+/)?.[0] || '0');
+          const bNum = parseInt(b.season_id.match(/\d+/)?.[0] || '0');
+
+          // Sort numerically in descending order (latest first)
+          if (aNum !== bNum) {
+            return bNum - aNum;
+          }
+        }
+        // Then sort by date (newest first) within same season
+        if (a.selected_at && b.selected_at) {
+          return new Date(b.selected_at).getTime() - new Date(a.selected_at).getTime();
+        }
+        return 0;
+      });
+    };
+
     // Combine awards and player awards as they're both award types
-    const allAwards = [...filterBySeason(safeAwards), ...filterBySeason(safePlayerAwards)];
+    const allAwards = sortBySeasonAndDate([...filterBySeason(safeAwards), ...filterBySeason(safePlayerAwards)]);
+    const sortedTrophies = sortBySeasonAndDate([...filterBySeason(safeTrophies)]);
 
     switch (activeTab) {
       case 'awards':
         return { items: allAwards, type: 'awards' };
       case 'trophies':
-        return { items: filterBySeason(safeTrophies), type: 'trophies' };
+        return { items: sortedTrophies, type: 'trophies' };
       default:
         return { items: allAwards, type: 'awards' };
     }

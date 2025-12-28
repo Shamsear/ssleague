@@ -185,7 +185,15 @@ export default function SeasonAwardsPage() {
         );
     };
 
-    const totalAwards = (Array.isArray(awards) ? awards.length : 0) + cleanedPlayerAwards.length;
+    // Filter awards to exclude Category and invalid entries
+    const cleanedAwards = Array.isArray(awards) ? awards.filter(award => {
+        if (!award.player_name && !award.team_name) return false;
+        const awardType = award.award_type?.trim();
+        if (!awardType || awardType === 'Category') return false;
+        return true;
+    }) : [];
+
+    const totalAwards = cleanedAwards.length + cleanedPlayerAwards.length;
     const totalTrophies = Array.isArray(trophies) ? trophies.length : 0;
 
     if (loading) {
@@ -282,7 +290,10 @@ export default function SeasonAwardsPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 mb-8 sm:mb-12">
                         {/* Team Awards */}
                         {activeTab === 'awards' && Array.isArray(awards) && awards.map((award, index) => {
+                            // Filter out invalid/duplicate awards
                             if (!award.player_name && !award.team_name) return null;
+                            const awardType = award.award_type?.trim();
+                            if (!awardType || awardType === 'Category') return null;
 
                             const Wrapper = award.instagram_post_url ? 'a' : 'div';
 
