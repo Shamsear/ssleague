@@ -6,7 +6,7 @@ import { withCache } from '@/lib/cache/memory-cache';
 export async function GET(request: NextRequest) {
   try {
     console.log('[Teams API] Fetching all teams...');
-    
+
     // Fetch all teams from Firebase with 5-minute cache
     const teamsData = await withCache(
       'public:all-teams',
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
           .collection('teams')
           .orderBy('team_name')
           .get();
-        
+
         return snapshot.docs.map(doc => ({
           id: doc.id,
           data: doc.data()
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const teamIds = teamsData.map(t => t.id);
     const userIdToTeamIdMap = new Map();
     const userIds: string[] = [];
-    
+
     teamsData.forEach(({ id, data: teamData }) => {
       const userId = teamData.userId || teamData.user_id || teamData.owner_id;
       if (userId) {
@@ -46,18 +46,18 @@ export async function GET(request: NextRequest) {
         userIdToTeamIdMap.set(userId, id);
       }
     });
-    
+
     // Fetch logo URLs from teams collection first, fallback to users
     console.log('[Teams API] Fetching logo URLs...');
     const logoUrlMap = new Map();
-    
+
     // First, get logos from teams collection
     teamsData.forEach(({ id, data: teamData }) => {
       if (teamData.logo_url) {
         logoUrlMap.set(id, teamData.logo_url);
       }
     });
-    
+
     // For teams without logos, fallback to users collection
     const teamsNeedingLogos = teamsData
       .filter(({ id }) => !logoUrlMap.has(id))
@@ -66,16 +66,16 @@ export async function GET(request: NextRequest) {
         return { teamId: id, userId };
       })
       .filter(item => item.userId);
-    
+
     if (teamsNeedingLogos.length > 0) {
       const userIdsForLogos = teamsNeedingLogos.map(item => item.userId);
       const userLogoMap = new Map();
-      
+
       // Firestore IN operator supports max 30 values - batch the queries with cache
       const batchSize = 30;
       for (let i = 0; i < userIdsForLogos.length; i += batchSize) {
         const batch = userIdsForLogos.slice(i, i + batchSize);
-        
+
         // Cache user logos for 10 minutes (they rarely change)
         const usersData = await withCache(
           `public:user-logos:${batch.sort().join(',')}`,
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
               .collection('users')
               .where('__name__', 'in', batch)
               .get();
-            
+
             return snapshot.docs.map(doc => ({
               id: doc.id,
               logoUrl: doc.data().logoUrl
@@ -93,14 +93,14 @@ export async function GET(request: NextRequest) {
           },
           600 // 10 minutes cache (logos rarely change)
         );
-        
+
         usersData.forEach(({ id, logoUrl }) => {
           if (logoUrl) {
             userLogoMap.set(id, logoUrl);
           }
         });
       }
-      
+
       teamsNeedingLogos.forEach(({ teamId, userId }) => {
         const userLogo = userLogoMap.get(userId);
         if (userLogo) {
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
         }
       });
     }
-    
+
     console.log(`[Teams API] Found logo URLs for ${logoUrlMap.size} teams`);
 
     // Fetch aggregated stats from tournament DB for all teams
@@ -181,8 +181,8 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('[Teams API] Error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message || 'Failed to fetch teams'
       },
       { status: 500 }
