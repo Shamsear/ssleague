@@ -39,7 +39,7 @@ export default function HeroSection() {
       <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
         Experience the thrill of building your dream football team through strategic bidding and competitive auctions
       </p>
-      
+
       {user ? (
         <Link
           href={getDashboardUrl(user.role)}
@@ -51,20 +51,12 @@ export default function HeroSection() {
           </svg>
         </Link>
       ) : (
-        <div className="flex flex-wrap items-center justify-center gap-4">
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-8 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
-          >
-            Login
-          </Link>
-          <Link
-            href="/register"
-            className="inline-flex items-center gap-2 glass px-8 py-3 rounded-xl font-semibold text-blue-600 hover:shadow-lg transition-all duration-200 hover:scale-105"
-          >
-            Register
-          </Link>
-        </div>
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-8 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
+        >
+          Login
+        </Link>
       )}
     </div>
   );

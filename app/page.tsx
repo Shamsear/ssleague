@@ -27,8 +27,8 @@ export default function Home() {
     const fetchData = async () => {
       try {
         // Check and finalize expired rounds (background task)
-        fetch('/api/public/check-rounds').catch(() => {});
-        
+        fetch('/api/public/check-rounds').catch(() => { });
+
         // Fetch all data in parallel
         const [
           leagueStatsRes,
@@ -45,7 +45,7 @@ export default function Home() {
           fetch('/api/public/award-winners'),
           fetch('/api/public/current-season')
         ]);
-        
+
         const [
           leagueStatsData,
           hallOfFameData,
@@ -113,13 +113,13 @@ export default function Home() {
           {/* Decorative Elements */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-200/20 to-transparent rounded-full blur-3xl"></div>
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-purple-200/20 to-transparent rounded-full blur-3xl"></div>
-          
+
           <div className="relative">
             <h2 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2 text-center">
               📊 League Legacy
             </h2>
             <p className="text-center text-gray-600 mb-8">Our journey in numbers</p>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 text-center hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-blue-100">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -130,7 +130,7 @@ export default function Home() {
                   <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Seasons</div>
                 </div>
               </div>
-              
+
               <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 text-center hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-green-100">
                 <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative">
@@ -140,7 +140,7 @@ export default function Home() {
                   <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Goals</div>
                 </div>
               </div>
-              
+
               <div className="group relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 text-center hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-amber-100">
                 <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative">
@@ -155,64 +155,13 @@ export default function Home() {
         </div>
       )}
 
-      {/* Player Registration Banner */}
-      {currentSeason && currentSeason.is_player_registration_open && (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-50 via-pink-50 to-rose-50 p-6 sm:p-8 mb-8 border border-purple-200/50 shadow-xl">
-          {/* Decorative Elements */}
-          <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-purple-200/20 to-transparent rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-pink-200/20 to-transparent rounded-full blur-3xl"></div>
-          
-          <div className="relative">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
-                  </span>
-                  <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                    🎯 Player Registration Open!
-                  </h2>
-                </div>
-                <p className="text-gray-700 mb-4">
-                  Join <strong>{currentSeason.name}</strong> - Register now and be part of the action!
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    href={`/register/player?season=${currentSeason.id}`}
-                    className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                    </svg>
-                    Register Now
-                  </Link>
-                  <Link
-                    href={`/registered-players?season=${currentSeason.id}`}
-                    className="inline-flex items-center gap-2 bg-white text-purple-600 border-2 border-purple-300 px-6 py-3 rounded-full font-semibold hover:bg-purple-50 transition-all duration-200 hover:scale-105"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    View Registered Players
-                  </Link>
-                </div>
-              </div>
-              <div className="text-center sm:text-right">
-                <div className="text-5xl sm:text-6xl mb-2">⚽</div>
-                <div className="text-xs text-gray-600 font-medium">Don't miss out!</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Current Season Standings */}
       {currentSeason && (
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 p-8 sm:p-10 mb-8 border border-emerald-200/50 shadow-xl">
           {/* Decorative Elements */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-200/20 to-transparent rounded-full blur-3xl"></div>
-          
+
           <div className="relative">
             <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
               <div>
@@ -257,14 +206,13 @@ export default function Home() {
                       className="group relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-emerald-100"
                     >
                       {/* Position Badge */}
-                      <div className={`absolute -top-3 -left-3 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold shadow-lg text-lg ${
-                        index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
-                        index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
-                        'bg-gradient-to-br from-amber-500 to-amber-700'
-                      }`}>
+                      <div className={`absolute -top-3 -left-3 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold shadow-lg text-lg ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
+                          index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                            'bg-gradient-to-br from-amber-500 to-amber-700'
+                        }`}>
                         {index + 1}
                       </div>
-                      
+
                       <div className="mt-2">
                         <h4 className="font-bold text-xl text-gray-900 mb-2 group-hover:text-emerald-700 transition-colors">
                           {team.team_name}
@@ -308,7 +256,7 @@ export default function Home() {
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 flex items-center">
             📈 League Records
           </h2>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Team Records */}
             <div>
@@ -391,7 +339,7 @@ export default function Home() {
           {/* Decorative Elements */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-yellow-200/20 to-transparent rounded-full blur-3xl"></div>
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-amber-200/20 to-transparent rounded-full blur-3xl"></div>
-          
+
           <div className="relative">
             <div className="flex items-center justify-between mb-8">
               <div>
@@ -414,15 +362,14 @@ export default function Home() {
                 >
                   {/* Rank Badge */}
                   {index < 3 && (
-                    <div className={`absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-lg ${
-                      index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
-                      index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
-                      'bg-gradient-to-br from-amber-500 to-amber-700'
-                    }`}>
+                    <div className={`absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-lg ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
+                        index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                          'bg-gradient-to-br from-amber-500 to-amber-700'
+                      }`}>
                       {index + 1}
                     </div>
                   )}
-                  
+
                   <div className="flex items-start justify-between mb-4">
                     <h3 className="font-bold text-xl text-gray-900 flex-1 group-hover:text-yellow-700 transition-colors">
                       {champion.team_name}
@@ -431,7 +378,7 @@ export default function Home() {
                       {'🏆'.repeat(Math.min(parseInt(champion.championship_count), 3))}
                     </div>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div className="flex items-baseline gap-2">
                       <span className="text-4xl font-black bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">
@@ -439,14 +386,14 @@ export default function Home() {
                       </span>
                       <span className="text-sm font-semibold text-gray-600">Championships</span>
                     </div>
-                    
+
                     <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-3 border border-yellow-100">
                       <div className="text-xs text-gray-500 mb-1 uppercase tracking-wide font-medium">Winning Seasons</div>
                       <div className="text-sm font-semibold text-gray-800">
                         {champion.seasons_won.join(', ')}
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between pt-2 border-t border-gray-200">
                       <div className="text-center">
                         <div className="text-lg font-bold text-blue-600">{champion.best_points}</div>
@@ -464,8 +411,8 @@ export default function Home() {
 
             {totalChampions > 6 && (
               <div className="mt-8 text-center">
-                <Link 
-                  href="/seasons" 
+                <Link
+                  href="/seasons"
                   className="inline-flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
                 >
                   View All {totalChampions} Champions
