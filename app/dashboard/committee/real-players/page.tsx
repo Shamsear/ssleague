@@ -36,11 +36,11 @@ export default function RealPlayersPage() {
   const router = useRouter();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
   const [currentSeason, setCurrentSeason] = useState<Season | null>(null);
-  
+
   const { data: cachedTeams, isLoading: teamsLoading } = useCachedTeams();
   const [teamSeasons, setTeamSeasons] = useState<any[]>([]);
   const [loadingTeamSeasons, setLoadingTeamSeasons] = useState(true);
-  
+
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<TeamData[]>([]);
   const [savingTeamId, setSavingTeamId] = useState<string | null>(null);
@@ -52,11 +52,13 @@ export default function RealPlayersPage() {
   const [dropdownSearchTerms, setDropdownSearchTerms] = useState<Map<string, string>>(new Map());
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
   const dropdownRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
-  
+
   // Quick assign state
   const [quickAssignPlayer, setQuickAssignPlayer] = useState<Player | null>(null);
   const [quickAssignTeam, setQuickAssignTeam] = useState<string>('');
   const [quickAssignAuction, setQuickAssignAuction] = useState<string>('');
+  const [quickAssignContractStart, setQuickAssignContractStart] = useState<string>('');
+  const [quickAssignContractEnd, setQuickAssignContractEnd] = useState<string>('');
   const [isQuickAssigning, setIsQuickAssigning] = useState(false);
 
   useEffect(() => {
@@ -83,6 +85,15 @@ export default function RealPlayersPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [dropdownOpen]);
 
+  // Initialize default contract duration
+  useEffect(() => {
+    if (userSeasonId && !quickAssignContractStart) {
+      const { start, end } = getContractSeasons();
+      setQuickAssignContractStart(start);
+      setQuickAssignContractEnd(end);
+    }
+  }, [userSeasonId]);
+
   useEffect(() => {
     const fetchData = async () => {
       if (!userSeasonId) return;
@@ -91,26 +102,26 @@ export default function RealPlayersPage() {
         // Fetch season
         const season = await getSeasonById(userSeasonId);
         setCurrentSeason(season);
-        
+
         // Fetch team_seasons to get budget data
         const { collection, query, where, getDocs } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase/config');
-        
+
         const teamSeasonsQuery = query(
           collection(db, 'team_seasons'),
           where('season_id', '==', userSeasonId),
           where('status', '==', 'registered')
         );
-        
+
         const teamSeasonsSnapshot = await getDocs(teamSeasonsQuery);
         const teamSeasonsData = teamSeasonsSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
-        
+
         setTeamSeasons(teamSeasonsData);
         console.log(`Loaded ${teamSeasonsData.length} team seasons with budget data`);
-        
+
         // Fetch star rating configuration
         try {
           const configResponse = await fetchWithTokenRefresh(`/api/star-rating-config?seasonId=${userSeasonId}`);
@@ -142,32 +153,32 @@ export default function RealPlayersPage() {
   useEffect(() => {
     const loadPlayers = async () => {
       if (!userSeasonId || !currentSeason || teamSeasons.length === 0) return;
-      
+
       try {
         const seasonNum = parseInt(userSeasonId.replace(/\D/g, '')) || 0;
         const isModernSeason = seasonNum >= 16;
-        
+
         if (isModernSeason) {
           // Fetch from Neon via API
           const response = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${userSeasonId}&limit=1000`);
           const result = await response.json();
-          
+
           if (result.success && result.data && result.data.length > 0) {
             const realPlayersData = result.data.filter((p: any) => p.star_rating && p.star_rating > 0);
-            
+
             // Organize players by team
             const teamMap: { [key: string]: Player[] } = {};
             const unassignedPlayers: Player[] = [];
-            
+
             realPlayersData.forEach((data: any) => {
               // Get star rating first
               const starRating = data.star_rating || 0;
-              
+
               // Parse auction value from DB
-              let auctionValue = data.auction_value !== null && data.auction_value !== undefined 
+              let auctionValue = data.auction_value !== null && data.auction_value !== undefined
                 ? (typeof data.auction_value === 'number' ? data.auction_value : parseFloat(String(data.auction_value)))
                 : 0;
-              
+
               // If auction value is 0 or not set, use minimum based on star rating
               if (auctionValue === 0 || isNaN(auctionValue)) {
                 // Try to get from database config first, fallback to hardcoded
@@ -180,15 +191,15 @@ export default function RealPlayersPage() {
                   console.log(`Player ${data.player_name}: auction_value was 0, set to fallback ${auctionValue} (${starRating}★)`);
                 }
               }
-              
+
               // Calculate salary based on actual auction value
               // Ensure it's a number
               const salaryPerMatch = data.salary_per_match !== null && data.salary_per_match !== undefined
                 ? (typeof data.salary_per_match === 'number' ? data.salary_per_match : parseFloat(String(data.salary_per_match)))
                 : calculateRealPlayerSalary(auctionValue, starRating);
-              
+
               console.log(`Player ${data.player_name}: auction_value=${data.auction_value} (${typeof data.auction_value}) -> parsed=${auctionValue}, team_id=${data.team_id}`);
-              
+
               const player: Player = {
                 id: data.player_id || data.id,
                 playerName: data.player_name || '',
@@ -199,7 +210,7 @@ export default function RealPlayersPage() {
                 contractStartSeason: data.contract_start_season || '',
                 contractEndSeason: data.contract_end_season || '',
               };
-              
+
               // Check if player has a team assignment
               // Handle both null and empty string as unassigned
               const teamId = data.team_id;
@@ -211,27 +222,27 @@ export default function RealPlayersPage() {
                 unassignedPlayers.push(player);
               }
             });
-            
+
             // Create team data structure
             const teamsData: TeamData[] = teamSeasons.map(teamSeason => {
               const teamId = teamSeason.team_id || teamSeason.id.split('_')[0];
               const assignedPlayers = teamMap[teamId] || [];
-              
+
               // Use INITIAL budget, not current balance
               // Check for initial_* fields first, then fall back to defaults from season
               let originalBudget = 0;
               if (teamSeason.currency_system === 'dual') {
-                originalBudget = teamSeason.initial_real_player_budget || 
-                                teamSeason.real_player_budget_initial ||
-                                currentSeason?.dollar_budget || 
-                                1000;
+                originalBudget = teamSeason.initial_real_player_budget ||
+                  teamSeason.real_player_budget_initial ||
+                  currentSeason?.dollar_budget ||
+                  1000;
               } else {
-                originalBudget = teamSeason.initial_budget || 
-                                teamSeason.budget_initial ||
-                                currentSeason?.purseAmount ||
-                                10000;
+                originalBudget = teamSeason.initial_budget ||
+                  teamSeason.budget_initial ||
+                  currentSeason?.purseAmount ||
+                  10000;
               }
-              
+
               console.log(`Team ${teamSeason.team_name || teamSeason.team_code}: currency=${teamSeason.currency_system}, originalBudget=${originalBudget}, fields:`, {
                 initial_real_player_budget: teamSeason.initial_real_player_budget,
                 real_player_budget_initial: teamSeason.real_player_budget_initial,
@@ -240,7 +251,7 @@ export default function RealPlayersPage() {
                 budget_initial: teamSeason.budget_initial,
                 budget: teamSeason.budget
               });
-              
+
               return {
                 id: teamId,
                 name: teamSeason.team_name || teamSeason.team_code || 'Unknown Team',
@@ -250,14 +261,14 @@ export default function RealPlayersPage() {
                 isExpanded: false,
               };
             }).sort((a, b) => a.name.localeCompare(b.name));
-            
+
             setTeams(teamsData);
             setAvailablePlayers(unassignedPlayers);
             console.log(`Loaded ${realPlayersData.length} players organized into ${teamsData.length} teams`);
             console.log(`Available (unassigned) players:`, unassignedPlayers.map(p => p.playerName));
             console.log(`Assigned players by team:`, Object.entries(teamMap).map(([teamId, players]) => ({
-              teamId, 
-              count: players.length, 
+              teamId,
+              count: players.length,
               players: players.map(p => p.playerName)
             })));
           }
@@ -272,21 +283,21 @@ export default function RealPlayersPage() {
   }, [userSeasonId, currentSeason, teamSeasons]);
 
   const toggleTeam = (teamId: string) => {
-    setTeams(teams.map(t => 
+    setTeams(teams.map(t =>
       t.id === teamId ? { ...t, isExpanded: !t.isExpanded } : t
     ));
   };
 
   const addPlayerToTeam = (teamId: string, player: Player) => {
     console.log(`Adding player ${player.playerName} (ID: ${player.id}) to team ${teamId}`);
-    
+
     // Remove from available
     setAvailablePlayers(prev => {
       const filtered = prev.filter(p => p.id !== player.id);
       console.log(`Player removed from available. Remaining available: ${filtered.length}`);
       return filtered;
     });
-    
+
     // Add to team with default contract if not set
     const { start, end } = getContractSeasons();
     const playerWithContract = {
@@ -294,7 +305,7 @@ export default function RealPlayersPage() {
       contractStartSeason: player.contractStartSeason || start,
       contractEndSeason: player.contractEndSeason || end,
     };
-    
+
     setTeams(prevTeams => prevTeams.map(t => {
       if (t.id === teamId) {
         const updated = { ...t, assignedPlayers: [...t.assignedPlayers, playerWithContract] };
@@ -312,15 +323,15 @@ export default function RealPlayersPage() {
       console.log(`Team ${teamId} not found`);
       return;
     }
-    
+
     const removedPlayer = team.assignedPlayers.find(p => p.id === playerId);
     if (!removedPlayer) {
       console.log(`Player ${playerId} not found in team ${teamId}`);
       return;
     }
-    
+
     console.log(`Removing player ${removedPlayer.playerName} (ID: ${playerId}) from team ${team.name}`);
-    
+
     // Remove from team
     setTeams(prevTeams => prevTeams.map(t => {
       if (t.id === teamId) {
@@ -328,14 +339,14 @@ export default function RealPlayersPage() {
       }
       return t;
     }));
-    
+
     // Add back to available players list
     setAvailablePlayers(prev => {
       const updated = [...prev, removedPlayer];
       console.log(`Player ${removedPlayer.playerName} added back to available. Total available: ${updated.length}`);
       return updated;
     });
-    
+
     // Force re-render of dropdowns
     setUpdateCounter(prev => prev + 1);
   };
@@ -365,7 +376,7 @@ export default function RealPlayersPage() {
           ...t,
           assignedPlayers: t.assignedPlayers.map(p => {
             if (p.id === playerId) {
-              return field === 'start' 
+              return field === 'start'
                 ? { ...p, contractStartSeason: value }
                 : { ...p, contractEndSeason: value };
             }
@@ -379,20 +390,72 @@ export default function RealPlayersPage() {
 
   const getContractSeasons = () => {
     if (!userSeasonId) return { start: '', end: '' };
-    
+
     const seasonNum = parseInt(userSeasonId.replace(/\D/g, ''));
     const seasonPrefix = userSeasonId.replace(/\d+$/, '');
     const nextSeasonNum = seasonNum + 1;
-    
+
     return {
       start: userSeasonId,
       end: `${seasonPrefix}${nextSeasonNum}`
     };
   };
 
+  // Get contract duration options
+  const getContractOptions = () => {
+    if (!userSeasonId) return [];
+
+    const seasonNum = parseInt(userSeasonId.replace(/\D/g, ''));
+    const seasonPrefix = userSeasonId.replace(/\d+$/, '');
+
+    return [
+      {
+        label: `Full ${seasonNum} to Full ${seasonNum + 1} (2 seasons)`,
+        start: `${seasonPrefix}${seasonNum}`,
+        end: `${seasonPrefix}${seasonNum + 1}`,
+        description: 'Standard 2-season contract'
+      },
+      {
+        label: `Mid ${seasonNum} to Full ${seasonNum + 1} (1.5 seasons)`,
+        start: `${seasonPrefix}${seasonNum}.5`,
+        end: `${seasonPrefix}${seasonNum + 1}`,
+        description: 'Joins mid-season, plays till end of next season'
+      },
+      {
+        label: `Mid ${seasonNum} to Mid ${seasonNum + 2} (2 seasons)`,
+        start: `${seasonPrefix}${seasonNum}.5`,
+        end: `${seasonPrefix}${seasonNum + 2}`,
+        description: 'Mid-season start, extended contract'
+      },
+      {
+        label: `Full ${seasonNum} to Full ${seasonNum + 2} (3 seasons)`,
+        start: `${seasonPrefix}${seasonNum}`,
+        end: `${seasonPrefix}${seasonNum + 2}`,
+        description: 'Extended 3-season contract'
+      },
+      {
+        label: `Full ${seasonNum} only (1 season)`,
+        start: `${seasonPrefix}${seasonNum}`,
+        end: `${seasonPrefix}${seasonNum}`,
+        description: 'Single season contract'
+      },
+      {
+        label: 'Custom',
+        start: '',
+        end: '',
+        description: 'Set custom start and end seasons'
+      }
+    ];
+  };
+
   const handleQuickAssign = async () => {
     if (!quickAssignPlayer || !quickAssignTeam || !quickAssignAuction) {
       setError('Please select a player, team, and enter auction value');
+      return;
+    }
+
+    if (!quickAssignContractStart || !quickAssignContractEnd) {
+      setError('Please select contract duration');
       return;
     }
 
@@ -407,25 +470,24 @@ export default function RealPlayersPage() {
       setError(null);
       setSuccess(null);
 
-      const { start: startSeason, end: endSeason } = getContractSeasons();
       const salaryPerMatch = calculateRealPlayerSalary(auctionValue, quickAssignPlayer.starRating);
 
-      // Assign player immediately
+      // Assign player immediately (without removing from available list)
       const response = await fetchWithTokenRefresh('/api/contracts/assign-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           seasonId: userSeasonId,
-          startSeason,
-          endSeason,
+          startSeason: quickAssignContractStart,
+          endSeason: quickAssignContractEnd,
           players: [{
             id: quickAssignPlayer.id,
             teamId: quickAssignTeam,
             playerName: quickAssignPlayer.playerName,
             auctionValue: auctionValue,
             salaryPerMatch: salaryPerMatch,
-            contractStartSeason: startSeason,
-            contractEndSeason: endSeason,
+            contractStartSeason: quickAssignContractStart,
+            contractEndSeason: quickAssignContractEnd,
           }],
         }),
       });
@@ -436,23 +498,40 @@ export default function RealPlayersPage() {
         throw new Error(result.error || 'Failed to assign player');
       }
 
-      // Update local state
-      addPlayerToTeam(quickAssignTeam, {
-        ...quickAssignPlayer,
-        auctionValue: auctionValue,
-        salaryPerMatch: salaryPerMatch,
-        contractStartSeason: startSeason,
-        contractEndSeason: endSeason,
-      });
+      // Update local state - add to team AND remove from available
+      setTeams(prevTeams => prevTeams.map(t => {
+        if (t.id === quickAssignTeam) {
+          // Check if player already exists in team
+          const playerExists = t.assignedPlayers.some(p => p.id === quickAssignPlayer.id);
+          if (playerExists) {
+            return t; // Don't add duplicate
+          }
+          return {
+            ...t,
+            assignedPlayers: [...t.assignedPlayers, {
+              ...quickAssignPlayer,
+              auctionValue: auctionValue,
+              salaryPerMatch: salaryPerMatch,
+              contractStartSeason: quickAssignContractStart,
+              contractEndSeason: quickAssignContractEnd,
+            }]
+          };
+        }
+        return t;
+      }));
+
+      // Remove from available players
+      setAvailablePlayers(prev => prev.filter(p => p.id !== quickAssignPlayer.id));
+
 
       const teamName = teams.find(t => t.id === quickAssignTeam)?.name || 'Team';
-      setSuccess(`✅ ${quickAssignPlayer.playerName} assigned to ${teamName} for SSCoin ${auctionValue.toLocaleString()}!`);
-      
-      // Reset form
+      setSuccess(`✅ ${quickAssignPlayer.playerName} assigned to ${teamName} (${quickAssignContractStart} → ${quickAssignContractEnd}) for SSCoin ${auctionValue.toLocaleString()}!`);
+
+      // Reset form (keep contract duration for next assignment)
       setQuickAssignPlayer(null);
       setQuickAssignTeam('');
       setQuickAssignAuction('');
-      
+
       setTimeout(() => {
         setSuccess(null);
       }, 3000);
@@ -469,7 +548,7 @@ export default function RealPlayersPage() {
 
     // Validate max players only
     const maxPlayers = currentSeason?.max_real_players || 7;
-    
+
     if (team.assignedPlayers.length > maxPlayers) {
       setError(`${team.name} can have maximum ${maxPlayers} players (currently ${team.assignedPlayers.length})`);
       return;
@@ -521,7 +600,7 @@ export default function RealPlayersPage() {
       }
 
       setSuccess(`✅ Successfully saved ${team.name} with ${team.assignedPlayers.length} players!`);
-      
+
       setTimeout(() => {
         setSuccess(null);
       }, 3000);
@@ -620,7 +699,7 @@ export default function RealPlayersPage() {
             <p className="text-green-800 font-medium">{success}</p>
           </div>
         )}
-        
+
         {error && (
           <div className="mb-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
             <p className="text-red-800 font-medium">{error}</p>
@@ -645,9 +724,9 @@ export default function RealPlayersPage() {
               </div>
             </div>
           </div>
-          
+
           <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               {/* Player Selection */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">1. Select Player</label>
@@ -701,8 +780,8 @@ export default function RealPlayersPage() {
                     .map(team => {
                       const slots = maxPlayers - team.assignedPlayers.length;
                       return (
-                        <option 
-                          key={team.id} 
+                        <option
+                          key={team.id}
                           value={team.id}
                           disabled={slots <= 0}
                         >
@@ -751,16 +830,43 @@ export default function RealPlayersPage() {
                 )}
               </div>
 
+              {/* Contract Duration */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">4. Contract Duration</label>
+                <select
+                  value={`${quickAssignContractStart}|${quickAssignContractEnd}`}
+                  onChange={(e) => {
+                    const [start, end] = e.target.value.split('|');
+                    setQuickAssignContractStart(start);
+                    setQuickAssignContractEnd(end);
+                  }}
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-medium"
+                >
+                  <option value="|">Choose duration...</option>
+                  {getContractOptions().map((option, idx) => (
+                    <option key={idx} value={`${option.start}|${option.end}`}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {quickAssignContractStart && quickAssignContractEnd && (
+                  <div className="mt-2 p-2 bg-white rounded border border-green-200">
+                    <p className="text-xs font-semibold text-indigo-700">
+                      📄 {quickAssignContractStart} → {quickAssignContractEnd}
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Assign Button */}
               <div className="flex items-end">
                 <button
                   onClick={handleQuickAssign}
-                  disabled={!quickAssignPlayer || !quickAssignTeam || !quickAssignAuction || isQuickAssigning}
-                  className={`w-full py-3 px-4 rounded-lg font-bold text-white transition-all transform hover:scale-105 ${
-                    !quickAssignPlayer || !quickAssignTeam || !quickAssignAuction || isQuickAssigning
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:shadow-lg'
-                  }`}
+                  disabled={!quickAssignPlayer || !quickAssignTeam || !quickAssignAuction || !quickAssignContractStart || !quickAssignContractEnd || isQuickAssigning}
+                  className={`w-full py-3 px-4 rounded-lg font-bold text-white transition-all transform hover:scale-105 ${!quickAssignPlayer || !quickAssignTeam || !quickAssignAuction || !quickAssignContractStart || !quickAssignContractEnd || isQuickAssigning
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:shadow-lg'
+                    }`}
                 >
                   {isQuickAssigning ? (
                     <span className="flex items-center justify-center gap-2">
@@ -793,7 +899,7 @@ export default function RealPlayersPage() {
                   Available Players
                 </h2>
                 <p className="text-purple-100 text-sm mt-1">{availablePlayers.length} unassigned</p>
-                
+
                 <div className="mt-3">
                   <input
                     type="text"
@@ -867,9 +973,8 @@ export default function RealPlayersPage() {
               return (
                 <div
                   key={team.id}
-                  className={`bg-white rounded-2xl shadow-sm border-2 transition-all ${
-                    team.isExpanded ? 'border-blue-400' : 'border-gray-200'
-                  }`}
+                  className={`bg-white rounded-2xl shadow-sm border-2 transition-all ${team.isExpanded ? 'border-blue-400' : 'border-gray-200'
+                    }`}
                 >
                   {/* Team Header */}
                   <div
@@ -878,9 +983,8 @@ export default function RealPlayersPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
-                        <div className={`p-2 rounded-lg ${
-                          isValidCount && !isOverBudget ? 'bg-green-100' : 'bg-gray-100'
-                        }`}>
+                        <div className={`p-2 rounded-lg ${isValidCount && !isOverBudget ? 'bg-green-100' : 'bg-gray-100'
+                          }`}>
                           <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                           </svg>
@@ -888,15 +992,13 @@ export default function RealPlayersPage() {
                         <div className="flex-1">
                           <h3 className="font-bold text-gray-900 text-lg">{team.name}</h3>
                           <div className="flex items-center gap-3 mt-1 text-xs">
-                            <span className={`font-semibold ${
-                              playerCount > maxPlayers ? 'text-red-600' : 'text-gray-700'
-                            }`}>
+                            <span className={`font-semibold ${playerCount > maxPlayers ? 'text-red-600' : 'text-gray-700'
+                              }`}>
                               {playerCount}/{maxPlayers} players
                             </span>
                             <span className="text-gray-400">•</span>
-                            <span className={`font-semibold ${
-                              isOverBudget ? 'text-red-600' : 'text-green-600'
-                            }`}>
+                            <span className={`font-semibold ${isOverBudget ? 'text-red-600' : 'text-green-600'
+                              }`}>
                               {currencySymbol}{remainingBudget.toLocaleString()} left
                             </span>
                           </div>
@@ -909,11 +1011,10 @@ export default function RealPlayersPage() {
                             ✓ Ready
                           </span>
                         )}
-                        
+
                         <svg
-                          className={`w-5 h-5 text-gray-500 transition-transform ${
-                            team.isExpanded ? 'rotate-180' : ''
-                          }`}
+                          className={`w-5 h-5 text-gray-500 transition-transform ${team.isExpanded ? 'rotate-180' : ''
+                            }`}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -931,17 +1032,15 @@ export default function RealPlayersPage() {
                       <div className="px-4 py-3 bg-gray-50">
                         <div className="flex justify-between text-xs mb-2">
                           <span className="text-gray-600">Budget Usage</span>
-                          <span className={`font-semibold ${
-                            isOverBudget ? 'text-red-600' : 'text-gray-700'
-                          }`}>
+                          <span className={`font-semibold ${isOverBudget ? 'text-red-600' : 'text-gray-700'
+                            }`}>
                             {currencySymbol}{totalCost.toLocaleString()} / {currencySymbol}{team.originalBudget.toLocaleString()}
                           </span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full transition-all ${
-                              isOverBudget ? 'bg-red-500' : 'bg-blue-500'
-                            }`}
+                            className={`h-2 rounded-full transition-all ${isOverBudget ? 'bg-red-500' : 'bg-blue-500'
+                              }`}
                             style={{ width: `${Math.min((totalCost / team.originalBudget) * 100, 100)}%` }}
                           />
                         </div>
@@ -952,7 +1051,7 @@ export default function RealPlayersPage() {
                         <h4 className="text-sm font-semibold text-gray-700 mb-3">
                           Assigned Players ({playerCount})
                         </h4>
-                        
+
                         {team.assignedPlayers.length === 0 ? (
                           <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                             <p className="text-sm text-gray-500">No players assigned yet</p>
@@ -1039,14 +1138,14 @@ export default function RealPlayersPage() {
                             Add Player to {team.name}
                           </label>
                           <p className="text-xs text-gray-500 mb-1">Available: {availablePlayers.length} players</p>
-                          
+
                           {playerCount >= maxPlayers ? (
                             <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 text-sm text-center">
                               Maximum {maxPlayers} players reached
                             </div>
                           ) : (
-                            <div 
-                              className="relative" 
+                            <div
+                              className="relative"
                               ref={(el) => dropdownRefs.current.set(team.id, el)}
                             >
                               <input
@@ -1064,15 +1163,15 @@ export default function RealPlayersPage() {
                                 onFocus={() => setDropdownOpen(team.id)}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm pr-10"
                               />
-                              <svg 
-                                className="w-5 h-5 text-gray-400 absolute right-3 top-2.5 pointer-events-none" 
-                                fill="none" 
-                                stroke="currentColor" 
+                              <svg
+                                className="w-5 h-5 text-gray-400 absolute right-3 top-2.5 pointer-events-none"
+                                fill="none"
+                                stroke="currentColor"
                                 viewBox="0 0 24 24"
                               >
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                               </svg>
-                              
+
                               {dropdownOpen === team.id && availablePlayers.length > 0 && (
                                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                   {availablePlayers
@@ -1080,8 +1179,8 @@ export default function RealPlayersPage() {
                                       const searchTerm = (dropdownSearchTerms.get(team.id) || '').toLowerCase();
                                       if (!searchTerm) return true;
                                       return p.playerName.toLowerCase().includes(searchTerm) ||
-                                             p.categoryName?.toLowerCase().includes(searchTerm) ||
-                                             p.starRating.toString().includes(searchTerm);
+                                        p.categoryName?.toLowerCase().includes(searchTerm) ||
+                                        p.starRating.toString().includes(searchTerm);
                                     })
                                     .slice(0, 50)
                                     .map(player => (
@@ -1120,13 +1219,13 @@ export default function RealPlayersPage() {
                                     const searchTerm = (dropdownSearchTerms.get(team.id) || '').toLowerCase();
                                     if (!searchTerm) return true;
                                     return p.playerName.toLowerCase().includes(searchTerm) ||
-                                           p.categoryName?.toLowerCase().includes(searchTerm) ||
-                                           p.starRating.toString().includes(searchTerm);
+                                      p.categoryName?.toLowerCase().includes(searchTerm) ||
+                                      p.starRating.toString().includes(searchTerm);
                                   }).length === 0 && (
-                                    <div className="px-3 py-4 text-center text-sm text-gray-500">
-                                      No players found
-                                    </div>
-                                  )}
+                                      <div className="px-3 py-4 text-center text-sm text-gray-500">
+                                        No players found
+                                      </div>
+                                    )}
                                 </div>
                               )}
                             </div>
@@ -1137,17 +1236,16 @@ export default function RealPlayersPage() {
                         <button
                           onClick={() => saveTeam(team.id)}
                           disabled={
-                            savingTeamId === team.id || 
+                            savingTeamId === team.id ||
                             playerCount > maxPlayers ||
                             isOverBudget
                           }
-                          className={`w-full py-3 px-4 rounded-xl font-semibold transition-all ${
-                            savingTeamId === team.id
-                              ? 'bg-gray-400 text-white cursor-wait'
-                              : playerCount > maxPlayers || isOverBudget
+                          className={`w-full py-3 px-4 rounded-xl font-semibold transition-all ${savingTeamId === team.id
+                            ? 'bg-gray-400 text-white cursor-wait'
+                            : playerCount > maxPlayers || isOverBudget
                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                               : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:shadow-lg'
-                          }`}
+                            }`}
                         >
                           {savingTeamId === team.id ? (
                             <span className="flex items-center justify-center gap-2">

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     // Get all matchups with fixture information
     let matchups;
-    
+
     if (roundNumber && roundNumber !== 'all') {
       // Filter by rounds up to and including the selected round (cumulative)
       const roundNum = parseInt(roundNumber);
@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
             goals_conceded: 0,
             clean_sheets: 0,
             motm_awards: 0,
+            points: 0, // Track points based on GD per match
             rounds_played: new Set(),
           });
         }
@@ -110,6 +111,12 @@ export async function GET(request: NextRequest) {
         player.goals_scored += matchup.home_goals || 0;
         player.goals_conceded += matchup.away_goals || 0;
         player.rounds_played.add(matchup.round_number);
+
+        // Calculate goal difference for this match
+        const matchGD = (matchup.home_goals || 0) - (matchup.away_goals || 0);
+        // Cap points at +5 or -5 per match
+        const matchPoints = Math.max(-5, Math.min(5, matchGD));
+        player.points += matchPoints;
 
         if (matchup.home_goals > matchup.away_goals) player.wins++;
         else if (matchup.home_goals === matchup.away_goals) player.draws++;
@@ -134,6 +141,7 @@ export async function GET(request: NextRequest) {
             goals_conceded: 0,
             clean_sheets: 0,
             motm_awards: 0,
+            points: 0, // Track points based on GD per match
             rounds_played: new Set(),
           });
         }
@@ -143,6 +151,12 @@ export async function GET(request: NextRequest) {
         player.goals_scored += matchup.away_goals || 0;
         player.goals_conceded += matchup.home_goals || 0;
         player.rounds_played.add(matchup.round_number);
+
+        // Calculate goal difference for this match
+        const matchGD = (matchup.away_goals || 0) - (matchup.home_goals || 0);
+        // Cap points at +5 or -5 per match
+        const matchPoints = Math.max(-5, Math.min(5, matchGD));
+        player.points += matchPoints;
 
         if (matchup.away_goals > matchup.home_goals) player.wins++;
         else if (matchup.away_goals === matchup.home_goals) player.draws++;
@@ -155,14 +169,11 @@ export async function GET(request: NextRequest) {
 
     // Convert to array and calculate derived stats
     const playerStats = Array.from(playerStatsMap.values()).map((player) => {
-      const winRate = player.matches_played > 0 
+      const winRate = player.matches_played > 0
         ? Math.round((player.wins / player.matches_played) * 100 * 10) / 10
         : 0;
 
       const goalDifference = player.goals_scored - player.goals_conceded;
-
-      // Calculate points (3 for win, 1 for draw)
-      const points = (player.wins * 3) + player.draws;
 
       return {
         player_id: player.player_id,
@@ -178,7 +189,7 @@ export async function GET(request: NextRequest) {
         clean_sheets: player.clean_sheets,
         motm_awards: player.motm_awards,
         win_rate: winRate,
-        points: points,
+        points: player.points, // Use tracked points from matchups
         rounds_played: Array.from(player.rounds_played).sort((a, b) => a - b),
       };
     });
@@ -209,7 +220,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching player stats by round:', error);
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to fetch player statistics',
         details: error instanceof Error ? error.message : 'Unknown error'
       },

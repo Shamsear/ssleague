@@ -1010,6 +1010,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/fantasy/my-team" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Fantasy
               </Link>
+              <Link href="/rules" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600 transition-all text-xs sm:text-sm font-medium text-center">
+                📋 Rules & Regulations
+              </Link>
             </div>
           </div>
 

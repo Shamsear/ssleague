@@ -16,7 +16,7 @@ export default function CommitteeDashboard() {
   const { user, loading } = useAuth();
   const { userSeasonId } = usePermissions();
   const router = useRouter();
-  
+
   const [teams, setTeams] = useState<any[]>([]);
   const [playerStats, setPlayerStats] = useState<{
     total: number;
@@ -24,13 +24,13 @@ export default function CommitteeDashboard() {
     byPosition: { [key: string]: number };
   }>({ total: 0, eligible: 0, byPosition: {} });
   const [activeRounds, setActiveRounds] = useState<any[]>([]);
-  const [roundTiebreakers, setRoundTiebreakers] = useState<{[key: string]: any[]}>({});
+  const [roundTiebreakers, setRoundTiebreakers] = useState<{ [key: string]: any[] }>({});
   const [loadingRounds, setLoadingRounds] = useState(false);
   const [currentSeason, setCurrentSeason] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(true);
-  
+
   // Collapsible sections state
-  const [expandedSections, setExpandedSections] = useState<{[key: string]: boolean}>({
+  const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     teamPlayer: true,
     ratings: true,
     contracts: true,
@@ -38,7 +38,7 @@ export default function CommitteeDashboard() {
     fantasy: true,
     content: false,
   });
-  
+
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
@@ -54,78 +54,78 @@ export default function CommitteeDashboard() {
 
   // Fetch all initial data in parallel
   const fetchAllStats = useCallback(async () => {
-      if (!user || user.role !== 'committee_admin' || !userSeasonId) return;
+    if (!user || user.role !== 'committee_admin' || !userSeasonId) return;
 
-      setLoadingStats(true);
-      
-      try {
-        // Fetch all data in parallel
-        await Promise.all([
-          // Fetch season
-          (async () => {
-            try {
-              const cacheKey = `committee_season_${userSeasonId}`;
-              const cachedSeason = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
-              
-              if (cachedSeason) {
-                setCurrentSeason(cachedSeason);
-                return;
-              }
-              
-              const seasonRef = doc(db, 'seasons', userSeasonId);
-              const seasonSnapshot = await getDoc(seasonRef);
-              
-              if (seasonSnapshot.exists()) {
-                const seasonData = { id: seasonSnapshot.id, ...seasonSnapshot.data() };
-                setSmartCache(cacheKey, seasonData, CACHE_DURATIONS.MEDIUM);
-                setCurrentSeason(seasonData);
-              }
-            } catch (err) {
-              console.error('Error fetching season:', err);
+    setLoadingStats(true);
+
+    try {
+      // Fetch all data in parallel
+      await Promise.all([
+        // Fetch season
+        (async () => {
+          try {
+            const cacheKey = `committee_season_${userSeasonId}`;
+            const cachedSeason = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
+
+            if (cachedSeason) {
+              setCurrentSeason(cachedSeason);
+              return;
             }
-          })(),
 
-          // Fetch player stats from footballplayers (auction DB)
-          (async () => {
-            try {
-              const cacheKey = `committee_football_players_${userSeasonId}`;
-              const cachedStats = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
-              
-              if (cachedStats) {
-                setPlayerStats(cachedStats);
-                return;
-              }
-              
-              const response = await fetchWithTokenRefresh(`/api/stats/registered-players?season_id=${userSeasonId}`);
-              const data = await response.json();
+            const seasonRef = doc(db, 'seasons', userSeasonId);
+            const seasonSnapshot = await getDoc(seasonRef);
 
-              if (data.success && data.stats) {
-                setSmartCache(cacheKey, data.stats, CACHE_DURATIONS.MEDIUM);
-                setPlayerStats(data.stats);
-              }
-            } catch (err) {
-              console.error('Error fetching registered player stats:', err);
+            if (seasonSnapshot.exists()) {
+              const seasonData = { id: seasonSnapshot.id, ...seasonSnapshot.data() };
+              setSmartCache(cacheKey, seasonData, CACHE_DURATIONS.MEDIUM);
+              setCurrentSeason(seasonData);
             }
-          })(),
+          } catch (err) {
+            console.error('Error fetching season:', err);
+          }
+        })(),
 
-          // Fetch teams
-          (async () => {
-            try {
-              const response = await fetchWithTokenRefresh(`/api/team/all?season_id=${userSeasonId}`);
-              const data = await response.json();
+        // Fetch player stats from footballplayers (auction DB)
+        (async () => {
+          try {
+            const cacheKey = `committee_football_players_${userSeasonId}`;
+            const cachedStats = getSmartCache<any>(cacheKey, CACHE_DURATIONS.MEDIUM);
 
-              if (data.success && data.data?.teams) {
-                setTeams(data.data.teams);
-              }
-            } catch (err) {
-              console.error('Error fetching teams:', err);
+            if (cachedStats) {
+              setPlayerStats(cachedStats);
+              return;
             }
-          })(),
-        ]);
-      } finally {
-        setLoadingStats(false);
-      }
-    }, [user, userSeasonId]);
+
+            const response = await fetchWithTokenRefresh(`/api/stats/registered-players?season_id=${userSeasonId}`);
+            const data = await response.json();
+
+            if (data.success && data.stats) {
+              setSmartCache(cacheKey, data.stats, CACHE_DURATIONS.MEDIUM);
+              setPlayerStats(data.stats);
+            }
+          } catch (err) {
+            console.error('Error fetching registered player stats:', err);
+          }
+        })(),
+
+        // Fetch teams
+        (async () => {
+          try {
+            const response = await fetchWithTokenRefresh(`/api/team/all?season_id=${userSeasonId}`);
+            const data = await response.json();
+
+            if (data.success && data.data?.teams) {
+              setTeams(data.data.teams);
+            }
+          } catch (err) {
+            console.error('Error fetching teams:', err);
+          }
+        })(),
+      ]);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [user, userSeasonId]);
 
   useEffect(() => {
     fetchAllStats();
@@ -133,38 +133,38 @@ export default function CommitteeDashboard() {
 
   // Fetch active rounds
   const fetchActiveRounds = useCallback(async () => {
-      if (!userSeasonId || !user || user.role !== 'committee_admin') return;
+    if (!userSeasonId || !user || user.role !== 'committee_admin') return;
 
-      setLoadingRounds(true);
-      try {
-        const roundsResponse = await fetchWithTokenRefresh(`/api/admin/rounds?season_id=${userSeasonId}&status=active`, {
-          headers: { 'Cache-Control': 'no-cache' },
-        });
-        const roundsData = await roundsResponse.json();
+    setLoadingRounds(true);
+    try {
+      const roundsResponse = await fetchWithTokenRefresh(`/api/admin/rounds?season_id=${userSeasonId}&status=active`, {
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      const roundsData = await roundsResponse.json();
 
-        if (roundsData.success) {
-          setActiveRounds(roundsData.data || []);
-        }
-
-        const tbResponse = await fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${userSeasonId}&status=active`);
-        const tbData = await tbResponse.json();
-
-        if (tbData.success && tbData.data?.tiebreakers) {
-          const tiebreakersByRound: {[key: string]: any[]} = {};
-          tbData.data.tiebreakers.forEach((tb: any) => {
-            if (!tiebreakersByRound[tb.round_id]) {
-              tiebreakersByRound[tb.round_id] = [];
-            }
-            tiebreakersByRound[tb.round_id].push(tb);
-          });
-          setRoundTiebreakers(tiebreakersByRound);
-        }
-      } catch (err) {
-        console.error('Error fetching active rounds:', err);
-      } finally {
-        setLoadingRounds(false);
+      if (roundsData.success) {
+        setActiveRounds(roundsData.data || []);
       }
-    }, [userSeasonId, user]);
+
+      const tbResponse = await fetchWithTokenRefresh(`/api/admin/tiebreakers?seasonId=${userSeasonId}&status=active`);
+      const tbData = await tbResponse.json();
+
+      if (tbData.success && tbData.data?.tiebreakers) {
+        const tiebreakersByRound: { [key: string]: any[] } = {};
+        tbData.data.tiebreakers.forEach((tb: any) => {
+          if (!tiebreakersByRound[tb.round_id]) {
+            tiebreakersByRound[tb.round_id] = [];
+          }
+          tiebreakersByRound[tb.round_id].push(tb);
+        });
+        setRoundTiebreakers(tiebreakersByRound);
+      }
+    } catch (err) {
+      console.error('Error fetching active rounds:', err);
+    } finally {
+      setLoadingRounds(false);
+    }
+  }, [userSeasonId, user]);
 
   // Initial fetch
   useEffect(() => {
@@ -176,15 +176,15 @@ export default function CommitteeDashboard() {
     if (!userSeasonId) return;
 
     const { listenToSeasonRoundUpdates } = require('@/lib/realtime/listeners');
-    
+
     const unsubscribe = listenToSeasonRoundUpdates(userSeasonId, (message: any) => {
       console.log('📊 [Committee Dashboard] Round update:', message.type);
-      
+
       // Refetch active rounds when any round event occurs
       if (message.type === 'round_started' ||
-          message.type === 'round_finalized' ||
-          message.type === 'round_updated' ||
-          message.type === 'bid_submitted') {
+        message.type === 'round_finalized' ||
+        message.type === 'round_updated' ||
+        message.type === 'bid_submitted') {
         fetchActiveRounds();
       }
     });
@@ -210,7 +210,7 @@ export default function CommitteeDashboard() {
   return (
     <div className="min-h-screen py-6 px-4 sm:px-6 lg:px-8">
       <div className="container mx-auto max-w-screen-2xl">
-        
+
         {/* Enhanced Header */}
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -222,7 +222,7 @@ export default function CommitteeDashboard() {
                 Complete administrative control center
               </p>
             </div>
-            
+
             <div className="flex flex-col gap-3">
               {currentSeason && (
                 <div className="glass rounded-2xl p-5 shadow-xl border border-white/30 min-w-[240px]">
@@ -243,7 +243,7 @@ export default function CommitteeDashboard() {
                   </div>
                 </div>
               )}
-              
+
               {currentSeason && (
                 <a
                   href={`/api/admin/export/teams-excel?season_id=${currentSeason.id}`}
@@ -318,7 +318,7 @@ export default function CommitteeDashboard() {
 
         {/* Organized Navigation with Collapsible Sections */}
         <div className="space-y-6 mb-8">
-          
+
           {/* Team & Player Management Section */}
           <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
             <button
@@ -341,7 +341,7 @@ export default function CommitteeDashboard() {
                 </svg>
               )}
             </button>
-            
+
             {expandedSections.teamPlayer && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Link href="/dashboard/committee/teams" className="group glass rounded-2xl p-4 border border-white/20 hover:border-[#0066FF]/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
@@ -495,7 +495,7 @@ export default function CommitteeDashboard() {
                 </svg>
               )}
             </button>
-            
+
             {expandedSections.ratings && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Link href="/dashboard/committee/player-ratings" className="group glass rounded-2xl p-4 border border-white/20 hover:border-amber-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
@@ -633,7 +633,7 @@ export default function CommitteeDashboard() {
                 </svg>
               )}
             </button>
-            
+
             {expandedSections.contracts && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Link href="/dashboard/committee/contracts/mid-season-salary" className="group glass rounded-2xl p-4 border border-white/20 hover:border-green-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
@@ -733,7 +733,7 @@ export default function CommitteeDashboard() {
                 </svg>
               )}
             </button>
-            
+
             {expandedSections.auction && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Link href="/dashboard/committee/auction-settings" className="group glass rounded-2xl p-4 border border-white/20 hover:border-[#0066FF]/50 transition-all hover:-translate-y-1 shadow-md hover:shadow-lg">
@@ -836,7 +836,7 @@ export default function CommitteeDashboard() {
                 </svg>
               )}
             </button>
-            
+
             {expandedSections.fantasy && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Link href="/dashboard/committee/fantasy/create" className="group glass rounded-2xl p-4 border border-white/20 hover:border-purple-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
@@ -872,6 +872,24 @@ export default function CommitteeDashboard() {
                     </div>
                     <h4 className="font-bold text-gray-800 group-hover:text-violet-600 transition-colors mb-1">💪 Enable Fantasy Teams</h4>
                     <p className="text-xs text-gray-600">Bulk enable teams</p>
+                  </div>
+                </Link>
+
+                <Link href="/dashboard/committee/fantasy/recalculate-points" className="group glass rounded-2xl p-4 border border-white/20 hover:border-blue-500/50 transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-bold text-gray-800 group-hover:text-blue-600 transition-colors mb-1">🔄 Recalculate Points</h4>
+                    <p className="text-xs text-gray-600">Recalculate passive points</p>
                   </div>
                 </Link>
 
@@ -1007,7 +1025,7 @@ export default function CommitteeDashboard() {
 
         {/* Active Rounds & Player Stats - Side by Side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
+
           {/* Active Rounds */}
           <div className="glass rounded-3xl p-6 shadow-xl border border-white/30">
             <div className="flex items-center justify-between mb-6">
@@ -1026,7 +1044,7 @@ export default function CommitteeDashboard() {
                 View All
               </Link>
             </div>
-            
+
             {loadingRounds ? (
               <div className="text-center py-10">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-3 border-[#0066FF] mx-auto"></div>
@@ -1043,7 +1061,7 @@ export default function CommitteeDashboard() {
               <div className="space-y-3">
                 {activeRounds.map((round) => {
                   const tiebreakers = roundTiebreakers[round.id] || [];
-                  
+
                   return (
                     <div key={round.id} className="glass p-4 rounded-2xl border border-white/20">
                       <div className="flex items-center justify-between mb-3">
@@ -1057,7 +1075,7 @@ export default function CommitteeDashboard() {
                           Details →
                         </Link>
                       </div>
-                      
+
                       <div className="grid grid-cols-3 gap-2">
                         <div className="glass p-2 rounded-lg bg-white/30">
                           <p className="text-xs text-gray-600">Bids</p>
@@ -1092,15 +1110,15 @@ export default function CommitteeDashboard() {
                 Manage
               </Link>
             </div>
-            
+
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold text-gray-700">Auction Eligible</span>
                 <span className="text-sm text-indigo-600 font-bold">{playerStats.eligible} / {playerStats.total}</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-3 rounded-full transition-all duration-500" 
+                <div
+                  className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-3 rounded-full transition-all duration-500"
                   style={{ width: `${playerStats.total > 0 ? (playerStats.eligible / playerStats.total) * 100 : 0}%` }}
                 ></div>
               </div>
