@@ -32,7 +32,7 @@ export default function PlayerStatsByRoundPage() {
   const { selectedTournamentId } = useTournamentContext();
   const { userSeasonId } = usePermissions();
   const router = useRouter();
-  
+
   const [playerStats, setPlayerStats] = useState<PlayerStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,6 +40,14 @@ export default function PlayerStatsByRoundPage() {
   const [maxRounds, setMaxRounds] = useState(0);
   const [activeTab, setActiveTab] = useState<'all' | 'golden-boot' | 'golden-glove' | 'golden-ball' | 'top-20' | 'by-week'>('all');
   const [selectedWeek, setSelectedWeek] = useState<number>(1);
+
+  // Define week ranges
+  const weekRanges = [
+    { week: 1, start: 1, end: 7 },
+    { week: 2, start: 8, end: 13 },
+    { week: 3, start: 14, end: 20 },
+    { week: 4, start: 21, end: 26 },
+  ];
 
   useEffect(() => {
     if (!loading && !user) {
@@ -54,11 +62,11 @@ export default function PlayerStatsByRoundPage() {
   useEffect(() => {
     const fetchMaxRounds = async () => {
       if (!selectedTournamentId) return;
-      
+
       try {
         const response = await fetchWithTokenRefresh(`/api/fixtures/season?tournament_id=${selectedTournamentId}`);
         const result = await response.json();
-        
+
         if (result.fixtures && result.fixtures.length > 0) {
           const maxRound = Math.max(...result.fixtures.map((f: any) => f.round_number || 0));
           setMaxRounds(maxRound);
@@ -67,7 +75,7 @@ export default function PlayerStatsByRoundPage() {
         console.error('Error fetching rounds:', err);
       }
     };
-    
+
     fetchMaxRounds();
   }, [selectedTournamentId]);
 
@@ -75,22 +83,23 @@ export default function PlayerStatsByRoundPage() {
   useEffect(() => {
     const loadStats = async () => {
       if (!selectedTournamentId || !userSeasonId) return;
-      
+
       setIsLoading(true);
       try {
         let url = `/api/committee/player-stats-by-round?tournament_id=${selectedTournamentId}&season_id=${userSeasonId}`;
-        
+
         if (activeTab === 'by-week') {
-          // For week view, calculate round range
-          const startRound = (selectedWeek - 1) * 7 + 1;
-          const endRound = selectedWeek * 7;
-          url += `&round_number=${endRound}`; // Use cumulative up to end of week
+          // For week view, use predefined week ranges
+          const weekRange = weekRanges.find(w => w.week === selectedWeek);
+          if (weekRange) {
+            url += `&start_round=${weekRange.start}&end_round=${weekRange.end}`;
+          }
         } else {
           url += `&round_number=${selectedRound}`;
         }
-        
+
         const response = await fetchWithTokenRefresh(url);
-        
+
         if (response.ok) {
           const data = await response.json();
           setPlayerStats(data.players || []);
@@ -117,8 +126,8 @@ export default function PlayerStatsByRoundPage() {
       .filter(p => p.goals_scored > 0)
       .map(player => ({
         ...player,
-        goals_per_match: player.matches_played > 0 
-          ? Math.round((player.goals_scored / player.matches_played) * 100) / 100 
+        goals_per_match: player.matches_played > 0
+          ? Math.round((player.goals_scored / player.matches_played) * 100) / 100
           : 0
       }))
       .sort((a: any, b: any) => {
@@ -134,8 +143,8 @@ export default function PlayerStatsByRoundPage() {
       .filter(p => p.matches_played > 0)
       .map(player => ({
         ...player,
-        clean_sheet_ratio: player.matches_played > 0 
-          ? Math.round((player.clean_sheets / player.matches_played) * 100) 
+        clean_sheet_ratio: player.matches_played > 0
+          ? Math.round((player.clean_sheets / player.matches_played) * 100)
           : 0
       }))
       .sort((a: any, b: any) => {
@@ -160,13 +169,13 @@ export default function PlayerStatsByRoundPage() {
         const maxGoals = Math.max(...playerStats.map(p => p.goals_scored));
         const maxMotm = Math.max(...playerStats.map(p => p.motm_awards));
         const maxCleanSheets = Math.max(...playerStats.map(p => p.clean_sheets));
-        
+
         const pointsScore = maxPoints > 0 ? (player.points / maxPoints) * 100 : 0;
         const goalsScore = maxGoals > 0 ? (player.goals_scored / maxGoals) * 100 : 0;
         const winRateScore = player.win_rate; // Already 0-100
         const motmScore = maxMotm > 0 ? (player.motm_awards / maxMotm) * 100 : 0;
         const cleanSheetScore = maxCleanSheets > 0 ? (player.clean_sheets / maxCleanSheets) * 100 : 0;
-        
+
         // Weighted average
         const overallScore = (
           pointsScore * 0.40 +
@@ -175,7 +184,7 @@ export default function PlayerStatsByRoundPage() {
           motmScore * 0.10 +
           cleanSheetScore * 0.10
         );
-        
+
         return {
           ...player,
           overallScore: Math.round(overallScore * 10) / 10
@@ -192,7 +201,7 @@ export default function PlayerStatsByRoundPage() {
   const exportToExcel = async () => {
     try {
       const XLSX = await import('xlsx');
-      
+
       const exportData = filteredPlayers.map((player, index) => ({
         'Rank': index + 1,
         'Player Name': player.player_name,
@@ -212,17 +221,17 @@ export default function PlayerStatsByRoundPage() {
 
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
-      
-      const sheetName = selectedRound === 'all' 
-        ? 'All Rounds' 
+
+      const sheetName = selectedRound === 'all'
+        ? 'All Rounds'
         : `Rounds 1-${selectedRound}`;
-      
+
       XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-      
+
       const fileName = selectedRound === 'all'
         ? `player_stats_all_rounds_${new Date().toISOString().split('T')[0]}.xlsx`
         : `player_stats_rounds_1_to_${selectedRound}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
+
       XLSX.writeFile(workbook, fileName);
     } catch (error) {
       console.error('Error exporting to Excel:', error);
@@ -279,11 +288,10 @@ export default function PlayerStatsByRoundPage() {
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setSelectedRound('all')}
-                className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                  selectedRound === 'all'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-4 py-2 rounded-lg font-semibold transition-all ${selectedRound === 'all'
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 All Rounds
               </button>
@@ -291,11 +299,10 @@ export default function PlayerStatsByRoundPage() {
                 <button
                   key={round}
                   onClick={() => setSelectedRound(round.toString())}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                    selectedRound === round.toString()
-                      ? 'bg-blue-600 text-white shadow-lg'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-all ${selectedRound === round.toString()
+                    ? 'bg-blue-600 text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   Up to R{round}
                 </button>
@@ -308,61 +315,55 @@ export default function PlayerStatsByRoundPage() {
         <div className="mb-6 flex gap-2 flex-wrap">
           <button
             onClick={() => setActiveTab('all')}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              activeTab === 'all'
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${activeTab === 'all'
+              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
           >
             All Players
           </button>
           <button
             onClick={() => setActiveTab('by-week')}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              activeTab === 'by-week'
-                ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${activeTab === 'by-week'
+              ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
           >
             📅 By Week
           </button>
           <button
             onClick={() => setActiveTab('golden-boot')}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              activeTab === 'golden-boot'
-                ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${activeTab === 'golden-boot'
+              ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
           >
             ⚽ Golden Boot
           </button>
           <button
             onClick={() => setActiveTab('golden-glove')}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              activeTab === 'golden-glove'
-                ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${activeTab === 'golden-glove'
+              ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
           >
             🧤 Golden Glove
           </button>
           <button
             onClick={() => setActiveTab('golden-ball')}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              activeTab === 'golden-ball'
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${activeTab === 'golden-ball'
+              ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
           >
             ⚡ Golden Ball
           </button>
           <button
             onClick={() => setActiveTab('top-20')}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              activeTab === 'top-20'
-                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${activeTab === 'top-20'
+              ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
           >
             🏆 Top 20
           </button>
@@ -372,27 +373,22 @@ export default function PlayerStatsByRoundPage() {
         {activeTab === 'by-week' && (
           <div className="mb-6 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-xl shadow-lg p-4 border-2 border-cyan-200">
             <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Select Week (7 rounds per week)
+              Select Week
             </label>
             <div className="flex gap-2 flex-wrap">
-              {Array.from({ length: Math.ceil(maxRounds / 7) }, (_, i) => i + 1).map((week) => {
-                const startRound = (week - 1) * 7 + 1;
-                const endRound = Math.min(week * 7, maxRounds);
-                return (
-                  <button
-                    key={week}
-                    onClick={() => setSelectedWeek(week)}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                      selectedWeek === week
-                        ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
-                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              {weekRanges.map((weekRange) => (
+                <button
+                  key={weekRange.week}
+                  onClick={() => setSelectedWeek(weekRange.week)}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-all ${selectedWeek === weekRange.week
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
                     }`}
-                  >
-                    Week {week}
-                    <span className="block text-xs opacity-80">R{startRound}-{endRound}</span>
-                  </button>
-                );
-              })}
+                >
+                  Week {weekRange.week}
+                  <span className="block text-xs opacity-80">R{weekRange.start}-{weekRange.end}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -525,11 +521,10 @@ export default function PlayerStatsByRoundPage() {
                       </td>
                       <td className="px-4 py-3 text-center text-sm text-gray-600">{player.goals_conceded}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`font-bold ${
-                          player.goal_difference > 0 ? 'text-green-600' : 
-                          player.goal_difference < 0 ? 'text-red-600' : 
-                          'text-gray-600'
-                        }`}>
+                        <span className={`font-bold ${player.goal_difference > 0 ? 'text-green-600' :
+                          player.goal_difference < 0 ? 'text-red-600' :
+                            'text-gray-600'
+                          }`}>
                           {player.goal_difference > 0 ? '+' : ''}{player.goal_difference}
                         </span>
                       </td>
@@ -558,7 +553,10 @@ export default function PlayerStatsByRoundPage() {
         <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
           <p className="text-sm text-gray-700">
             <span className="font-semibold">{filteredPlayers.length}</span> players shown
-            {activeTab === 'by-week' && ` • Week ${selectedWeek} (Rounds ${(selectedWeek - 1) * 7 + 1}-${Math.min(selectedWeek * 7, maxRounds)})`}
+            {activeTab === 'by-week' && (() => {
+              const weekRange = weekRanges.find(w => w.week === selectedWeek);
+              return weekRange ? ` • Week ${selectedWeek} (Rounds ${weekRange.start}-${weekRange.end})` : '';
+            })()}
             {activeTab === 'golden-boot' && ' • Top 10 goal scorers (sorted by goals, then goals/match ratio)'}
             {activeTab === 'golden-glove' && ' • Top 10 clean sheet leaders (sorted by clean sheets, then CS%, then fewest GA)'}
             {activeTab === 'golden-ball' && ' • Top 20 best overall players (min. 3 matches)'}

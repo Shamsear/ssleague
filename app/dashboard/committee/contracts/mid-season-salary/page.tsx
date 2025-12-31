@@ -8,18 +8,37 @@ import { getSeasonById } from '@/lib/firebase/seasons';
 import { Season } from '@/types/season';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
+interface TeamPreview {
+  teamId: string;
+  teamName: string;
+  playerCount: number;
+  totalSalary: number;
+  currentBalance: number;
+  newBalance: number;
+  canAfford: boolean;
+  customAmount?: number; // Allow custom override
+  players: {
+    id: string;
+    playerId: string;
+    name: string;
+    auctionValue: number;
+    salary: number;
+  }[];
+}
+
 export default function MidSeasonSalaryPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
   const [currentSeason, setCurrentSeason] = useState<Season | null>(null);
-  const [tournamentInfo, setTournamentInfo] = useState<any>(null);
-  const [roundNumber, setRoundNumber] = useState(1);
+  const [teamsPreview, setTeamsPreview] = useState<TeamPreview[]>([]);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
-  const [loadingTournament, setLoadingTournament] = useState(true);
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
+  const [selectedTeams, setSelectedTeams] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!loading && !user) {
@@ -35,62 +54,10 @@ export default function MidSeasonSalaryPage() {
       if (!userSeasonId) return;
 
       try {
-        setLoadingTournament(true);
         const season = await getSeasonById(userSeasonId);
         setCurrentSeason(season);
-
-        // Fetch primary tournament info with fixtures
-        const tournamentRes = await fetchWithTokenRefresh(
-          `/api/tournaments?season_id=${userSeasonId}`
-        );
-        
-        console.log('🏆 Tournament API response status:', tournamentRes.status);
-        
-        if (tournamentRes.ok) {
-          const tournamentData = await tournamentRes.json();
-          console.log('🏆 Tournament data:', tournamentData);
-          console.log('🏆 Tournaments array:', tournamentData.tournaments);
-          
-          // Filter for primary tournament
-          const primaryTournament = tournamentData.tournaments?.find((t: any) => t.is_primary);
-          console.log('🏆 Primary tournament found:', primaryTournament);
-          
-          if (primaryTournament) {
-            
-            // Fetch fixtures count for this tournament
-            const fixturesRes = await fetchWithTokenRefresh(
-              `/api/fixtures/season?tournament_id=${primaryTournament.id}&season_id=${userSeasonId}`
-            );
-            
-            if (fixturesRes.ok) {
-              const fixturesData = await fixturesRes.json();
-              const fixtures = fixturesData.fixtures || [];
-              
-              // Get unique rounds
-              const rounds = new Set(fixtures.map((f: any) => f.round_number));
-              const maxRound = fixtures.length > 0 ? Math.max(...fixtures.map((f: any) => f.round_number || 0)) : 0;
-              
-              const plannedTotalRounds = primaryTournament.total_rounds || season.totalRounds || 38;
-              
-              setTournamentInfo({
-                name: primaryTournament.tournament_name || primaryTournament.name,
-                totalRounds: rounds.size, // Show generated rounds
-                plannedRounds: plannedTotalRounds,
-                fixturesGenerated: fixtures.length,
-                roundsWithFixtures: rounds.size,
-                maxRound: maxRound,
-              });
-              
-              // Set default round number to mid-season of planned rounds
-              const midSeasonRound = Math.floor(plannedTotalRounds / 2);
-              setRoundNumber(midSeasonRound);
-            }
-          }
-        }
       } catch (error) {
-        console.error('Error fetching season/tournament:', error);
-      } finally {
-        setLoadingTournament(false);
+        console.error('Error fetching season:', error);
       }
     };
 
@@ -99,15 +66,161 @@ export default function MidSeasonSalaryPage() {
     }
   }, [isCommitteeAdmin, userSeasonId]);
 
+  const loadPreview = async () => {
+    if (!userSeasonId) return;
+
+    try {
+      setLoadingPreview(true);
+      setError(null);
+
+      const response = await fetchWithTokenRefresh(
+        `/api/contracts/mid-season-salary/preview?seasonId=${userSeasonId}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load preview');
+      }
+
+      setTeamsPreview(data.teams);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load preview');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const toggleTeamSelection = (teamId: string) => {
+    setSelectedTeams(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(teamId)) {
+        newSet.delete(teamId);
+      } else {
+        newSet.add(teamId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAllTeams = () => {
+    if (selectedTeams.size === teamsPreview.length) {
+      setSelectedTeams(new Set());
+    } else {
+      setSelectedTeams(new Set(teamsPreview.map(t => t.teamId)));
+    }
+  };
+
+  useEffect(() => {
+    if (userSeasonId && currentSeason?.type === 'multi') {
+      loadPreview();
+    }
+  }, [userSeasonId, currentSeason]);
+
+  const handleCustomAmountChange = (teamId: string, amount: string) => {
+    const numAmount = parseFloat(amount) || 0;
+    setTeamsPreview(prev =>
+      prev.map(team =>
+        team.teamId === teamId
+          ? {
+            ...team,
+            customAmount: numAmount,
+            newBalance: team.currentBalance - numAmount,
+            canAfford: team.currentBalance >= numAmount,
+          }
+          : team
+      )
+    );
+  };
+
+  const resetCustomAmount = (teamId: string) => {
+    setTeamsPreview(prev =>
+      prev.map(team =>
+        team.teamId === teamId
+          ? {
+            ...team,
+            customAmount: undefined,
+            newBalance: team.currentBalance - team.totalSalary,
+            canAfford: team.currentBalance >= team.totalSalary,
+          }
+          : team
+      )
+    );
+  };
+
+  // Generate WhatsApp message for a team
+  const generateWhatsAppMessage = (team: TeamPreview) => {
+    const deductedAmount = team.customAmount ?? team.totalSalary;
+
+    return `🏆 *${currentSeason?.name || 'Season'} - Mid-Season Salary Deduction*
+
+📋 *Team:* ${team.teamName}
+⚽ *Players:* ${team.playerCount}
+
+━━━━━━━━━━━━━━━━━━━
+💶 *Total Deducted:* €${deductedAmount.toFixed(2)}
+💵 *Previous Balance:* €${team.currentBalance.toFixed(2)}
+💳 *New Balance:* €${team.newBalance.toFixed(2)}
+━━━━━━━━━━━━━━━━━━━
+
+${team.canAfford ? '✅ Payment processed successfully!' : '⚠️ Insufficient balance - Please contact committee'}
+
+_This is an automated salary deduction for the mid-season period._`;
+  };
+
+  // Generate all WhatsApp messages
+  const generateAllWhatsAppMessages = () => {
+    return teamsPreview
+      .map(team => {
+        const msg = generateWhatsAppMessage(team);
+        return `${msg}\n\n${'═'.repeat(40)}\n\n`;
+      })
+      .join('');
+  };
+
+  // Copy single team message
+  const copyTeamMessage = async (team: TeamPreview) => {
+    const message = generateWhatsAppMessage(team);
+    try {
+      await navigator.clipboard.writeText(message);
+      alert(`✅ WhatsApp message copied for ${team.teamName}!`);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      alert('❌ Failed to copy message');
+    }
+  };
+
+  // Copy all messages
+  const copyAllMessages = async () => {
+    const allMessages = generateAllWhatsAppMessages();
+    try {
+      await navigator.clipboard.writeText(allMessages);
+      alert(`✅ All ${teamsPreview.length} WhatsApp messages copied!`);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      alert('❌ Failed to copy messages');
+    }
+  };
+
   const handleProcessSalary = async () => {
     if (!currentSeason || !userSeasonId) {
       setError('No season selected');
       return;
     }
 
-    if (currentSeason.type !== 'multi') {
-      setError('This feature is only available for multi-season types');
+    if (selectedTeams.size === 0) {
+      setError('Please select at least one team to process');
       return;
+    }
+
+    // Check if any SELECTED teams can't afford
+    const selectedTeamsData = teamsPreview.filter(t => selectedTeams.has(t.teamId));
+    const teamsWithIssues = selectedTeamsData.filter(t => !t.canAfford);
+    if (teamsWithIssues.length > 0) {
+      const confirmMsg = `⚠️ ${teamsWithIssues.length} selected team(s) have insufficient balance:\n${teamsWithIssues.map(t => `• ${t.teamName}`).join('\n')}\n\nDo you want to proceed anyway?`;
+      if (!confirm(confirmMsg)) {
+        return;
+      }
     }
 
     try {
@@ -116,12 +229,27 @@ export default function MidSeasonSalaryPage() {
       setSuccess(null);
       setResult(null);
 
+      // Build custom amounts object for SELECTED teams only
+      const hasCustomAmounts = selectedTeamsData.some(t => t.customAmount !== undefined);
+      const customAmounts: { [teamId: string]: number } = {};
+
+      if (hasCustomAmounts) {
+        selectedTeamsData.forEach(team => {
+          if (team.customAmount !== undefined) {
+            customAmounts[team.teamId] = team.customAmount;
+          }
+        });
+        console.log('Sending custom amounts:', customAmounts);
+      }
+
       const response = await fetchWithTokenRefresh('/api/contracts/mid-season-salary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           seasonId: userSeasonId,
-          roundNumber,
+          roundNumber: Math.floor((currentSeason.totalRounds || 38) / 2), // Mid-season
+          customAmounts: hasCustomAmounts ? customAmounts : undefined,
+          selectedTeamIds: Array.from(selectedTeams), // Send selected team IDs
         }),
       });
 
@@ -133,6 +261,9 @@ export default function MidSeasonSalaryPage() {
 
       setSuccess('Mid-season salary deductions processed successfully!');
       setResult(data);
+
+      // Reload preview
+      await loadPreview();
     } catch (err: any) {
       setError(err.message || 'Failed to process salary deductions');
     } finally {
@@ -158,7 +289,7 @@ export default function MidSeasonSalaryPage() {
   if (currentSeason?.type !== 'multi') {
     return (
       <div className="min-h-screen py-8 px-4">
-        <div className="container mx-auto max-w-4xl">
+        <div className="container mx-auto max-w-6xl">
           <div className="glass rounded-3xl p-8 text-center">
             <p className="text-amber-600">This feature is only available for multi-season types (Season 16+)</p>
           </div>
@@ -167,9 +298,12 @@ export default function MidSeasonSalaryPage() {
     );
   }
 
+  const totalDeduction = teamsPreview.reduce((sum, t) => sum + (t.customAmount ?? t.totalSalary), 0);
+  const teamsWithIssues = teamsPreview.filter(t => !t.canAfford).length;
+
   return (
     <div className="min-h-screen py-4 sm:py-8 px-4">
-      <div className="container mx-auto max-w-4xl">
+      <div className="container mx-auto max-w-6xl">
         {/* Page Header */}
         <div className="glass rounded-3xl p-6 mb-8 shadow-lg">
           <div className="flex items-center justify-between">
@@ -199,7 +333,7 @@ export default function MidSeasonSalaryPage() {
               <ul className="text-sm text-blue-800 space-y-1">
                 <li>• Football player salaries = 10% of auction value per half-season</li>
                 <li>• Deducted from team's Euro balance</li>
-                <li>• Trigger this at mid-season round (e.g., Round 19 for 38-round season)</li>
+                <li>• Review and adjust amounts before processing</li>
                 <li>• Process once per half-season</li>
               </ul>
             </div>
@@ -218,103 +352,230 @@ export default function MidSeasonSalaryPage() {
           </div>
         )}
 
-        {/* Form */}
-        <div className="glass rounded-3xl shadow-lg backdrop-blur-md border border-white/20 overflow-hidden">
+        {/* Summary Card */}
+        {teamsPreview.length > 0 && (
+          <div className="glass rounded-3xl p-6 mb-6 shadow-lg">
+            <h3 className="text-xl font-bold mb-4">Summary {selectedTeams.size > 0 && `(${selectedTeams.size} Selected)`}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-blue-50 rounded-xl">
+                <p className="text-sm text-gray-600">Selected Teams</p>
+                <p className="text-2xl font-bold text-blue-600">{selectedTeams.size}</p>
+              </div>
+              <div className="p-4 bg-purple-50 rounded-xl">
+                <p className="text-sm text-gray-600">Total Deduction</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  €{teamsPreview
+                    .filter(t => selectedTeams.has(t.teamId))
+                    .reduce((sum, t) => sum + (t.customAmount ?? t.totalSalary), 0)
+                    .toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 bg-green-50 rounded-xl">
+                <p className="text-sm text-gray-600">Can Afford</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {teamsPreview.filter(t => selectedTeams.has(t.teamId) && t.canAfford).length}
+                </p>
+              </div>
+              <div className="p-4 bg-red-50 rounded-xl">
+                <p className="text-sm text-gray-600">Insufficient Balance</p>
+                <p className="text-2xl font-bold text-red-600">
+                  {teamsPreview.filter(t => selectedTeams.has(t.teamId) && !t.canAfford).length}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Teams Preview Table */}
+        <div className="glass rounded-3xl shadow-lg overflow-hidden mb-6">
           <div className="px-8 py-6 bg-gradient-to-r from-[#9580FF]/5 to-[#9580FF]/10 border-b border-[#9580FF]/20">
-            <h3 className="text-xl font-semibold text-[#9580FF]">Process Salary Deductions</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-[#9580FF]">Salary Deductions Preview</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={copyAllMessages}
+                  disabled={teamsPreview.length === 0}
+                  className="px-4 py-2 text-sm bg-green-500 text-white rounded-xl hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  📱 Copy All WhatsApp Messages
+                </button>
+                <button
+                  onClick={loadPreview}
+                  disabled={loadingPreview}
+                  className="px-4 py-2 text-sm bg-white rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  {loadingPreview ? 'Refreshing...' : '🔄 Refresh'}
+                </button>
+              </div>
+            </div>
+
+            {/* Selection Controls */}
+            <div className="flex justify-between items-center">
+              <button
+                onClick={toggleSelectAllTeams}
+                disabled={teamsPreview.length === 0}
+                className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all disabled:opacity-50"
+              >
+                {selectedTeams.size === teamsPreview.length ? '☑️ Deselect All' : '☐ Select All'}
+              </button>
+              <span className="text-sm font-semibold text-gray-700">
+                {selectedTeams.size} of {teamsPreview.length} team(s) selected
+              </span>
+            </div>
           </div>
 
-          <div className="p-8 space-y-6">
-            {/* Current Season & Tournament Info */}
-            {loadingTournament ? (
-              <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-[#9580FF] mx-auto mb-2"></div>
-                <p className="text-sm text-gray-600">Loading tournament details...</p>
+          <div className="p-6">
+            {loadingPreview ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-2 border-gray-300 border-t-[#9580FF] mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading preview...</p>
               </div>
-            ) : tournamentInfo ? (
-              <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Season</p>
-                    <p className="font-semibold text-gray-900">{currentSeason?.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Tournament</p>
-                    <p className="font-semibold text-gray-900">{tournamentInfo.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Rounds Generated</p>
-                    <p className="font-semibold text-gray-900">{tournamentInfo.totalRounds} of {tournamentInfo.plannedRounds}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Total Fixtures</p>
-                    <p className="font-semibold text-gray-900">{tournamentInfo.fixturesGenerated} fixtures</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Latest Round</p>
-                    <p className="font-semibold text-gray-900">Round {tournamentInfo.maxRound}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Mid-Season Round</p>
-                    <p className="font-semibold text-[#9580FF]">Round {Math.floor(tournamentInfo.plannedRounds / 2)}</p>
-                  </div>
-                </div>
+            ) : teamsPreview.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">No teams found for this season</p>
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                <p className="text-sm text-amber-800">No primary tournament found with fixtures for this season</p>
+              <div className="space-y-3">
+                {teamsPreview.map((team) => (
+                  <div
+                    key={team.teamId}
+                    className={`border-2 rounded-xl overflow-hidden transition-all ${selectedTeams.has(team.teamId)
+                      ? 'border-blue-400 bg-blue-50/50 shadow-md'
+                      : team.canAfford
+                        ? 'border-green-200 bg-green-50/30'
+                        : 'border-red-200 bg-red-50/30'
+                      }`}
+                  >
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedTeams.has(team.teamId)}
+                            onChange={() => toggleTeamSelection(team.teamId)}
+                            className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                          />
+                          <div>
+                            <h4 className="font-bold text-lg">{team.teamName}</h4>
+                            <p className="text-sm text-gray-600">{team.playerCount} players</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => copyTeamMessage(team)}
+                            className="px-3 py-1 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all"
+                            title="Copy WhatsApp message"
+                          >
+                            📱 WhatsApp
+                          </button>
+                          <button
+                            onClick={() => setExpandedTeam(expandedTeam === team.teamId ? null : team.teamId)}
+                            className="px-3 py-1 text-sm bg-white rounded-lg hover:bg-gray-50"
+                          >
+                            {expandedTeam === team.teamId ? '▼ Hide' : '▶ Details'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                        <div>
+                          <p className="text-gray-600">Current Balance</p>
+                          <p className="font-semibold">€{team.currentBalance.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Calculated Salary</p>
+                          <p className="font-semibold">€{team.totalSalary.toFixed(2)}</p>
+                        </div>
+                        <div className="col-span-2 md:col-span-1">
+                          <p className="text-gray-600 mb-1">Custom Amount</p>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={team.customAmount ?? ''}
+                              onChange={(e) => handleCustomAmountChange(team.teamId, e.target.value)}
+                              placeholder={team.totalSalary.toFixed(2)}
+                              className="w-full px-2 py-1 border rounded text-sm"
+                            />
+                            {team.customAmount !== undefined && (
+                              <button
+                                onClick={() => resetCustomAmount(team.teamId)}
+                                className="px-2 py-1 bg-gray-200 rounded text-xs hover:bg-gray-300"
+                                title="Reset to calculated"
+                              >
+                                ↺
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">New Balance</p>
+                          <p className={`font-semibold ${team.canAfford ? 'text-green-600' : 'text-red-600'}`}>
+                            €{team.newBalance.toFixed(2)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Status</p>
+                          <p className={`font-semibold ${team.canAfford ? 'text-green-600' : 'text-red-600'}`}>
+                            {team.canAfford ? '✅ OK' : '❌ Insufficient'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Player Details */}
+                      {expandedTeam === team.teamId && (
+                        <div className="mt-4 pt-4 border-t">
+                          <h5 className="font-semibold mb-2">Players:</h5>
+                          <div className="space-y-1 max-h-60 overflow-y-auto">
+                            {team.players.map((player) => (
+                              <div key={player.id} className="flex justify-between text-sm bg-white p-2 rounded">
+                                <span>{player.name}</span>
+                                <span className="text-gray-600">
+                                  €{player.auctionValue} → €{player.salary.toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-
-            {/* Round Number Input */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Current Round Number *
-              </label>
-              <input
-                type="number"
-                min="1"
-                max={currentSeason?.totalRounds || 38}
-                value={roundNumber}
-                onChange={(e) => setRoundNumber(parseInt(e.target.value) || 1)}
-                className="block w-full px-4 py-3 rounded-2xl border-2 border-gray-200 bg-white shadow-sm focus:ring-4 focus:ring-[#9580FF]/20 focus:border-[#9580FF] sm:text-sm"
-                placeholder="Enter current round number"
-              />
-              {tournamentInfo && (
-                <p className="mt-2 text-sm text-gray-500">
-                  Mid-season is typically at Round {Math.floor(tournamentInfo.plannedRounds / 2)}
-                </p>
-              )}
-            </div>
-
-            {/* Warning */}
-            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-              <div className="flex items-start">
-                <svg className="w-5 h-5 text-amber-600 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <p className="text-sm text-amber-800">
-                  This will deduct salaries from all teams' Euro balance. Make sure you're at the correct mid-season round!
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Action Button */}
-          <div className="px-8 py-6 bg-gray-50 border-t flex justify-end">
-            <button
-              onClick={handleProcessSalary}
-              disabled={processing}
-              className="px-8 py-3 border border-transparent text-sm font-semibold rounded-2xl text-white bg-gradient-to-r from-[#9580FF] to-[#0066FF] hover:from-[#9580FF]/90 hover:to-[#0066FF]/90 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {processing ? 'Processing...' : 'Process Salary Deductions'}
-            </button>
-          </div>
+          {teamsPreview.length > 0 && (
+            <div className="px-8 py-6 bg-gray-50 border-t flex justify-end gap-4">
+              <div className="flex-1 flex items-center">
+                {selectedTeams.size === 0 ? (
+                  <p className="text-sm text-amber-600">
+                    ⚠️ Please select at least one team to process
+                  </p>
+                ) : teamsPreview.filter(t => selectedTeams.has(t.teamId) && !t.canAfford).length > 0 && (
+                  <p className="text-sm text-red-600">
+                    ⚠️ {teamsPreview.filter(t => selectedTeams.has(t.teamId) && !t.canAfford).length} selected team(s) have insufficient balance
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleProcessSalary}
+                disabled={processing || selectedTeams.size === 0}
+                className="px-8 py-3 border border-transparent text-sm font-semibold rounded-2xl text-white bg-gradient-to-r from-[#9580FF] to-[#0066FF] hover:from-[#9580FF]/90 hover:to-[#0066FF]/90 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {processing ? 'Processing...' : `Process ${selectedTeams.size} Team(s) - €${teamsPreview
+                  .filter(t => selectedTeams.has(t.teamId))
+                  .reduce((sum, t) => sum + (t.customAmount ?? t.totalSalary), 0)
+                  .toFixed(2)}`}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Result Details */}
         {result && (
-          <div className="glass rounded-3xl p-6 mt-6 shadow-lg">
+          <div className="glass rounded-3xl p-6 shadow-lg">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Processing Results</h3>
             <div className="space-y-3">
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">

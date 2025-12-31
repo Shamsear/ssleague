@@ -35,6 +35,7 @@ export async function GET(request: Request) {
     const playingStyle = searchParams.get('playing_style') || '';
     const teamIdFilter = searchParams.get('team_id') || '';
     const starredOnly = searchParams.get('starred_only') === 'true';
+    const assignedOnly = searchParams.get('assigned_only') === 'true';
 
     // Get Neon team_id from Firebase token (if authenticated)
     let teamId: string | null = null;
@@ -102,6 +103,11 @@ export async function GET(request: Request) {
         whereParts.push(`fp.team_id = $${paramIndex++}`);
         queryParams.push(teamIdFilter);
       }
+    }
+
+    // Filter for only assigned players (have team_id)
+    if (assignedOnly) {
+      whereParts.push('fp.team_id IS NOT NULL');
     }
 
     if (starredOnly && teamId) {

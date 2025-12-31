@@ -55,7 +55,7 @@ export default function FantasyLeagueDashboard() {
 
       try {
         const response = await fetchWithTokenRefresh(`/api/fantasy/leagues/${leagueId}`);
-        
+
         if (!response.ok) {
           // If it's a 404 and we haven't exceeded retries, wait and try again
           if (response.status === 404 && retryCount < maxRetries) {
@@ -99,7 +99,7 @@ export default function FantasyLeagueDashboard() {
 
     const newLockState = !isLineupLocked;
     const action = newLockState ? 'lock' : 'unlock';
-    
+
     if (!confirm(`Are you sure you want to ${action} lineup changes for all teams?`)) {
       return;
     }
@@ -297,17 +297,30 @@ export default function FantasyLeagueDashboard() {
       borderColor: 'border-pink-200',
     },
     {
-      title: 'Recalculate Points',
-      description: 'Recalculate all fantasy points and rankings',
+      title: 'Recalculate Passive Points',
+      description: 'Recalculate team passive points from fixtures',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       ),
-      href: `/dashboard/committee/fantasy/recalculate`,
+      href: `/dashboard/committee/fantasy/recalculate-points`,
       color: 'from-amber-500 to-yellow-600',
       bgColor: 'from-amber-50 to-yellow-50',
       borderColor: 'border-amber-200',
+    },
+    {
+      title: 'Points Breakdown',
+      description: 'Round-by-round player points analysis',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/points-breakdown`,
+      color: 'from-purple-500 to-indigo-600',
+      bgColor: 'from-purple-50 to-indigo-50',
+      borderColor: 'border-purple-200',
     },
   ];
 
@@ -340,7 +353,7 @@ export default function FantasyLeagueDashboard() {
                 <p className="text-white/80 text-sm sm:text-base">Fantasy League Command Center</p>
               </div>
             </div>
-            
+
             <div className="flex flex-wrap gap-3">
               <div className="px-4 py-2 bg-white/10 backdrop-blur-lg rounded-lg border border-white/20">
                 <p className="text-xs text-white/70">Status</p>
@@ -416,9 +429,8 @@ export default function FantasyLeagueDashboard() {
         <div className="mb-8 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl shadow-lg border-2 border-purple-200 p-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
-              <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${
-                isLineupLocked ? 'bg-red-500' : 'bg-green-500'
-              }`}>
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${isLineupLocked ? 'bg-red-500' : 'bg-green-500'
+                }`}>
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   {isLineupLocked ? (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -452,11 +464,10 @@ export default function FantasyLeagueDashboard() {
             <button
               onClick={toggleLineupLock}
               disabled={isTogglingLock}
-              className={`px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${
-                isLineupLocked
-                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
-                  : 'bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700'
-              }`}
+              className={`px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${isLineupLocked
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
+                : 'bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700'
+                }`}
             >
               {isTogglingLock ? (
                 'Processing...'
@@ -524,12 +535,11 @@ export default function FantasyLeagueDashboard() {
                   key={team.id}
                   className="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-                    index === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white shadow-lg' :
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white shadow-lg' :
                     index === 1 ? 'bg-gradient-to-br from-gray-400 to-gray-500 text-white shadow-md' :
-                    index === 2 ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white shadow-md' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
+                      index === 2 ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white shadow-md' :
+                        'bg-gray-100 text-gray-700'
+                    }`}>
                     {index + 1}
                   </div>
                   <div className="flex-1 min-w-0">

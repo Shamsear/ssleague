@@ -17,7 +17,7 @@ interface Player {
   season_id: string;
 }
 
-type OperationType = 'swap' | 'release';
+type OperationType = 'swap' | 'release' | 'bulk_release';
 
 export default function FootballPlayerForm() {
   const { user, userSeasonId } = usePermissions();
@@ -30,12 +30,16 @@ export default function FootballPlayerForm() {
   const [searchPlayerA, setSearchPlayerA] = useState('');
   const [searchPlayerB, setSearchPlayerB] = useState('');
   const [searchRelease, setSearchRelease] = useState('');
-  
+
+  // Bulk release state
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
+  const [bulkReleaseSearch, setBulkReleaseSearch] = useState('');
+
   // Data state
   const [players, setPlayers] = useState<Player[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [swapLimits, setSwapLimits] = useState<Record<string, any>>({});
-  
+
   // UI state
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,16 +53,15 @@ export default function FootballPlayerForm() {
       setLoadingPlayers(true);
       try {
         const response = await fetchWithTokenRefresh(
-          `/api/players/database?limit=1000`
+          `/api/players/database?limit=2000&assigned_only=true`
         );
         const result = await response.json();
-        
+
         if (!result.success) {
           throw new Error('Failed to fetch players');
         }
-        
+
         const loadedPlayers: Player[] = result.data.players
-          .filter((p: any) => p.team_id) // Only players with teams
           .map((p: any) => ({
             id: p.id || p.player_id,
             player_id: p.player_id,
@@ -105,7 +108,7 @@ export default function FootballPlayerForm() {
   const filteredPlayersA = useMemo(() => {
     if (!searchPlayerA) return players;
     const searchLower = searchPlayerA.toLowerCase();
-    return players.filter(p => 
+    return players.filter(p =>
       p.player_name.toLowerCase().includes(searchLower) ||
       p.team_name?.toLowerCase().includes(searchLower)
     );
@@ -121,7 +124,7 @@ export default function FootballPlayerForm() {
   const filteredPlayersB = useMemo(() => {
     if (!searchPlayerB) return availablePlayersForB;
     const searchLower = searchPlayerB.toLowerCase();
-    return availablePlayersForB.filter(p => 
+    return availablePlayersForB.filter(p =>
       p.player_name.toLowerCase().includes(searchLower) ||
       p.team_name?.toLowerCase().includes(searchLower)
     );
@@ -131,37 +134,47 @@ export default function FootballPlayerForm() {
   const filteredPlayersRelease = useMemo(() => {
     if (!searchRelease) return players;
     const searchLower = searchRelease.toLowerCase();
-    return players.filter(p => 
+    return players.filter(p =>
       p.player_name.toLowerCase().includes(searchLower) ||
       p.team_name?.toLowerCase().includes(searchLower)
     );
   }, [players, searchRelease]);
 
+  // Get filtered players for Bulk Release based on search
+  const filteredPlayersBulkRelease = useMemo(() => {
+    if (!bulkReleaseSearch) return players;
+    const searchLower = bulkReleaseSearch.toLowerCase();
+    return players.filter(p =>
+      p.player_name.toLowerCase().includes(searchLower) ||
+      p.team_name?.toLowerCase().includes(searchLower)
+    );
+  }, [players, bulkReleaseSearch]);
+
   // Fetch swap limits for both teams
   useEffect(() => {
     const fetchSwapLimits = async () => {
       if (!userSeasonId) return;
-      
+
       const teamsToFetch = new Set<string>();
       if (selectedPlayerA) teamsToFetch.add(selectedPlayerA.team_id);
       if (selectedPlayerB) teamsToFetch.add(selectedPlayerB.team_id);
-      
+
       for (const teamId of teamsToFetch) {
         if (swapLimits[teamId]) continue; // Already fetched
-        
+
         try {
           const response = await fetchWithTokenRefresh(
             `/api/players/football-swap-limits?team_id=${teamId}&season_id=${userSeasonId}`
           );
-          
+
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
             console.warn('Swap limits API not available');
             continue;
           }
-          
+
           const result = await response.json();
-          
+
           if (result.success) {
             setSwapLimits(prev => ({
               ...prev,
@@ -180,20 +193,20 @@ export default function FootballPlayerForm() {
   // Handle swap submission
   const handleSwap = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedPlayerA || !selectedPlayerB || !user || !userSeasonId) return;
 
     const teamAName = selectedPlayerA.team_name || 'Team A';
     const teamBName = selectedPlayerB.team_name || 'Team B';
-    
+
     const teamALimit = swapLimits[selectedPlayerA.team_id];
     const teamBLimit = swapLimits[selectedPlayerB.team_id];
-    
+
     const teamAFee = teamALimit?.next_swap_fee || 0;
     const teamBFee = teamBLimit?.next_swap_fee || 0;
-    
+
     let confirmMessage = `Swap ${selectedPlayerA.player_name} (${teamAName}) ↔ ${selectedPlayerB.player_name} (${teamBName})?\n\n`;
-    
+
     if (teamAFee > 0 || teamBFee > 0) {
       confirmMessage += `Fees:\n`;
       if (teamAFee > 0) confirmMessage += `• ${teamAName}: ${teamAFee} (Swap #${teamALimit.next_swap_number})\n`;
@@ -201,7 +214,7 @@ export default function FootballPlayerForm() {
     } else {
       confirmMessage += `This swap is FREE for both teams!\n`;
     }
-    
+
     confirmMessage += `\nOnly team assignments will change. No value or stat changes.`;
 
     if (!confirm(confirmMessage)) return;
@@ -230,16 +243,16 @@ export default function FootballPlayerForm() {
       }
 
       setSuccess(`✅ ${selectedPlayerA.player_name} and ${selectedPlayerB.player_name} swapped successfully!`);
-      
+
       // Reset form
       setSelectedPlayerAId('');
       setSelectedPlayerBId('');
-      
+
       // Reload page after delay
       setTimeout(() => {
         window.location.reload();
       }, 2000);
-      
+
     } catch (err: any) {
       setError(err.message || 'Failed to swap players');
       console.error('Swap error:', err);
@@ -251,7 +264,7 @@ export default function FootballPlayerForm() {
   // Handle release submission
   const handleRelease = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedPlayerA || !user || !userSeasonId) return;
 
     const confirmMessage = `Release ${selectedPlayerA.player_name} from ${selectedPlayerA.team_name}?\n\nThe player will become a free agent.`;
@@ -282,20 +295,124 @@ export default function FootballPlayerForm() {
       }
 
       setSuccess(`✅ ${selectedPlayerA.player_name} released successfully!`);
-      
+
       // Reset form
       setSelectedPlayerAId('');
-      
+
       // Reload page after delay
       setTimeout(() => {
         window.location.reload();
       }, 2000);
-      
+
     } catch (err: any) {
       setError(err.message || 'Failed to release player');
       console.error('Release error:', err);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Handle bulk release submission
+  const handleBulkRelease = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (selectedPlayerIds.size === 0 || !user || !userSeasonId) return;
+
+    const selectedPlayers = players.filter(p => selectedPlayerIds.has(p.id));
+    const confirmMessage = `Release ${selectedPlayerIds.size} player(s)?\\n\\n${selectedPlayers.map(p => `• ${p.player_name} (${p.team_name})`).join('\\n')}\\n\\nAll players will become free agents.`;
+
+    if (!confirm(confirmMessage)) return;
+
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    try {
+      // Release players one by one
+      for (const player of selectedPlayers) {
+        try {
+          const response = await fetchWithTokenRefresh('/api/players/release', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              player_id: player.player_id,
+              player_type: 'football',
+              season_id: userSeasonId,
+              released_by: user.uid,
+              released_by_name: user.username || user.email
+            })
+          });
+
+          const result = await response.json();
+
+          if (!result.success) {
+            throw new Error(result.error || 'Failed to release player');
+          }
+
+          successCount++;
+        } catch (err: any) {
+          failCount++;
+          errors.push(`${player.player_name}: ${err.message}`);
+          console.error(`Error releasing ${player.player_name}:`, err);
+        }
+      }
+
+      // Show results
+      if (successCount > 0 && failCount === 0) {
+        setSuccess(`✅ Successfully released ${successCount} player(s)!`);
+      } else if (successCount > 0 && failCount > 0) {
+        setSuccess(`⚠️ Released ${successCount} player(s). ${failCount} failed.`);
+        setError(errors.join('\\n'));
+      } else {
+        setError(`❌ Failed to release all players:\\n${errors.join('\\n')}`);
+      }
+
+      // Reset form
+      setSelectedPlayerIds(new Set());
+
+      // Reload page after delay if any succeeded
+      if (successCount > 0) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      }
+
+    } catch (err: any) {
+      setError(err.message || 'Failed to release players');
+      console.error('Bulk release error:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Toggle player selection for bulk release
+  const togglePlayerSelection = (playerId: string) => {
+    const newSelection = new Set(selectedPlayerIds);
+    if (newSelection.has(playerId)) {
+      newSelection.delete(playerId);
+    } else {
+      newSelection.add(playerId);
+    }
+    setSelectedPlayerIds(newSelection);
+  };
+
+  // Select/deselect all filtered players
+  const toggleSelectAll = () => {
+    const filteredIds = filteredPlayersBulkRelease.map(p => p.id);
+    if (filteredIds.every(id => selectedPlayerIds.has(id))) {
+      // Deselect all filtered
+      const newSelection = new Set(selectedPlayerIds);
+      filteredIds.forEach(id => newSelection.delete(id));
+      setSelectedPlayerIds(newSelection);
+    } else {
+      // Select all filtered
+      const newSelection = new Set(selectedPlayerIds);
+      filteredIds.forEach(id => newSelection.add(id));
+      setSelectedPlayerIds(newSelection);
     }
   };
 
@@ -315,7 +432,8 @@ export default function FootballPlayerForm() {
         <ul className="text-sm text-green-800 space-y-1">
           <li>• <strong>Swap:</strong> Exchange team assignments between two players</li>
           <li>• <strong>Swap Fees:</strong> First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
-          <li>• <strong>Release:</strong> Free a player from their team (always free)</li>
+          <li>• <strong>Release:</strong> Free a single player from their team (always free)</li>
+          <li>• <strong>Bulk Release:</strong> Release multiple players at once (always free)</li>
           <li>• <strong>No value changes, no stat upgrades</strong></li>
         </ul>
       </div>
@@ -345,12 +463,13 @@ export default function FootballPlayerForm() {
             setSearchPlayerA('');
             setSearchPlayerB('');
             setSearchRelease('');
+            setBulkReleaseSearch('');
+            setSelectedPlayerIds(new Set());
           }}
-          className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
-            operationType === 'swap'
-              ? 'bg-blue-600 text-white shadow-lg'
-              : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-          }`}
+          className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${operationType === 'swap'
+            ? 'bg-blue-600 text-white shadow-lg'
+            : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+            }`}
         >
           🔄 Swap Players
         </button>
@@ -362,14 +481,33 @@ export default function FootballPlayerForm() {
             setSearchPlayerA('');
             setSearchPlayerB('');
             setSearchRelease('');
+            setBulkReleaseSearch('');
+            setSelectedPlayerIds(new Set());
           }}
-          className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
-            operationType === 'release'
-              ? 'bg-orange-600 text-white shadow-lg'
-              : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-          }`}
+          className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${operationType === 'release'
+            ? 'bg-orange-600 text-white shadow-lg'
+            : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+            }`}
         >
           🆓 Release Player
+        </button>
+        <button
+          onClick={() => {
+            setOperationType('bulk_release');
+            setSelectedPlayerAId('');
+            setSelectedPlayerBId('');
+            setSearchPlayerA('');
+            setSearchPlayerB('');
+            setSearchRelease('');
+            setBulkReleaseSearch('');
+            setSelectedPlayerIds(new Set());
+          }}
+          className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${operationType === 'bulk_release'
+            ? 'bg-red-600 text-white shadow-lg'
+            : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+            }`}
+        >
+          🗑️ Bulk Release
         </button>
       </div>
 
@@ -394,7 +532,7 @@ export default function FootballPlayerForm() {
             <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
               <h3 className="font-semibold text-blue-900 mb-2">Player A: {selectedPlayerA.player_name}</h3>
               <p className="text-sm text-gray-700 mb-2">Team: {selectedPlayerA.team_name}</p>
-              
+
               {swapLimits[selectedPlayerA.team_id] && (
                 <div className="mt-3 p-3 bg-white rounded-lg border border-blue-200">
                   <div className="flex justify-between items-center mb-2">
@@ -405,13 +543,12 @@ export default function FootballPlayerForm() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-600">Next Swap Fee:</span>
-                    <span className={`text-sm font-bold ${
-                      swapLimits[selectedPlayerA.team_id].next_swap_fee === 0 
-                        ? 'text-green-600' 
-                        : 'text-orange-600'
-                    }`}>
-                      {swapLimits[selectedPlayerA.team_id].next_swap_fee === 0 
-                        ? 'FREE' 
+                    <span className={`text-sm font-bold ${swapLimits[selectedPlayerA.team_id].next_swap_fee === 0
+                      ? 'text-green-600'
+                      : 'text-orange-600'
+                      }`}>
+                      {swapLimits[selectedPlayerA.team_id].next_swap_fee === 0
+                        ? 'FREE'
                         : `${swapLimits[selectedPlayerA.team_id].next_swap_fee}`}
                     </span>
                   </div>
@@ -442,7 +579,7 @@ export default function FootballPlayerForm() {
             <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
               <h3 className="font-semibold text-purple-900 mb-2">Player B: {selectedPlayerB.player_name}</h3>
               <p className="text-sm text-gray-700 mb-2">Team: {selectedPlayerB.team_name}</p>
-              
+
               {swapLimits[selectedPlayerB.team_id] && (
                 <div className="mt-3 p-3 bg-white rounded-lg border border-purple-200">
                   <div className="flex justify-between items-center mb-2">
@@ -453,13 +590,12 @@ export default function FootballPlayerForm() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-600">Next Swap Fee:</span>
-                    <span className={`text-sm font-bold ${
-                      swapLimits[selectedPlayerB.team_id].next_swap_fee === 0 
-                        ? 'text-green-600' 
-                        : 'text-orange-600'
-                    }`}>
-                      {swapLimits[selectedPlayerB.team_id].next_swap_fee === 0 
-                        ? 'FREE' 
+                    <span className={`text-sm font-bold ${swapLimits[selectedPlayerB.team_id].next_swap_fee === 0
+                      ? 'text-green-600'
+                      : 'text-orange-600'
+                      }`}>
+                      {swapLimits[selectedPlayerB.team_id].next_swap_fee === 0
+                        ? 'FREE'
                         : `${swapLimits[selectedPlayerB.team_id].next_swap_fee}`}
                     </span>
                   </div>
@@ -479,7 +615,7 @@ export default function FootballPlayerForm() {
               <h3 className="font-bold text-green-900 mb-4 text-lg flex items-center gap-2">
                 💰 Swap Fee Preview
               </h3>
-              
+
               <div className="space-y-3">
                 {/* Team A Fee */}
                 <div className="bg-white rounded-lg p-4 shadow-sm">
@@ -489,13 +625,12 @@ export default function FootballPlayerForm() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Fee:</span>
-                    <span className={`text-lg font-bold ${
-                      swapLimits[selectedPlayerA.team_id].next_swap_fee === 0 
-                        ? 'text-green-600' 
-                        : 'text-orange-600'
-                    }`}>
-                      {swapLimits[selectedPlayerA.team_id].next_swap_fee === 0 
-                        ? 'FREE ✨' 
+                    <span className={`text-lg font-bold ${swapLimits[selectedPlayerA.team_id].next_swap_fee === 0
+                      ? 'text-green-600'
+                      : 'text-orange-600'
+                      }`}>
+                      {swapLimits[selectedPlayerA.team_id].next_swap_fee === 0
+                        ? 'FREE ✨'
                         : `${swapLimits[selectedPlayerA.team_id].next_swap_fee}`}
                     </span>
                   </div>
@@ -509,13 +644,12 @@ export default function FootballPlayerForm() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Fee:</span>
-                    <span className={`text-lg font-bold ${
-                      swapLimits[selectedPlayerB.team_id].next_swap_fee === 0 
-                        ? 'text-green-600' 
-                        : 'text-orange-600'
-                    }`}>
-                      {swapLimits[selectedPlayerB.team_id].next_swap_fee === 0 
-                        ? 'FREE ✨' 
+                    <span className={`text-lg font-bold ${swapLimits[selectedPlayerB.team_id].next_swap_fee === 0
+                      ? 'text-green-600'
+                      : 'text-orange-600'
+                      }`}>
+                      {swapLimits[selectedPlayerB.team_id].next_swap_fee === 0
+                        ? 'FREE ✨'
                         : `${swapLimits[selectedPlayerB.team_id].next_swap_fee}`}
                     </span>
                   </div>
@@ -557,8 +691,8 @@ export default function FootballPlayerForm() {
           <button
             type="submit"
             disabled={
-              !selectedPlayerAId || 
-              !selectedPlayerBId || 
+              !selectedPlayerAId ||
+              !selectedPlayerBId ||
               submitting ||
               (swapLimits[selectedPlayerA?.team_id] && !swapLimits[selectedPlayerA.team_id].can_afford_next_swap) ||
               (swapLimits[selectedPlayerB?.team_id] && !swapLimits[selectedPlayerB.team_id].can_afford_next_swap)
@@ -599,6 +733,104 @@ export default function FootballPlayerForm() {
             className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-semibold rounded-xl hover:from-orange-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
           >
             {submitting ? 'Processing Release...' : '🆓 Release Player'}
+          </button>
+        </form>
+      )}
+
+      {/* BULK RELEASE FORM */}
+      {operationType === 'bulk_release' && (
+        <form onSubmit={handleBulkRelease} className="space-y-6">
+          {/* Search Bar */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Search Players
+            </label>
+            <input
+              type="text"
+              value={bulkReleaseSearch}
+              onChange={(e) => setBulkReleaseSearch(e.target.value)}
+              placeholder="Search by player name or team..."
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Select All / Deselect All */}
+          <div className="flex justify-between items-center">
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all font-medium"
+            >
+              {filteredPlayersBulkRelease.every((p: Player) => selectedPlayerIds.has(p.id))
+                ? '☑️ Deselect All'
+                : '☐ Select All'}
+            </button>
+            <span className="text-sm font-semibold text-gray-700">
+              {selectedPlayerIds.size} player(s) selected
+            </span>
+          </div>
+
+          {/* Player List with Checkboxes */}
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 max-h-96 overflow-y-auto">
+            {filteredPlayersBulkRelease.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">No players found</p>
+            ) : (
+              <div className="space-y-2">
+                {filteredPlayersBulkRelease.map((player: Player) => (
+                  <label
+                    key={player.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${selectedPlayerIds.has(player.id)
+                      ? 'bg-red-100 border-2 border-red-300'
+                      : 'bg-white border border-gray-200 hover:bg-gray-50'
+                      }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPlayerIds.has(player.id)}
+                      onChange={() => togglePlayerSelection(player.id)}
+                      className="w-5 h-5 text-red-600 rounded focus:ring-red-500"
+                    />
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-900">
+                        {player.player_name}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {player.team_name} • Rating: {player.star_rating}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Selected Players Summary */}
+          {selectedPlayerIds.size > 0 && (
+            <div className="bg-red-50 rounded-xl p-4 border-2 border-red-200">
+              <h3 className="font-bold text-red-900 mb-2">
+                ⚠️ {selectedPlayerIds.size} Player(s) Will Be Released
+              </h3>
+              <div className="text-sm text-red-800 space-y-1 max-h-32 overflow-y-auto">
+                {players
+                  .filter((p: Player) => selectedPlayerIds.has(p.id))
+                  .map((p: Player) => (
+                    <div key={p.id}>
+                      • {p.player_name} ({p.team_name})
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={selectedPlayerIds.size === 0 || submitting}
+            className="w-full py-4 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
+          >
+            {submitting
+              ? 'Processing Releases...'
+              : `🗑️ Release ${selectedPlayerIds.size} Player(s)`}
           </button>
         </form>
       )}

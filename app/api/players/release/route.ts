@@ -42,17 +42,17 @@ export async function POST(request: NextRequest) {
     const tableName = player_type === 'real' ? 'player_seasons' : 'footballplayers';
     const nameField = player_type === 'real' ? 'player_name' : 'name';
 
-    // Fetch player
+    // Fetch player (need to get 'id' for team_players deletion)
     const playerQuery = `
       SELECT 
+        id,
         player_id,
         ${nameField} as player_name,
-        team_id,
-        auction_value
+        team_id
       FROM ${tableName}
       WHERE player_id = $1 AND season_id = $2
     `;
-    
+
     const players = await sql.query(playerQuery, [player_id, season_id]);
 
     if (players.length === 0) {
@@ -79,14 +79,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Release player - set team_id to null or 'free_agent'
-    const updateQuery = `
-      UPDATE ${tableName}
-      SET team_id = NULL, updated_at = NOW()
-      WHERE player_id = $1 AND season_id = $2
-    `;
-    
+    // Release player - reset all team/contract related fields
+    // For football players, we need to reset multiple fields to match free agent state
+    const updateQuery = player_type === 'football'
+      ? `
+        UPDATE ${tableName}
+        SET 
+          team_id = NULL,
+          status = 'free_agent',
+          is_sold = false,
+          acquisition_value = NULL,
+          contract_id = NULL,
+          contract_start_season = NULL,
+          contract_end_season = NULL,
+          season_id = NULL,
+          round_id = NULL,
+          updated_at = NOW()
+        WHERE player_id = $1 AND season_id = $2
+      `
+      : `
+        UPDATE ${tableName}
+        SET team_id = NULL, updated_at = NOW()
+        WHERE player_id = $1 AND season_id = $2
+      `;
+
     await sql.query(updateQuery, [player_id, season_id]);
+
+    // Also remove from team_players table if exists
+    // IMPORTANT: team_players.player_id references footballplayers.id (NOT player_id)
+    try {
+      const deleteTeamPlayerQuery = `
+        DELETE FROM team_players
+        WHERE player_id = $1 AND season_id = $2
+      `;
+      // Use player.id (not player.player_id) for team_players deletion
+      await sql.query(deleteTeamPlayerQuery, [player.id, season_id]);
+      console.log(`Removed player id ${player.id} from team_players table`);
+    } catch (teamPlayerError) {
+      // Log but don't fail if team_players deletion fails
+      console.warn('Could not delete from team_players:', teamPlayerError);
+    }
 
     return NextResponse.json({
       success: true,

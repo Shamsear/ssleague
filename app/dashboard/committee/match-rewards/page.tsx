@@ -33,13 +33,32 @@ export default function CommitteeMatchRewardsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { userSeasonId } = usePermissions();
-  
+
   const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
   const [selectedCurrency, setSelectedCurrency] = useState<string>('all');
   const [teams, setTeams] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<RewardTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingTransactions, setIsFetchingTransactions] = useState(false);
+  const [allTeamsSummary, setAllTeamsSummary] = useState<{
+    teamId: string;
+    teamName: string;
+    totalECoin: number;
+    totalSSCoin: number;
+    matchCount: number;
+    eCoinWins: number;
+    eCoinDraws: number;
+    eCoinLosses: number;
+    eCoinWinCount: number;
+    eCoinDrawCount: number;
+    eCoinLossCount: number;
+    sSCoinWins: number;
+    sSCoinDraws: number;
+    sSCoinLosses: number;
+    sSCoinWinCount: number;
+    sSCoinDrawCount: number;
+    sSCoinLossCount: number;
+  }[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -59,13 +78,17 @@ export default function CommitteeMatchRewardsPage() {
 
   useEffect(() => {
     if (userSeasonId) {
-      loadTransactions();
+      if (selectedTeamId === 'ALL_SUMMARY') {
+        loadAllTeamsSummary();
+      } else {
+        loadTransactions();
+      }
     }
   }, [selectedTeamId, selectedCurrency, userSeasonId]);
 
   const loadInitialData = async () => {
     if (!userSeasonId) return;
-    
+
     try {
       setIsLoading(true);
 
@@ -73,7 +96,7 @@ export default function CommitteeMatchRewardsPage() {
       const teamSeasonsSnapshot = await getDocs(
         query(collection(db, 'team_seasons'))
       );
-      
+
       const teamsList: any[] = [];
       teamSeasonsSnapshot.forEach(doc => {
         const data = doc.data();
@@ -104,7 +127,7 @@ export default function CommitteeMatchRewardsPage() {
 
       // Build query - simplified to avoid composite index requirement
       let q;
-      
+
       if (selectedTeamId !== 'all') {
         // Query with team filter
         q = query(
@@ -125,12 +148,12 @@ export default function CommitteeMatchRewardsPage() {
 
       snapshot.forEach(doc => {
         const data = doc.data();
-        
+
         // Apply season filter in code
         if (data.season_id !== userSeasonId) {
           return;
         }
-        
+
         // Apply currency filter in code
         if (selectedCurrency !== 'all' && data.currency_type !== selectedCurrency) {
           return;
@@ -169,9 +192,9 @@ export default function CommitteeMatchRewardsPage() {
   const formatDate = (timestamp: any) => {
     if (!timestamp) return 'N/A';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -187,18 +210,196 @@ export default function CommitteeMatchRewardsPage() {
 
   const getResultBadge = (result?: string) => {
     if (!result) return null;
-    
+
     const colors = {
       'Win': 'bg-green-100 text-green-700',
       'Draw': 'bg-yellow-100 text-yellow-700',
       'Loss': 'bg-red-100 text-red-700'
     };
-    
+
     return (
       <span className={`px-2 py-1 text-xs font-bold rounded-lg ${colors[result as keyof typeof colors] || 'bg-gray-100 text-gray-700'}`}>
         {result}
       </span>
     );
+  };
+
+  const loadAllTeamsSummary = async () => {
+    if (!userSeasonId) return;
+
+    try {
+      setIsFetchingTransactions(true);
+
+      // Fixed reward amounts
+      const ECOIN_WIN = 30;
+      const ECOIN_DRAW = 20;
+      const ECOIN_LOSS = 10;
+      const SSCOIN_WIN = 6;
+      const SSCOIN_DRAW = 4;
+      const SSCOIN_LOSS = 2;
+
+      // Fetch team stats from Neon Tournament DB
+      const response = await fetch(`/api/team-stats?season_id=${userSeasonId}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch team stats');
+      }
+
+      const data = await response.json();
+      const teamStatsData = data.teamStats || [];
+
+      const summaryArray: any[] = [];
+
+      teamStatsData.forEach((stats: any) => {
+        const teamId = stats.team_id;
+        const teamName = teams.find(t => t.team.id === teamId)?.team.name || stats.team_name || teamId;
+
+        const wins = stats.wins || 0;
+        const draws = stats.draws || 0;
+        const losses = stats.losses || 0;
+        const matchesPlayed = stats.matches_played || 0;
+
+        // Calculate rewards based on fixed amounts
+        const eCoinWins = wins * ECOIN_WIN;
+        const eCoinDraws = draws * ECOIN_DRAW;
+        const eCoinLosses = losses * ECOIN_LOSS;
+        const totalECoin = eCoinWins + eCoinDraws + eCoinLosses;
+
+        const sSCoinWins = wins * SSCOIN_WIN;
+        const sSCoinDraws = draws * SSCOIN_DRAW;
+        const sSCoinLosses = losses * SSCOIN_LOSS;
+        const totalSSCoin = sSCoinWins + sSCoinDraws + sSCoinLosses;
+
+        summaryArray.push({
+          teamId,
+          teamName,
+          totalECoin,
+          totalSSCoin,
+          matchCount: matchesPlayed,
+          eCoinWins,
+          eCoinDraws,
+          eCoinLosses,
+          eCoinWinCount: wins,
+          eCoinDrawCount: draws,
+          eCoinLossCount: losses,
+          sSCoinWins,
+          sSCoinDraws,
+          sSCoinLosses,
+          sSCoinWinCount: wins,
+          sSCoinDrawCount: draws,
+          sSCoinLossCount: losses,
+        });
+      });
+
+      // Sort by total rewards (eCoin + SSCoin) descending
+      summaryArray.sort((a, b) => (b.totalECoin + b.totalSSCoin) - (a.totalECoin + a.totalSSCoin));
+
+      setAllTeamsSummary(summaryArray);
+    } catch (error) {
+      console.error('Error loading all teams summary:', error);
+    } finally {
+      setIsFetchingTransactions(false);
+    }
+  };
+
+  const copyAllTeamsSummaryToWhatsApp = () => {
+    if (allTeamsSummary.length === 0) return;
+
+    const grandTotalECoin = allTeamsSummary.reduce((sum, team) => sum + team.totalECoin, 0);
+    const grandTotalSSCoin = allTeamsSummary.reduce((sum, team) => sum + team.totalSSCoin, 0);
+
+    let message = `*🏆 MATCH REWARDS SUMMARY*\n`;
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    allTeamsSummary.forEach((team, index) => {
+      const rank = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+      const total = team.totalECoin + team.totalSSCoin;
+
+      message += `${rank} *${team.teamName}*\n`;
+      message += `   💰 Total: ${total}\n\n`;
+
+      // eCoin breakdown
+      message += `   🔵 eCoin:\n`;
+      if (team.eCoinWinCount > 0) {
+        message += `      WIN: ${team.eCoinWinCount}×30 = ${team.eCoinWins}\n`;
+      }
+      if (team.eCoinDrawCount > 0) {
+        message += `      DRAW: ${team.eCoinDrawCount}×20 = ${team.eCoinDraws}\n`;
+      }
+      if (team.eCoinLossCount > 0) {
+        message += `      LOSS: ${team.eCoinLossCount}×10 = ${team.eCoinLosses}\n`;
+      }
+      message += `      TOTAL: ${team.totalECoin}\n\n`;
+
+      // SSCoin breakdown
+      message += `   🟣 SSCoin:\n`;
+      if (team.sSCoinWinCount > 0) {
+        message += `      WIN: ${team.sSCoinWinCount}×6 = ${team.sSCoinWins}\n`;
+      }
+      if (team.sSCoinDrawCount > 0) {
+        message += `      DRAW: ${team.sSCoinDrawCount}×4 = ${team.sSCoinDraws}\n`;
+      }
+      if (team.sSCoinLossCount > 0) {
+        message += `      LOSS: ${team.sSCoinLossCount}×2 = ${team.sSCoinLosses}\n`;
+      }
+      message += `      TOTAL: ${team.totalSSCoin}\n\n`;
+
+      message += `   ⚽ Matches: ${team.matchCount}\n\n`;
+    });
+
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    message += `*GRAND TOTAL*\n`;
+    message += `🔵 eCoin: ${grandTotalECoin}\n`;
+    message += `🟣 SSCoin: ${grandTotalSSCoin}\n`;
+    message += `Total Teams: ${allTeamsSummary.length}`;
+
+    navigator.clipboard.writeText(message).then(() => {
+      alert('✅ Summary copied to clipboard! You can now paste it in WhatsApp.');
+    }).catch(() => {
+      alert('❌ Failed to copy to clipboard');
+    });
+  };
+
+  const copyTeamToWhatsApp = (team: any, rank: number) => {
+    const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
+
+    let message = `*🏆 MATCH REWARDS - ${team.teamName}*\n`;
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    message += `${rankEmoji} Rank: #${rank}\n\n`;
+
+    // eCoin breakdown
+    message += `🔵 *eCoin:*\n`;
+    if (team.eCoinWinCount > 0) {
+      message += `   WIN: ${team.eCoinWinCount}×30 = ${team.eCoinWins}\n`;
+    }
+    if (team.eCoinDrawCount > 0) {
+      message += `   DRAW: ${team.eCoinDrawCount}×20 = ${team.eCoinDraws}\n`;
+    }
+    if (team.eCoinLossCount > 0) {
+      message += `   LOSS: ${team.eCoinLossCount}×10 = ${team.eCoinLosses}\n`;
+    }
+    message += `   TOTAL: ${team.totalECoin}\n\n`;
+
+    // SSCoin breakdown
+    message += `🟣 *SSCoin:*\n`;
+    if (team.sSCoinWinCount > 0) {
+      message += `   WIN: ${team.sSCoinWinCount}×6 = ${team.sSCoinWins}\n`;
+    }
+    if (team.sSCoinDrawCount > 0) {
+      message += `   DRAW: ${team.sSCoinDrawCount}×4 = ${team.sSCoinDraws}\n`;
+    }
+    if (team.sSCoinLossCount > 0) {
+      message += `   LOSS: ${team.sSCoinLossCount}×2 = ${team.sSCoinLosses}\n`;
+    }
+    message += `   TOTAL: ${team.totalSSCoin}\n\n`;
+
+    message += `⚽ Matches: ${team.matchCount}`;
+
+    navigator.clipboard.writeText(message).then(() => {
+      alert(`✅ ${team.teamName} rewards copied to clipboard!`);
+    }).catch(() => {
+      alert('❌ Failed to copy to clipboard');
+    });
   };
 
   // Group transactions by fixture
@@ -254,7 +455,7 @@ export default function CommitteeMatchRewardsPage() {
             <Filter className="w-5 h-5 text-green-600" />
             <h2 className="text-lg font-bold text-gray-900">Filters</h2>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Team Filter */}
             <div>
@@ -268,6 +469,7 @@ export default function CommitteeMatchRewardsPage() {
                 className="w-full px-4 py-3 text-sm border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 bg-white shadow-sm transition-all"
               >
                 <option value="all">All Teams</option>
+                <option value="ALL_SUMMARY" className="font-bold bg-green-50">📊 ALL TEAMS SUMMARY</option>
                 {teams.map((teamData) => (
                   <option key={teamData.team.id} value={teamData.team.id}>
                     {teamData.team.name}
@@ -304,7 +506,7 @@ export default function CommitteeMatchRewardsPage() {
         )}
 
         {/* No Transactions */}
-        {!isFetchingTransactions && transactions.length === 0 && (
+        {!isFetchingTransactions && selectedTeamId !== 'ALL_SUMMARY' && transactions.length === 0 && (
           <div className="glass rounded-2xl sm:rounded-3xl p-8 sm:p-12 text-center border border-white/30 shadow-xl">
             <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 mb-4 sm:mb-6">
               <Trophy className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
@@ -314,8 +516,165 @@ export default function CommitteeMatchRewardsPage() {
           </div>
         )}
 
+        {/* Individual Team Summary Card */}
+        {!isFetchingTransactions && selectedTeamId && selectedTeamId !== 'all' && selectedTeamId !== 'ALL_SUMMARY' && transactions.length > 0 && (
+          <div className="glass rounded-2xl sm:rounded-3xl border border-green-200/50 shadow-xl p-4 sm:p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-green-600 shadow-lg">
+                  <Trophy className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Rewards Earned</p>
+                  <p className="text-3xl font-bold text-green-600">
+                    {transactions.reduce((sum, txn) => sum + txn.amount, 0)}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Total Matches</p>
+                <p className="text-2xl font-bold text-gray-900">{Object.keys(groupedTransactions).length}</p>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-xl">
+                  <p className="text-xs text-gray-500">eCoin</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {transactions.filter(t => t.currency_type === 'football').reduce((sum, t) => sum + t.amount, 0)}
+                  </p>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-xl">
+                  <p className="text-xs text-gray-500">SSCoin</p>
+                  <p className="text-xl font-bold text-purple-600">
+                    {transactions.filter(t => t.currency_type === 'real').reduce((sum, t) => sum + t.amount, 0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* All Teams Summary */}
+        {!isFetchingTransactions && selectedTeamId === 'ALL_SUMMARY' && allTeamsSummary.length > 0 && (
+          <div className="glass rounded-2xl sm:rounded-3xl border border-white/30 shadow-xl overflow-hidden">
+            <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white px-4 sm:px-6 py-4 sm:py-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Trophy className="w-6 h-6" />
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold">All Teams Rewards Summary</h2>
+                    <p className="text-green-100 text-sm">Sorted by total rewards (descending)</p>
+                  </div>
+                </div>
+                <button
+                  onClick={copyAllTeamsSummaryToWhatsApp}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-colors shadow-lg"
+                  title="Copy summary to clipboard for WhatsApp"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                  </svg>
+                  <span className="hidden sm:inline">Copy to WhatsApp</span>
+                  <span className="sm:hidden">Copy</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b-2 border-gray-200">
+                    <tr>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Rank</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Team Name</th>
+                      <th className="px-4 lg:px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Matches</th>
+                      <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">eCoin</th>
+                      <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">SSCoin</th>
+                      <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Total</th>
+                      <th className="px-4 lg:px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {allTeamsSummary.map((team, index) => (
+                      <tr key={team.teamId} className="hover:bg-green-50/50 transition-colors">
+                        <td className="px-4 lg:px-6 py-4">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
+                            index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                              index === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-600' :
+                                'bg-gradient-to-br from-green-400 to-green-600'
+                            }`}>
+                            {index + 1}
+                          </div>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4">
+                          <button
+                            onClick={() => setSelectedTeamId(team.teamId)}
+                            className="font-semibold text-green-600 hover:text-green-800 hover:underline text-left"
+                          >
+                            {team.teamName}
+                          </button>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700">
+                            {team.matchCount}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-right">
+                          <span className="font-semibold text-blue-600">
+                            {team.totalECoin}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-right">
+                          <span className="font-semibold text-purple-600">
+                            {team.totalSSCoin}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-right">
+                          <span className="text-lg font-bold text-green-600">
+                            {team.totalECoin + team.totalSSCoin}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-center">
+                          <button
+                            onClick={() => copyTeamToWhatsApp(team, index + 1)}
+                            className="inline-flex items-center gap-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg transition-colors"
+                            title="Copy team rewards to WhatsApp"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                            </svg>
+                            Copy
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gradient-to-r from-green-50 to-blue-50 border-t-2 border-green-200">
+                    <tr>
+                      <td colSpan={3} className="px-4 lg:px-6 py-4 text-right font-bold text-gray-900">
+                        Grand Total:
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-right font-bold text-blue-600">
+                        {allTeamsSummary.reduce((sum, team) => sum + team.totalECoin, 0)}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-right font-bold text-purple-600">
+                        {allTeamsSummary.reduce((sum, team) => sum + team.totalSSCoin, 0)}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-right font-bold text-green-600 text-xl">
+                        {allTeamsSummary.reduce((sum, team) => sum + team.totalECoin + team.totalSSCoin, 0)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Transactions List - Grouped by Fixture */}
-        {!isFetchingTransactions && transactions.length > 0 && (
+        {!isFetchingTransactions && selectedTeamId !== 'ALL_SUMMARY' && transactions.length > 0 && (
           <div className="space-y-4 sm:space-y-6">
             {Object.entries(groupedTransactions).map(([fixtureId, fixtureTxns]) => {
               const firstTxn = fixtureTxns[0];

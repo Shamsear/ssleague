@@ -11,6 +11,8 @@ export async function GET(request: NextRequest) {
     const tournamentId = searchParams.get('tournament_id');
     const seasonId = searchParams.get('season_id');
     const roundNumber = searchParams.get('round_number'); // Optional: specific round or 'all'
+    const startRound = searchParams.get('start_round'); // Optional: for range filtering
+    const endRound = searchParams.get('end_round'); // Optional: for range filtering
 
     if (!tournamentId || !seasonId) {
       return NextResponse.json(
@@ -21,12 +23,42 @@ export async function GET(request: NextRequest) {
 
     const sql = getTournamentDb();
 
-    console.log(`[Player Stats By Round] Fetching stats for tournament=${tournamentId}, season=${seasonId}, round=${roundNumber}`);
+    console.log(`[Player Stats By Round] Fetching stats for tournament=${tournamentId}, season=${seasonId}, round=${roundNumber}, range=${startRound}-${endRound}`);
 
     // Get all matchups with fixture information
     let matchups;
 
-    if (roundNumber && roundNumber !== 'all') {
+    if (startRound && endRound) {
+      // Filter by round range (e.g., rounds 8-13 for Week 2)
+      const startNum = parseInt(startRound);
+      const endNum = parseInt(endRound);
+      console.log(`[Player Stats By Round] Filtering by rounds ${startNum} to ${endNum} (range)`);
+      matchups = await sql`
+        SELECT 
+          m.home_player_id,
+          m.home_player_name,
+          m.away_player_id,
+          m.away_player_name,
+          m.home_goals,
+          m.away_goals,
+          f.round_number,
+          f.home_team_id,
+          f.home_team_name,
+          f.away_team_id,
+          f.away_team_name,
+          f.motm_player_id,
+          f.status
+        FROM matchups m
+        JOIN fixtures f ON m.fixture_id = f.id
+        WHERE f.tournament_id = ${tournamentId}
+          AND f.season_id = ${seasonId}
+          AND f.round_number >= ${startNum}
+          AND f.round_number <= ${endNum}
+          AND f.status = 'completed'
+        ORDER BY f.round_number, m.home_player_name
+      `;
+      console.log(`[Player Stats By Round] Found ${matchups.length} matchups for rounds ${startNum}-${endNum}`);
+    } else if (roundNumber && roundNumber !== 'all') {
       // Filter by rounds up to and including the selected round (cumulative)
       const roundNum = parseInt(roundNumber);
       console.log(`[Player Stats By Round] Filtering by rounds 1 to ${roundNum} (cumulative)`);

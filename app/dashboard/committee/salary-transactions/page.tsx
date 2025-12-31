@@ -36,12 +36,13 @@ export default function CommitteeSalaryTransactionsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { userSeasonId } = usePermissions();
-  
+
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [teams, setTeams] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<SalaryTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingTransactions, setIsFetchingTransactions] = useState(false);
+  const [allTeamsSummary, setAllTeamsSummary] = useState<{ teamId: string; teamName: string; totalSalary: number; matchCount: number }[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -60,8 +61,10 @@ export default function CommitteeSalaryTransactionsPage() {
   }, [user, userSeasonId]);
 
   useEffect(() => {
-    if (selectedTeamId && userSeasonId) {
+    if (selectedTeamId && selectedTeamId !== 'ALL' && userSeasonId) {
       loadTransactions();
+    } else if (selectedTeamId === 'ALL' && userSeasonId) {
+      loadAllTeamsSummary();
     }
   }, [selectedTeamId, userSeasonId]);
 
@@ -70,7 +73,7 @@ export default function CommitteeSalaryTransactionsPage() {
       console.log('No userSeasonId available yet');
       return;
     }
-    
+
     try {
       setIsLoading(true);
       console.log('Loading teams for season:', userSeasonId);
@@ -78,12 +81,12 @@ export default function CommitteeSalaryTransactionsPage() {
       // Load teams for the current season
       const teamsRes = await fetchWithTokenRefresh(`/api/team/all?season_id=${userSeasonId}`);
       console.log('Teams API response status:', teamsRes.status);
-      
+
       if (teamsRes.ok) {
         const teamsData = await teamsRes.json();
         console.log('Teams data:', teamsData);
         console.log('Teams array:', teamsData.data?.teams);
-        
+
         if (teamsData.success && teamsData.data?.teams) {
           const teamsList = teamsData.data.teams;
           console.log('Setting teams state with:', teamsList);
@@ -112,7 +115,7 @@ export default function CommitteeSalaryTransactionsPage() {
       setIsFetchingTransactions(true);
       const url = `/api/committee/salary-transactions?seasonId=${userSeasonId}&teamId=${selectedTeamId}`;
       console.log('🔍 Fetching transactions from:', url);
-      
+
       const res = await fetchWithTokenRefresh(url);
       console.log('📡 Transaction API response status:', res.status);
 
@@ -135,12 +138,97 @@ export default function CommitteeSalaryTransactionsPage() {
     }
   };
 
+  const loadAllTeamsSummary = async () => {
+    if (!userSeasonId) return;
+
+    try {
+      setIsFetchingTransactions(true);
+      console.log('🔍 Fetching all teams salary summary for season:', userSeasonId);
+
+      const summaryPromises = teams.map(async (teamData) => {
+        const teamId = teamData.team?.id;
+        const teamName = teamData.team?.name || 'Unknown Team';
+
+        if (!teamId) return null;
+
+        try {
+          const url = `/api/committee/salary-transactions?seasonId=${userSeasonId}&teamId=${teamId}`;
+          const res = await fetchWithTokenRefresh(url);
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.data) {
+              const totalSalary = data.data.reduce((sum: number, txn: SalaryTransaction) => sum + txn.total_salary, 0);
+              return {
+                teamId,
+                teamName,
+                totalSalary,
+                matchCount: data.data.length,
+              };
+            }
+          }
+        } catch (error) {
+          console.error(`Error loading salary for ${teamName}:`, error);
+        }
+
+        return {
+          teamId,
+          teamName,
+          totalSalary: 0,
+          matchCount: 0,
+        };
+      });
+
+      const results = await Promise.all(summaryPromises);
+      const validResults = results.filter(r => r !== null) as { teamId: string; teamName: string; totalSalary: number; matchCount: number }[];
+
+      // Sort by total salary descending
+      validResults.sort((a, b) => b.totalSalary - a.totalSalary);
+
+      console.log('✅ All teams summary loaded:', validResults);
+      setAllTeamsSummary(validResults);
+    } catch (error) {
+      console.error('Error loading all teams summary:', error);
+    } finally {
+      setIsFetchingTransactions(false);
+    }
+  };
+
+  const copyAllTeamsSummaryToWhatsApp = () => {
+    if (allTeamsSummary.length === 0) return;
+
+    const grandTotal = allTeamsSummary.reduce((sum, team) => sum + team.totalSalary, 0);
+
+    let message = `*📊 SALARY DEDUCTIONS SUMMARY*\n`;
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    allTeamsSummary.forEach((team, index) => {
+      const rank = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+      const avgPerMatch = team.matchCount > 0 ? (team.totalSalary / team.matchCount).toFixed(2) : '0.00';
+
+      message += `${rank} *${team.teamName}*\n`;
+      message += `   💰 Total: €${team.totalSalary.toFixed(2)}\n`;
+      message += `   ⚽ Matches: ${team.matchCount}\n`;
+      message += `   📊 Avg/Match: €${avgPerMatch}\n\n`;
+    });
+
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    message += `*GRAND TOTAL: €${grandTotal.toFixed(2)}*\n`;
+    message += `Total Teams: ${allTeamsSummary.length}`;
+
+    navigator.clipboard.writeText(message).then(() => {
+      alert('✅ Summary copied to clipboard! You can now paste it in WhatsApp.');
+    }).catch(() => {
+      alert('❌ Failed to copy to clipboard');
+    });
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
       year: 'numeric'
     });
   };
@@ -281,6 +369,7 @@ export default function CommitteeSalaryTransactionsPage() {
                 className="w-full px-4 py-3 sm:py-4 text-sm sm:text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 bg-white shadow-sm transition-all"
               >
                 <option value="">-- Choose a team to view salary data --</option>
+                <option value="ALL" className="font-bold bg-purple-50">📊 ALL TEAMS SUMMARY</option>
                 {teams.map((teamData, index) => {
                   console.log('Rendering option for team:', teamData);
                   return (
@@ -294,6 +383,59 @@ export default function CommitteeSalaryTransactionsPage() {
             </div>
           )}
         </div>
+
+        {/* Total Salary Summary Card */}
+        {!isFetchingTransactions && selectedTeamId && selectedTeamId !== 'ALL' && transactions.length > 0 && (
+          <div className="glass rounded-2xl sm:rounded-3xl border border-purple-200/50 shadow-xl p-4 sm:p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-red-500 to-red-600 shadow-lg">
+                  <DollarSign className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Salary Deducted</p>
+                  <p className="text-3xl font-bold text-red-600">
+                    €{transactions.reduce((sum, txn) => sum + txn.total_salary, 0).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Total Matches</p>
+                <p className="text-2xl font-bold text-gray-900">{transactions.length}</p>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">Avg per Match</p>
+                  <p className="text-lg font-bold text-purple-600">
+                    €{transactions.length > 0
+                      ? (transactions.reduce((sum, txn) => sum + txn.total_salary, 0) / transactions.length).toFixed(2)
+                      : '0.00'}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">Total Players Paid</p>
+                  <p className="text-lg font-bold text-indigo-600">
+                    {transactions.reduce((sum, txn) => sum + txn.players.length, 0)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">Highest Payment</p>
+                  <p className="text-lg font-bold text-orange-600">
+                    €{Math.max(...transactions.map(txn => txn.total_salary)).toFixed(2)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">Lowest Payment</p>
+                  <p className="text-lg font-bold text-green-600">
+                    €{Math.min(...transactions.map(txn => txn.total_salary)).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Loading State */}
         {isFetchingTransactions && (
@@ -315,7 +457,7 @@ export default function CommitteeSalaryTransactionsPage() {
         )}
 
         {/* No Transactions */}
-        {!isFetchingTransactions && selectedTeamId && userSeasonId && transactions.length === 0 && (
+        {!isFetchingTransactions && selectedTeamId && selectedTeamId !== 'ALL' && userSeasonId && transactions.length === 0 && (
           <div className="glass rounded-2xl sm:rounded-3xl p-8 sm:p-12 text-center border border-white/30 shadow-xl">
             <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 mb-4 sm:mb-6">
               <svg className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,8 +469,101 @@ export default function CommitteeSalaryTransactionsPage() {
           </div>
         )}
 
+        {/* All Teams Summary */}
+        {!isFetchingTransactions && selectedTeamId === 'ALL' && allTeamsSummary.length > 0 && (
+          <div className="glass rounded-2xl sm:rounded-3xl border border-white/30 shadow-xl overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 sm:px-6 py-4 sm:py-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <DollarSign className="w-6 h-6" />
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold">All Teams Salary Summary</h2>
+                    <p className="text-purple-100 text-sm">Sorted by total salary deducted (descending)</p>
+                  </div>
+                </div>
+                <button
+                  onClick={copyAllTeamsSummaryToWhatsApp}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-colors shadow-lg"
+                  title="Copy summary to clipboard for WhatsApp"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                  </svg>
+                  <span className="hidden sm:inline">Copy to WhatsApp</span>
+                  <span className="sm:hidden">Copy</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b-2 border-gray-200">
+                    <tr>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Rank</th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Team Name</th>
+                      <th className="px-4 lg:px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Matches</th>
+                      <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Total Salary Deducted</th>
+                      <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Avg per Match</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {allTeamsSummary.map((team, index) => (
+                      <tr key={team.teamId} className="hover:bg-purple-50/50 transition-colors">
+                        <td className="px-4 lg:px-6 py-4">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
+                            index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                              index === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-600' :
+                                'bg-gradient-to-br from-purple-400 to-purple-600'
+                            }`}>
+                            {index + 1}
+                          </div>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4">
+                          <button
+                            onClick={() => setSelectedTeamId(team.teamId)}
+                            className="font-semibold text-purple-600 hover:text-purple-800 hover:underline text-left"
+                          >
+                            {team.teamName}
+                          </button>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700">
+                            {team.matchCount}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-right">
+                          <span className="text-lg font-bold text-red-600">
+                            €{team.totalSalary.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 text-right">
+                          <span className="font-semibold text-gray-700">
+                            €{team.matchCount > 0 ? (team.totalSalary / team.matchCount).toFixed(2) : '0.00'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gradient-to-r from-purple-50 to-indigo-50 border-t-2 border-purple-200">
+                    <tr>
+                      <td colSpan={3} className="px-4 lg:px-6 py-4 text-right font-bold text-gray-900">
+                        Grand Total:
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-right font-bold text-red-600 text-xl">
+                        €{allTeamsSummary.reduce((sum, team) => sum + team.totalSalary, 0).toFixed(2)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Transactions List */}
-        {!isFetchingTransactions && transactions.length > 0 && (
+        {!isFetchingTransactions && selectedTeamId && selectedTeamId !== 'ALL' && transactions.length > 0 && (
           <div className="space-y-4 sm:space-y-6">
             {transactions.map((txn, idx) => (
               <div key={idx} className="glass rounded-2xl sm:rounded-3xl border border-white/30 shadow-xl overflow-hidden transition-all hover:shadow-2xl">

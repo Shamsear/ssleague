@@ -45,6 +45,8 @@ export default function CommitteePlayersPage() {
   const [initialLoad, setInitialLoad] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportSoldFilter, setExportSoldFilter] = useState<'all' | 'sold' | 'unsold'>('all')
 
   // Modal system
   const {
@@ -69,99 +71,98 @@ export default function CommitteePlayersPage() {
   // Fetch players with pagination and filters
   const fetchPlayers = useCallback(async () => {
     setLoading(true)
-    
+
     try {
       console.log('🔄 Fetching players from Neon and teams from Firestore')
-      
+
       // Build query params
       const params = new URLSearchParams({
         limit: PLAYERS_PER_PAGE.toString(),
         offset: ((currentPage - 1) * PLAYERS_PER_PAGE).toString(),
       })
-      
+
       if (positionFilter) params.append('position', positionFilter)
       if (eligibilityFilter === 'eligible') params.append('is_auction_eligible', 'true')
-      
+      if (searchTerm.trim()) params.append('search', searchTerm.trim())
+
       // Fetch teams from Firestore (keep) and players from Neon (new)
       const [teamsSnapshot, playersResponse] = await Promise.all([
         getDocs(collection(db, 'teams')),
         fetch(`/api/players?${params}`)
       ])
-      
+
       const { data: playersData, success, pagination, totalCount } = await playersResponse.json()
       if (!success) {
         throw new Error('Failed to fetch players')
       }
-      
+
       console.log(`✅ Fetched ${playersData.length} players from Neon, ${teamsSnapshot.size} teams from Firestore`)
-      
+
       // Use the actual total count from API
       setTotalPlayers(totalCount || 0)
-        
-        // Build teams cache
-        const teamsMap = new Map<string, { id: string; name: string }>()
-        teamsSnapshot.docs.forEach(teamDoc => {
-          teamsMap.set(teamDoc.id, {
-            id: teamDoc.id,
-            name: teamDoc.data().team_name || teamDoc.data().name
-          })
-        })
-        setTeamsCache(teamsMap)
-        
-        // Map team data to players
-        const playersWithTeams = playersData.map((player: any) => {
-          let teamData = null
-          if (player.team_id && teamsMap.has(player.team_id)) {
-            teamData = teamsMap.get(player.team_id) || null
-          }
-          return {
-            ...player,
-            team: teamData
-          }
-        })
-        
-        setPlayers(playersWithTeams)
-        setFilteredPlayers(playersWithTeams)
-      } catch (err) {
-        console.error('Error fetching players:', err)
-        showAlert({
-          type: 'error',
-          title: 'Load Failed',
-          message: 'Failed to load players. Please try again.'
-        })
-      } finally {
-        setLoading(false)
-        setInitialLoad(false)
-      }
-    }, [currentPage, positionFilter, eligibilityFilter])
 
+      // Build teams cache
+      const teamsMap = new Map<string, { id: string; name: string }>()
+      teamsSnapshot.docs.forEach(teamDoc => {
+        teamsMap.set(teamDoc.id, {
+          id: teamDoc.id,
+          name: teamDoc.data().team_name || teamDoc.data().name
+        })
+      })
+      setTeamsCache(teamsMap)
+
+      // Map team data to players
+      const playersWithTeams = playersData.map((player: any) => {
+        let teamData = null
+        if (player.team_id && teamsMap.has(player.team_id)) {
+          teamData = teamsMap.get(player.team_id) || null
+        }
+        return {
+          ...player,
+          team: teamData
+        }
+      })
+
+      setPlayers(playersWithTeams)
+      setFilteredPlayers(playersWithTeams)
+    } catch (err) {
+      console.error('Error fetching players:', err)
+      showAlert({
+        type: 'error',
+        title: 'Load Failed',
+        message: 'Failed to load players. Please try again.'
+      })
+    } finally {
+      setLoading(false)
+      setInitialLoad(false)
+    }
+  }, [currentPage, positionFilter, eligibilityFilter, searchTerm])
+
+  // Single effect to trigger fetch on any dependency change
   useEffect(() => {
-    if (user?.role === 'committee_admin') {
+    if (!user || user.role !== 'committee_admin') return
+
+    // Debounce only for search term changes
+    if (searchTerm) {
+      const timer = setTimeout(() => {
+        fetchPlayers()
+      }, 300)
+      return () => clearTimeout(timer)
+    } else {
+      // No debounce for other filters
       fetchPlayers()
     }
-  }, [user, fetchPlayers])
+  }, [user, currentPage, positionFilter, eligibilityFilter, searchTerm, fetchPlayers])
 
-  // Client-side search filter only (position and eligibility are server-side now)
+  // No client-side filtering needed - all filtering is server-side now
   useEffect(() => {
-    let filtered = players
+    setFilteredPlayers(players)
+  }, [players])
 
-    // Filter by search term (client-side only)
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase()
-      filtered = filtered.filter(p =>
-        p.name?.toLowerCase().includes(searchLower) ||
-        p.player_id?.toLowerCase().includes(searchLower) ||
-        p.position?.toLowerCase().includes(searchLower)
-      )
-    }
-
-    setFilteredPlayers(filtered)
-  }, [searchTerm, players])
-  
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [positionFilter, eligibilityFilter])
+  }, [positionFilter, eligibilityFilter, searchTerm])
 
   const handleDelete = async (playerId: string) => {
     const confirmed = await showConfirm({
@@ -171,19 +172,19 @@ export default function CommitteePlayersPage() {
       confirmText: 'Delete',
       cancelText: 'Cancel'
     })
-    
+
     if (!confirmed) return
 
     try {
       const response = await fetchWithTokenRefresh(`/api/players/${playerId}`, {
         method: 'DELETE'
       })
-      
+
       const { success } = await response.json()
       if (!success) {
         throw new Error('Failed to delete player')
       }
-      
+
       setPlayers(players.filter(p => p.id !== playerId))
       alert('Player deleted successfully')
     } catch (err) {
@@ -200,13 +201,21 @@ export default function CommitteePlayersPage() {
   const handleExportToExcel = async () => {
     try {
       setIsExporting(true)
-      
+      setShowExportModal(false)
+
       console.log('📊 Starting full footballplayer database export...')
-      
-      // Fetch ALL players without pagination or filters to get complete database
-      const response = await fetch('/api/players?limit=10000') // Get all players
+
+      // Fetch ALL players without pagination but with sold filter
+      let apiUrl = '/api/players?limit=10000'
+      if (exportSoldFilter === 'sold') {
+        apiUrl += '&is_sold=true'
+      } else if (exportSoldFilter === 'unsold') {
+        apiUrl += '&is_sold=false'
+      }
+
+      const response = await fetch(apiUrl)
       const { data: allPlayers, success } = await response.json()
-      
+
       if (!success || !allPlayers || allPlayers.length === 0) {
         showAlert({
           type: 'info',
@@ -218,10 +227,10 @@ export default function CommitteePlayersPage() {
 
       // Dynamically import ExcelJS
       const ExcelJS = (await import('exceljs')).default
-      
+
       // Create workbook
       const workbook = new ExcelJS.Workbook()
-      
+
       // Define column structure for reuse across sheets
       const getColumnsDefinition = () => [
         // Basic Info
@@ -238,7 +247,7 @@ export default function CommitteePlayersPage() {
         { header: 'Is Sold', key: 'is_sold', width: 10 },
         { header: 'Acquisition Value', key: 'acquisition_value', width: 15 },
         { header: 'Playing Style', key: 'playing_style', width: 15 },
-        
+
         // Offensive Attributes
         { header: 'Offensive Awareness', key: 'offensive_awareness', width: 18 },
         { header: 'Ball Control', key: 'ball_control', width: 15 },
@@ -250,7 +259,7 @@ export default function CommitteePlayersPage() {
         { header: 'Heading', key: 'heading', width: 12 },
         { header: 'Set Piece Taking', key: 'set_piece_taking', width: 15 },
         { header: 'Curl', key: 'curl', width: 10 },
-        
+
         // Physical Attributes
         { header: 'Speed', key: 'speed', width: 10 },
         { header: 'Acceleration', key: 'acceleration', width: 12 },
@@ -259,13 +268,13 @@ export default function CommitteePlayersPage() {
         { header: 'Physical Contact', key: 'physical_contact', width: 15 },
         { header: 'Balance', key: 'balance', width: 12 },
         { header: 'Stamina', key: 'stamina', width: 12 },
-        
+
         // Defensive Attributes
         { header: 'Defensive Awareness', key: 'defensive_awareness', width: 18 },
         { header: 'Tackling', key: 'tackling', width: 12 },
         { header: 'Aggression', key: 'aggression', width: 12 },
         { header: 'Defensive Engagement', key: 'defensive_engagement', width: 18 },
-        
+
         // Goalkeeper Attributes
         { header: 'GK Awareness', key: 'gk_awareness', width: 12 },
         { header: 'GK Catching', key: 'gk_catching', width: 12 },
@@ -273,7 +282,7 @@ export default function CommitteePlayersPage() {
         { header: 'GK Reflexes', key: 'gk_reflexes', width: 12 },
         { header: 'GK Reach', key: 'gk_reach', width: 12 },
       ]
-      
+
       // Function to get player row data
       const getPlayerRowData = (player: any) => ({
         // Basic Info
@@ -290,7 +299,7 @@ export default function CommitteePlayersPage() {
         is_sold: player.is_sold ? 'Yes' : 'No',
         acquisition_value: player.acquisition_value || 0,
         playing_style: player.playing_style || '',
-        
+
         // Offensive Attributes
         offensive_awareness: player.offensive_awareness || 0,
         ball_control: player.ball_control || 0,
@@ -302,7 +311,7 @@ export default function CommitteePlayersPage() {
         heading: player.heading || 0,
         set_piece_taking: player.set_piece_taking || 0,
         curl: player.curl || 0,
-        
+
         // Physical Attributes
         speed: player.speed || 0,
         acceleration: player.acceleration || 0,
@@ -311,13 +320,13 @@ export default function CommitteePlayersPage() {
         physical_contact: player.physical_contact || 0,
         balance: player.balance || 0,
         stamina: player.stamina || 0,
-        
+
         // Defensive Attributes
         defensive_awareness: player.defensive_awareness || 0,
         tackling: player.tackling || 0,
         aggression: player.aggression || 0,
         defensive_engagement: player.defensive_engagement || 0,
-        
+
         // Goalkeeper Attributes
         gk_awareness: player.gk_awareness || 0,
         gk_catching: player.gk_catching || 0,
@@ -325,12 +334,12 @@ export default function CommitteePlayersPage() {
         gk_reflexes: player.gk_reflexes || 0,
         gk_reach: player.gk_reach || 0,
       })
-      
+
       // Function to style a worksheet
       const styleWorksheet = (worksheet: any, players: any[]) => {
         // Set columns
         worksheet.columns = getColumnsDefinition()
-        
+
         // Style header row
         worksheet.getRow(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } }
         worksheet.getRow(1).fill = {
@@ -339,12 +348,12 @@ export default function CommitteePlayersPage() {
           fgColor: { argb: 'FF0066FF' }
         }
         worksheet.getRow(1).height = 25
-        
+
         // Add data rows
         players.forEach((player, index) => {
           const rowData = getPlayerRowData(player)
           const row = worksheet.addRow(rowData)
-          
+
           // Alternate row colors
           if (index % 2 === 1) {
             row.fill = {
@@ -353,7 +362,7 @@ export default function CommitteePlayersPage() {
               fgColor: { argb: 'FFF8F9FA' }
             }
           }
-          
+
           // Style auction eligible column
           const eligibleCell = row.getCell('is_auction_eligible')
           if (player.is_auction_eligible) {
@@ -373,7 +382,7 @@ export default function CommitteePlayersPage() {
           }
         })
       }
-      
+
       // Group players by position
       const playersByPosition = allPlayers.reduce((acc: any, player: any) => {
         const position = player.position || 'Unknown'
@@ -381,7 +390,7 @@ export default function CommitteePlayersPage() {
         acc[position].push(player)
         return acc
       }, {})
-      
+
       // Group players by position group  
       const playersByPositionGroup = allPlayers.reduce((acc: any, player: any) => {
         const group = player.position_group || 'Unknown'
@@ -389,9 +398,9 @@ export default function CommitteePlayersPage() {
         acc[group].push(player)
         return acc
       }, {})
-      
+
       console.log(`📋 Creating sheets for ${Object.keys(playersByPosition).length} positions and ${Object.keys(playersByPositionGroup).length} position groups`)
-      
+
       // Create position-specific sheets
       Object.entries(playersByPosition).forEach(([position, players]: [string, any]) => {
         const sheetName = `${position} (${players.length})`
@@ -399,7 +408,7 @@ export default function CommitteePlayersPage() {
         styleWorksheet(worksheet, players)
         console.log(`✅ Created sheet: ${sheetName}`)
       })
-      
+
       // Create position group sheets
       Object.entries(playersByPositionGroup).forEach(([group, players]: [string, any]) => {
         const sheetName = `${group} Group (${players.length})`
@@ -407,18 +416,18 @@ export default function CommitteePlayersPage() {
         styleWorksheet(worksheet, players)
         console.log(`✅ Created sheet: ${sheetName}`)
       })
-      
+
       // Create "All Players" overview sheet
       const allPlayersSheet = workbook.addWorksheet(`All Players (${allPlayers.length})`)
       styleWorksheet(allPlayersSheet, allPlayers)
-      
+
       // Add summary sheet
       const summarySheet = workbook.addWorksheet('Summary')
       summarySheet.columns = [
         { header: 'Metric', key: 'metric', width: 30 },
         { header: 'Value', key: 'value', width: 20 }
       ]
-      
+
       // Summary data
       const totalPlayers = allPlayers.length
       const eligiblePlayers = allPlayers.filter((p: any) => p.is_auction_eligible).length
@@ -427,12 +436,12 @@ export default function CommitteePlayersPage() {
         position: pos,
         count: players.length
       })).sort((a, b) => b.count - a.count)
-      
+
       const positionGroupCounts = Object.entries(playersByPositionGroup).map(([group, players]) => ({
         group: group,
         count: players.length
       })).sort((a, b) => b.count - a.count)
-      
+
       const summaryData = [
         { metric: 'Total Players', value: totalPlayers },
         { metric: 'Auction Eligible', value: eligiblePlayers },
@@ -456,7 +465,7 @@ export default function CommitteePlayersPage() {
           value: count
         }))
       ]
-      
+
       summaryData.forEach((item, index) => {
         const row = summarySheet.addRow(item)
         // Style section headers
@@ -464,7 +473,7 @@ export default function CommitteePlayersPage() {
           row.font = { bold: true, color: { argb: 'FF0066FF' } }
         }
       })
-      
+
       // Style summary sheet
       summarySheet.getRow(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } }
       summarySheet.getRow(1).fill = {
@@ -472,13 +481,13 @@ export default function CommitteePlayersPage() {
         pattern: 'solid',
         fgColor: { argb: 'FF0066FF' }
       }
-      
+
       // Generate Excel file buffer
       const buffer = await workbook.xlsx.writeBuffer()
-      
+
       // Download
-      const blob = new Blob([buffer], { 
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       })
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -486,11 +495,11 @@ export default function CommitteePlayersPage() {
       a.download = `Football-Players-Database-${new Date().toISOString().split('T')[0]}.xlsx`
       a.click()
       window.URL.revokeObjectURL(url)
-      
+
       const totalSheets = Object.keys(playersByPosition).length + Object.keys(playersByPositionGroup).length + 2
       const positionSheetNames = Object.entries(playersByPosition).map(([pos, players]) => `${pos} (${players.length})`).join(', ')
       const groupSheetNames = Object.entries(playersByPositionGroup).map(([group, players]) => `${group} Group (${players.length})`).join(', ')
-      
+
       showAlert({
         type: 'success',
         title: 'Export Successful',
@@ -509,16 +518,16 @@ export default function CommitteePlayersPage() {
   }
 
   // Memoized calculations for performance
-  const positions = useMemo(() => 
+  const positions = useMemo(() =>
     ['', ...new Set(players.map(p => p.position).filter(Boolean))],
     [players]
   )
-  
-  const totalPages = useMemo(() => 
+
+  const totalPages = useMemo(() =>
     Math.ceil(totalPlayers / PLAYERS_PER_PAGE),
     [totalPlayers]
   )
-  
+
   // Use filtered players directly (already paginated from server)
   const paginatedPlayers = filteredPlayers
 
@@ -551,7 +560,7 @@ export default function CommitteePlayersPage() {
             <div className="h-8 bg-gray-200 rounded-lg w-48 animate-pulse"></div>
             <div className="h-10 bg-gray-200 rounded-lg w-32 animate-pulse"></div>
           </div>
-          
+
           {/* Search Skeleton */}
           <div className="mb-4">
             <div className="h-11 bg-gray-200 rounded-xl animate-pulse mb-3"></div>
@@ -566,7 +575,7 @@ export default function CommitteePlayersPage() {
           <div className="mb-4 p-3 bg-white/50 rounded-xl">
             <div className="h-5 bg-gray-200 rounded w-64 animate-pulse"></div>
           </div>
-          
+
           {/* Table Skeleton */}
           <div className="space-y-2">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
@@ -601,7 +610,7 @@ export default function CommitteePlayersPage() {
             </h2>
             <div className="flex gap-2">
               <button
-                onClick={handleExportToExcel}
+                onClick={() => setShowExportModal(true)}
                 disabled={isExporting}
                 className="px-4 py-2.5 text-sm bg-green-500 text-white rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center"
               >
@@ -895,11 +904,10 @@ export default function CommitteePlayersPage() {
                     <button
                       key={pageNum}
                       onClick={() => setCurrentPage(pageNum)}
-                      className={`px-3 py-2 text-sm rounded-lg transition-colors ${
-                        currentPage === pageNum
-                          ? 'bg-primary text-white font-medium'
-                          : 'bg-white/60 border border-gray-200 hover:bg-white/80'
-                      }`}
+                      className={`px-3 py-2 text-sm rounded-lg transition-colors ${currentPage === pageNum
+                        ? 'bg-primary text-white font-medium'
+                        : 'bg-white/60 border border-gray-200 hover:bg-white/80'
+                        }`}
                     >
                       {pageNum}
                     </button>
@@ -944,6 +952,75 @@ export default function CommitteePlayersPage() {
         cancelText={confirmState.cancelText}
         type={confirmState.type}
       />
+
+      {/* Export Filter Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Export Players to Excel</h3>
+            <p className="text-gray-600 mb-6">Choose which players to include in the export:</p>
+
+            <div className="space-y-3 mb-6">
+              <label className="flex items-center p-3 border-2 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors"
+                style={{ borderColor: exportSoldFilter === 'all' ? '#0066FF' : '#E5E7EB' }}>
+                <input
+                  type="radio"
+                  name="exportFilter"
+                  value="all"
+                  checked={exportSoldFilter === 'all'}
+                  onChange={(e) => setExportSoldFilter(e.target.value as 'all' | 'sold' | 'unsold')}
+                  className="w-4 h-4 text-primary"
+                />
+                <span className="ml-3 font-medium text-gray-900">All Players</span>
+              </label>
+
+              <label className="flex items-center p-3 border-2 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors"
+                style={{ borderColor: exportSoldFilter === 'sold' ? '#0066FF' : '#E5E7EB' }}>
+                <input
+                  type="radio"
+                  name="exportFilter"
+                  value="sold"
+                  checked={exportSoldFilter === 'sold'}
+                  onChange={(e) => setExportSoldFilter(e.target.value as 'all' | 'sold' | 'unsold')}
+                  className="w-4 h-4 text-primary"
+                />
+                <span className="ml-3 font-medium text-gray-900">Sold Players Only</span>
+              </label>
+
+              <label className="flex items-center p-3 border-2 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors"
+                style={{ borderColor: exportSoldFilter === 'unsold' ? '#0066FF' : '#E5E7EB' }}>
+                <input
+                  type="radio"
+                  name="exportFilter"
+                  value="unsold"
+                  checked={exportSoldFilter === 'unsold'}
+                  onChange={(e) => setExportSoldFilter(e.target.value as 'all' | 'sold' | 'unsold')}
+                  className="w-4 h-4 text-primary"
+                />
+                <span className="ml-3 font-medium text-gray-900">Unsold Players Only</span>
+              </label>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportToExcel}
+                className="flex-1 px-4 py-2.5 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

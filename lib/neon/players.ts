@@ -6,25 +6,25 @@ export interface FootballPlayer {
   name: string;
   position?: string;
   position_group?: string;
-  
+
   // Team and Season
   team_id?: string;
   team_name?: string;
   season_id?: string;
   round_id?: string;
-  
+
   // Auction
   is_auction_eligible?: boolean;
   is_sold?: boolean;
   acquisition_value?: number;
-  
+
   // Basic Info
   nationality?: string;
   age?: number;
   club?: string;
   playing_style?: string;
   overall_rating?: number;
-  
+
   // Offensive Attributes
   offensive_awareness?: number;
   ball_control?: number;
@@ -36,7 +36,7 @@ export interface FootballPlayer {
   heading?: number;
   set_piece_taking?: number;
   curl?: number;
-  
+
   // Physical Attributes
   speed?: number;
   acceleration?: number;
@@ -45,20 +45,20 @@ export interface FootballPlayer {
   physical_contact?: number;
   balance?: number;
   stamina?: number;
-  
+
   // Defensive Attributes
   defensive_awareness?: number;
   tackling?: number;
   aggression?: number;
   defensive_engagement?: number;
-  
+
   // Goalkeeper Attributes
   gk_awareness?: number;
   gk_catching?: number;
   gk_parrying?: number;
   gk_reflexes?: number;
   gk_reach?: number;
-  
+
   // Metadata
   created_at?: Date;
   updated_at?: Date;
@@ -73,29 +73,30 @@ export async function getAllPlayers(filters?: {
   season_id?: string;
   is_auction_eligible?: boolean;
   is_sold?: boolean;
+  search?: string;
   limit?: number;
   offset?: number;
 }): Promise<FootballPlayer[]> {
   try {
     console.log('🔍 getAllPlayers called with filters:', filters);
-    
+
     // If no filters, return all players
     if (!filters || Object.keys(filters).filter(k => filters[k as keyof typeof filters] !== undefined).length === 0) {
       const result = await sql`SELECT * FROM footballplayers ORDER BY name ASC`;
       console.log(`✅ Fetched ${result.length} players from Neon`);
       return result as FootballPlayer[];
     }
-    
+
     // For filtered queries, we need to use Pool for parameterized queries
     const { Pool } = await import('@neondatabase/serverless');
     const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
-    
+
     try {
       // Build WHERE conditions dynamically
       let query = 'SELECT * FROM footballplayers WHERE 1=1';
       const params: any[] = [];
       let paramIndex = 1;
-      
+
       if (filters?.position) {
         query += ` AND position = $${paramIndex++}`;
         params.push(filters.position);
@@ -116,9 +117,14 @@ export async function getAllPlayers(filters?: {
         query += ` AND is_sold = $${paramIndex++}`;
         params.push(filters.is_sold);
       }
-      
+      if (filters?.search) {
+        query += ` AND (name ILIKE $${paramIndex++} OR player_id ILIKE $${paramIndex++} OR position ILIKE $${paramIndex++})`;
+        const searchPattern = `%${filters.search}%`;
+        params.push(searchPattern, searchPattern, searchPattern);
+      }
+
       query += ' ORDER BY name ASC';
-      
+
       if (filters?.limit) {
         query += ` LIMIT $${paramIndex++}`;
         params.push(filters.limit);
@@ -127,10 +133,10 @@ export async function getAllPlayers(filters?: {
         query += ` OFFSET $${paramIndex++}`;
         params.push(filters.offset);
       }
-      
+
       console.log('📝 Query:', query);
       console.log('📝 Params:', params);
-      
+
       const result = await pool.query(query, params);
       console.log(`✅ Fetched ${result.rows.length} players from Neon`);
       return result.rows as FootballPlayer[];
@@ -158,11 +164,11 @@ export async function getPlayerById(id: string): Promise<FootballPlayer | null> 
     LEFT JOIN rounds r ON fp.round_id = r.id
     WHERE fp.id = ${id}
   `;
-  
+
   if (result.length === 0) return null;
-  
+
   const player = result[0] as any;
-  
+
   // Add team object if player is assigned to a team
   if (player.team_id && player.owning_team_name) {
     player.team = {
@@ -170,11 +176,11 @@ export async function getPlayerById(id: string): Promise<FootballPlayer | null> 
       name: player.owning_team_name
     };
   }
-  
+
   // Clean up extra fields
   delete player.owning_team_name;
   delete player.owning_team_id;
-  
+
   return player as FootballPlayer;
 }
 
@@ -193,11 +199,11 @@ export async function getPlayerByPlayerId(playerId: string): Promise<FootballPla
     LEFT JOIN rounds r ON fp.round_id = r.id
     WHERE fp.player_id = ${playerId}
   `;
-  
+
   if (result.length === 0) return null;
-  
+
   const player = result[0] as any;
-  
+
   // Add team object if player is assigned to a team
   if (player.team_id && player.owning_team_name) {
     player.team = {
@@ -205,11 +211,11 @@ export async function getPlayerByPlayerId(playerId: string): Promise<FootballPla
       name: player.owning_team_name
     };
   }
-  
+
   // Clean up extra fields
   delete player.owning_team_name;
   delete player.owning_team_id;
-  
+
   return player as FootballPlayer;
 }
 
@@ -289,17 +295,17 @@ export async function updatePlayerEligibility(id: string, isEligible: boolean): 
  */
 export async function bulkUpdateEligibility(playerIds: string[], isEligible: boolean): Promise<number> {
   if (playerIds.length === 0) return 0;
-  
+
   const { Pool } = await import('@neondatabase/serverless');
   const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
-  
+
   try {
     const query = `
       UPDATE footballplayers 
       SET is_auction_eligible = $1
       WHERE id = ANY($2::text[])
     `;
-    
+
     const result = await pool.query(query, [isEligible, playerIds]);
     return result.rowCount || 0;
   } finally {
@@ -322,10 +328,10 @@ export async function deleteAllPlayers(): Promise<number> {
   // First get the count
   const countResult = await sql`SELECT COUNT(*) as count FROM footballplayers`;
   const count = parseInt(countResult[0]?.count || '0');
-  
+
   // Then delete all
   await sql`DELETE FROM footballplayers`;
-  
+
   return count;
 }
 
@@ -362,6 +368,7 @@ export async function getTotalPlayerCountWithFilters(filters?: {
   season_id?: string;
   is_auction_eligible?: boolean;
   is_sold?: boolean;
+  search?: string;
 }): Promise<number> {
   try {
     // If no filters, return all players count
@@ -369,17 +376,17 @@ export async function getTotalPlayerCountWithFilters(filters?: {
       const result = await sql`SELECT COUNT(*) as count FROM footballplayers`;
       return parseInt(result[0].count);
     }
-    
+
     // For filtered queries, we need to use Pool for parameterized queries
     const { Pool } = await import('@neondatabase/serverless');
     const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
-    
+
     try {
       // Build WHERE conditions dynamically
       let query = 'SELECT COUNT(*) as count FROM footballplayers WHERE 1=1';
       const params: any[] = [];
       let paramIndex = 1;
-      
+
       if (filters?.position) {
         query += ` AND position = $${paramIndex++}`;
         params.push(filters.position);
@@ -400,10 +407,15 @@ export async function getTotalPlayerCountWithFilters(filters?: {
         query += ` AND is_sold = $${paramIndex++}`;
         params.push(filters.is_sold);
       }
-      
+      if (filters?.search) {
+        query += ` AND (name ILIKE $${paramIndex++} OR player_id ILIKE $${paramIndex++} OR position ILIKE $${paramIndex++})`;
+        const searchPattern = `%${filters.search}%`;
+        params.push(searchPattern, searchPattern, searchPattern);
+      }
+
       console.log('📝 Count Query:', query);
       console.log('📝 Count Params:', params);
-      
+
       const result = await pool.query(query, params);
       return parseInt(result.rows[0].count);
     } finally {
@@ -437,32 +449,32 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
   if (players.length === 0) return { updated: 0, inserted: 0, errors: 0 };
 
   console.log(`🔄 bulkUpdatePlayerStats called with ${players.length} players`);
-  
+
   const { Pool } = await import('@neondatabase/serverless');
   const { randomUUID } = await import('crypto');
   const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
-  
+
   try {
     let updatedCount = 0;
     let insertedCount = 0;
     let errorCount = 0;
-    
+
     for (let i = 0; i < players.length; i++) {
       const p = players[i];
       const playerNum = i + 1;
-      
+
       try {
         // Look up existing player by player_id to get their database id
         const existingPlayerResult = await pool.query(
           'SELECT id FROM footballplayers WHERE player_id = $1',
           [p.player_id]
         );
-        
+
         // Use existing id if player exists, otherwise generate new UUID
-        const playerId = existingPlayerResult.rows.length > 0 
-          ? existingPlayerResult.rows[0].id 
+        const playerId = existingPlayerResult.rows.length > 0
+          ? existingPlayerResult.rows[0].id
           : randomUUID();
-        
+
         // This query will:
         // - INSERT new players with all provided data
         // - UPDATE existing players' stats/attributes ONLY (preserves team_id, team_name, is_sold, acquisition_value, season_id, round_id)
@@ -515,7 +527,7 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
             -- NOTE: team_id, team_name, is_sold, acquisition_value, season_id, round_id are NOT updated
             -- This preserves ownership data for existing players
         `;
-        
+
         const values = [
           playerId,
           p.player_id,
@@ -565,18 +577,18 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
           p.gk_reflexes || null,
           p.gk_reach || null
         ];
-        
+
         // Track if this is an update or insert based on earlier lookup
         const exists = existingPlayerResult.rows.length > 0;
-        
+
         await pool.query(query, values);
-        
+
         if (exists) {
           updatedCount++;
         } else {
           insertedCount++;
         }
-        
+
         // Log every 10 players
         if (playerNum % 10 === 0 || playerNum === players.length) {
           console.log(`   ✅ Processed ${playerNum}/${players.length}: ${p.name} (${exists ? 'updated' : 'inserted'})`);
@@ -586,7 +598,7 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
         console.error(`   ❌ Failed to process player ${playerNum}/${players.length} (${p.name}):`, error.message);
       }
     }
-    
+
     console.log(`🎉 Bulk update complete: ${updatedCount} updated, ${insertedCount} inserted, ${errorCount} errors`);
     return { updated: updatedCount, inserted: insertedCount, errors: errorCount };
   } finally {
@@ -601,24 +613,24 @@ export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_a
   if (players.length === 0) return 0;
 
   console.log(`🔥 bulkImportPlayers called with ${players.length} players - inserting one by one`);
-  
+
   const { Pool } = await import('@neondatabase/serverless');
   const { randomUUID } = await import('crypto');
   const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
-  
+
   try {
     let insertedCount = 0;
     let errorCount = 0;
-    
+
     // Insert players one by one
     for (let i = 0; i < players.length; i++) {
       const p = players[i];
       const playerNum = i + 1;
-      
+
       try {
         // Generate ID if not provided
         const playerId = p.id || randomUUID();
-        
+
         const query = `
           INSERT INTO footballplayers (
             id, player_id, name, position, position_group, overall_rating,
@@ -666,7 +678,7 @@ export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_a
             gk_reflexes = EXCLUDED.gk_reflexes,
             gk_reach = EXCLUDED.gk_reach
         `;
-        
+
         const values = [
           playerId,
           p.player_id,
@@ -716,10 +728,10 @@ export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_a
           p.gk_reflexes || null,
           p.gk_reach || null
         ];
-        
+
         const result = await pool.query(query, values);
         insertedCount++;
-        
+
         // Log every 10 players
         if (playerNum % 10 === 0 || playerNum === players.length) {
           console.log(`   ✅ Inserted ${playerNum}/${players.length}: ${p.name}`);
@@ -729,7 +741,7 @@ export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_a
         console.error(`   ❌ Failed to insert player ${playerNum}/${players.length} (${p.name}):`, error.message);
       }
     }
-    
+
     console.log(`🎉 Bulk import complete: ${insertedCount} inserted, ${errorCount} errors`);
     return insertedCount;
   } finally {
