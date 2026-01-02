@@ -96,40 +96,64 @@ export default function PollPage() {
 
     // Handle redirect result for mobile sign-in
     useEffect(() => {
+        let mounted = true;
+        
         const handleRedirectResult = async () => {
             try {
                 const { getRedirectResult } = await import('firebase/auth');
                 const { auth } = await import('@/lib/firebase/config');
                 
+                console.log('Checking for redirect result...');
                 const result = await getRedirectResult(auth);
-                if (result) {
+                
+                if (result && mounted) {
                     console.log('✅ Redirect sign-in successful:', result.user.email);
                     
                     // Set the token
                     const idToken = await result.user.getIdToken(true);
-                    await fetch('/api/auth/set-token', {
+                    const tokenResponse = await fetch('/api/auth/set-token', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ token: idToken }),
                     });
                     
-                    console.log('Token set, waiting for AuthContext to update...');
-                    
-                    // Wait a bit for AuthContext to sync
-                    setTimeout(() => {
-                        setSuccess('Successfully signed in! You can now vote.');
-                        // Force a re-check of authentication
-                        window.location.reload();
-                    }, 1000);
+                    if (tokenResponse.ok) {
+                        console.log('✅ Token set successfully');
+                        
+                        // Show success and reload after a delay
+                        setSuccess('Successfully signed in! Reloading...');
+                        
+                        setTimeout(() => {
+                            if (mounted) {
+                                window.location.reload();
+                            }
+                        }, 1500);
+                    } else {
+                        console.error('Failed to set token:', tokenResponse.status);
+                        setError('Authentication failed. Please try again.');
+                    }
+                } else if (!result) {
+                    console.log('No redirect result found');
                 }
             } catch (error: any) {
-                if (error.code !== 'auth/popup-closed-by-user') {
+                if (error.code && error.code !== 'auth/popup-closed-by-user') {
                     console.error('Redirect result error:', error);
+                    if (mounted) {
+                        setError('Sign-in failed. Please try again.');
+                    }
                 }
             }
         };
 
-        handleRedirectResult();
+        // Small delay to ensure Firebase is initialized
+        const timer = setTimeout(() => {
+            handleRedirectResult();
+        }, 500);
+
+        return () => {
+            mounted = false;
+            clearTimeout(timer);
+        };
     }, []);
 
     useEffect(() => {
