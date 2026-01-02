@@ -246,13 +246,12 @@ export default function PollPage() {
 
                 console.log('Token set successfully');
                 
-                // Show success message and reload to update auth state
-                setSuccess('Successfully signed in! Refreshing page...');
+                // Show success message - AuthContext will update automatically
+                setSuccess('Successfully signed in! You can now vote.');
+                setSigningIn(false);
                 
-                // Wait a moment for the token to be set, then reload
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
+                // The AuthContext onAuthStateChanged listener will update user/firebaseUser
+                // No need to reload the page
                 
             } catch (popupError: any) {
                 // If popup fails, try redirect method
