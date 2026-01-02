@@ -94,6 +94,37 @@ export default function PollPage() {
         setDeviceFingerprint(generateFingerprint());
     }, []);
 
+    // Handle redirect result for mobile sign-in
+    useEffect(() => {
+        const handleRedirectResult = async () => {
+            try {
+                const { getRedirectResult } = await import('firebase/auth');
+                const { auth } = await import('@/lib/firebase/config');
+                
+                const result = await getRedirectResult(auth);
+                if (result) {
+                    console.log('✅ Redirect sign-in successful:', result.user.email);
+                    
+                    // Set the token
+                    const idToken = await result.user.getIdToken(true);
+                    await fetch('/api/auth/set-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: idToken }),
+                    });
+                    
+                    setSuccess('Successfully signed in! You can now vote.');
+                }
+            } catch (error: any) {
+                if (error.code !== 'auth/popup-closed-by-user') {
+                    console.error('Redirect result error:', error);
+                }
+            }
+        };
+
+        handleRedirectResult();
+    }, []);
+
     useEffect(() => {
         loadPoll();
     }, [pollId]);
@@ -231,7 +262,18 @@ export default function PollPage() {
 
             const provider = new GoogleAuthProvider();
             
-            // Try popup first, fall back to redirect if it fails
+            // Detect if mobile device
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            
+            if (isMobile) {
+                // Use redirect for mobile devices (more reliable)
+                console.log('Mobile device detected, using redirect sign-in');
+                await signInWithRedirect(auth, provider);
+                // Redirect will reload the page, handleRedirectResult will process it
+                return;
+            }
+            
+            // Try popup for desktop
             try {
                 const result = await signInWithPopup(auth, provider);
                 console.log('✅ Signed in successfully:', result.user.email);
@@ -255,7 +297,7 @@ export default function PollPage() {
                 
             } catch (popupError: any) {
                 // If popup fails, try redirect method
-                if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/invalid-credential') {
+                if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-popup-request') {
                     console.log('Popup failed, using redirect method...');
                     await signInWithRedirect(auth, provider);
                     // Redirect will reload the page, so no need to continue
