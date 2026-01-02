@@ -56,8 +56,11 @@ interface Poll {
 export default function PollPage() {
     const params = useParams();
     const router = useRouter();
-    const { user, loading: authLoading } = useAuth();
+    const { user, firebaseUser, loading: authLoading } = useAuth();
     const pollId = params.pollId as string;
+
+    // For polls, we accept any authenticated user (even without Firestore document)
+    const isAuthenticated = !!(user || firebaseUser);
 
     const [poll, setPoll] = useState<Poll | null>(null);
     const [stats, setStats] = useState<Record<string, PlayerStats | TeamStats>>({});
@@ -75,10 +78,10 @@ export default function PollPage() {
     }, [pollId]);
 
     useEffect(() => {
-        if (user) {
+        if (isAuthenticated) {
             checkIfVoted();
         }
-    }, [pollId, user]);
+    }, [pollId, isAuthenticated]);
 
     const loadPoll = async () => {
         try {
@@ -113,7 +116,7 @@ export default function PollPage() {
     };
 
     const checkIfVoted = async () => {
-        if (!user) return;
+        if (!isAuthenticated) return;
 
         try {
             const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote`);
@@ -128,7 +131,7 @@ export default function PollPage() {
     };
 
     const handleVote = async () => {
-        if (!user) {
+        if (!isAuthenticated) {
             setError('Please sign in with Google to vote');
             return;
         }
@@ -143,13 +146,17 @@ export default function PollPage() {
         setSuccess(null);
 
         try {
+            // Get voter info from either user or firebaseUser
+            const voterName = user?.username || firebaseUser?.displayName || firebaseUser?.email || 'Anonymous';
+            const voterEmail = user?.email || firebaseUser?.email || '';
+
             const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     selected_option_id: selectedOption,
-                    voter_name: (user as any)?.displayName || (user as any)?.email || 'Anonymous',
-                    voter_email: (user as any)?.email,
+                    voter_name: voterName,
+                    voter_email: voterEmail,
                 }),
             });
 
@@ -496,7 +503,7 @@ export default function PollPage() {
                     </div>
 
                     {/* Login Prompt for Non-Authenticated Users */}
-                    {!user && !authLoading && canVote && (
+                    {!isAuthenticated && !authLoading && canVote && (
                         <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-blue-200">
                             {signingIn ? (
                                 <div className="text-center py-8">
@@ -533,7 +540,7 @@ export default function PollPage() {
                     )}
 
                     {/* Vote Button */}
-                    {user && canVote && (
+                    {isAuthenticated && canVote && (
                         <div className="p-6 bg-gray-50 border-t border-gray-200">
                             <button
                                 onClick={handleVote}
