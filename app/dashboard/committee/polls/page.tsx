@@ -283,10 +283,16 @@ export default function PollsManagementPage() {
     }
 
     try {
+      // Convert IST input to UTC for database storage
+      const istDate = new Date(newDeadline);
+      // Subtract 5:30 hours to convert IST to UTC
+      const utcDate = new Date(istDate.getTime() - (5.5 * 60 * 60 * 1000));
+      const utcString = utcDate.toISOString();
+
       const response = await fetchWithTokenRefresh(`/api/polls/${pollId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ closes_at: newDeadline }),
+        body: JSON.stringify({ closes_at: utcString }),
       });
 
       const result = await response.json();
@@ -305,11 +311,11 @@ export default function PollsManagementPage() {
   };
 
   const startEditingDeadline = (currentDeadline: string) => {
-    // Convert to datetime-local format (YYYY-MM-DDTHH:mm)
+    // Convert UTC to IST for display in datetime-local input
     const date = new Date(currentDeadline);
-    const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
+    // Convert to IST (UTC+5:30)
+    const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    const localDateTime = istDate.toISOString().slice(0, 16);
     setNewDeadline(localDateTime);
     setEditingDeadline(true);
   };
@@ -468,7 +474,11 @@ export default function PollsManagementPage() {
                   </p>
                   {currentPoll.closes_at && (
                     <p className="text-sm text-gray-600 mt-1">
-                      🕒 Closes: {new Date(currentPoll.closes_at).toLocaleString()}
+                      🕒 Closes: {new Date(currentPoll.closes_at).toLocaleString('en-IN', { 
+                        timeZone: 'Asia/Kolkata',
+                        dateStyle: 'medium',
+                        timeStyle: 'short'
+                      })} IST
                     </p>
                   )}
                 </div>
@@ -495,7 +505,7 @@ export default function PollsManagementPage() {
               {/* Deadline Editor */}
               {editingDeadline && (
                 <div className="mb-4 p-4 bg-white rounded-lg border-2 border-blue-400">
-                  <p className="text-sm font-semibold text-gray-700 mb-2">Edit Poll Deadline</p>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Edit Poll Deadline (IST)</p>
                   <div className="flex gap-2">
                     <input
                       type="datetime-local"
