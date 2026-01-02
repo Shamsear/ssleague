@@ -155,6 +155,12 @@ export default function PollPage() {
     };
 
     const handleVote = async () => {
+        // Prevent multiple clicks
+        if (voting) {
+            console.log('Vote already in progress, ignoring click');
+            return;
+        }
+
         if (!isAuthenticated) {
             setError('Please sign in with Google to vote');
             return;
@@ -202,14 +208,17 @@ export default function PollPage() {
                 setSuccess('✅ Vote submitted successfully!');
                 setHasVoted(true);
                 loadPoll(); // Reload to get updated vote counts
+                // Keep voting state true to prevent re-voting
             } else {
                 setError(data.error || 'Failed to submit vote');
+                // Only reset voting state on error so user can try again
+                setVoting(false);
             }
         } catch (err: any) {
             setError(err.message || 'Failed to submit vote');
-        } finally {
             setVoting(false);
         }
+        // Note: Don't set voting to false on success to prevent double voting
     };
 
     const handleGoogleSignIn = async () => {
