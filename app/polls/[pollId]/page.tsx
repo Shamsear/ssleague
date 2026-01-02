@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import Head from 'next/head';
 
 interface PollOption {
     id: string;
@@ -120,12 +121,13 @@ export default function PollPage() {
                     if (tokenResponse.ok) {
                         console.log('✅ Token set successfully');
                         
-                        // Show success and reload after a delay
+                        // Show success and reload after a delay with cache busting
                         setSuccess('Successfully signed in! Reloading...');
                         
                         setTimeout(() => {
                             if (mounted) {
-                                window.location.reload();
+                                // Force hard reload with cache busting
+                                window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
                             }
                         }, 1500);
                     } else {
@@ -154,6 +156,20 @@ export default function PollPage() {
             mounted = false;
             clearTimeout(timer);
         };
+    }, []);
+
+    // Prevent page caching
+    useEffect(() => {
+        // Add cache control meta tags dynamically
+        if (typeof window !== 'undefined') {
+            // Prevent back/forward cache
+            window.addEventListener('pageshow', (event) => {
+                if (event.persisted) {
+                    console.log('Page loaded from cache, forcing reload');
+                    window.location.reload();
+                }
+            });
+        }
     }, []);
 
     useEffect(() => {
