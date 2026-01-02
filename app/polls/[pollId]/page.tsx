@@ -174,13 +174,24 @@ export default function PollPage() {
             const { auth } = await import('@/lib/firebase/config');
 
             const provider = new GoogleAuthProvider();
-            await signInWithPopup(auth, provider);
+            const result = await signInWithPopup(auth, provider);
+
+            console.log('✅ Signed in successfully:', result.user.email);
+
+            // Wait for auth context to update (it listens to onAuthStateChanged)
+            // The AuthContext will automatically update the user state
+            // Just wait a moment for it to propagate
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             // After successful login, check vote status
             checkIfVoted();
         } catch (error: any) {
             console.error('Error signing in:', error);
-            setError('Failed to sign in with Google');
+            if (error.code === 'auth/popup-closed-by-user') {
+                setError('Sign-in cancelled');
+            } else {
+                setError('Failed to sign in with Google');
+            }
         }
     };
 
@@ -190,6 +201,17 @@ export default function PollPage() {
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto"></div>
                     <p className="mt-4 text-gray-600">Loading poll...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (authLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto"></div>
+                    <p className="mt-4 text-gray-600">Checking authentication...</p>
                 </div>
             </div>
         );
