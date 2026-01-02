@@ -2,8 +2,6 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import Head from 'next/head';
 
 interface PollOption {
@@ -57,11 +55,7 @@ interface Poll {
 export default function PollPage() {
     const params = useParams();
     const router = useRouter();
-    const { user, firebaseUser, loading: authLoading } = useAuth();
     const pollId = params.pollId as string;
-
-    // For polls, we accept any authenticated user (even without Firestore document)
-    const isAuthenticated = !!(user || firebaseUser);
 
     const [poll, setPoll] = useState<Poll | null>(null);
     const [stats, setStats] = useState<Record<string, PlayerStats | TeamStats>>({});
@@ -72,8 +66,8 @@ export default function PollPage() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [language, setLanguage] = useState<'en' | 'ml'>('en');
-    const [signingIn, setSigningIn] = useState(false);
     const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
+    const [voterName, setVoterName] = useState<string>('');
 
     // Generate device fingerprint on mount
     useEffect(() => {
@@ -86,7 +80,7 @@ export default function PollPage() {
                 ctx.fillText('fingerprint', 2, 2);
             }
             const canvasData = canvas.toDataURL();
-            
+
             const fingerprint = `${navigator.userAgent}_${screen.width}x${screen.height}_${canvasData.slice(0, 50)}`;
             const hash = btoa(fingerprint).slice(0, 32);
             return hash;
@@ -98,18 +92,18 @@ export default function PollPage() {
     // Handle redirect result for mobile sign-in
     useEffect(() => {
         let mounted = true;
-        
+
         const handleRedirectResult = async () => {
             try {
                 const { getRedirectResult } = await import('firebase/auth');
                 const { auth } = await import('@/lib/firebase/config');
-                
+
                 console.log('Checking for redirect result...');
                 const result = await getRedirectResult(auth);
-                
+
                 if (result && mounted) {
                     console.log('✅ Redirect sign-in successful:', result.user.email);
-                    
+
                     // Set the token
                     const idToken = await result.user.getIdToken(true);
                     const tokenResponse = await fetch('/api/auth/set-token', {
@@ -117,13 +111,13 @@ export default function PollPage() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ token: idToken }),
                     });
-                    
+
                     if (tokenResponse.ok) {
                         console.log('✅ Token set successfully');
-                        
+
                         // Show success and reload after a delay with cache busting
                         setSuccess('Successfully signed in! Reloading...');
-                        
+
                         setTimeout(() => {
                             if (mounted) {
                                 // Force hard reload with cache busting
@@ -176,11 +170,7 @@ export default function PollPage() {
         loadPoll();
     }, [pollId]);
 
-    useEffect(() => {
-        if (isAuthenticated) {
-            checkIfVoted();
-        }
-    }, [pollId, isAuthenticated, user, firebaseUser]);
+
 
     const loadPoll = async () => {
         try {
@@ -214,23 +204,7 @@ export default function PollPage() {
         }
     };
 
-    const checkIfVoted = async () => {
-        if (!isAuthenticated) return;
 
-        const voterEmail = user?.email || firebaseUser?.email;
-        if (!voterEmail) return;
-
-        try {
-            const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote?voter_email=${encodeURIComponent(voterEmail)}`);
-            const data = await response.json();
-
-            if (data.has_voted) {
-                setHasVoted(true);
-            }
-        } catch (err) {
-            console.log('Could not check vote status');
-        }
-    };
 
     const handleVote = async () => {
         // Prevent multiple clicks
@@ -239,8 +213,8 @@ export default function PollPage() {
             return;
         }
 
-        if (!isAuthenticated) {
-            setError('Please sign in with Google to vote');
+        if (!voterName || voterName.trim().length < 3) {
+            setError('Please enter your name (minimum 3 characters)');
             return;
         }
 
@@ -259,17 +233,12 @@ export default function PollPage() {
         setSuccess(null);
 
         try {
-            // Get voter info from either user or firebaseUser, or use test data
-            const voterName = user?.username || firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || 'Test User';
-            const voterEmail = user?.email || firebaseUser?.email || 'test@example.com';
-
             const response = await fetch(`/api/polls/${pollId}/vote`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     selected_option_id: selectedOption,
-                    voter_name: voterName,
-                    voter_email: voterEmail,
+                    voter_name: voterName.trim(),
                     device_fingerprint: deviceFingerprint,
                     user_agent: navigator.userAgent,
                     browser_info: {
@@ -299,78 +268,7 @@ export default function PollPage() {
         // Note: Don't set voting to false on success to prevent double voting
     };
 
-    const handleGoogleSignIn = async () => {
-        setSigningIn(true);
-        setError(null);
-        
-        try {
-            const { signInWithPopup, signInWithRedirect, GoogleAuthProvider } = await import('firebase/auth');
-            const { auth } = await import('@/lib/firebase/config');
 
-            const provider = new GoogleAuthProvider();
-            
-            // Detect if mobile device
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            
-            if (isMobile) {
-                // Use redirect for mobile devices (more reliable)
-                console.log('Mobile device detected, using redirect sign-in');
-                await signInWithRedirect(auth, provider);
-                // Redirect will reload the page, handleRedirectResult will process it
-                return;
-            }
-            
-            // Try popup for desktop
-            try {
-                const result = await signInWithPopup(auth, provider);
-                console.log('✅ Signed in successfully:', result.user.email);
-
-                // Get the ID token and set it
-                const idToken = await result.user.getIdToken(true);
-                await fetch('/api/auth/set-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: idToken }),
-                });
-
-                console.log('Token set successfully');
-                
-                // Show success message - AuthContext will update automatically
-                setSuccess('Successfully signed in! You can now vote.');
-                setSigningIn(false);
-                
-                // The AuthContext onAuthStateChanged listener will update user/firebaseUser
-                // No need to reload the page
-                
-            } catch (popupError: any) {
-                // If popup fails, try redirect method
-                if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-popup-request') {
-                    console.log('Popup failed, using redirect method...');
-                    await signInWithRedirect(auth, provider);
-                    // Redirect will reload the page, so no need to continue
-                    return;
-                }
-                throw popupError;
-            }
-        } catch (error: any) {
-            console.error('Error signing in:', error);
-            
-            let errorMessage = 'Failed to sign in with Google. Please try again.';
-            
-            if (error.code === 'auth/popup-closed-by-user') {
-                errorMessage = 'Sign-in cancelled';
-            } else if (error.code === 'auth/popup-blocked') {
-                errorMessage = 'Pop-up blocked. Redirecting to Google sign-in...';
-            } else if (error.code === 'auth/invalid-credential') {
-                errorMessage = 'Authentication error. This may be a development environment issue. Please try on the production site or contact support.';
-            } else if (error.code === 'auth/network-request-failed') {
-                errorMessage = 'Network error. Please check your internet connection.';
-            }
-            
-            setError(errorMessage);
-            setSigningIn(false);
-        }
-    };
 
     if (loading) {
         return (
@@ -383,16 +281,7 @@ export default function PollPage() {
         );
     }
 
-    if (authLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto"></div>
-                    <p className="mt-4 text-gray-600">Checking authentication...</p>
-                </div>
-            </div>
-        );
-    }
+
 
     if (error && !poll) {
         return (
@@ -640,49 +529,35 @@ export default function PollPage() {
                         })}
                     </div>
 
-                    {/* Login Prompt for Non-Authenticated Users */}
-                    {!isAuthenticated && !authLoading && canVote && (
+                    {/* Name Input for Voting */}
+                    {canVote && (
                         <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-blue-200">
-                            {signingIn ? (
-                                <div className="text-center py-8">
-                                    <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
-                                    <p className="text-gray-700 font-semibold">Signing you in...</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="text-center mb-4">
-                                        <div className="text-4xl mb-3">🔐</div>
-                                        <h3 className="text-xl font-bold text-gray-900 mb-2">
-                                            Sign in to Vote
-                                        </h3>
-                                        <p className="text-gray-600 mb-6">
-                                            Please sign in with your Google account to cast your vote
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={handleGoogleSignIn}
-                                        disabled={signingIn}
-                                        className="w-full bg-white border-2 border-gray-300 text-gray-700 py-4 px-6 rounded-xl font-semibold text-lg hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center justify-center space-x-3 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <svg className="w-6 h-6" viewBox="0 0 24 24">
-                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                                        </svg>
-                                        <span>Sign in with Google</span>
-                                    </button>
-                                </>
-                            )}
+                            <div className="text-center mb-4">
+                                <div className="text-4xl mb-3">✍️</div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                                    Enter Your Name to Vote
+                                </h3>
+                                <p className="text-gray-600 mb-6">
+                                    Please enter your full name to cast your vote
+                                </p>
+                            </div>
+                            <input
+                                type="text"
+                                value={voterName}
+                                onChange={(e) => setVoterName(e.target.value)}
+                                placeholder="Enter your full name"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-lg mb-4"
+                                disabled={hasVoted || voting}
+                            />
                         </div>
                     )}
 
                     {/* Vote Button */}
-                    {isAuthenticated && canVote && (
+                    {canVote && (
                         <div className="p-6 bg-gray-50 border-t border-gray-200">
                             <button
                                 onClick={handleVote}
-                                disabled={!selectedOption || voting}
+                                disabled={!selectedOption || !voterName || voting}
                                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {voting ? (

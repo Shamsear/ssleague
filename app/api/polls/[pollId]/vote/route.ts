@@ -4,7 +4,7 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 /**
  * POST /api/polls/[pollId]/vote
  * Submit a vote with device tracking and name validation
- * Frontend handles authentication - backend validates vote data
+ * No authentication required - uses name + device fingerprint
  */
 export async function POST(
   request: NextRequest,
@@ -17,7 +17,6 @@ export async function POST(
     const {
       selected_option_id,
       voter_name,
-      voter_email,
       device_fingerprint,
       user_agent,
       browser_info,
@@ -66,14 +65,6 @@ export async function POST(
       );
     }
 
-    // Validation: voter email (required for authenticated voting)
-    if (!voter_email) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required. Please sign in to vote.' },
-        { status: 401 }
-      );
-    }
-
     const sql = getTournamentDb();
 
     // Check if poll exists and is active
@@ -115,13 +106,9 @@ export async function POST(
       );
     }
 
-    // Get IP address from request
-    const ip_address = request.headers.get('x-forwarded-for') ||
-      request.headers.get('x-real-ip') ||
-      'unknown';
+    // Generate user_id from voter name + device fingerprint (no IP tracking)
+    const userId = `user_${Buffer.from(voter_name.toLowerCase().trim() + device_fingerprint).toString('base64').slice(0, 20)}`;
 
-    // Generate user_id from voter email (primary identifier)
-    const userId = `user_${Buffer.from(voter_email).toString('base64').slice(0, 20)}`;
 
     // Use a transaction to handle race conditions
     // This ensures that even if two different users vote at the exact same time,
@@ -165,7 +152,7 @@ export async function POST(
 
       // Create vote with unique vote_id to prevent conflicts
       const vote_id = `vote_${pollId}_${userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+
       // Insert vote - this will fail if somehow the same user_id tries to vote twice simultaneously
       // due to the unique constraint on (poll_id, user_id)
       await sql`
@@ -181,7 +168,7 @@ export async function POST(
           ${voter_name.trim()},
           ${voter_name.trim()},
           ${device_fingerprint},
-          ${ip_address},
+          ${null},
           ${user_agent || null},
           ${browser_info ? JSON.stringify(browser_info) : null},
           ${selected_option_id},
@@ -238,7 +225,7 @@ export async function POST(
         console.log(`⚠️ Flagged vote: Multiple users on same device for poll ${pollId}`);
       }
 
-      console.log(`✅ Vote recorded: ${voter_name} (${voter_email}) voted for option ${selected_option_id}${shouldFlag ? ' (flagged)' : ''}`);
+      console.log(`✅ Vote recorded: ${voter_name} voted for option ${selected_option_id}${shouldFlag ? ' (flagged)' : ''}`);
 
       return NextResponse.json({
         success: true,
@@ -274,7 +261,7 @@ export async function POST(
 
 /**
  * GET /api/polls/[pollId]/vote
- * Check if user has already voted (by email/user_id)
+ * Check if user has already voted (by name + device fingerprint)
  */
 export async function GET(
   request: NextRequest,
@@ -283,19 +270,20 @@ export async function GET(
   try {
     const { pollId } = await params;
     const { searchParams } = new URL(request.url);
-    const voter_email = searchParams.get('voter_email');
+    const voter_name = searchParams.get('voter_name');
+    const device_fingerprint = searchParams.get('device_fingerprint');
 
-    if (!voter_email) {
+    if (!voter_name || !device_fingerprint) {
       return NextResponse.json(
-        { success: false, error: 'voter_email parameter required' },
+        { success: false, error: 'voter_name and device_fingerprint parameters required' },
         { status: 400 }
       );
     }
 
     const sql = getTournamentDb();
 
-    // Generate user_id from email
-    const userId = `user_${Buffer.from(voter_email).toString('base64').slice(0, 20)}`;
+    // Generate user_id from name + device fingerprint
+    const userId = `user_${Buffer.from(voter_name.toLowerCase().trim() + device_fingerprint).toString('base64').slice(0, 20)}`;
 
     const existingVote = await sql`
       SELECT vote_id, voter_name, selected_option_id, voted_at, is_flagged
