@@ -113,7 +113,14 @@ export default function PollPage() {
                         body: JSON.stringify({ token: idToken }),
                     });
                     
-                    setSuccess('Successfully signed in! You can now vote.');
+                    console.log('Token set, waiting for AuthContext to update...');
+                    
+                    // Wait a bit for AuthContext to sync
+                    setTimeout(() => {
+                        setSuccess('Successfully signed in! You can now vote.');
+                        // Force a re-check of authentication
+                        window.location.reload();
+                    }, 1000);
                 }
             } catch (error: any) {
                 if (error.code !== 'auth/popup-closed-by-user') {
