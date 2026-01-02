@@ -72,16 +72,37 @@ export default function PollPage() {
     const [success, setSuccess] = useState<string | null>(null);
     const [language, setLanguage] = useState<'en' | 'ml'>('en');
     const [signingIn, setSigningIn] = useState(false);
+    const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
+
+    // Generate device fingerprint on mount
+    useEffect(() => {
+        const generateFingerprint = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.textBaseline = 'top';
+                ctx.font = '14px Arial';
+                ctx.fillText('fingerprint', 2, 2);
+            }
+            const canvasData = canvas.toDataURL();
+            
+            const fingerprint = `${navigator.userAgent}_${screen.width}x${screen.height}_${canvasData.slice(0, 50)}`;
+            const hash = btoa(fingerprint).slice(0, 32);
+            return hash;
+        };
+
+        setDeviceFingerprint(generateFingerprint());
+    }, []);
 
     useEffect(() => {
         loadPoll();
     }, [pollId]);
 
     useEffect(() => {
-        if (isAuthenticated) {
+        if (isAuthenticated && deviceFingerprint) {
             checkIfVoted();
         }
-    }, [pollId, isAuthenticated]);
+    }, [pollId, isAuthenticated, deviceFingerprint]);
 
     const loadPoll = async () => {
         try {
@@ -116,10 +137,10 @@ export default function PollPage() {
     };
 
     const checkIfVoted = async () => {
-        if (!isAuthenticated) return;
+        if (!isAuthenticated || !deviceFingerprint) return;
 
         try {
-            const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote`);
+            const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote?device_fingerprint=${deviceFingerprint}`);
             const data = await response.json();
 
             if (data.has_voted) {
@@ -141,13 +162,18 @@ export default function PollPage() {
             return;
         }
 
+        if (!deviceFingerprint) {
+            setError('Device fingerprint not ready. Please try again.');
+            return;
+        }
+
         setVoting(true);
         setError(null);
         setSuccess(null);
 
         try {
             // Get voter info from either user or firebaseUser
-            const voterName = user?.username || firebaseUser?.displayName || firebaseUser?.email || 'Anonymous';
+            const voterName = user?.username || firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || 'Anonymous';
             const voterEmail = user?.email || firebaseUser?.email || '';
 
             const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote`, {
@@ -157,6 +183,13 @@ export default function PollPage() {
                     selected_option_id: selectedOption,
                     voter_name: voterName,
                     voter_email: voterEmail,
+                    device_fingerprint: deviceFingerprint,
+                    user_agent: navigator.userAgent,
+                    browser_info: {
+                        platform: navigator.platform,
+                        language: navigator.language,
+                        screen: `${screen.width}x${screen.height}`,
+                    },
                 }),
             });
 
@@ -199,10 +232,13 @@ export default function PollPage() {
                     body: JSON.stringify({ token: idToken }),
                 });
 
-                console.log('Token set, reloading page...');
+                console.log('Token set successfully');
                 
-                // Reload the page to ensure auth context is fully updated
-                window.location.reload();
+                // Don't reload - just wait for auth context to update
+                // The AuthContext listens to onAuthStateChanged and will update automatically
+                setSuccess('Successfully signed in! You can now vote.');
+                setSigningIn(false);
+                
             } catch (popupError: any) {
                 // If popup fails, try redirect method
                 if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/invalid-credential') {
@@ -231,7 +267,7 @@ export default function PollPage() {
             setError(errorMessage);
             setSigningIn(false);
         }
-        // Don't set signingIn to false here because we're reloading
+        // Don't set signingIn to false here if we're reloading
     };
 
     if (loading) {
