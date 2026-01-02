@@ -207,8 +207,8 @@ export default function Home() {
                     >
                       {/* Position Badge */}
                       <div className={`absolute -top-3 -left-3 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold shadow-lg text-lg ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
-                          index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
-                            'bg-gradient-to-br from-amber-500 to-amber-700'
+                        index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                          'bg-gradient-to-br from-amber-500 to-amber-700'
                         }`}>
                         {index + 1}
                       </div>
@@ -363,8 +363,8 @@ export default function Home() {
                   {/* Rank Badge */}
                   {index < 3 && (
                     <div className={`absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-lg ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
-                        index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
-                          'bg-gradient-to-br from-amber-500 to-amber-700'
+                      index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                        'bg-gradient-to-br from-amber-500 to-amber-700'
                       }`}>
                       {index + 1}
                     </div>
@@ -487,7 +487,7 @@ export default function Home() {
       )}
 
       {/* Quick Links */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Link href="/players" className="glass rounded-2xl p-6 hover:shadow-lg transition-all hover:scale-105 group">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -506,6 +506,16 @@ export default function Home() {
           </div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">View Teams</h3>
           <p className="text-gray-600 text-sm">Check team rosters and standings</p>
+        </Link>
+
+        <Link href="/polls" className="glass rounded-2xl p-6 hover:shadow-lg transition-all hover:scale-105 group">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Fan Polls</h3>
+          <p className="text-gray-600 text-sm">Vote for your favorites</p>
         </Link>
 
         <Link href="/seasons" className="glass rounded-2xl p-6 hover:shadow-lg transition-all hover:scale-105 group">

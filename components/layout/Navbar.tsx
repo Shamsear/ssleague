@@ -15,7 +15,7 @@ export default function Navbar() {
   const { signOut } = useFirebaseAuth();
   const router = useRouter();
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-  
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -27,19 +27,19 @@ export default function Navbar() {
         setOpenDropdown(null);
       }
     };
-    
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  
+
   const toggleDropdown = (name: string) => {
     setOpenDropdown(openDropdown === name ? null : name);
   };
-  
+
   // Get the appropriate dashboard URL based on user role
   const getDashboardUrl = () => {
     if (!user) return '/';
-    
+
     switch (user.role) {
       case 'super_admin':
         return '/dashboard/superadmin';
@@ -51,7 +51,7 @@ export default function Navbar() {
         return '/dashboard';
     }
   };
-  
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -60,10 +60,10 @@ export default function Navbar() {
       console.error('Sign out error:', error);
     }
   };
-  
+
   return (
     <nav className="nav-glass sticky top-0 z-50 hidden sm:block border-b border-white/10">
-      <div className="container mx-auto px-6 flex justify-between items-center" style={{height: '64px'}}>
+      <div className="container mx-auto px-6 flex justify-between items-center" style={{ height: '64px' }}>
         {/* Logo */}
         <Link href={getDashboardUrl()} className="flex items-center group gap-3">
           <div className="relative w-10 h-10 rounded-xl overflow-hidden transition-all duration-300 hover:scale-105 shadow-md group-hover:shadow-lg bg-white">
@@ -84,7 +84,7 @@ export default function Navbar() {
             <span className="text-[10px] text-gray-500 font-medium leading-none mt-0.5">Auction Platform</span>
           </div>
         </Link>
-        
+
         {/* Center Navigation Links */}
         <div className="hidden lg:flex items-center gap-1">
           {!user ? (
@@ -117,6 +117,9 @@ export default function Navbar() {
               <Link href="/news" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
                 📰 News
               </Link>
+              <Link href="/polls" className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
+                🗳️ Polls
+              </Link>
             </>
           ) : (
             <>
@@ -124,7 +127,7 @@ export default function Navbar() {
               <Link href={getDashboardUrl()} className="px-3 py-2 text-gray-700 hover:text-blue-600 transition-all duration-200 rounded-lg hover:bg-blue-50 font-medium text-sm">
                 Dashboard
               </Link>
-              
+
               {/* Super Admin Navigation */}
               {user.role === 'super_admin' && (
                 <>
@@ -156,7 +159,7 @@ export default function Navbar() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Management Dropdown */}
                   <div className="relative" ref={(el) => { dropdownRefs.current['management'] = el; }}>
                     <button
@@ -211,7 +214,7 @@ export default function Navbar() {
                   </div>
                 </>
               )}
-              
+
               {/* Committee Admin Navigation */}
               {user.role === 'committee_admin' && (
                 <>
@@ -255,7 +258,7 @@ export default function Navbar() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Rounds & Matches Dropdown */}
                   <div className="relative" ref={(el) => { dropdownRefs.current['rounds'] = el; }}>
                     <button
@@ -290,7 +293,7 @@ export default function Navbar() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Tournament Dropdown */}
                   <div className="relative" ref={(el) => { dropdownRefs.current['tournament'] = el; }}>
                     <button
@@ -345,7 +348,7 @@ export default function Navbar() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Settings Dropdown */}
                   <div className="relative" ref={(el) => { dropdownRefs.current['settings'] = el; }}>
                     <button
@@ -388,7 +391,7 @@ export default function Navbar() {
                   </div>
                 </>
               )}
-              
+
               {/* Team Navigation - Only show if registered */}
               {user.role === 'team' && isRegistered && (
                 <>
@@ -432,7 +435,7 @@ export default function Navbar() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Matches Dropdown */}
                   <div className="relative" ref={(el) => { dropdownRefs.current['matches'] = el; }}>
                     <button
@@ -461,7 +464,7 @@ export default function Navbar() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Leaderboards Dropdown */}
                   <div className="relative" ref={(el) => { dropdownRefs.current['leaderboards'] = el; }}>
                     <button
@@ -501,7 +504,7 @@ export default function Navbar() {
             </>
           )}
         </div>
-        
+
         {/* Right Side Actions */}
         <div className="flex items-center space-x-3">
           {user ? (
@@ -571,7 +574,7 @@ export default function Navbar() {
                       </Link>
                     )}
                     <div className="border-t border-white/20 mt-1 pt-1">
-                      <button 
+                      <button
                         onClick={handleSignOut}
                         className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-all rounded-lg mx-1 mb-1"
                       >
@@ -587,8 +590,8 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <Link 
-                href="/login" 
+              <Link
+                href="/login"
                 className="px-6 py-2.5 glass rounded-xl hover:bg-white transition-all duration-300 vision-button font-semibold text-sm shadow-md hover:shadow-lg border border-white/40 text-gray-700 hover:text-blue-600"
               >
                 Login

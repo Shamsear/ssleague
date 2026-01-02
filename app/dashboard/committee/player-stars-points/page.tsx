@@ -32,6 +32,12 @@ interface PlayerUpdate {
   points: number;
 }
 
+interface StarRatingConfig {
+  star_rating: number;
+  starting_points: number;
+  base_auction_value: number;
+}
+
 const STAR_RATINGS = [3, 4, 5, 6, 7, 8, 9, 10];
 
 export default function PlayerStarsPointsPage() {
@@ -39,20 +45,21 @@ export default function PlayerStarsPointsPage() {
   const router = useRouter();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
   const [currentSeason, setCurrentSeason] = useState<Season | null>(null);
-  
+  const [starRatingConfig, setStarRatingConfig] = useState<StarRatingConfig[]>([]);
+
   const [players, setPlayers] = useState<Player[]>([]);
   const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([]);
   const [loading_data, setLoadingData] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTeam, setFilterTeam] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStarRating, setFilterStarRating] = useState('');
-  
+
   // Bulk updates
   const [pendingUpdates, setPendingUpdates] = useState<Map<string, PlayerUpdate>>(new Map());
   const [bulkStarRating, setBulkStarRating] = useState<number | ''>('');
@@ -79,15 +86,27 @@ export default function PlayerStarsPointsPage() {
       try {
         setLoadingData(true);
         setError(null);
-        
+
         // Fetch season info
         const season = await getSeasonById(userSeasonId);
         setCurrentSeason(season);
-        
+
+        // Fetch star rating config
+        try {
+          const configResponse = await fetchWithTokenRefresh(`/api/star-rating-config?seasonId=${userSeasonId}`);
+          const configResult = await configResponse.json();
+          if (configResult.success && configResult.data) {
+            setStarRatingConfig(configResult.data);
+            console.log('Loaded star rating config:', configResult.data);
+          }
+        } catch (err) {
+          console.warn('Could not load star rating config:', err);
+        }
+
         // Fetch players
         const response = await fetchWithTokenRefresh(`/api/committee/update-player-stars-points?seasonId=${userSeasonId}`);
         const result = await response.json();
-        
+
         if (result.success) {
           setPlayers(result.data);
           console.log(`Loaded ${result.data.length} players for star/points management`);
@@ -112,7 +131,7 @@ export default function PlayerStarsPointsPage() {
     let filtered = players;
 
     if (searchTerm) {
-      filtered = filtered.filter(p => 
+      filtered = filtered.filter(p =>
         p.player_name.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
@@ -132,6 +151,34 @@ export default function PlayerStarsPointsPage() {
     setFilteredPlayers(filtered);
   }, [players, searchTerm, filterTeam, filterCategory, filterStarRating]);
 
+  // Helper function to calculate star rating from points
+  const calculateStarRatingFromPoints = (points: number): number => {
+    if (starRatingConfig.length === 0) {
+      // Fallback to default logic if config not loaded
+      if (points >= 350) return 10;
+      if (points >= 300) return 9;
+      if (points >= 250) return 8;
+      if (points >= 210) return 7;
+      if (points >= 175) return 6;
+      if (points >= 145) return 5;
+      if (points >= 120) return 4;
+      return 3;
+    }
+
+    // Use season's star rating config
+    // Sort by starting_points descending to find the highest matching tier
+    const sortedConfig = [...starRatingConfig].sort((a, b) => b.starting_points - a.starting_points);
+
+    for (const config of sortedConfig) {
+      if (points >= config.starting_points) {
+        return config.star_rating;
+      }
+    }
+
+    // If points are below all thresholds, return lowest star rating
+    return starRatingConfig[0]?.star_rating || 3;
+  };
+
   const handlePlayerUpdate = (playerId: string, field: 'star_rating' | 'points', value: number) => {
     if (!userSeasonId) return;
 
@@ -145,10 +192,17 @@ export default function PlayerStarsPointsPage() {
       points: player.points
     };
 
-    const newUpdate = {
+    let newUpdate = {
       ...currentUpdate,
       [field]: value
     };
+
+    // Auto-adjust star rating when points change
+    if (field === 'points') {
+      const autoStarRating = calculateStarRatingFromPoints(value);
+      newUpdate.star_rating = autoStarRating;
+      console.log(`Auto-adjusted star rating for ${player.player_name}: ${value} points → ${autoStarRating}⭐`);
+    }
 
     const newUpdates = new Map(pendingUpdates);
     newUpdates.set(playerId, newUpdate);
@@ -167,7 +221,7 @@ export default function PlayerStarsPointsPage() {
     }
 
     const newUpdates = new Map(pendingUpdates);
-    
+
     selectedPlayers.forEach(playerId => {
       const player = players.find(p => p.player_id === playerId);
       if (!player) return;
@@ -180,11 +234,11 @@ export default function PlayerStarsPointsPage() {
       };
 
       const updatedData = { ...currentUpdate };
-      
+
       if (bulkStarRating !== '') {
         updatedData.star_rating = bulkStarRating as number;
       }
-      
+
       if (bulkPoints !== '') {
         updatedData.points = bulkPoints as number;
       }
@@ -211,7 +265,7 @@ export default function PlayerStarsPointsPage() {
       setSuccess(null);
 
       const updates = Array.from(pendingUpdates.values());
-      
+
       const response = await fetchWithTokenRefresh('/api/committee/update-player-stars-points', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,11 +279,11 @@ export default function PlayerStarsPointsPage() {
         const updatedPlayers = players.map(player => {
           const updateResult = result.results.find((r: any) => r.player_id === player.player_id && r.success);
           if (updateResult) {
-            const newSalary = updateResult.new_salary !== undefined ? updateResult.new_salary : 
-                             (player.auction_value && player.team_id ? 
-                              calculateRealPlayerSalary(player.auction_value, updateResult.new_star_rating) : 
-                              null);
-            
+            const newSalary = updateResult.new_salary !== undefined ? updateResult.new_salary :
+              (player.auction_value && player.team_id ?
+                calculateRealPlayerSalary(player.auction_value, updateResult.new_star_rating) :
+                null);
+
             return {
               ...player,
               star_rating: updateResult.new_star_rating,
@@ -243,9 +297,9 @@ export default function PlayerStarsPointsPage() {
         setPlayers(updatedPlayers);
         setPendingUpdates(new Map());
         setSelectedPlayers(new Set());
-        
+
         setSuccess(`✅ ${result.summary.successful} players updated successfully!`);
-        
+
         if (result.summary.failed > 0) {
           console.log('Failed updates:', result.results.filter((r: any) => !r.success));
         }
@@ -288,7 +342,7 @@ export default function PlayerStarsPointsPage() {
 
   const getPreviewSalary = (player: Player, pendingUpdate?: PlayerUpdate): number | null => {
     if (!player.auction_value || !player.team_id) return null;
-    
+
     const starRating = pendingUpdate?.star_rating || player.star_rating;
     return calculateRealPlayerSalary(player.auction_value, starRating);
   };
@@ -464,7 +518,7 @@ export default function PlayerStarsPointsPage() {
             {Array.from(pendingUpdates.values()).map(update => {
               const player = players.find(p => p.player_id === update.player_id);
               if (!player) return null;
-              
+
               return (
                 <div key={update.player_id} className="bg-white p-3 rounded border">
                   <div className="flex justify-between items-start">
@@ -542,18 +596,16 @@ export default function PlayerStarsPointsPage() {
                           <p className="font-medium text-gray-900">{player.player_name}</p>
                           <p className="text-xs text-gray-500">ID: {player.player_id}</p>
                           <div className="flex items-center space-x-2 mt-1">
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              player.team_name 
-                                ? 'bg-green-100 text-green-800' 
+                            <span className={`px-2 py-1 text-xs rounded-full ${player.team_name
+                                ? 'bg-green-100 text-green-800'
                                 : 'bg-gray-100 text-gray-600'
-                            }`}>
+                              }`}>
                               {player.team_name || 'Available'}
                             </span>
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              player.category === 'Legend'
+                            <span className={`px-2 py-1 text-xs rounded-full ${player.category === 'Legend'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-blue-100 text-blue-800'
-                            }`}>
+                              }`}>
                               {player.category || 'N/A'}
                             </span>
                           </div>
@@ -584,7 +636,7 @@ export default function PlayerStarsPointsPage() {
                           const previewSalary = getPreviewSalary(player, pendingUpdate);
                           const currentSalary = player.salary_per_match;
                           const salaryChanged = previewSalary !== currentSalary;
-                          
+
                           return (
                             <div className="text-sm">
                               {previewSalary !== null ? (
@@ -644,160 +696,158 @@ export default function PlayerStarsPointsPage() {
             {/* Desktop Table View */}
             <div className="hidden sm:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Select
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Player
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Team
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Current ⭐/Pts
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    New Star Rating
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    New Points
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Salary
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredPlayers.map((player) => {
-                  const pendingUpdate = pendingUpdates.get(player.player_id);
-                  const hasChanges = pendingUpdate && (
-                    pendingUpdate.star_rating !== player.star_rating ||
-                    pendingUpdate.points !== player.points
-                  );
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Select
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Player
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Team
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Category
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Current ⭐/Pts
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      New Star Rating
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      New Points
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Salary
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredPlayers.map((player) => {
+                    const pendingUpdate = pendingUpdates.get(player.player_id);
+                    const hasChanges = pendingUpdate && (
+                      pendingUpdate.star_rating !== player.star_rating ||
+                      pendingUpdate.points !== player.points
+                    );
 
-                  return (
-                    <tr key={player.id} className={hasChanges ? 'bg-orange-50' : ''}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={selectedPlayers.has(player.player_id)}
-                          onChange={(e) => handleSelectPlayer(player.player_id, e.target.checked)}
-                          className="rounded"
-                        />
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{player.player_name}</p>
-                          <p className="text-xs text-gray-500">ID: {player.player_id}</p>
-                        </div>
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          player.team_name 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {player.team_name || 'Available'}
-                        </span>
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          player.category === 'Legend'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}>
-                          {player.category || 'N/A'}
-                        </span>
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div>
-                          <span className="font-medium">{player.star_rating}⭐</span>
-                          <br />
-                          <span className="text-gray-600">{player.points} pts</span>
-                        </div>
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <select
-                          value={pendingUpdate?.star_rating || player.star_rating}
-                          onChange={(e) => handlePlayerUpdate(player.player_id, 'star_rating', parseInt(e.target.value))}
-                          className="text-sm border border-gray-300 rounded px-2 py-1"
-                        >
-                          {STAR_RATINGS.map(star => (
-                            <option key={star} value={star}>{star} ⭐</option>
-                          ))}
-                        </select>
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="number"
-                          value={pendingUpdate?.points || player.points}
-                          onChange={(e) => handlePlayerUpdate(player.player_id, 'points', parseInt(e.target.value) || 0)}
-                          min="0"
-                          className="text-sm border border-gray-300 rounded px-2 py-1 w-20"
-                        />
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {(() => {
-                          const previewSalary = getPreviewSalary(player, pendingUpdate);
-                          const currentSalary = player.salary_per_match;
-                          const salaryChanged = previewSalary !== currentSalary;
-                          
-                          return (
-                            <div>
-                              {previewSalary !== null ? (
-                                <div>
-                                  <span className={salaryChanged ? 'text-orange-600 font-medium' : ''}>
-                                    ₹{previewSalary.toFixed(2)}
-                                  </span>
-                                  {salaryChanged && currentSalary && (
-                                    <div className="text-xs text-gray-500">
-                                      Was: ₹{Number(currentSalary).toFixed(2)}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span>N/A</span>
-                              )}
-                              {player.auction_value && (
-                                <div className="text-xs text-gray-500">
-                                  AV: ₹{player.auction_value}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {hasChanges && (
-                          <button
-                            onClick={() => clearPendingUpdate(player.player_id)}
-                            className="text-red-500 hover:text-red-700 text-xs"
+                    return (
+                      <tr key={player.id} className={hasChanges ? 'bg-orange-50' : ''}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={selectedPlayers.has(player.player_id)}
+                            onChange={(e) => handleSelectPlayer(player.player_id, e.target.checked)}
+                            className="rounded"
+                          />
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{player.player_name}</p>
+                            <p className="text-xs text-gray-500">ID: {player.player_id}</p>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 text-xs rounded-full ${player.team_name
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-600'
+                            }`}>
+                            {player.team_name || 'Available'}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 text-xs rounded-full ${player.category === 'Legend'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-blue-100 text-blue-800'
+                            }`}>
+                            {player.category || 'N/A'}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <div>
+                            <span className="font-medium">{player.star_rating}⭐</span>
+                            <br />
+                            <span className="text-gray-600">{player.points} pts</span>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <select
+                            value={pendingUpdate?.star_rating || player.star_rating}
+                            onChange={(e) => handlePlayerUpdate(player.player_id, 'star_rating', parseInt(e.target.value))}
+                            className="text-sm border border-gray-300 rounded px-2 py-1"
                           >
-                            Reset
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            {STAR_RATINGS.map(star => (
+                              <option key={star} value={star}>{star} ⭐</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <input
+                            type="number"
+                            value={pendingUpdate?.points || player.points}
+                            onChange={(e) => handlePlayerUpdate(player.player_id, 'points', parseInt(e.target.value) || 0)}
+                            min="0"
+                            className="text-sm border border-gray-300 rounded px-2 py-1 w-20"
+                          />
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {(() => {
+                            const previewSalary = getPreviewSalary(player, pendingUpdate);
+                            const currentSalary = player.salary_per_match;
+                            const salaryChanged = previewSalary !== currentSalary;
+
+                            return (
+                              <div>
+                                {previewSalary !== null ? (
+                                  <div>
+                                    <span className={salaryChanged ? 'text-orange-600 font-medium' : ''}>
+                                      ₹{previewSalary.toFixed(2)}
+                                    </span>
+                                    {salaryChanged && currentSalary && (
+                                      <div className="text-xs text-gray-500">
+                                        Was: ₹{Number(currentSalary).toFixed(2)}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span>N/A</span>
+                                )}
+                                {player.auction_value && (
+                                  <div className="text-xs text-gray-500">
+                                    AV: ₹{player.auction_value}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {hasChanges && (
+                            <button
+                              onClick={() => clearPendingUpdate(player.player_id)}
+                              className="text-red-500 hover:text-red-700 text-xs"
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </>
         )}

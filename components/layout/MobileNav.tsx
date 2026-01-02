@@ -15,11 +15,11 @@ export default function MobileNav() {
   const { isRegistered, teamLogo } = useTeamRegistration();
   const { signOut } = useFirebaseAuth();
   const router = useRouter();
-  
+
   // Get the appropriate dashboard URL based on user role
   const getDashboardUrl = () => {
     if (!user) return '/';
-    
+
     switch (user.role) {
       case 'super_admin':
         return '/dashboard/superadmin';
@@ -31,7 +31,7 @@ export default function MobileNav() {
         return '/dashboard';
     }
   };
-  
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -41,7 +41,7 @@ export default function MobileNav() {
       console.error('Sign out error:', error);
     }
   };
-  
+
   const toggleMenu = (open: boolean) => {
     setIsMenuOpen(open);
     if (open) {
@@ -55,14 +55,14 @@ export default function MobileNav() {
       setExpandedMenu(null);
     }
   };
-  
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isMenuOpen) {
         toggleMenu(false);
       }
     };
-    
+
     document.addEventListener('keydown', handleEscape);
     return () => {
       document.removeEventListener('keydown', handleEscape);
@@ -70,21 +70,20 @@ export default function MobileNav() {
       document.body.style.position = '';
     };
   }, [isMenuOpen]);
-  
+
   const toggleSubmenu = (menuName: string) => {
     setExpandedMenu(expandedMenu === menuName ? null : menuName);
   };
-  
+
   return (
     <>
       {/* Mobile Navigation Bar - Hidden on desktop (md:hidden means hide when >= 768px) */}
-      <nav 
-        className={`md:hidden fixed top-0 left-0 right-0 z-[1001] transition-all duration-300 ${
-          isMenuOpen 
-            ? 'bg-green-400/98 backdrop-blur-lg border-b-0 shadow-lg shadow-green-400/30' 
+      <nav
+        className={`md:hidden fixed top-0 left-0 right-0 z-[1001] transition-all duration-300 ${isMenuOpen
+            ? 'bg-green-400/98 backdrop-blur-lg border-b-0 shadow-lg shadow-green-400/30'
             : 'bg-white/95 backdrop-blur-lg border-b border-gray-200'
-        }`}
-        style={isMenuOpen ? {background: 'rgba(195, 221, 74, 0.98)'} : {}}
+          }`}
+        style={isMenuOpen ? { background: 'rgba(195, 221, 74, 0.98)' } : {}}
       >
         <div className="flex items-center justify-between px-4 py-3">
           {/* LEFT: Logo */}
@@ -103,7 +102,7 @@ export default function MobileNav() {
               <span className="text-base font-bold text-gray-900">League</span>
             </Link>
           </div>
-          
+
           {/* CENTER: Menu Button / Close Button */}
           <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center z-10">
             {!isMenuOpen ? (
@@ -129,27 +128,26 @@ export default function MobileNav() {
               </button>
             )}
           </div>
-          
+
           {/* RIGHT: User Avatar / Team Logo */}
           <div className="flex items-center flex-shrink-0 z-10">
             {!user ? (
-              <Link 
-                href="/login" 
-                className={`w-11 h-11 flex items-center justify-center rounded-full transition-all ${
-                  isMenuOpen 
-                    ? 'bg-green-500/40 hover:bg-green-500/60' 
+              <Link
+                href="/login"
+                className={`w-11 h-11 flex items-center justify-center rounded-full transition-all ${isMenuOpen
+                    ? 'bg-green-500/40 hover:bg-green-500/60'
                     : 'hover:bg-gray-100'
-                }`}
-                style={isMenuOpen ? {background: 'linear-gradient(135deg, #c3dd4a 0%, #a3d034 100%)', boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.3)'} : {}}
+                  }`}
+                style={isMenuOpen ? { background: 'linear-gradient(135deg, #c3dd4a 0%, #a3d034 100%)', boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.3)' } : {}}
                 title="Login"
               >
                 <svg className="w-6 h-6 text-gray-900" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 1L9 7V9C9 10.1 9.9 11 11 11V14.5C11 15.6 11.4 16.6 12 17.4C12.6 16.6 13 15.6 13 14.5V11C14.1 11 15 10.1 15 9Z"/>
+                  <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 1L9 7V9C9 10.1 9.9 11 11 11V14.5C11 15.6 11.4 16.6 12 17.4C12.6 16.6 13 15.6 13 14.5V11C14.1 11 15 10.1 15 9Z" />
                 </svg>
               </Link>
             ) : user.role === 'team' && teamLogo ? (
-              <Link 
-                href={getDashboardUrl()} 
+              <Link
+                href={getDashboardUrl()}
                 className="w-11 h-11 rounded-full overflow-hidden bg-white shadow-md transition-transform hover:scale-110"
                 title="Dashboard"
               >
@@ -162,30 +160,29 @@ export default function MobileNav() {
                 />
               </Link>
             ) : (
-              <Link 
-                href={getDashboardUrl()} 
-                className={`w-11 h-11 flex items-center justify-center rounded-full transition-all ${
-                  isMenuOpen 
-                    ? 'bg-green-500/40 hover:bg-green-500/60' 
+              <Link
+                href={getDashboardUrl()}
+                className={`w-11 h-11 flex items-center justify-center rounded-full transition-all ${isMenuOpen
+                    ? 'bg-green-500/40 hover:bg-green-500/60'
                     : 'hover:bg-gray-100'
-                }`}
-                style={isMenuOpen ? {background: 'linear-gradient(135deg, #c3dd4a 0%, #a3d034 100%)', boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.3)'} : {}}
+                  }`}
+                style={isMenuOpen ? { background: 'linear-gradient(135deg, #c3dd4a 0%, #a3d034 100%)', boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.3)' } : {}}
                 title="Dashboard"
               >
                 <svg className="w-6 h-6 text-gray-900" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                 </svg>
               </Link>
             )}
           </div>
         </div>
       </nav>
-      
+
       {/* Full Screen Menu Overlay */}
       {isMenuOpen && (
-        <div 
+        <div
           className="md:hidden fixed inset-0 z-[1000] overflow-y-auto transition-opacity duration-300"
-          style={{background: 'linear-gradient(135deg, #c3dd4a 0%, #a3d034 50%, #7bc62d 100%)'}}
+          style={{ background: 'linear-gradient(135deg, #c3dd4a 0%, #a3d034 50%, #7bc62d 100%)' }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               toggleMenu(false);
@@ -199,14 +196,14 @@ export default function MobileNav() {
               <h2 className="text-3xl font-bold text-gray-900 mb-2">SS League</h2>
               <p className="text-gray-800">Fantasy Football Auction Platform</p>
             </div>
-            
+
             {/* Navigation Menu */}
             <nav className="max-w-2xl mx-auto">
               {/* Home / Dashboard */}
               {!user ? (
                 <div className="border-b border-black/10">
-                  <Link 
-                    href="/" 
+                  <Link
+                    href="/"
                     className="block py-4"
                     onClick={() => toggleMenu(false)}
                   >
@@ -218,8 +215,8 @@ export default function MobileNav() {
                 </div>
               ) : (
                 <div className="border-b border-black/10">
-                  <Link 
-                    href={getDashboardUrl()} 
+                  <Link
+                    href={getDashboardUrl()}
                     className="block py-4"
                     onClick={() => toggleMenu(false)}
                   >
@@ -230,14 +227,14 @@ export default function MobileNav() {
                   </Link>
                 </div>
               )}
-              
+
               {/* Public Pages - Show for everyone */}
               {!user && (
                 <>
                   {/* Current Season */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/season/current" 
+                    <Link
+                      href="/season/current"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -247,11 +244,11 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  
+
                   {/* Players */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/players" 
+                    <Link
+                      href="/players"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -261,11 +258,11 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  
+
                   {/* Teams */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/teams" 
+                    <Link
+                      href="/teams"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -275,11 +272,11 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  
+
                   {/* Fixtures */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/fixtures" 
+                    <Link
+                      href="/fixtures"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -289,11 +286,11 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  
+
                   {/* Results */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/results" 
+                    <Link
+                      href="/results"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -303,11 +300,11 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  
+
                   {/* Archive */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/seasons" 
+                    <Link
+                      href="/seasons"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -317,11 +314,11 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  
+
                   {/* Awards */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/awards" 
+                    <Link
+                      href="/awards"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -331,11 +328,11 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
-                  
+
                   {/* News */}
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/news" 
+                    <Link
+                      href="/news"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -345,15 +342,29 @@ export default function MobileNav() {
                       </div>
                     </Link>
                   </div>
+
+                  {/* Polls */}
+                  <div className="border-b border-black/10">
+                    <Link
+                      href="/polls"
+                      className="block py-4"
+                      onClick={() => toggleMenu(false)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-2xl font-normal text-gray-900">🗳️ Polls</span>
+                        <span className="text-sm text-gray-700 mt-1">Fan voting</span>
+                      </div>
+                    </Link>
+                  </div>
                 </>
               )}
-              
+
               {/* Super Admin Navigation */}
               {user && user.role === 'super_admin' && (
                 <>
                   {/* Seasons */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('seasons')}
                     >
@@ -363,7 +374,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Season management</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'seasons' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -376,10 +387,10 @@ export default function MobileNav() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Management */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('management')}
                     >
@@ -389,7 +400,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Users & teams</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'management' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -406,13 +417,13 @@ export default function MobileNav() {
                   </div>
                 </>
               )}
-              
+
               {/* Committee Admin Navigation */}
               {user && user.role === 'committee_admin' && (
                 <>
                   {/* Teams & Players */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('teams')}
                     >
@@ -422,7 +433,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Manage participants</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'teams' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -435,10 +446,10 @@ export default function MobileNav() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Rounds & Matches */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('rounds')}
                     >
@@ -448,7 +459,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Auction management</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'rounds' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -460,10 +471,10 @@ export default function MobileNav() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Tournament */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('tournament')}
                     >
@@ -473,7 +484,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Competition setup</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'tournament' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -488,10 +499,10 @@ export default function MobileNav() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Settings */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('settings')}
                     >
@@ -501,7 +512,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Configuration</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'settings' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -516,13 +527,13 @@ export default function MobileNav() {
                   </div>
                 </>
               )}
-              
+
               {/* Team Navigation - Only show if registered */}
               {user && user.role === 'team' && isRegistered && (
                 <>
                   {/* My Team */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('myteam')}
                     >
@@ -532,7 +543,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Team management</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'myteam' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -545,10 +556,10 @@ export default function MobileNav() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Matches */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('matches')}
                     >
@@ -558,7 +569,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Fixtures & results</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'matches' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -569,10 +580,10 @@ export default function MobileNav() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Leaderboards */}
                   <div className="border-b border-black/10">
-                    <button 
+                    <button
                       className="w-full py-4 text-left"
                       onClick={() => toggleSubmenu('leaderboards')}
                     >
@@ -582,7 +593,7 @@ export default function MobileNav() {
                           <span className="text-sm text-gray-700 mt-1">Stats & rankings</span>
                         </div>
                         <svg className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'leaderboards' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </button>
@@ -596,13 +607,13 @@ export default function MobileNav() {
                   </div>
                 </>
               )}
-              
+
               {/* Auth Links */}
               {!user && (
                 <>
                   <div className="border-b border-black/10">
-                    <Link 
-                      href="/login" 
+                    <Link
+                      href="/login"
                       className="block py-4"
                       onClick={() => toggleMenu(false)}
                     >
@@ -614,12 +625,12 @@ export default function MobileNav() {
                   </div>
                 </>
               )}
-              
-              
+
+
               {/* Logout for authenticated users */}
               {user && (
                 <div className="border-b border-black/10">
-                  <button 
+                  <button
                     className="w-full py-4 text-left"
                     onClick={() => toggleSubmenu('account')}
                   >
@@ -628,13 +639,13 @@ export default function MobileNav() {
                         <span className="text-2xl font-normal text-gray-900">My Account</span>
                         <span className="text-sm text-gray-700 mt-1">Settings & help</span>
                       </div>
-                      <svg 
+                      <svg
                         className={`w-5 h-5 text-gray-900 transition-transform ${expandedMenu === 'account' ? 'rotate-180' : ''}`}
-                        fill="none" 
-                        stroke="currentColor" 
+                        fill="none"
+                        stroke="currentColor"
                         viewBox="0 0 24 24"
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
                   </button>
@@ -650,7 +661,7 @@ export default function MobileNav() {
           </div>
         </div>
       )}
-      
+
       {/* Add padding to body when mobile nav is present */}
       <style jsx global>{`
         @media (max-width: 768px) {

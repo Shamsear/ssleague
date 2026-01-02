@@ -26,6 +26,8 @@ interface TeamData {
   id: string;
   name: string;
   originalBudget: number;
+  currentBudget: number;
+  currentSpent: number;
   currencySystem: string;
   assignedPlayers: Player[];
   isExpanded: boolean;
@@ -60,6 +62,7 @@ export default function RealPlayersPage() {
   const [quickAssignContractStart, setQuickAssignContractStart] = useState<string>('');
   const [quickAssignContractEnd, setQuickAssignContractEnd] = useState<string>('');
   const [isQuickAssigning, setIsQuickAssigning] = useState(false);
+  const [showActualBudget, setShowActualBudget] = useState(true); // Toggle for showing actual budget vs max limit
 
   useEffect(() => {
     if (!loading && !user) {
@@ -228,34 +231,44 @@ export default function RealPlayersPage() {
               const teamId = teamSeason.team_id || teamSeason.id.split('_')[0];
               const assignedPlayers = teamMap[teamId] || [];
 
-              // Use INITIAL budget, not current balance
-              // Check for initial_* fields first, then fall back to defaults from season
+              // Get BOTH initial budget AND current budget/spent from Firebase
               let originalBudget = 0;
+              let currentBudget = 0;
+              let currentSpent = 0;
+
               if (teamSeason.currency_system === 'dual') {
                 originalBudget = teamSeason.initial_real_player_budget ||
                   teamSeason.real_player_budget_initial ||
                   currentSeason?.dollar_budget ||
                   1000;
+                currentBudget = teamSeason.real_player_budget ?? originalBudget;
+                currentSpent = teamSeason.real_player_spent || 0;
               } else {
                 originalBudget = teamSeason.initial_budget ||
                   teamSeason.budget_initial ||
                   currentSeason?.purseAmount ||
                   10000;
+                currentBudget = teamSeason.budget ?? originalBudget;
+                currentSpent = teamSeason.total_spent || 0;
               }
 
-              console.log(`Team ${teamSeason.team_name || teamSeason.team_code}: currency=${teamSeason.currency_system}, originalBudget=${originalBudget}, fields:`, {
+              console.log(`Team ${teamSeason.team_name || teamSeason.team_code}: currency=${teamSeason.currency_system}, originalBudget=${originalBudget}, currentBudget=${currentBudget}, currentSpent=${currentSpent}, fields:`, {
                 initial_real_player_budget: teamSeason.initial_real_player_budget,
                 real_player_budget_initial: teamSeason.real_player_budget_initial,
                 real_player_budget: teamSeason.real_player_budget,
+                real_player_spent: teamSeason.real_player_spent,
                 initial_budget: teamSeason.initial_budget,
                 budget_initial: teamSeason.budget_initial,
-                budget: teamSeason.budget
+                budget: teamSeason.budget,
+                total_spent: teamSeason.total_spent
               });
 
               return {
                 id: teamId,
                 name: teamSeason.team_name || teamSeason.team_code || 'Unknown Team',
                 originalBudget: originalBudget,
+                currentBudget: currentBudget,
+                currentSpent: currentSpent,
                 currencySystem: teamSeason.currency_system || 'single',
                 assignedPlayers: assignedPlayers,
                 isExpanded: false,
@@ -424,7 +437,7 @@ export default function RealPlayersPage() {
       {
         label: `Mid ${seasonNum} to Mid ${seasonNum + 2} (2 seasons)`,
         start: `${seasonPrefix}${seasonNum}.5`,
-        end: `${seasonPrefix}${seasonNum + 2}`,
+        end: `${seasonPrefix}${seasonNum + 2}.5`,
         description: 'Mid-season start, extended contract'
       },
       {
@@ -691,6 +704,32 @@ export default function RealPlayersPage() {
               <p className="text-lg font-bold text-indigo-900">{minPlayers} - {maxPlayers}</p>
             </div>
           </div>
+
+          {/* Budget Display Toggle */}
+          <div className="flex items-center justify-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
+            <span className="text-sm text-gray-600 font-medium">Budget Display:</span>
+            <button
+              onClick={() => setShowActualBudget(!showActualBudget)}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${showActualBudget
+                ? 'bg-green-100 text-green-700 border-2 border-green-300'
+                : 'bg-gray-100 text-gray-600 border-2 border-gray-300'
+                }`}
+            >
+              💰 Actual Balance
+            </button>
+            <button
+              onClick={() => setShowActualBudget(!showActualBudget)}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${!showActualBudget
+                ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
+                : 'bg-gray-100 text-gray-600 border-2 border-gray-300'
+                }`}
+            >
+              📊 Max Limit
+            </button>
+            <div className="ml-2 text-xs text-gray-500">
+              {showActualBudget ? '(From Firebase team_seasons)' : '(Initial budget - local calc)'}
+            </div>
+          </div>
         </div>
 
         {/* Messages */}
@@ -795,10 +834,14 @@ export default function RealPlayersPage() {
                     {(() => {
                       const team = teams.find(t => t.id === quickAssignTeam);
                       if (!team) return null;
-                      const remaining = team.originalBudget - team.assignedPlayers.reduce((sum, p) => sum + p.auctionValue, 0);
+                      const remaining = showActualBudget
+                        ? team.currentBudget
+                        : (team.originalBudget - team.assignedPlayers.reduce((sum, p) => sum + p.auctionValue, 0));
+                      const currencySymbol = team.currencySystem === 'dual' ? '$' : '£';
                       return (
                         <p className="text-xs font-semibold text-gray-700">
-                          Budget: SSCoin {remaining.toLocaleString()} left
+                          Budget: {currencySymbol}{remaining.toLocaleString()} left
+                          {showActualBudget && <span className="text-blue-600 ml-1">(Firebase)</span>}
                         </p>
                       );
                     })()}
@@ -963,9 +1006,15 @@ export default function RealPlayersPage() {
           {/* Teams Panel */}
           <div className="lg:col-span-2 space-y-4">
             {teams.map(team => {
+              // Calculate budget based on toggle
               const totalCost = team.assignedPlayers.reduce((sum, p) => sum + p.auctionValue, 0);
-              const remainingBudget = team.originalBudget - totalCost;
-              const isOverBudget = remainingBudget < 0;
+
+              // Use actual budget from Firebase if toggle is on, otherwise use max limit calculation
+              const displayBudget = showActualBudget ? team.currentBudget : (team.originalBudget - totalCost);
+              const displaySpent = showActualBudget ? team.currentSpent : totalCost;
+              const displayTotal = showActualBudget ? (team.currentBudget + team.currentSpent) : team.originalBudget;
+
+              const isOverBudget = displayBudget < 0;
               const playerCount = team.assignedPlayers.length;
               const isValidCount = playerCount <= maxPlayers; // Only check max, not min
               const currencySymbol = team.currencySystem === 'dual' ? '$' : '£';
@@ -999,7 +1048,8 @@ export default function RealPlayersPage() {
                             <span className="text-gray-400">•</span>
                             <span className={`font-semibold ${isOverBudget ? 'text-red-600' : 'text-green-600'
                               }`}>
-                              {currencySymbol}{remainingBudget.toLocaleString()} left
+                              {currencySymbol}{displayBudget.toLocaleString()} left
+                              {showActualBudget && <span className="text-xs ml-1">(Firebase)</span>}
                             </span>
                           </div>
                         </div>
@@ -1034,14 +1084,15 @@ export default function RealPlayersPage() {
                           <span className="text-gray-600">Budget Usage</span>
                           <span className={`font-semibold ${isOverBudget ? 'text-red-600' : 'text-gray-700'
                             }`}>
-                            {currencySymbol}{totalCost.toLocaleString()} / {currencySymbol}{team.originalBudget.toLocaleString()}
+                            {currencySymbol}{displaySpent.toLocaleString()} / {currencySymbol}{displayTotal.toLocaleString()}
+                            {showActualBudget && <span className="text-xs ml-1 text-blue-600">(Firebase)</span>}
                           </span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
                             className={`h-2 rounded-full transition-all ${isOverBudget ? 'bg-red-500' : 'bg-blue-500'
                               }`}
-                            style={{ width: `${Math.min((totalCost / team.originalBudget) * 100, 100)}%` }}
+                            style={{ width: `${Math.min((displaySpent / displayTotal) * 100, 100)}%` }}
                           />
                         </div>
                       </div>

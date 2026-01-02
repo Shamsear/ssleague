@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const awardType = searchParams.get('award_type');
     const roundNumber = searchParams.get('round_number');
     const weekNumber = searchParams.get('week_number');
+    const skipAwardCheck = searchParams.get('skip_award_check') === 'true'; // For fan polls
 
     if (!tournamentId || !seasonId || !awardType) {
       return NextResponse.json(
@@ -37,23 +38,25 @@ export async function GET(request: NextRequest) {
 
         console.log(`🔍 Searching for POTD candidates: tournament=${tournamentId}, round=${roundNumber}`);
 
-        // First, check if an award has already been given for this round
-        const existingAward = await sql`
-          SELECT player_id, player_name
-          FROM awards
-          WHERE tournament_id = ${tournamentId}
-            AND award_type = 'POTD'
-            AND round_number = ${parseInt(roundNumber)}
-        `;
+        // Check if an award has already been given for this round (skip for fan polls)
+        if (!skipAwardCheck) {
+          const existingAward = await sql`
+            SELECT player_id, player_name
+            FROM awards
+            WHERE tournament_id = ${tournamentId}
+              AND award_type = 'POTD'
+              AND round_number = ${parseInt(roundNumber)}
+          `;
 
-        if (existingAward.length > 0) {
-          console.log(`⚠️ POTD award already given for round ${roundNumber} to ${existingAward[0].player_name}`);
-          // Return empty candidates list since award is already given
-          return NextResponse.json({
-            success: true,
-            data: [],
-            message: 'Award already given for this round'
-          });
+          if (existingAward.length > 0) {
+            console.log(`⚠️ POTD award already given for round ${roundNumber} to ${existingAward[0].player_name}`);
+            // Return empty candidates list since award is already given
+            return NextResponse.json({
+              success: true,
+              data: [],
+              message: 'Award already given for this round'
+            });
+          }
         }
 
         const fixtures = await sql`
@@ -146,22 +149,24 @@ export async function GET(request: NextRequest) {
 
         console.log(`🔍 Searching for POTW candidates: week=${weekNumber}, rounds ${startRound}-${endRound}`);
 
-        // First, check if an award has already been given for this week
-        const existingAward = await sql`
-          SELECT player_id, player_name
-          FROM awards
-          WHERE tournament_id = ${tournamentId}
-            AND award_type = 'POTW'
-            AND week_number = ${parseInt(weekNumber)}
-        `;
+        // Check if an award has already been given for this week (skip for fan polls)
+        if (!skipAwardCheck) {
+          const existingAward = await sql`
+            SELECT player_id, player_name
+            FROM awards
+            WHERE tournament_id = ${tournamentId}
+              AND award_type = 'POTW'
+              AND week_number = ${parseInt(weekNumber)}
+          `;
 
-        if (existingAward.length > 0) {
-          console.log(`⚠️ POTW award already given for week ${weekNumber} to ${existingAward[0].player_name}`);
-          return NextResponse.json({
-            success: true,
-            data: [],
-            message: 'Award already given for this week'
-          });
+          if (existingAward.length > 0) {
+            console.log(`⚠️ POTW award already given for week ${weekNumber} to ${existingAward[0].player_name}`);
+            return NextResponse.json({
+              success: true,
+              data: [],
+              message: 'Award already given for this week'
+            });
+          }
         }
 
         // Get all matchups from this week
@@ -254,22 +259,24 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        // First, check if an award has already been given for this round
-        const existingAward = await sql`
-          SELECT team_id, team_name
-          FROM awards
-          WHERE tournament_id = ${tournamentId}
-            AND award_type = 'TOD'
-            AND round_number = ${parseInt(roundNumber)}
-        `;
+        // Check if an award has already been given for this round (skip for fan polls)
+        if (!skipAwardCheck) {
+          const existingAward = await sql`
+            SELECT team_id, team_name
+            FROM awards
+            WHERE tournament_id = ${tournamentId}
+              AND award_type = 'TOD'
+              AND round_number = ${parseInt(roundNumber)}
+          `;
 
-        if (existingAward.length > 0) {
-          console.log(`⚠️ TOD award already given for round ${roundNumber} to ${existingAward[0].team_name}`);
-          return NextResponse.json({
-            success: true,
-            data: [],
-            message: 'Award already given for this round'
-          });
+          if (existingAward.length > 0) {
+            console.log(`⚠️ TOD award already given for round ${roundNumber} to ${existingAward[0].team_name}`);
+            return NextResponse.json({
+              success: true,
+              data: [],
+              message: 'Award already given for this round'
+            });
+          }
         }
 
         const fixtures = await sql`
@@ -367,22 +374,24 @@ export async function GET(request: NextRequest) {
 
         console.log(`🔍 Searching for TOW candidates: week=${weekNumber}, rounds ${startRound}-${endRound}`);
 
-        // First, check if an award has already been given for this week
-        const existingAward = await sql`
-          SELECT team_id, team_name
-          FROM awards
-          WHERE tournament_id = ${tournamentId}
-            AND award_type = 'TOW'
-            AND week_number = ${parseInt(weekNumber)}
-        `;
+        // Check if an award has already been given for this week (skip for fan polls)
+        if (!skipAwardCheck) {
+          const existingAward = await sql`
+            SELECT team_id, team_name
+            FROM awards
+            WHERE tournament_id = ${tournamentId}
+              AND award_type = 'TOW'
+              AND week_number = ${parseInt(weekNumber)}
+          `;
 
-        if (existingAward.length > 0) {
-          console.log(`⚠️ TOW award already given for week ${weekNumber} to ${existingAward[0].team_name}`);
-          return NextResponse.json({
-            success: true,
-            data: [],
-            message: 'Award already given for this week'
-          });
+          if (existingAward.length > 0) {
+            console.log(`⚠️ TOW award already given for week ${weekNumber} to ${existingAward[0].team_name}`);
+            return NextResponse.json({
+              success: true,
+              data: [],
+              message: 'Award already given for this week'
+            });
+          }
         }
 
         const fixtures = await sql`

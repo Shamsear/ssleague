@@ -1,0 +1,133 @@
+﻿[dotenv@17.2.3] injecting env (33) from .env.local -- tip: ≡ƒùé∩╕Å backup and recover secrets: https://dotenvx.com/ops
+
+≡ƒöì DETAILED BUDGET VERIFICATION FOR GATTI AND KALULU
+
+ΓÜá∩╕Å  THIS IS A PREVIEW ONLY - NO CHANGES WILL BE MADE
+
+
+====================================================================================================
+≡ƒöì Analyzing: Federico Gatti
+====================================================================================================
+
+≡ƒôï Tiebreaker Info:
+   Player: Federico Gatti (ID: 366)
+   Team: Portland Timbers (SSPSLT0026)
+   Winning Bid: ┬ú350
+   Status: resolved
+   Resolved At: Thu Jan 01 2026 18:01:45 GMT+0300 (Arabian Standard Time)
+
+≡ƒÆ░ Current Team Budget (Neon):
+   football_budget: ┬ú1003.30
+   football_spent: ┬ú9126.70
+   football_players_count: 24
+
+≡ƒæÑ All Sold Players for Portland Timbers:
+   Total Count: 25
+
+   Top 10 Players by Value:
+      1. Erling Haaland (CF) - ┬ú2333
+      2. Mohamed Salah (RWF) - ┬ú1005
+      3. Ferm├¡n L├│pez (AMF) - ┬ú602
+      4. Noah Okafor (CF) - ┬ú505
+      5. Stefan de Vrij (CB) - ┬ú400
+      6. Cody Gakpo (LWF) - ┬ú400
+      7. Hakan ├çalhano─ƒlu (CMF) - ┬ú380
+      8. Marc ter Stegen (GK) - ┬ú353
+   ≡ƒæë 9. Federico Gatti (CB) - ┬ú350
+      10. Robert Andrich (DMF) - ┬ú300
+
+   Γ£à Federico Gatti FOUND in team's sold players
+      Acquisition Value: ┬ú350
+
+≡ƒôè Budget Verification:
+   Sum of all player acquisition_values: ┬ú8287.00
+   Team football_spent (Neon): ┬ú9126.70
+   Difference: ┬ú839.70
+   ΓÜá∩╕Å  MISMATCH - football_spent is MORE than sum of acquisition values
+
+≡ƒÄ» Specific Check for Federico Gatti:
+   If Federico Gatti cost WAS included:
+      Expected football_spent: ┬ú8287.00
+      Actual football_spent: ┬ú9126.70
+      Match: Γ¥î NO
+
+   If Federico Gatti cost was NOT included:
+      Expected football_spent: ┬ú7937.00
+      Actual football_spent: ┬ú9126.70
+      Match: Γ¥î NO
+
+====================================================================================================
+≡ƒöì Analyzing: Pierre Kalulu
+====================================================================================================
+
+≡ƒôï Tiebreaker Info:
+   Player: Pierre Kalulu (ID: 326)
+   Team: Los Galacticos (SSPSLT0021)
+   Winning Bid: ┬ú55
+   Status: resolved
+   Resolved At: Thu Jan 01 2026 18:09:45 GMT+0300 (Arabian Standard Time)
+
+≡ƒÆ░ Current Team Budget (Neon):
+   football_budget: ┬ú621.90
+   football_spent: ┬ú9648.10
+   football_players_count: 24
+
+≡ƒæÑ All Sold Players for Los Galacticos:
+   Total Count: 25
+
+   Top 10 Players by Value:
+      1. Aur├⌐lien Tchouam├⌐ni (DMF) - ┬ú1722
+      2. Jonathan David (CF) - ┬ú1324
+      3. Matthijs de Ligt (CB) - ┬ú1035
+      4. Michael Olise (RWF) - ┬ú655
+      5. Xavi Simons (AMF) - ┬ú621
+      6. Joshua Kimmich (DMF) - ┬ú567
+      7. Ant├│nio Silva (CB) - ┬ú512
+      8. Mohammed Kudus (LMF) - ┬ú436
+      9. Moise Kean (CF) - ┬ú366
+      10. Federico Chiesa (LWF) - ┬ú216
+
+   Γ£à Pierre Kalulu FOUND in team's sold players
+      Acquisition Value: ┬ú55
+
+≡ƒôè Budget Verification:
+   Sum of all player acquisition_values: ┬ú8606.00
+   Team football_spent (Neon): ┬ú9648.10
+   Difference: ┬ú1042.10
+   ΓÜá∩╕Å  MISMATCH - football_spent is MORE than sum of acquisition values
+
+≡ƒÄ» Specific Check for Pierre Kalulu:
+   If Pierre Kalulu cost WAS included:
+      Expected football_spent: ┬ú8606.00
+      Actual football_spent: ┬ú9648.10
+      Match: Γ¥î NO
+
+   If Pierre Kalulu cost was NOT included:
+      Expected football_spent: ┬ú8551.00
+      Actual football_spent: ┬ú9648.10
+      Match: Γ¥î NO
+
+
+====================================================================================================
+≡ƒôï FINAL VERDICT
+====================================================================================================
+
+Federico Gatti (Portland Timbers):
+   Winning Bid: ┬ú350
+   Player in team roster: Γ£à YES
+   football_spent: ┬ú9126.70
+   Sum of all acquisitions: ┬ú8287.00
+   Budget matches acquisitions: Γ¥î NO
+   ΓÜá∩╕Å  football_spent is ┬ú839.70 MORE than it should be
+
+Pierre Kalulu (Los Galacticos):
+   Winning Bid: ┬ú55
+   Player in team roster: Γ£à YES
+   football_spent: ┬ú9648.10
+   Sum of all acquisitions: ┬ú8606.00
+   Budget matches acquisitions: Γ¥î NO
+   ΓÜá∩╕Å  football_spent is ┬ú1042.10 MORE than it should be
+
+Γ£à Analysis complete - No changes made to database
+
+≡ƒÄë Done!
