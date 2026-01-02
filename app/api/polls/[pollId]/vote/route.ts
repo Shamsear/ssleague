@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { verifyAuthToken } from '@/lib/auth-helpers';
 
 /**
  * POST /api/polls/[pollId]/vote
  * Submit a vote with device tracking and name validation
+ * Requires authentication
  */
 export async function POST(
   request: NextRequest,
@@ -11,11 +13,22 @@ export async function POST(
 ) {
   try {
     const { pollId } = await params;
+    
+    // Verify authentication
+    const authResult = await verifyAuthToken(request);
+    if (!authResult.authenticated || !authResult.firebaseUid) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required to vote' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
 
     const {
       selected_option_id,
       voter_name,
+      voter_email,
       device_fingerprint,
       user_agent,
       browser_info,
@@ -148,15 +161,20 @@ export async function POST(
     // Create vote
     const vote_id = `vote_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    // Use authenticated user's Firebase UID as user_id
+    const userId = authResult.firebaseUid;
+    
     await sql`
       INSERT INTO poll_votes (
-        vote_id, poll_id, voter_name, 
+        vote_id, poll_id, user_id, voter_name, user_name,
         device_fingerprint, ip_address, user_agent, browser_info,
         selected_option_id, voted_at,
         is_flagged, flag_reason
       ) VALUES (
         ${vote_id},
         ${pollId},
+        ${userId},
+        ${voter_name.trim()},
         ${voter_name.trim()},
         ${device_fingerprint},
         ${ip_address},

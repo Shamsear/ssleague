@@ -172,11 +172,11 @@ export default function PollPage() {
         setSuccess(null);
 
         try {
-            // Get voter info from either user or firebaseUser
-            const voterName = user?.username || firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || 'Anonymous';
-            const voterEmail = user?.email || firebaseUser?.email || '';
+            // Get voter info from either user or firebaseUser, or use test data
+            const voterName = user?.username || firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || 'Test User';
+            const voterEmail = user?.email || firebaseUser?.email || 'test@example.com';
 
-            const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote`, {
+            const response = await fetch(`/api/polls/${pollId}/vote`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
