@@ -283,11 +283,20 @@ export default function PollsManagementPage() {
     }
 
     try {
-      // Convert IST input to UTC for database storage
-      const istDate = new Date(newDeadline);
-      // Subtract 5:30 hours to convert IST to UTC
+      // The datetime-local input gives us a string in format "YYYY-MM-DDTHH:mm"
+      // We need to treat this as IST and convert to UTC for database
+      const [datePart, timePart] = newDeadline.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      
+      // Create date in IST (manually construct to avoid timezone issues)
+      const istDate = new Date(year, month - 1, day, hours, minutes, 0);
+      
+      // Convert IST to UTC by subtracting 5:30 hours
       const utcDate = new Date(istDate.getTime() - (5.5 * 60 * 60 * 1000));
       const utcString = utcDate.toISOString();
+
+      console.log('Input:', newDeadline, 'IST Date:', istDate, 'UTC:', utcString);
 
       const response = await fetchWithTokenRefresh(`/api/polls/${pollId}`, {
         method: 'PATCH',
@@ -311,11 +320,23 @@ export default function PollsManagementPage() {
   };
 
   const startEditingDeadline = (currentDeadline: string) => {
-    // Convert UTC to IST for display in datetime-local input
-    const date = new Date(currentDeadline);
-    // Convert to IST (UTC+5:30)
-    const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
-    const localDateTime = istDate.toISOString().slice(0, 16);
+    // Convert UTC from database to IST for display
+    const utcDate = new Date(currentDeadline);
+    
+    // Get IST time by adding 5:30 hours
+    const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    // Format for datetime-local input (YYYY-MM-DDTHH:mm)
+    const year = istDate.getFullYear();
+    const month = String(istDate.getMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getDate()).padStart(2, '0');
+    const hours = String(istDate.getHours()).padStart(2, '0');
+    const minutes = String(istDate.getMinutes()).padStart(2, '0');
+    
+    const localDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+    
+    console.log('UTC:', currentDeadline, 'IST for input:', localDateTime);
+    
     setNewDeadline(localDateTime);
     setEditingDeadline(true);
   };
