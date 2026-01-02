@@ -184,13 +184,18 @@ export default function PollPage() {
                 const result = await signInWithPopup(auth, provider);
                 console.log('✅ Signed in successfully:', result.user.email);
 
-                // Wait for auth context to update
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Get the ID token and set it
+                const idToken = await result.user.getIdToken(true);
+                await fetch('/api/auth/set-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: idToken }),
+                });
 
-                // After successful login, check vote status
-                await checkIfVoted();
+                console.log('Token set, reloading page...');
                 
-                setSuccess('Successfully signed in! You can now vote.');
+                // Reload the page to ensure auth context is fully updated
+                window.location.reload();
             } catch (popupError: any) {
                 // If popup fails, try redirect method
                 if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/invalid-credential') {
@@ -217,9 +222,9 @@ export default function PollPage() {
             }
             
             setError(errorMessage);
-        } finally {
             setSigningIn(false);
         }
+        // Don't set signingIn to false here because we're reloading
     };
 
     if (loading) {
