@@ -176,25 +176,9 @@ export async function POST(
           ${shouldFlag},
           ${shouldFlag ? 'shared_device_different_users' : null}
         )
-        ON CONFLICT (poll_id, user_id) DO NOTHING
       `;
 
-      // Check if the insert was successful
-      const insertCheck = await sql`
-        SELECT vote_id FROM poll_votes WHERE vote_id = ${vote_id}
-      `;
 
-      if (insertCheck.length === 0) {
-        // Vote was not inserted due to conflict - user already voted
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'You have already voted in this poll',
-            already_voted: true
-          },
-          { status: 400 }
-        );
-      }
 
       // Update total votes count
       await sql`
