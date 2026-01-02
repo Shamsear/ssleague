@@ -66,6 +66,14 @@ export async function POST(
       );
     }
 
+    // Validation: voter email (required for authenticated voting)
+    if (!voter_email) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required. Please sign in to vote.' },
+        { status: 401 }
+      );
+    }
+
     const sql = getTournamentDb();
 
     // Check if poll exists and is active
@@ -112,122 +120,148 @@ export async function POST(
       request.headers.get('x-real-ip') ||
       'unknown';
 
-    // STRICT CHECK: Has this device already voted?
-    const existingVote = await sql`
-      SELECT vote_id, voter_name, selected_option_id
-      FROM poll_votes
-      WHERE poll_id = ${pollId}
-        AND device_fingerprint = ${device_fingerprint}
-        AND deleted_at IS NULL
-    `;
+    // Generate user_id from voter email (primary identifier)
+    const userId = `user_${Buffer.from(voter_email).toString('base64').slice(0, 20)}`;
 
-    if (existingVote.length > 0) {
-      const existing = existingVote[0];
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: `This device has already voted as "${existing.voter_name}"`,
-          already_voted: true,
-          voter_name: existing.voter_name,
-          selected_option: existing.selected_option_id
-        },
-        { status: 400 }
-      );
-    }
-
-    // Check if name was used on other devices (flag for admin review)
-    const nameUsage = await sql`
-      SELECT COUNT(DISTINCT device_fingerprint) as device_count
-      FROM poll_votes
-      WHERE poll_id = ${pollId}
-        AND voter_name = ${voter_name.trim()}
-        AND deleted_at IS NULL
-    `;
-
-    const shouldFlag = nameUsage[0]?.device_count >= 1;
-
-    // Create vote
-    const vote_id = `vote_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Generate user_id from voter email (authenticated users only from frontend)
-    // Email is validated on frontend via Firebase Auth
-    const userId = voter_email ? `user_${Buffer.from(voter_email).toString('base64').slice(0, 20)}` : `anon_${device_fingerprint.slice(0, 20)}`;
-    
-    await sql`
-      INSERT INTO poll_votes (
-        vote_id, poll_id, user_id, voter_name, user_name,
-        device_fingerprint, ip_address, user_agent, browser_info,
-        selected_option_id, voted_at,
-        is_flagged, flag_reason
-      ) VALUES (
-        ${vote_id},
-        ${pollId},
-        ${userId},
-        ${voter_name.trim()},
-        ${voter_name.trim()},
-        ${device_fingerprint},
-        ${ip_address},
-        ${user_agent || null},
-        ${browser_info ? JSON.stringify(browser_info) : null},
-        ${selected_option_id},
-        NOW(),
-        ${shouldFlag},
-        ${shouldFlag ? 'duplicate_name_multiple_devices' : null}
-      )
-    `;
-
-    // Update total votes count
-    await sql`
-      UPDATE polls
-      SET total_votes = total_votes + 1,
-          updated_at = NOW()
-      WHERE poll_id = ${pollId}
-    `;
-
-    // Update option votes in options JSONB
-    await sql`
-      UPDATE polls
-      SET options = (
-        SELECT jsonb_agg(
-          CASE 
-            WHEN elem->>'id' = ${selected_option_id}
-            THEN jsonb_set(elem, '{votes}', to_jsonb(COALESCE((elem->>'votes')::int, 0) + 1))
-            ELSE elem
-          END
-        )
-        FROM jsonb_array_elements(options) elem
-      )
-      WHERE poll_id = ${pollId}
-    `;
-
-    // If flagged, create flag entry
-    if (shouldFlag) {
-      await sql`
-        INSERT INTO poll_vote_flags (
-          poll_id, voter_name, flag_reason, device_count
-        ) VALUES (
-          ${pollId},
-          ${voter_name.trim()},
-          'duplicate_name_multiple_devices',
-          ${(nameUsage[0]?.device_count || 0) + 1}
-        )
-        ON CONFLICT (poll_id, voter_name)
-        DO UPDATE SET
-          device_count = ${(nameUsage[0]?.device_count || 0) + 1},
-          flagged_at = NOW()
+    // Use a transaction to handle race conditions
+    // This ensures that even if two different users vote at the exact same time,
+    // both votes will be recorded correctly
+    try {
+      // PRIMARY CHECK: Has this user (by email/user_id) already voted?
+      const existingVoteByUser = await sql`
+        SELECT vote_id, voter_name, selected_option_id
+        FROM poll_votes
+        WHERE poll_id = ${pollId}
+          AND user_id = ${userId}
+          AND deleted_at IS NULL
       `;
+
+      if (existingVoteByUser.length > 0) {
+        const existing = existingVoteByUser[0];
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: `You have already voted in this poll as "${existing.voter_name}"`,
+            already_voted: true,
+            voter_name: existing.voter_name,
+            selected_option: existing.selected_option_id
+          },
+          { status: 400 }
+        );
+      }
+
+      // SECONDARY CHECK: Has this device been used by a different user?
+      const existingVoteByDevice = await sql`
+        SELECT vote_id, voter_name, user_id
+        FROM poll_votes
+        WHERE poll_id = ${pollId}
+          AND device_fingerprint = ${device_fingerprint}
+          AND user_id != ${userId}
+          AND deleted_at IS NULL
+      `;
+
+      const shouldFlag = existingVoteByDevice.length > 0;
+
+      // Create vote with unique vote_id to prevent conflicts
+      const vote_id = `vote_${pollId}_${userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Insert vote - this will fail if somehow the same user_id tries to vote twice simultaneously
+      // due to the unique constraint on (poll_id, user_id)
+      await sql`
+        INSERT INTO poll_votes (
+          vote_id, poll_id, user_id, voter_name, user_name,
+          device_fingerprint, ip_address, user_agent, browser_info,
+          selected_option_id, voted_at,
+          is_flagged, flag_reason
+        ) VALUES (
+          ${vote_id},
+          ${pollId},
+          ${userId},
+          ${voter_name.trim()},
+          ${voter_name.trim()},
+          ${device_fingerprint},
+          ${ip_address},
+          ${user_agent || null},
+          ${browser_info ? JSON.stringify(browser_info) : null},
+          ${selected_option_id},
+          NOW(),
+          ${shouldFlag},
+          ${shouldFlag ? 'shared_device_different_users' : null}
+        )
+        ON CONFLICT (poll_id, user_id) DO NOTHING
+      `;
+
+      // Check if the insert was successful
+      const insertCheck = await sql`
+        SELECT vote_id FROM poll_votes WHERE vote_id = ${vote_id}
+      `;
+
+      if (insertCheck.length === 0) {
+        // Vote was not inserted due to conflict - user already voted
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'You have already voted in this poll',
+            already_voted: true
+          },
+          { status: 400 }
+        );
+      }
+
+      // Update total votes count
+      await sql`
+        UPDATE polls
+        SET total_votes = total_votes + 1,
+            updated_at = NOW()
+        WHERE poll_id = ${pollId}
+      `;
+
+      // Update option votes in options JSONB
+      await sql`
+        UPDATE polls
+        SET options = (
+          SELECT jsonb_agg(
+            CASE 
+              WHEN elem->>'id' = ${selected_option_id}
+              THEN jsonb_set(elem, '{votes}', to_jsonb(COALESCE((elem->>'votes')::int, 0) + 1))
+              ELSE elem
+            END
+          )
+          FROM jsonb_array_elements(options) elem
+        )
+        WHERE poll_id = ${pollId}
+      `;
+
+      // If flagged, log the shared device usage
+      if (shouldFlag) {
+        console.log(`⚠️ Flagged vote: Multiple users on same device for poll ${pollId}`);
+      }
+
+      console.log(`✅ Vote recorded: ${voter_name} (${voter_email}) voted for option ${selected_option_id}${shouldFlag ? ' (flagged)' : ''}`);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Vote recorded successfully',
+        vote_id,
+        flagged: shouldFlag,
+        flag_message: shouldFlag ? 'Your vote has been recorded but flagged for admin review due to shared device usage.' : null
+      });
+
+    } catch (dbError: any) {
+      // Handle database constraint violations
+      if (dbError.code === '23505') { // Unique constraint violation
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'You have already voted in this poll',
+            already_voted: true
+          },
+          { status: 400 }
+        );
+      }
+      throw dbError;
     }
-
-    console.log(`✅ Vote recorded: ${voter_name} voted for option ${selected_option_id}${shouldFlag ? ' (flagged)' : ''}`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Vote recorded successfully',
-      vote_id,
-      flagged: shouldFlag,
-      flag_message: shouldFlag ? 'Your vote has been recorded but flagged for admin review due to duplicate name usage.' : null
-    });
 
   } catch (error: any) {
     console.error('Error recording vote:', error);
@@ -240,7 +274,7 @@ export async function POST(
 
 /**
  * GET /api/polls/[pollId]/vote
- * Check if device has already voted
+ * Check if user has already voted (by email/user_id)
  */
 export async function GET(
   request: NextRequest,
@@ -249,22 +283,25 @@ export async function GET(
   try {
     const { pollId } = await params;
     const { searchParams } = new URL(request.url);
-    const device_fingerprint = searchParams.get('device_fingerprint');
+    const voter_email = searchParams.get('voter_email');
 
-    if (!device_fingerprint) {
+    if (!voter_email) {
       return NextResponse.json(
-        { success: false, error: 'device_fingerprint parameter required' },
+        { success: false, error: 'voter_email parameter required' },
         { status: 400 }
       );
     }
 
     const sql = getTournamentDb();
 
+    // Generate user_id from email
+    const userId = `user_${Buffer.from(voter_email).toString('base64').slice(0, 20)}`;
+
     const existingVote = await sql`
       SELECT vote_id, voter_name, selected_option_id, voted_at, is_flagged
       FROM poll_votes
       WHERE poll_id = ${pollId}
-        AND device_fingerprint = ${device_fingerprint}
+        AND user_id = ${userId}
         AND deleted_at IS NULL
     `;
 

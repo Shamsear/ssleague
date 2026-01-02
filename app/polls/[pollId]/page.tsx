@@ -99,10 +99,10 @@ export default function PollPage() {
     }, [pollId]);
 
     useEffect(() => {
-        if (isAuthenticated && deviceFingerprint) {
+        if (isAuthenticated) {
             checkIfVoted();
         }
-    }, [pollId, isAuthenticated, deviceFingerprint]);
+    }, [pollId, isAuthenticated, user, firebaseUser]);
 
     const loadPoll = async () => {
         try {
@@ -137,10 +137,13 @@ export default function PollPage() {
     };
 
     const checkIfVoted = async () => {
-        if (!isAuthenticated || !deviceFingerprint) return;
+        if (!isAuthenticated) return;
+
+        const voterEmail = user?.email || firebaseUser?.email;
+        if (!voterEmail) return;
 
         try {
-            const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote?device_fingerprint=${deviceFingerprint}`);
+            const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/vote?voter_email=${encodeURIComponent(voterEmail)}`);
             const data = await response.json();
 
             if (data.has_voted) {
@@ -234,10 +237,13 @@ export default function PollPage() {
 
                 console.log('Token set successfully');
                 
-                // Don't reload - just wait for auth context to update
-                // The AuthContext listens to onAuthStateChanged and will update automatically
-                setSuccess('Successfully signed in! You can now vote.');
-                setSigningIn(false);
+                // Show success message and reload to update auth state
+                setSuccess('Successfully signed in! Refreshing page...');
+                
+                // Wait a moment for the token to be set, then reload
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
                 
             } catch (popupError: any) {
                 // If popup fails, try redirect method
@@ -267,7 +273,6 @@ export default function PollPage() {
             setError(errorMessage);
             setSigningIn(false);
         }
-        // Don't set signingIn to false here if we're reloading
     };
 
     if (loading) {

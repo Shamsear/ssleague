@@ -41,6 +41,9 @@ export default function PollsManagementPage() {
   const [availableTournaments, setAvailableTournaments] = useState<Array<{ id: string, name: string }>>([]);
   const [editingDeadline, setEditingDeadline] = useState(false);
   const [newDeadline, setNewDeadline] = useState('');
+  const [expandedOption, setExpandedOption] = useState<string | null>(null);
+  const [voters, setVoters] = useState<Record<string, any[]>>({});
+  const [loadingVoters, setLoadingVoters] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -341,6 +344,35 @@ export default function PollsManagementPage() {
     setEditingDeadline(true);
   };
 
+  const toggleOptionExpansion = async (optionId: string, pollId: string) => {
+    if (expandedOption === optionId) {
+      setExpandedOption(null);
+      return;
+    }
+
+    setExpandedOption(optionId);
+
+    // Load voters if not already loaded
+    if (!voters[optionId]) {
+      setLoadingVoters(true);
+      try {
+        const response = await fetchWithTokenRefresh(`/api/polls/${pollId}/voters?option_id=${optionId}`);
+        const result = await response.json();
+
+        if (result.success) {
+          setVoters(prev => ({
+            ...prev,
+            [optionId]: result.voters || []
+          }));
+        }
+      } catch (err) {
+        console.error('Error loading voters:', err);
+      } finally {
+        setLoadingVoters(false);
+      }
+    }
+  };
+
   if (loading || !user || !isCommitteeAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -555,23 +587,91 @@ export default function PollsManagementPage() {
 
               {/* Poll Results */}
               <div className="space-y-2">
-                {currentPoll.options.map((option: any) => {
+                {[...currentPoll.options]
+                  .sort((a: any, b: any) => (b.votes || 0) - (a.votes || 0))
+                  .map((option: any, index: number) => {
                   const percentage = currentPoll.total_votes > 0
                     ? ((option.votes || 0) / currentPoll.total_votes * 100).toFixed(1)
                     : '0.0';
+                  const isExpanded = expandedOption === option.id;
+                  const optionVoters = voters[option.id] || [];
 
                   return (
-                    <div key={option.id} className="bg-white rounded-lg p-3">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-medium">{option.text_en}</span>
-                        <span className="text-sm text-gray-600">{option.votes || 0} votes ({percentage}%)</span>
+                    <div key={option.id} className="bg-white rounded-lg overflow-hidden">
+                      <div 
+                        className="p-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => toggleOptionExpansion(option.id, currentPoll.poll_id)}
+                      >
+                        <div className="flex justify-between items-center mb-1">
+                          <div className="flex items-center gap-2">
+                            {/* Rank Badge */}
+                            {index === 0 && option.votes > 0 && (
+                              <span className="text-lg">🥇</span>
+                            )}
+                            {index === 1 && option.votes > 0 && (
+                              <span className="text-lg">🥈</span>
+                            )}
+                            {index === 2 && option.votes > 0 && (
+                              <span className="text-lg">🥉</span>
+                            )}
+                            <span className="font-medium">{option.text_en}</span>
+                            {option.votes > 0 && (
+                              <span className="text-xs text-blue-600">
+                                {isExpanded ? '▼' : '▶'} Click to {isExpanded ? 'hide' : 'see'} voters
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-sm text-gray-600">{option.votes || 0} votes ({percentage}%)</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full transition-all"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
+
+                      {/* Expanded Voters List */}
+                      {isExpanded && (
+                        <div className="px-3 pb-3 border-t border-gray-200 bg-gray-50">
+                          {loadingVoters ? (
+                            <div className="py-4 text-center">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+                            </div>
+                          ) : optionVoters.length > 0 ? (
+                            <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
+                              {optionVoters.map((voter: any, idx: number) => (
+                                <div 
+                                  key={idx} 
+                                  className="flex items-center justify-between p-2 bg-white rounded border border-gray-200"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {voter.voter_name}
+                                    </span>
+                                    {voter.is_flagged && (
+                                      <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+                                        ⚠️ Flagged
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-gray-500">
+                                    {new Date(voter.voted_at).toLocaleString('en-IN', {
+                                      timeZone: 'Asia/Kolkata',
+                                      dateStyle: 'short',
+                                      timeStyle: 'short'
+                                    })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="py-4 text-center text-sm text-gray-500">
+                              No votes yet
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
