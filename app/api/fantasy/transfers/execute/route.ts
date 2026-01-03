@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fantasySql } from '@/lib/neon/fantasy-config';
+import { tournamentSql } from '@/lib/neon/tournament-config'; // Tournament database for player_seasons
 
 /**
  * POST /api/fantasy/transfers/execute
@@ -154,8 +155,15 @@ export async function POST(request: NextRequest) {
       if (playersIn.length === 0) {
         // Player not in fantasy_players, fetch from player_seasons and add them
         console.log(`Player ${player_in_id} not in fantasy_players, fetching from player_seasons...`);
-        
-        const playerSeasons = await fantasySql`
+
+        if (!tournamentSql) {
+          return NextResponse.json(
+            { error: 'Tournament database not available' },
+            { status: 500 }
+          );
+        }
+
+        const playerSeasons = await tournamentSql`
           SELECT * FROM player_seasons
           WHERE player_id = ${player_in_id}
           LIMIT 1
@@ -169,7 +177,7 @@ export async function POST(request: NextRequest) {
         }
 
         const playerData = playerSeasons[0];
-        
+
         console.log('Player data from player_seasons:', {
           player_id: playerData.player_id,
           player_name: playerData.player_name,
@@ -178,7 +186,7 @@ export async function POST(request: NextRequest) {
           team: playerData.team,
           star_rating: playerData.star_rating
         });
-        
+
         // Validate player data from player_seasons
         if (!playerData.player_name) {
           return NextResponse.json(
@@ -186,7 +194,7 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
-        
+
         // Get star pricing from league
         const starPricing: Record<number, number> = {};
         if (league.star_rating_prices) {
@@ -203,12 +211,12 @@ export async function POST(request: NextRequest) {
         // Calculate price based on star rating
         const starRating = Number(playerData.star_rating || 3);
         const calculatedPrice = starPricing[starRating] || 5;
-        
+
         // Get data from player_seasons columns
         const finalPlayerName = playerData.player_name;
         const finalPosition = playerData.position || 'Unknown';
         const finalTeamName = playerData.team || 'Unknown';
-        
+
         // Add player to fantasy_players
         await fantasySql`
           INSERT INTO fantasy_players (
@@ -276,11 +284,11 @@ export async function POST(request: NextRequest) {
 
     // Check squad size limits
     let newSquadSize = currentSquadSize;
-    
+
     if (player_out_id && !player_in_id) {
       // Release only
       newSquadSize = currentSquadSize - 1;
-      
+
       if (newSquadSize < minSquadSize) {
         return NextResponse.json(
           {
@@ -295,7 +303,7 @@ export async function POST(request: NextRequest) {
     } else if (player_in_id && !player_out_id) {
       // Sign only
       newSquadSize = currentSquadSize + 1;
-      
+
       if (newSquadSize > maxSquadSize) {
         return NextResponse.json(
           {
