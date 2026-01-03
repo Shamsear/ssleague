@@ -114,7 +114,7 @@ async function recalculatePassivePoints() {
         // Calculate aggregate scores
         let homeTeamGoals = 0;
         let awayTeamGoals = 0;
-        
+
         for (const matchup of matchups) {
           homeTeamGoals += matchup.home_goals || 0;
           awayTeamGoals += matchup.away_goals || 0;
@@ -181,11 +181,17 @@ async function awardTeamBonus(params) {
   } = params;
 
   // Get fantasy teams affiliated with this real team
+  // NOTE: Fantasy teams store IDs like "SSPSLT0015_SSPSLS16" but fixtures use "SSPSLT0015"
+  // So we need to match by stripping the season suffix
   const fantasyTeams = await fantasyDb`
     SELECT team_id, team_name, supported_team_id, supported_team_name
     FROM fantasy_teams
     WHERE league_id = ${fantasy_league_id}
-      AND supported_team_id = ${real_team_id}
+      AND supported_team_id IS NOT NULL
+      AND (
+        supported_team_id = ${real_team_id}
+        OR supported_team_id LIKE ${real_team_id + '_%'}
+      )
   `;
 
   if (fantasyTeams.length === 0) {
