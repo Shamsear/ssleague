@@ -322,6 +322,19 @@ export default function FantasyLeagueDashboard() {
       bgColor: 'from-purple-50 to-indigo-50',
       borderColor: 'border-purple-200',
     },
+    {
+      title: 'Supported Team Windows',
+      description: 'Allow teams to change their passive team once for free',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/supported-team-windows?league_id=${leagueId}`,
+      color: 'from-rose-500 to-pink-600',
+      bgColor: 'from-rose-50 to-pink-50',
+      borderColor: 'border-rose-200',
+    },
   ];
 
   return (

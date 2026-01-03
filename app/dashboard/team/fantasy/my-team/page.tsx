@@ -107,7 +107,7 @@ export default function MyFantasyTeamPage() {
       try {
         // First, get the current season and fantasy league
         const response = await fetchWithTokenRefresh(`/api/fantasy/teams/my-team?user_id=${user.uid}`);
-        
+
         if (response.status === 404) {
           const errorData = await response.json();
           setCanRegister(errorData.can_register || false);
@@ -173,10 +173,10 @@ export default function MyFantasyTeamPage() {
       }
 
       const data = await response.json();
-      
+
       // Store the full data including admin bonuses
-      setPlayerMatchStats({ 
-        ...playerMatchStats, 
+      setPlayerMatchStats({
+        ...playerMatchStats,
         [playerId]: {
           stats: data.stats || {},
           admin_bonuses: data.admin_bonuses || [],
@@ -256,7 +256,7 @@ export default function MyFantasyTeamPage() {
             {canRegister ? 'Join Fantasy League' : 'No Fantasy League Yet'}
           </h2>
           <p className="text-gray-600 mb-6">
-            {canRegister 
+            {canRegister
               ? `Register for the fantasy league and start building your dream team!`
               : 'The committee hasn\'t created a fantasy league for this season yet.'}
           </p>
@@ -314,8 +314,8 @@ export default function MyFantasyTeamPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               {fantasyTeam.supported_team_logo ? (
-                <img 
-                  src={fantasyTeam.supported_team_logo} 
+                <img
+                  src={fantasyTeam.supported_team_logo}
                   alt={`${fantasyTeam.team_name} logo`}
                   className="w-16 h-16 rounded-2xl object-cover shadow-xl"
                 />
@@ -339,21 +339,21 @@ export default function MyFantasyTeamPage() {
               >
                 ➕ Draft Players & Set Captain
               </Link>
-              
+
               <Link
                 href={`/dashboard/team/fantasy/transfers`}
                 className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold rounded-xl hover:from-blue-600 hover:to-indigo-600 transition-all shadow-lg"
               >
                 🔄 Transfers
               </Link>
-              
+
               <Link
                 href={`/dashboard/team/fantasy/all-teams`}
                 className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all shadow-lg"
               >
                 👥 All Teams
               </Link>
-              
+
               <Link
                 href={`/dashboard/team/fantasy/leaderboard`}
                 className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl hover:from-yellow-600 hover:to-orange-600 transition-all shadow-lg"
@@ -404,8 +404,8 @@ export default function MyFantasyTeamPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-4">
                 {fantasyTeam.supported_team_logo ? (
-                  <img 
-                    src={fantasyTeam.supported_team_logo} 
+                  <img
+                    src={fantasyTeam.supported_team_logo}
                     alt={`${fantasyTeam.supported_team_name} logo`}
                     className="w-16 h-16 rounded-full object-cover"
                   />
@@ -427,10 +427,10 @@ export default function MyFantasyTeamPage() {
                 </div>
               )}
             </div>
-            
+
             {/* Passive Points Breakdown Link */}
-            <div className="pt-4 border-t border-green-200">
-              <Link 
+            <div className="pt-4 border-t border-green-200 flex gap-3">
+              <Link
                 href={`/dashboard/team/fantasy/passive-breakdown`}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-green-300 hover:bg-green-50 transition-colors text-sm font-medium text-gray-700"
               >
@@ -438,6 +438,16 @@ export default function MyFantasyTeamPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 View Detailed Breakdown
+              </Link>
+
+              <Link
+                href={`/dashboard/team/fantasy/change-supported-team`}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-600 text-white rounded-lg hover:from-rose-600 hover:to-pink-700 transition-colors text-sm font-medium shadow-md"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                Change Supported Team
               </Link>
             </div>
           </div>
@@ -501,7 +511,7 @@ export default function MyFantasyTeamPage() {
               View Detailed Stats →
             </Link>
           </div>
-          
+
           {players.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500">No players drafted yet</p>
@@ -688,12 +698,11 @@ export default function MyFantasyTeamPage() {
                   className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                      team.rank === 1 ? 'bg-yellow-400 text-yellow-900' :
-                      team.rank === 2 ? 'bg-gray-300 text-gray-700' :
-                      team.rank === 3 ? 'bg-orange-400 text-orange-900' :
-                      'bg-gray-200 text-gray-600'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${team.rank === 1 ? 'bg-yellow-400 text-yellow-900' :
+                        team.rank === 2 ? 'bg-gray-300 text-gray-700' :
+                          team.rank === 3 ? 'bg-orange-400 text-orange-900' :
+                            'bg-gray-200 text-gray-600'
+                      }`}>
                       #{team.rank}
                     </div>
                     <div>
