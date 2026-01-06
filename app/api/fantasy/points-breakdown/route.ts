@@ -96,11 +96,9 @@ export async function GET(request: NextRequest) {
         f.home_team_id,
         f.away_team_id,
         f.round_number,
-        ht.team_name as home_team_name,
-        at.team_name as away_team_name
+        f.home_team_name,
+        f.away_team_name
       FROM fixtures f
-      LEFT JOIN teams ht ON f.home_team_id = ht.team_id
-      LEFT JOIN teams at ON f.away_team_id = at.team_id
       WHERE f.id = ANY(${fixtureIds})
     ` : [];
 

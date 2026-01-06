@@ -1,0 +1,356 @@
+{
+  "timestamp": "2026-01-05T18:49:09.301Z",
+  "summary": {
+    "totalPlayers": 81,
+    "playersWithDiscrepancies": 13,
+    "playersMatching": 67,
+    "playersWithNoMatchups": 1,
+    "totalDiscrepancyCount": 40
+  },
+  "discrepancies": [
+    {
+      "player_id": "sspslpsl0079",
+      "player_name": "Ajas",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 11,
+          "fromMatchups": 12,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 1,
+          "fromMatchups": 2,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 16,
+          "fromMatchups": 17,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 13,
+          "fromMatchups": 14,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0062",
+      "player_name": "FAIZAL ",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 13,
+          "fromMatchups": 14,
+          "difference": 1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 3,
+          "fromMatchups": 4,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 13,
+          "fromMatchups": 17,
+          "difference": 4
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0026",
+      "player_name": "HIJAS N",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 9,
+          "fromMatchups": 10,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 3,
+          "fromMatchups": 4,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 13,
+          "fromMatchups": 16,
+          "difference": 3
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 19,
+          "fromMatchups": 22,
+          "difference": 3
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0032",
+      "player_name": "Hyder",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 14,
+          "fromMatchups": 15,
+          "difference": 1
+        },
+        {
+          "stat": "wins",
+          "inDatabase": 7,
+          "fromMatchups": 8,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 25,
+          "fromMatchups": 26,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 5,
+          "fromMatchups": 6,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0018",
+      "player_name": "SIRAJ",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 14,
+          "fromMatchups": 15,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 1,
+          "fromMatchups": 2,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 3,
+          "fromMatchups": 4,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0034",
+      "player_name": "ASHRAF",
+      "team_id": "SSPSLT0009",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 9,
+          "fromMatchups": 10,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 1,
+          "fromMatchups": 2,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 1,
+          "fromMatchups": 2,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0044",
+      "player_name": "Muhammad safvan ",
+      "team_id": "SSPSLT0009",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 15,
+          "fromMatchups": 16,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 4,
+          "fromMatchups": 5,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 6,
+          "fromMatchups": 7,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0059",
+      "player_name": "Rajish",
+      "team_id": "SSPSLT0009",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 1,
+          "fromMatchups": 2,
+          "difference": 1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 0,
+          "fromMatchups": 1,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 0,
+          "fromMatchups": 1,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0003",
+      "player_name": "Shamil Mohd",
+      "team_id": "SSPSLT0009",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 12,
+          "fromMatchups": 13,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 2,
+          "fromMatchups": 3,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 17,
+          "fromMatchups": 20,
+          "difference": 3
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 31,
+          "fromMatchups": 34,
+          "difference": 3
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0078",
+      "player_name": "Umar",
+      "team_id": "SSPSLT0009",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 13,
+          "fromMatchups": 14,
+          "difference": 1
+        },
+        {
+          "stat": "wins",
+          "inDatabase": 10,
+          "fromMatchups": 11,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 43,
+          "fromMatchups": 47,
+          "difference": 4
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 5,
+          "fromMatchups": 6,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0045",
+      "player_name": "Firoz Ahammed",
+      "team_id": "SSPSLT0016",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "motm_awards",
+          "inDatabase": 1,
+          "fromMatchups": 2,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0030",
+      "player_name": "Rashil Basheer",
+      "team_id": "SSPSLT0016",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "motm_awards",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0012",
+      "player_name": "Shameeem",
+      "team_id": "SSPSLT0026",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "goals_scored",
+          "inDatabase": 4,
+          "fromMatchups": 5,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 17,
+          "fromMatchups": 18,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 5,
+          "fromMatchups": 4,
+          "difference": -1
+        }
+      ]
+    }
+  ]
+}

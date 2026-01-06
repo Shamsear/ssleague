@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     // Calculate aggregate scores
     let homeTeamGoals = 0;
     let awayTeamGoals = 0;
-    
+
     for (const matchup of matchups) {
       homeTeamGoals += matchup.home_goals || 0;
       awayTeamGoals += matchup.away_goals || 0;
@@ -176,13 +176,63 @@ async function awardTeamBonus(params: {
     bonusesAwarded,
   } = params;
 
-  // Get fantasy teams affiliated with this real team
-  const fantasyTeams = await fantasySql`
+  // TEAM CHANGE SUPPORT: Check if any teams changed their supported team after round 13
+  const TEAM_CHANGE_AFTER_ROUND = 13;
+
+  // Get team changes for this league
+  const teamChanges = await fantasySql`
+    SELECT 
+      team_id,
+      old_supported_team_id,
+      old_supported_team_name,
+      new_supported_team_id,
+      new_supported_team_name
+    FROM supported_team_changes
+    WHERE league_id = ${fantasy_league_id}
+  `;
+
+  const teamChangeMap = new Map();
+  teamChanges.forEach((change: any) => {
+    teamChangeMap.set(change.team_id, {
+      oldTeamId: change.old_supported_team_id,
+      oldTeamName: change.old_supported_team_name,
+      newTeamId: change.new_supported_team_id,
+      newTeamName: change.new_supported_team_name
+    });
+  });
+
+  // Get ALL fantasy teams first
+  const allFantasyTeams = await fantasySql`
     SELECT team_id, team_name, supported_team_id, supported_team_name
     FROM fantasy_teams
     WHERE league_id = ${fantasy_league_id}
-      AND supported_team_id = ${real_team_id}
+      AND supported_team_id IS NOT NULL
   `;
+
+  // Filter teams based on round number and team changes
+  // Match: SSPSLT0015 (fixture) against SSPSLT0015_SSPSLS16 (fantasy team)
+  const fantasyTeams = allFantasyTeams.filter((team: any) => {
+    const teamChange = teamChangeMap.get(team.team_id);
+
+    if (!teamChange) {
+      // Team never changed, use current supported team
+      return team.supported_team_id === real_team_id ||
+        team.supported_team_id.startsWith(`${real_team_id}_`);
+    }
+
+    // Team changed after round 13
+    if (round_number <= TEAM_CHANGE_AFTER_ROUND) {
+      // For rounds 1-13, use OLD supported team
+      return teamChange.oldTeamId === real_team_id ||
+        teamChange.oldTeamId.startsWith(`${real_team_id}_`);
+    } else {
+      // For rounds 14+, use NEW supported team
+      return teamChange.newTeamId === real_team_id ||
+        teamChange.newTeamId.startsWith(`${real_team_id}_`) ||
+        team.supported_team_id === real_team_id ||
+        team.supported_team_id.startsWith(`${real_team_id}_`);
+    }
+  });
 
   if (fantasyTeams.length === 0) {
     console.log(`⏭️  No fantasy teams found for real team ${real_team_id}`);
@@ -287,7 +337,7 @@ async function awardTeamBonus(params: {
     console.log(`⏭️  No net bonus for team ${real_team_id} (total: ${total_bonus})`);
     return;
   }
-  
+
   // Note: We still award negative bonuses (penalties) if configured
   console.log(`🎁 Team ${real_team_id} earned ${total_bonus > 0 ? '+' : ''}${total_bonus} points`);
 
@@ -307,6 +357,15 @@ async function awardTeamBonus(params: {
       continue;
     }
 
+    // Determine which team name to use for the record
+    const teamChange = teamChangeMap.get(fantasyTeam.team_id);
+    let realTeamName = fantasyTeam.supported_team_name;
+
+    if (teamChange && round_number <= TEAM_CHANGE_AFTER_ROUND) {
+      // For rounds 1-13, use the OLD team name
+      realTeamName = teamChange.oldTeamName;
+    }
+
     // Record bonus in fantasy_team_bonus_points
     await fantasySql`
       INSERT INTO fantasy_team_bonus_points (
@@ -323,7 +382,7 @@ async function awardTeamBonus(params: {
         ${fantasy_league_id},
         ${fantasyTeam.team_id},
         ${real_team_id},
-        ${fantasyTeam.supported_team_name},
+        ${realTeamName},
         ${fixture_id},
         ${round_number},
         ${JSON.stringify(bonus_breakdown)},
@@ -342,10 +401,10 @@ async function awardTeamBonus(params: {
       WHERE team_id = ${fantasyTeam.team_id}
     `;
 
-    console.log(`🎁 Awarded ${total_bonus} bonus points to ${fantasyTeam.team_name} (affiliated with ${fantasyTeam.supported_team_name})`);
+    console.log(`🎁 Awarded ${total_bonus} bonus points to ${fantasyTeam.team_name} (affiliated with ${realTeamName})`);
     Object.entries(bonus_breakdown).forEach(([key, value]) => {
-      if (value !== 0) {
-        console.log(`   - ${key}: ${value > 0 ? '+' : ''}${value} pts`);
+      if ((value as number) !== 0) {
+        console.log(`   - ${key}: ${(value as number) > 0 ? '+' : ''}${value} pts`);
       }
     });
 

@@ -173,8 +173,7 @@ export async function PATCH(request: NextRequest) {
         // Close the window
         await fantasySql`
       UPDATE transfer_windows
-      SET is_active = false,
-          updated_at = NOW()
+      SET is_active = false
       WHERE window_id = ${window_id}
     `;
 
