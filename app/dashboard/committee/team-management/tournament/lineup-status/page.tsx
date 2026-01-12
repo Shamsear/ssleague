@@ -39,14 +39,28 @@ export default function LineupStatusPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Lineup setting modal state
+  const [showLineupModal, setShowLineupModal] = useState(false);
+  const [selectedFixture, setSelectedFixture] = useState<FixtureLineupStatus | null>(null);
+  const [selectedTeamType, setSelectedTeamType] = useState<'home' | 'away'>('home');
+  const [availablePlayers, setAvailablePlayers] = useState<any[]>([]);
+  const [selectedPlayers, setSelectedPlayers] = useState<Array<{
+    player_id: string;
+    player_name: string;
+    position: number;
+    is_substitute: boolean;
+  }>>([]);
+  const [isLoadingPlayers, setIsLoadingPlayers] = useState(false);
+  const [isSavingLineup, setIsSavingLineup] = useState(false);
+
   useEffect(() => {
     if (loading) return; // Wait for auth to complete
-    
+
     if (!user) {
       router.push('/login');
       return;
     }
-    
+
     if (user.role !== 'committee_admin') {
       router.push('/dashboard');
     }
@@ -104,6 +118,118 @@ export default function LineupStatusPage() {
     fetchLineupStatus();
   }, [selectedTournament]);
 
+  // Open lineup modal
+  const openLineupModal = async (fixture: FixtureLineupStatus, teamType: 'home' | 'away') => {
+    setSelectedFixture(fixture);
+    setSelectedTeamType(teamType);
+    setShowLineupModal(true);
+    setSelectedPlayers([]);
+
+    // Fetch available players
+    setIsLoadingPlayers(true);
+    try {
+      const response = await fetchWithTokenRefresh(
+        `/api/fixtures/${fixture.fixture_id}/admin-set-lineup?team_type=${teamType}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setAvailablePlayers(data.players || []);
+      } else {
+        setError('Failed to load players');
+      }
+    } catch (err) {
+      console.error('Error fetching players:', err);
+      setError('Failed to load players');
+    } finally {
+      setIsLoadingPlayers(false);
+    }
+  };
+
+  // Toggle player selection
+  const togglePlayerSelection = (player: any) => {
+    const isSelected = selectedPlayers.some(p => p.player_id === player.player_id);
+
+    if (isSelected) {
+      // Remove player and update positions
+      const updatedPlayers = selectedPlayers
+        .filter(p => p.player_id !== player.player_id)
+        .map((p, index) => ({
+          ...p,
+          position: index + 1,
+          is_substitute: index >= 5, // First 5 are playing, rest are subs
+        }));
+      setSelectedPlayers(updatedPlayers);
+    } else {
+      if (selectedPlayers.length >= 7) {
+        alert('You can only select up to 7 players');
+        return;
+      }
+
+      // Add player with automatic substitute status based on position
+      const newPosition = selectedPlayers.length + 1;
+      setSelectedPlayers([...selectedPlayers, {
+        player_id: player.player_id,
+        player_name: player.player_name,
+        position: newPosition,
+        is_substitute: newPosition > 5, // Players 6 and 7 are automatically subs
+      }]);
+    }
+  };
+
+  // Save lineup
+  const saveLineup = async () => {
+    if (selectedPlayers.length < 5 || selectedPlayers.length > 7) {
+      alert('Please select between 5 and 7 players');
+      return;
+    }
+
+    const playingCount = selectedPlayers.filter(p => !p.is_substitute).length;
+    if (playingCount !== 5) {
+      alert('Please select exactly 5 playing players (the rest will be substitutes)');
+      return;
+    }
+
+    setIsSavingLineup(true);
+    try {
+      const response = await fetchWithTokenRefresh(
+        `/api/fixtures/${selectedFixture?.fixture_id}/admin-set-lineup`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            players: selectedPlayers,
+            team_type: selectedTeamType,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        alert('Lineup saved successfully');
+        setShowLineupModal(false);
+
+        // Refresh lineup status
+        const statusResponse = await fetchWithTokenRefresh(
+          `/api/tournaments/${selectedTournament}/lineup-status`
+        );
+        if (statusResponse.ok) {
+          const data = await statusResponse.json();
+          setFixtures(data.fixtures || []);
+        }
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to save lineup');
+      }
+    } catch (err) {
+      console.error('Error saving lineup:', err);
+      alert('Failed to save lineup');
+    } finally {
+      setIsSavingLineup(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -123,8 +249,8 @@ export default function LineupStatusPage() {
     f => f.home_lineup_submitted && f.away_lineup_submitted
   ).length;
   const partialCount = fixtures.filter(
-    f => (f.home_lineup_submitted && !f.away_lineup_submitted) || 
-         (!f.home_lineup_submitted && f.away_lineup_submitted)
+    f => (f.home_lineup_submitted && !f.away_lineup_submitted) ||
+      (!f.home_lineup_submitted && f.away_lineup_submitted)
   ).length;
   const pendingCount = fixtures.filter(
     f => !f.home_lineup_submitted && !f.away_lineup_submitted
@@ -229,13 +355,16 @@ export default function LineupStatusPage() {
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white/30">
                   {fixtures.map((fixture) => {
                     const bothSubmitted = fixture.home_lineup_submitted && fixture.away_lineup_submitted;
                     const noneSubmitted = !fixture.home_lineup_submitted && !fixture.away_lineup_submitted;
-                    
+
                     return (
                       <tr key={fixture.fixture_id} className="hover:bg-white/50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -303,15 +432,37 @@ export default function LineupStatusPage() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            bothSubmitted
-                              ? 'bg-green-100 text-green-800'
-                              : noneSubmitted
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${bothSubmitted
+                            ? 'bg-green-100 text-green-800'
+                            : noneSubmitted
                               ? 'bg-red-100 text-red-800'
                               : 'bg-yellow-100 text-yellow-800'
-                          }`}>
+                            }`}>
                             {bothSubmitted ? 'Ready' : noneSubmitted ? 'Pending' : 'Partial'}
                           </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <div className="flex gap-2 justify-center">
+                            {!fixture.home_lineup_submitted && (
+                              <button
+                                onClick={() => openLineupModal(fixture, 'home')}
+                                className="px-3 py-1.5 bg-[#0066FF] text-white rounded-lg hover:bg-[#0052CC] transition-colors text-xs font-medium"
+                              >
+                                Set Home
+                              </button>
+                            )}
+                            {!fixture.away_lineup_submitted && (
+                              <button
+                                onClick={() => openLineupModal(fixture, 'away')}
+                                className="px-3 py-1.5 bg-[#0066FF] text-white rounded-lg hover:bg-[#0052CC] transition-colors text-xs font-medium"
+                              >
+                                Set Away
+                              </button>
+                            )}
+                            {bothSubmitted && (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -321,6 +472,133 @@ export default function LineupStatusPage() {
             </div>
           )}
         </div>
+
+        {/* Lineup Setting Modal */}
+        {showLineupModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass rounded-3xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-dark">Set Lineup</h2>
+                  <p className="text-gray-600 mt-1">
+                    {selectedTeamType === 'home' ? selectedFixture?.home_team_name : selectedFixture?.away_team_name}
+                    {' - '}Round {selectedFixture?.round_number}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowLineupModal(false)}
+                  className="p-2 hover:bg-white/50 rounded-xl transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {isLoadingPlayers ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading players...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Selected Players */}
+                  <div className="mb-6">
+                    <h3 className="text-lg font-semibold mb-3">
+                      Selected Players ({selectedPlayers.length}) - First 5 are playing, rest are subs
+                    </h3>
+                    {selectedPlayers.length > 0 ? (
+                      <div className="space-y-2">
+                        {selectedPlayers.map((player, index) => (
+                          <div
+                            key={player.player_id}
+                            className="flex items-center justify-between p-3 bg-white/60 rounded-xl"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium text-gray-500 w-6">
+                                {index + 1}.
+                              </span>
+                              <span className="font-medium">{player.player_name}</span>
+                              {player.is_substitute && (
+                                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">
+                                  SUB
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => togglePlayerSelection(player)}
+                              className="px-3 py-1 bg-red-100 text-red-800 hover:bg-red-200 rounded-lg text-xs font-medium transition-colors"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm">No players selected yet</p>
+                    )}
+                  </div>
+
+                  {/* Available Players */}
+                  <div className="mb-6">
+                    <h3 className="text-lg font-semibold mb-3">Available Players</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                      {availablePlayers
+                        .filter(p => !selectedPlayers.some(sp => sp.player_id === p.player_id))
+                        .map((player) => (
+                          <button
+                            key={player.player_id}
+                            onClick={() => togglePlayerSelection(player)}
+                            className="p-3 bg-white/40 hover:bg-white/60 rounded-xl text-left transition-colors"
+                          >
+                            <div className="font-medium">{player.player_name}</div>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      onClick={() => setShowLineupModal(false)}
+                      className="px-6 py-2.5 bg-white/60 hover:bg-white/80 rounded-xl font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveLineup}
+                      disabled={
+                        isSavingLineup ||
+                        selectedPlayers.length < 5 ||
+                        selectedPlayers.length > 7 ||
+                        selectedPlayers.filter(p => !p.is_substitute).length !== 5
+                      }
+                      className="px-6 py-2.5 bg-[#0066FF] text-white rounded-xl font-medium hover:bg-[#0052CC] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isSavingLineup ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Lineup'
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Validation Messages */}
+                  {selectedPlayers.length > 0 && (selectedPlayers.length < 5 || selectedPlayers.length > 7) && (
+                    <div className="mt-4">
+                      <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                        ⚠️ Please select between 5 and 7 players (first 5 will be playing, rest will be subs)
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

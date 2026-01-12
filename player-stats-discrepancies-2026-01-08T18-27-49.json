@@ -1,0 +1,328 @@
+{
+  "timestamp": "2026-01-08T18:27:49.333Z",
+  "summary": {
+    "totalPlayers": 81,
+    "playersWithDiscrepancies": 14,
+    "playersMatching": 67,
+    "playersWithNoMatchups": 0,
+    "totalDiscrepancyCount": 34
+  },
+  "discrepancies": [
+    {
+      "player_id": "sspslpsl0048",
+      "player_name": "Abdul Gafoor",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 11,
+          "fromMatchups": 10,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 3,
+          "fromMatchups": 2,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0079",
+      "player_name": "Ajas",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 15,
+          "fromMatchups": 14,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 2,
+          "fromMatchups": 1,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 6,
+          "fromMatchups": 5,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0062",
+      "player_name": "FAIZAL ",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 17,
+          "fromMatchups": 16,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 6,
+          "fromMatchups": 5,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0032",
+      "player_name": "Hyder",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 18,
+          "fromMatchups": 17,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 5,
+          "fromMatchups": 4,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 8,
+          "fromMatchups": 7,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0018",
+      "player_name": "SIRAJ",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 18,
+          "fromMatchups": 17,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 3,
+          "fromMatchups": 2,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0028",
+      "player_name": "ARIF LEO",
+      "team_id": "SSPSLT0008",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 39,
+          "fromMatchups": 38,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0071",
+      "player_name": "IRSHAD AK",
+      "team_id": "SSPSLT0008",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "goals_scored",
+          "inDatabase": 22,
+          "fromMatchups": 23,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0015",
+      "player_name": "Nishal Ashraf",
+      "team_id": "SSPSLT0008",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 32,
+          "fromMatchups": 33,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0019",
+      "player_name": "Anshad ameer",
+      "team_id": "SSPSLT0020",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 15,
+          "fromMatchups": 14,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 3,
+          "fromMatchups": 2,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0042",
+      "player_name": "Anu Anshin",
+      "team_id": "SSPSLT0020",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 16,
+          "fromMatchups": 15,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 2,
+          "fromMatchups": 1,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0058",
+      "player_name": "Fayis",
+      "team_id": "SSPSLT0020",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 16,
+          "fromMatchups": 15,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 6,
+          "fromMatchups": 5,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0049",
+      "player_name": "Muhammed Badhusha ",
+      "team_id": "SSPSLT0020",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 15,
+          "fromMatchups": 14,
+          "difference": -1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 5,
+          "fromMatchups": 4,
+          "difference": -1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0039",
+      "player_name": "Safar",
+      "team_id": "SSPSLT0020",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "goals_scored",
+          "inDatabase": 27,
+          "fromMatchups": 28,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 30,
+          "fromMatchups": 31,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 3,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0040",
+      "player_name": "Anandhu pg",
+      "team_id": "SSPSLT0034",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 37,
+          "fromMatchups": 38,
+          "difference": 1
+        }
+      ]
+    }
+  ]
+}

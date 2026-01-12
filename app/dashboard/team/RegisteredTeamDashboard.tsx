@@ -1007,6 +1007,9 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
               <Link href="/dashboard/team/player-stats" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Player Point Change
               </Link>
+              <Link href="/dashboard/team/my-player-stats" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 transition-all text-xs sm:text-sm font-medium text-center">
+                📊 My Player Stats
+              </Link>
               <Link href="/dashboard/team/fantasy/my-team" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all text-xs sm:text-sm font-medium text-center">
                 ⭐ Fantasy
               </Link>

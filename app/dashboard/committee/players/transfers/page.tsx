@@ -7,9 +7,10 @@ import { usePermissions } from '@/hooks/usePermissions';
 import TransferFormV2 from './TransferFormV2';
 import SwapFormV2 from './SwapFormV2';
 import FootballPlayerForm from './FootballPlayerForm';
+import ReleaseRealPlayerForm from './ReleaseRealPlayerForm';
 import Link from 'next/link';
 
-type TabType = 'transfer' | 'swap';
+type TabType = 'transfer' | 'swap' | 'release';
 
 export default function PlayerTransfersPage() {
   const { user, loading } = useAuth();
@@ -134,6 +135,15 @@ export default function PlayerTransfersPage() {
                 >
                   🔄 Swap Players
                 </button>
+                <button
+                  onClick={() => setActiveTab('release')}
+                  className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'release'
+                    ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  🔓 Release Player
+                </button>
               </div>
             </div>
           )}
@@ -176,6 +186,23 @@ export default function PlayerTransfersPage() {
                       </ul>
                     </div>
                     <SwapFormV2 key={playerType} playerType={playerType} />
+                  </div>
+                )}
+
+                {/* RELEASE TAB */}
+                {activeTab === 'release' && (
+                  <div>
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-900 mb-2">How Player Release Works</h3>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        <li>• Release players at season start or mid-season (X.5)</li>
+                        <li>• <strong>Manually select refund percentage</strong> (0-100%)</li>
+                        <li>• Refund added to team's dollar balance</li>
+                        <li>• Player becomes a free agent immediately</li>
+                        <li>• Example: $1000 player with 75% refund = $750 back to team</li>
+                      </ul>
+                    </div>
+                    <ReleaseRealPlayerForm />
                   </div>
                 )}
               </>
