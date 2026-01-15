@@ -122,7 +122,7 @@ async function revertPlayerStats(data: {
   }
 
   const current = existing[0];
-  
+
   // Remove fixture from processed_fixtures array
   const processedFixtures = current.processed_fixtures || [];
   const updatedProcessedFixtures = processedFixtures.filter((id: string) => id !== data.fixture_id);

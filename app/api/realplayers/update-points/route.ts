@@ -40,10 +40,10 @@ async function recalculateAllPlayerCategories(season_id: string) {
       where('season_id', '==', season_id)
     );
     const allPlayersSnap = await getDocs(allPlayersQuery);
-    
+
     // Create array of players with their star ratings
     const players: Array<{ docId: string; playerId: string; starRating: number; points: number }> = [];
-    
+
     allPlayersSnap.forEach(doc => {
       const data = doc.data();
       players.push({
@@ -53,33 +53,33 @@ async function recalculateAllPlayerCategories(season_id: string) {
         points: data.points || 100
       });
     });
-    
+
     // Sort by points (most granular metric) - highest first
     // Star rating is derived from points, so points is the source of truth
     players.sort((a, b) => b.points - a.points);
-    
+
     // Calculate top 50% threshold
     const legendThreshold = Math.ceil(players.length / 2);
-    
+
     // Update categories for all players
     const updatePromises = players.map(async (player, index) => {
       const isLegend = index < legendThreshold;
-      const category = isLegend 
+      const category = isLegend
         ? { id: 'legend', name: 'Legend' }
         : { id: 'classic', name: 'Classic' };
-      
+
       // Update realplayer document
       const playerDoc = doc(db, 'realplayer', player.docId);
       await updateDoc(playerDoc, {
         category_id: category.id,
         category_name: category.name
       });
-      
+
       return { playerId: player.playerId, category: category.name, rank: index + 1 };
     });
-    
+
     await Promise.all(updatePromises);
-    
+
     return { success: true, totalPlayers: players.length, legendCount: legendThreshold };
   } catch (error) {
     console.error('Error recalculating categories:', error);
@@ -98,16 +98,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     if (skip_salary_deduction) {
       console.log('⚠️  Skipping salary deduction (edit mode)');
     }
 
     console.log(`\n🎯 Processing fixture ${fixture_id} for season ${season_id}`);
     console.log(`📋 Total matchups to process: ${matchups.length}\n`);
-    
+
     const updates: any[] = [];
-    
+
     // Track salary deductions per player for detailed logging
     const playerSalaries: Array<{
       player_id: string;
@@ -118,9 +118,9 @@ export async function POST(request: NextRequest) {
 
     // Process each matchup
     for (const matchup of matchups) {
-      const { home_player_id, away_player_id, home_goals, away_goals } = matchup;
+      const { home_player_id, away_player_id, home_goals, away_goals, is_null } = matchup;
 
-      console.log(`\n--- Processing matchup: ${home_player_id} vs ${away_player_id} (${home_goals}-${away_goals}) ---`);
+      console.log(`\n--- Processing matchup: ${home_player_id} vs ${away_player_id} (${home_goals}-${away_goals})${is_null ? ' [NULL]' : ''} ---`);
 
       // Skip if required fields are missing
       if (!home_player_id || !away_player_id || home_goals === null || home_goals === undefined || away_goals === null || away_goals === undefined) {
@@ -128,18 +128,25 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Calculate goal difference
+      // For NULL matchups: Track salary but skip points update
+      const shouldUpdatePoints = !is_null;
+
+      if (is_null) {
+        console.log(`⏭️  NULL matchup - will deduct salary but skip points update`);
+      }
+
+      // Calculate goal difference (only used if not null)
       const homeGD = home_goals - away_goals;
       const awayGD = away_goals - home_goals;
 
       // Cap at ±5 points per match
-      const homePointsChange = Math.max(-5, Math.min(5, homeGD));
-      const awayPointsChange = Math.max(-5, Math.min(5, awayGD));
+      const homePointsChange = shouldUpdatePoints ? Math.max(-5, Math.min(5, homeGD)) : 0;
+      const awayPointsChange = shouldUpdatePoints ? Math.max(-5, Math.min(5, awayGD)) : 0;
 
       // Update home player - use ONLY Neon player_seasons
       const sql = getTournamentDb();
       const homeStatsId = `${home_player_id}_${season_id}`;
-      
+
       // Get ALL player data from player_seasons
       const homeSeasonData = await sql`
         SELECT id, player_id, player_name, team_id, salary_per_match, star_rating, points
@@ -147,7 +154,7 @@ export async function POST(request: NextRequest) {
         WHERE id = ${homeStatsId}
         LIMIT 1
       `;
-      
+
       console.log(`  📦 Home player in player_seasons: ${homeSeasonData.length > 0 ? 'FOUND' : 'NOT FOUND'} (id: ${home_player_id})`);
 
       if (homeSeasonData.length > 0) {
@@ -160,7 +167,7 @@ export async function POST(request: NextRequest) {
         // Deduct CURRENT salary for this match (before star rating changes)
         const currentSalary = parseFloat(homePlayerData.salary_per_match) || 0;
         const teamId = homePlayerData.team_id;
-        
+
         console.log(`🔍 Home player ${homePlayerData.player_name}:`, {
           team_id: teamId || 'N/A',
           salary_per_match: currentSalary,
@@ -169,7 +176,7 @@ export async function POST(request: NextRequest) {
           old_stars: oldStarRating,
           new_stars: newStarRating
         });
-        
+
         if (!teamId) {
           console.log(`⚠️  ${homePlayerData.player_name} has no team_id`);
         } else if (currentSalary <= 0) {
@@ -208,7 +215,7 @@ export async function POST(request: NextRequest) {
             updated_at = NOW()
           WHERE id = ${homeStatsId}
         `;
-        
+
         // Also update Firebase realplayer for backward compatibility (if exists)
         try {
           const homePlayerQuery = query(
@@ -242,7 +249,7 @@ export async function POST(request: NextRequest) {
 
       // Update away player - use ONLY Neon player_seasons
       const awayStatsId = `${away_player_id}_${season_id}`;
-      
+
       // Get ALL player data from player_seasons
       const awaySeasonData = await sql`
         SELECT id, player_id, player_name, team_id, salary_per_match, star_rating, points
@@ -250,7 +257,7 @@ export async function POST(request: NextRequest) {
         WHERE id = ${awayStatsId}
         LIMIT 1
       `;
-      
+
       console.log(`  📦 Away player in player_seasons: ${awaySeasonData.length > 0 ? 'FOUND' : 'NOT FOUND'} (id: ${away_player_id})`);
 
       if (awaySeasonData.length > 0) {
@@ -263,7 +270,7 @@ export async function POST(request: NextRequest) {
         // Deduct CURRENT salary for this match (before star rating changes)
         const currentSalary = parseFloat(awayPlayerData.salary_per_match) || 0;
         const teamId = awayPlayerData.team_id;
-        
+
         console.log(`🔍 Away player ${awayPlayerData.player_name}:`, {
           team_id: teamId || 'N/A',
           salary_per_match: currentSalary,
@@ -272,7 +279,7 @@ export async function POST(request: NextRequest) {
           old_stars: oldStarRating,
           new_stars: newStarRating
         });
-        
+
         if (!teamId) {
           console.log(`⚠️  ${awayPlayerData.player_name} has no team_id`);
         } else if (currentSalary <= 0) {
@@ -311,7 +318,7 @@ export async function POST(request: NextRequest) {
             updated_at = NOW()
           WHERE id = ${awayStatsId}
         `;
-        
+
         // Also update Firebase realplayer for backward compatibility (if exists)
         try {
           const awayPlayerQuery = query(
@@ -349,7 +356,7 @@ export async function POST(request: NextRequest) {
     // This keeps categories stable and prevents them from changing after every match
     // console.log(`Recalculating categories for all players in season ${season_id}...`);
     // const categoryResult = await recalculateAllPlayerCategories(season_id);
-    
+
     // if (!categoryResult.success) {
     //   console.error('Failed to recalculate categories:', categoryResult.error);
     // } else {
@@ -359,16 +366,16 @@ export async function POST(request: NextRequest) {
     // Process salary deductions per player for detailed audit trail
     const salaryDeductions: any[] = [];
     const salaryErrors: any[] = [];
-    
+
     // Check if we should skip salary deduction
     let shouldSkipSalary = skip_salary_deduction;
-    
+
     if (shouldSkipSalary) {
       console.log(`\n⏭️  SKIPPING salary deduction (result edit/revert)\n`);
     } else {
       console.log(`\n💰 SALARY DEDUCTION PHASE`);
       console.log(`📊 Players to process: ${playerSalaries.length}`);
-      
+
       // Check if salary transactions already exist for this fixture
       console.log(`🔍 Checking for existing salary transactions for fixture ${fixture_id}...`);
       const existingTxnsSnapshot = await adminDb.collection('transactions')
@@ -376,12 +383,12 @@ export async function POST(request: NextRequest) {
         .where('currency_type', '==', 'real_player')
         .limit(1000)
         .get();
-      
+
       const hasExistingForFixture = existingTxnsSnapshot.docs.some(doc => {
         const metadata = doc.data().metadata || {};
         return metadata.fixture_id === fixture_id;
       });
-      
+
       if (hasExistingForFixture) {
         console.log(`⚠️  Salary transactions already exist for fixture ${fixture_id}`);
         console.log(`⏭️  SKIPPING salary deduction to prevent duplicates\n`);
@@ -389,84 +396,84 @@ export async function POST(request: NextRequest) {
         shouldSkipSalary = true;
       } else {
         console.log(`✅ No existing salary transactions found, proceeding with deductions`);
-        
+
         // Group by team for balance updates
         const teamTotals = new Map<string, number>();
         playerSalaries.forEach(p => {
           teamTotals.set(p.team_id, (teamTotals.get(p.team_id) || 0) + p.salary);
         });
-        
+
         console.log(`Teams affected: ${Array.from(teamTotals.keys()).join(', ')}`);
         console.log(``);
       }
     }
-    
+
     if (!shouldSkipSalary && playerSalaries.length > 0) {
       // Process each player's salary individually
       for (const playerSalary of playerSalaries) {
         try {
-        const { player_id, player_name, team_id, salary } = playerSalary;
-        
-        console.log(`\n👤 Processing: ${player_name} (${team_id})`);
-        console.log(`   💵 Salary: $${salary.toFixed(2)}`);
-        
-        const teamSeasonDocId = `${team_id}_${season_id}`;
-        const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonDocId);
-        const teamSeasonDoc = await teamSeasonRef.get();
-        
-        if (!teamSeasonDoc.exists) {
-          console.log(`   ❌ ERROR: Team season document not found!`);
-          salaryErrors.push({
+          const { player_id, player_name, team_id, salary } = playerSalary;
+
+          console.log(`\n👤 Processing: ${player_name} (${team_id})`);
+          console.log(`   💵 Salary: $${salary.toFixed(2)}`);
+
+          const teamSeasonDocId = `${team_id}_${season_id}`;
+          const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonDocId);
+          const teamSeasonDoc = await teamSeasonRef.get();
+
+          if (!teamSeasonDoc.exists) {
+            console.log(`   ❌ ERROR: Team season document not found!`);
+            salaryErrors.push({
+              player_id,
+              player_name,
+              team_id,
+              error: 'Team season document not found'
+            });
+            continue;
+          }
+
+          const teamSeasonData = teamSeasonDoc.data();
+          const currentBalance = teamSeasonData?.real_player_budget || 0;
+          const currentSpent = teamSeasonData?.real_player_spent || 0;
+          const newBalance = currentBalance - salary;
+          const newSpent = currentSpent + salary;
+
+          // Update balance and spent (allow negative balance)
+          await teamSeasonRef.update({
+            real_player_budget: newBalance,
+            real_player_spent: newSpent,
+            updated_at: new Date()
+          });
+
+          console.log(`   ✓ Balance: $${currentBalance.toFixed(2)} → $${newBalance.toFixed(2)}`);
+          console.log(`   ✓ Spent: $${currentSpent.toFixed(2)} → $${newSpent.toFixed(2)}`);
+
+          // Log individual salary payment transaction
+          await logSalaryPayment(
+            team_id,
+            season_id,
+            salary,
+            currentBalance,
+            'real_player',
+            fixture_id,
+            undefined, // match number
+            1, // one player per transaction
+            player_name, // player name for description
+            player_id // player ID for metadata
+          );
+
+          console.log(`   ✓ Transaction logged`);
+
+          salaryDeductions.push({
             player_id,
             player_name,
             team_id,
-            error: 'Team season document not found'
+            salary,
+            balanceBefore: currentBalance,
+            balanceAfter: newBalance
           });
-          continue;
-        }
-        
-        const teamSeasonData = teamSeasonDoc.data();
-        const currentBalance = teamSeasonData?.real_player_budget || 0;
-        const currentSpent = teamSeasonData?.real_player_spent || 0;
-        const newBalance = currentBalance - salary;
-        const newSpent = currentSpent + salary;
-        
-        // Update balance and spent (allow negative balance)
-        await teamSeasonRef.update({
-          real_player_budget: newBalance,
-          real_player_spent: newSpent,
-          updated_at: new Date()
-        });
-        
-        console.log(`   ✓ Balance: $${currentBalance.toFixed(2)} → $${newBalance.toFixed(2)}`);
-        console.log(`   ✓ Spent: $${currentSpent.toFixed(2)} → $${newSpent.toFixed(2)}`);
-        
-        // Log individual salary payment transaction
-        await logSalaryPayment(
-          team_id,
-          season_id,
-          salary,
-          currentBalance,
-          'real_player',
-          fixture_id,
-          undefined, // match number
-          1, // one player per transaction
-          player_name, // player name for description
-          player_id // player ID for metadata
-        );
-        
-        console.log(`   ✓ Transaction logged`);
-        
-        salaryDeductions.push({
-          player_id,
-          player_name,
-          team_id,
-          salary,
-          balanceBefore: currentBalance,
-          balanceAfter: newBalance
-        });
-        
-        console.log(`   ✅ SUCCESS`);
+
+          console.log(`   ✅ SUCCESS`);
         } catch (error) {
           console.error(`   ❌ FAILED:`, error);
           salaryErrors.push({
@@ -478,7 +485,7 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    
+
     if (!skip_salary_deduction) {
       console.log(`\n📊 SALARY DEDUCTION SUMMARY`);
       console.log(`   ✅ Successful: ${salaryDeductions.length} players`);
@@ -486,7 +493,7 @@ export async function POST(request: NextRequest) {
       if (salaryDeductions.length > 0) {
         const totalDeducted = salaryDeductions.reduce((sum, d) => sum + d.salary, 0);
         console.log(`   💵 Total deducted: $${totalDeducted.toFixed(2)}`);
-        
+
         // Show breakdown by team
         const byTeam = new Map<string, number>();
         salaryDeductions.forEach(d => {
@@ -499,7 +506,7 @@ export async function POST(request: NextRequest) {
       }
       console.log(``);
     }
-    
+
 
     return NextResponse.json({
       success: true,

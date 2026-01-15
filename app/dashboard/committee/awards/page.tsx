@@ -381,10 +381,15 @@ export default function AwardsManagementPage() {
           {['POTW', 'TOW'].includes(activeTab) && (
             <div className="mb-4 sm:mb-6">
               <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                Select Week (7 rounds each)
+                Select Week
               </label>
               <div className="flex gap-2 flex-wrap">
-                {Array.from({ length: maxWeeks }, (_, i) => i + 1).map((week) => (
+                {[
+                  { week: 1, rounds: '1-7' },
+                  { week: 2, rounds: '8-13' },
+                  { week: 3, rounds: '14-20' },
+                  { week: 4, rounds: '21-26' },
+                ].map(({ week, rounds }) => (
                   <button
                     key={week}
                     onClick={() => setCurrentWeek(week)}
@@ -394,6 +399,7 @@ export default function AwardsManagementPage() {
                       }`}
                   >
                     Week {week}
+                    <span className="block text-[10px] sm:text-xs opacity-75">Rounds {rounds}</span>
                   </button>
                 ))}
               </div>

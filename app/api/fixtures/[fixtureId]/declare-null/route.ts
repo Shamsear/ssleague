@@ -67,10 +67,10 @@ export async function PATCH(
         ${fixture.round_number},
         ${fixture.match_number},
         ${JSON.stringify({
-          reason: 'both_teams_absent',
-          home_team: fixture.home_team_name,
-          away_team: fixture.away_team_name
-        })}
+      reason: 'both_teams_absent',
+      home_team: fixture.home_team_name,
+      away_team: fixture.away_team_name
+    })}
       )
     `;
 

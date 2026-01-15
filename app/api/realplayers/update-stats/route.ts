@@ -9,6 +9,7 @@ interface MatchupResult {
   away_player_name: string;
   home_goals: number;
   away_goals: number;
+  is_null?: boolean; // If true, skip this matchup for player stats
 }
 
 /**
@@ -38,10 +39,17 @@ export async function POST(request: NextRequest) {
         away_player_id,
         away_player_name,
         home_goals,
-        away_goals
+        away_goals,
+        is_null
       } = matchup;
 
       if (home_goals === null || away_goals === null) continue;
+
+      // Skip null matchups for player stats
+      if (is_null) {
+        console.log(`⏭️  Skipping NULL matchup for player stats: ${home_player_name} vs ${away_player_name}`);
+        continue;
+      }
 
       // Determine match result
       const homeWon = home_goals > away_goals;
@@ -141,36 +149,36 @@ async function updatePlayerStats(data: {
   const existing = await sql`
     SELECT * FROM player_seasons WHERE id = ${statsId} LIMIT 1
   `;
-  
+
   if (existing.length === 0) {
     console.warn(`Player ${player_name} (${player_id}) not found in player_seasons for season ${season_id}`);
     console.warn('Skipping stats update - player may not be registered for this season');
     return;
   }
-  
+
   const current = existing[0];
-  
+
   // Check if this fixture has already been processed for this player
   let processedFixtures = [];
   try {
-    processedFixtures = current.processed_fixtures ? 
-      (Array.isArray(current.processed_fixtures) ? current.processed_fixtures : JSON.parse(current.processed_fixtures)) 
+    processedFixtures = current.processed_fixtures ?
+      (Array.isArray(current.processed_fixtures) ? current.processed_fixtures : JSON.parse(current.processed_fixtures))
       : [];
   } catch (e) {
     console.warn(`Failed to parse processed_fixtures for player ${player_name}, treating as empty array`);
     processedFixtures = [];
   }
-  
+
   if (processedFixtures.includes(fixture_id)) {
     console.log(`✓ Fixture ${fixture_id} already processed for player ${player_name}, skipping duplicate update`);
     return;
   }
-  
+
   console.log(`Processing fixture ${fixture_id} for player ${player_name} (${processedFixtures.length} fixtures already processed)`);
 
   // Add fixture to processed list
   const updatedProcessedFixtures = [...processedFixtures, fixture_id];
-  
+
   // Update existing stats in player_seasons
   // NOTE: Points are NOT updated here - they are managed separately via /api/realplayers/update-points
   // which uses star rating base points + goal difference (+5 to -5 per match)
@@ -190,7 +198,7 @@ async function updatePlayerStats(data: {
       updated_at = NOW()
     WHERE id = ${statsId}
   `;
-  
+
   console.log(`✓ Updated stats for ${player_name}: +${goals_scored} goals, match ${won ? 'W' : draw ? 'D' : 'L'}`);
 }
 

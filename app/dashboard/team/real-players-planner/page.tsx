@@ -20,6 +20,7 @@ interface RealPlayer {
   category: string;
   star_rating: number;
   base_value?: number;
+  auction_value?: number;
   points: number;
   matches_played: number;
   goals_scored: number;
@@ -36,6 +37,8 @@ interface PlayerPlan {
   photo_scale_circle?: number;
   category?: string;
   initialStars: number;
+  basePrice: number;
+  currentPoints: number;
   bidAmount: number;
   finalStars: number;
   salaryPerMatch: number;
@@ -87,12 +90,24 @@ const getMinimumBidForStars = (stars: number): number => {
   return baseValues[stars] || 100;
 };
 
+// Calculate star rating from points
+const calculateStarRatingFromPoints = (points: number): number => {
+  if (points >= 350) return 10;
+  if (points >= 300) return 9;
+  if (points >= 250) return 8;
+  if (points >= 210) return 7;
+  if (points >= 175) return 6;
+  if (points >= 145) return 5;
+  if (points >= 120) return 4;
+  return 3;
+};
+
 // Generate photo transform style based on custom positioning (matching PlayerPhoto component)
 const getPhotoStyle = (x?: number, y?: number, scale?: number) => {
   const posX = x ?? 50;
   const posY = y ?? 50;
   const scaleValue = scale ?? 1;
-  
+
   return {
     objectPosition: `${posX}% ${posY}%`,
     transform: `scale(${scaleValue})`,
@@ -103,7 +118,7 @@ const getPhotoStyle = (x?: number, y?: number, scale?: number) => {
 export default function RealPlayersPlannerPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  
+
   const [players, setPlayers] = useState<PlayerPlan[]>([]);
   const [availableRealPlayers, setAvailableRealPlayers] = useState<RealPlayer[]>([]);
   const [openDropdownIndex, setOpenDropdownIndex] = useState<number | null>(null);
@@ -128,16 +143,16 @@ export default function RealPlayersPlannerPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
-      
+
       try {
         // Fetch budget
         const response = await fetchWithTokenRefresh('/api/team/dashboard');
         const data = await response.json();
-        
+
         if (data.success && data.data) {
           const team = data.data.team || {};
           const seasonSettings = data.data.seasonSettings || {};
-          
+
           setTeamBudget(seasonSettings.dollar_budget || TOTAL_BUDGET);
           setTeamSpent(team.real_player_spent || 0);
         }
@@ -148,7 +163,7 @@ export default function RealPlayersPlannerPage() {
           const seasonData = await seasonResponse.json();
           if (seasonData.success && seasonData.data.length > 0) {
             const season = seasonData.data[0];
-            
+
             // Extract star rating config
             if (season.star_rating_config && Array.isArray(season.star_rating_config)) {
               const configMap: Record<number, number> = {};
@@ -160,14 +175,14 @@ export default function RealPlayersPlannerPage() {
               setStarRatingConfig(configMap);
               console.log('⭐ Star rating config loaded:', configMap);
             }
-            
+
             // Fetch real players
             const playersResponse = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${season.id}&limit=1000`);
             if (playersResponse.ok) {
               const playersData = await playersResponse.json();
               if (playersData.success) {
                 const realPlayers = playersData.data?.filter((p: any) => p.star_rating && p.star_rating > 0) || [];
-                
+
                 // Fetch photo URLs
                 const playerIds = realPlayers.map((p: any) => p.player_id).filter(Boolean);
                 if (playerIds.length > 0) {
@@ -175,14 +190,14 @@ export default function RealPlayersPlannerPage() {
                     const photosResponse = await fetchWithTokenRefresh('/api/real-players?' + new URLSearchParams({
                       playerIds: playerIds.join(',')
                     }));
-                    
+
                     if (photosResponse.ok) {
                       const photosData = await photosResponse.json();
                       if (photosData.success && photosData.players) {
                         const photoMap = new Map(
                           photosData.players.map((p: any) => [
-                            p.player_id, 
-                            { 
+                            p.player_id,
+                            {
                               photo_url: p.photo_url,
                               photo_position_x_circle: p.photo_position_x_circle,
                               photo_position_y_circle: p.photo_position_y_circle,
@@ -190,7 +205,7 @@ export default function RealPlayersPlannerPage() {
                             }
                           ])
                         );
-                        
+
                         realPlayers.forEach((player: any) => {
                           const photoData = photoMap.get(player.player_id);
                           if (photoData) {
@@ -206,7 +221,7 @@ export default function RealPlayersPlannerPage() {
                     console.warn('Could not fetch player photos:', photoError);
                   }
                 }
-                
+
                 setAvailableRealPlayers(realPlayers);
               }
             }
@@ -219,14 +234,14 @@ export default function RealPlayersPlannerPage() {
         setIsLoadingPlayers(false);
       }
     };
-    
+
     fetchData();
   }, [user]);
 
   // Initialize with minimum 5 players
   useEffect(() => {
     if (players.length === 0) {
-      const initialPlayers: PlayerPlan[] = Array.from({ length: MIN_PLAYERS }, (_, i) => 
+      const initialPlayers: PlayerPlan[] = Array.from({ length: MIN_PLAYERS }, (_, i) =>
         createEmptyPlayer(i)
       );
       setPlayers(initialPlayers);
@@ -237,6 +252,8 @@ export default function RealPlayersPlannerPage() {
     id: `player-${Date.now()}-${index}`,
     name: 'Select a player...',
     initialStars: 3,
+    basePrice: 100,
+    currentPoints: 100,
     bidAmount: 0,
     finalStars: 3,
     salaryPerMatch: 0,
@@ -246,14 +263,14 @@ export default function RealPlayersPlannerPage() {
 
   const selectRealPlayer = (realPlayer: RealPlayer, index: number) => {
     console.log('🎯 selectRealPlayer called', { realPlayer: realPlayer.player_name, index });
-    
+
     setPlayers(players.map((player, i) => {
       if (i !== index) return player;
-      
+
       const initialStars = realPlayer.star_rating || 3;
-      // Use base_auction_value from season config, fallback to player's base_value, then calculated
-      const minimumBid = starRatingConfig[initialStars] || realPlayer.base_value || getMinimumBidForStars(initialStars);
-      
+      // Player's current auction value is their base price
+      const playerBasePrice = realPlayer.auction_value || starRatingConfig[initialStars] || getMinimumBidForStars(initialStars);
+
       const updated = {
         ...player,
         player_id: realPlayer.player_id,
@@ -264,18 +281,20 @@ export default function RealPlayersPlannerPage() {
         photo_scale_circle: realPlayer.photo_scale_circle,
         category: realPlayer.category,
         initialStars: initialStars,
-        bidAmount: minimumBid
+        basePrice: playerBasePrice,
+        currentPoints: realPlayer.points || 100,
+        bidAmount: playerBasePrice
       };
-      
+
       // Recalculate with new star rating and bid amount
       updated.finalStars = calculateFinalStars(updated.initialStars, updated.bidAmount);
       updated.salaryPerMatch = calculateSalary(updated.bidAmount, updated.finalStars);
       updated.totalSalary = updated.salaryPerMatch * (updated.matches || 0);
-      
+
       console.log('✅ Player updated', updated);
       return updated;
     }));
-    
+
     console.log('🚪 Closing dropdown');
     setOpenDropdownIndex(null);
     setSearchTerms({ ...searchTerms, [index]: '' });
@@ -291,7 +310,7 @@ export default function RealPlayersPlannerPage() {
   const getFilteredPlayersForDropdown = (index: number) => {
     const searchTerm = searchTerms[index] || '';
     const searchLower = searchTerm.toLowerCase();
-    
+
     return availableRealPlayers
       .filter(p => {
         return (
@@ -306,21 +325,21 @@ export default function RealPlayersPlannerPage() {
   const calculateFinalStars = (initialStars: number, bidAmount: number): number => {
     if (initialStars < 3 || initialStars > 9) return initialStars;
     if (initialStars === 10) return 10;
-    
+
     const upgrades = UPGRADE_MATRIX[initialStars];
     if (!upgrades) return initialStars;
-    
+
     // Find the highest upgrade the bid amount qualifies for
     const sortedThresholds = Object.keys(upgrades)
       .map(Number)
       .sort((a, b) => b - a); // Sort descending
-    
+
     for (const threshold of sortedThresholds) {
       if (bidAmount >= threshold) {
         return upgrades[threshold];
       }
     }
-    
+
     return initialStars;
   };
 
@@ -332,16 +351,16 @@ export default function RealPlayersPlannerPage() {
   const updatePlayer = (id: string, field: keyof PlayerPlan, value: any) => {
     setPlayers(players.map(player => {
       if (player.id !== id) return player;
-      
+
       const updated = { ...player, [field]: value };
-      
+
       // Recalculate when initialStars, bidAmount, or matches changes
       if (field === 'initialStars' || field === 'bidAmount' || field === 'matches') {
         updated.finalStars = calculateFinalStars(updated.initialStars, updated.bidAmount);
         updated.salaryPerMatch = calculateSalary(updated.bidAmount, updated.finalStars);
         updated.totalSalary = updated.salaryPerMatch * (updated.matches || 0);
       }
-      
+
       return updated;
     }));
   };
@@ -364,54 +383,82 @@ export default function RealPlayersPlannerPage() {
   const totalSeasonSalary = players.reduce((sum, p) => sum + p.totalSalary, 0);
   const remainingBudget = teamBudget - teamSpent - totalPlannedSpend;
 
-  const getNextUpgrade = (initialStars: number, currentBid: number): { amount: number; stars: number } | null => {
-    if (initialStars >= 10) return null;
-    
-    const upgrades = UPGRADE_MATRIX[initialStars];
-    if (!upgrades) return null;
-    
-    const sortedThresholds = Object.keys(upgrades)
-      .map(Number)
-      .sort((a, b) => a - b);
-    
-    for (const threshold of sortedThresholds) {
-      if (currentBid < threshold) {
-        return { amount: threshold, stars: upgrades[threshold] };
-      }
-    }
-    
-    return null;
+  const getNextUpgrade = (currentPoints: number, currentBid: number, basePrice: number): { amount: number; stars: number; pointsNeeded: number } | null => {
+    const currentStars = calculateStarRatingFromPoints(currentPoints);
+
+    if (currentStars >= 10) return null;
+
+    // Star rating thresholds
+    const starThresholds: Record<number, number> = {
+      4: 120,
+      5: 145,
+      6: 175,
+      7: 210,
+      8: 250,
+      9: 300,
+      10: 350
+    };
+
+    // Find the next star rating threshold
+    const nextStars = currentStars + 1;
+    const pointsNeeded = starThresholds[nextStars];
+
+    if (!pointsNeeded) return null;
+
+    // Calculate how many more points needed
+    const pointsToGain = pointsNeeded - currentPoints;
+
+    if (pointsToGain <= 0) return null; // Already at or above next threshold
+
+    // Calculate SSCoin needed: each +5 SSCoin = +1 point
+    const ssCoinNeeded = pointsToGain * 5;
+    const bidAmount = basePrice + ssCoinNeeded;
+
+    return {
+      amount: bidAmount,
+      stars: nextStars,
+      pointsNeeded: pointsNeeded
+    };
   };
 
   // Generate bid increments with points preview
-  const getBidIncrements = (initialStars: number, currentBid: number): Array<{ bid: number; stars: number; points: number; isUpgrade: boolean }> => {
+  const getBidIncrements = (initialStars: number, currentBid: number, playerBasePrice: number, playerCurrentPoints: number): Array<{ bid: number; stars: number; points: number; isUpgrade: boolean }> => {
     const increments: Array<{ bid: number; stars: number; points: number; isUpgrade: boolean }> = [];
     const upgrades = UPGRADE_MATRIX[initialStars];
-    
+
     if (!upgrades) return increments;
-    
+
     // Get all upgrade thresholds
     const thresholds = Object.keys(upgrades).map(Number).sort((a, b) => a - b);
-    
+
     // Start from current bid or minimum, go up to highest upgrade + 20
     const minBid = starRatingConfig[initialStars] || getMinimumBidForStars(initialStars);
     const startBid = Math.max(currentBid, minBid);
     const maxThreshold = Math.max(...thresholds);
     const maxBid = maxThreshold + 20;
-    
+
     // Generate increments in steps of 5
     for (let bid = startBid; bid <= maxBid && increments.length < 10; bid += 5) {
-      const stars = calculateFinalStars(initialStars, bid);
-      const points = STAR_RATING_POINTS[stars] || 100;
-      const isUpgrade = stars > initialStars;
-      
-      // Check if this bid crosses an upgrade threshold
-      const prevStars = bid >= 5 ? calculateFinalStars(initialStars, bid - 5) : initialStars;
+      // Calculate points: current points + 1 point for each +5 SSCoin above base price
+      // Example: base price 140, bid 150 = +10 SSCoin = +2 points
+      const bidDifference = bid - playerBasePrice;
+      const pointsIncrement = Math.floor(bidDifference / 5);
+      const points = playerCurrentPoints + pointsIncrement;
+
+      // Calculate star rating from points (250 points = 8★, etc.)
+      const stars = calculateStarRatingFromPoints(points);
+
+      // Check if this increment crosses a star upgrade threshold
+      const prevBid = bid - 5;
+      const prevBidDifference = prevBid - playerBasePrice;
+      const prevPointsIncrement = Math.floor(prevBidDifference / 5);
+      const prevPoints = playerCurrentPoints + prevPointsIncrement;
+      const prevStars = calculateStarRatingFromPoints(prevPoints);
       const justUpgraded = stars > prevStars;
-      
+
       increments.push({ bid, stars, points, isUpgrade: justUpgraded });
     }
-    
+
     return increments;
   };
 
@@ -448,8 +495,8 @@ export default function RealPlayersPlannerPage() {
                   <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Select {MIN_PLAYERS}-{MAX_PLAYERS} players for auction</p>
                 </div>
               </div>
-              <Link 
-                href="/dashboard" 
+              <Link
+                href="/dashboard"
                 className="px-3 py-2 bg-white/80 text-gray-700 rounded-lg sm:rounded-xl hover:bg-white shadow-sm transition-all text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 flex-shrink-0"
               >
                 <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -475,9 +522,8 @@ export default function RealPlayersPlannerPage() {
             <div className="text-xs text-gray-500 mt-0.5 sm:mt-1">{players.length} player{players.length !== 1 ? 's' : ''}</div>
           </div>
 
-          <div className={`glass rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-5 hover:shadow-lg transition-all duration-300 ${
-            remainingBudget < 0 ? 'bg-gradient-to-br from-red-50 to-orange-50 border border-red-200' : 'bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200'
-          }`}>
+          <div className={`glass rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-5 hover:shadow-lg transition-all duration-300 ${remainingBudget < 0 ? 'bg-gradient-to-br from-red-50 to-orange-50 border border-red-200' : 'bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200'
+            }`}>
             <div className="text-xs sm:text-sm text-gray-600 mb-1">Remaining</div>
             <div className={`text-lg sm:text-xl lg:text-2xl font-bold truncate ${remainingBudget < 0 ? 'text-red-600' : 'text-green-600'}`}>
               {remainingBudget.toLocaleString()}
@@ -517,37 +563,37 @@ export default function RealPlayersPlannerPage() {
           </button>
         </div>
 
-      {/* Upgrade Matrix */}
-      {showUpgradeMatrix && (
-        <div className="glass rounded-2xl p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4">Star Upgrade Matrix</h2>
-          <p className="text-sm text-gray-600 mb-4">Bid amounts required to upgrade players to higher star ratings</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.entries(UPGRADE_MATRIX).map(([initialStar, upgrades]) => (
-              <div key={initialStar} className="bg-white/60 rounded-xl p-4 border border-gray-200">
-                <h3 className="font-bold text-lg mb-2 text-blue-600">{initialStar}★ Initial</h3>
-                <div className="space-y-1">
-                  {Object.entries(upgrades).map(([amount, finalStar]) => (
-                    <div key={amount} className="flex justify-between text-sm">
-                      <span className="text-gray-600">SSCoin {amount}</span>
-                      <span className="font-semibold text-green-600">→ {finalStar}★</span>
-                    </div>
-                  ))}
+        {/* Upgrade Matrix */}
+        {showUpgradeMatrix && (
+          <div className="glass rounded-2xl p-6 mb-6">
+            <h2 className="text-xl font-bold mb-4">Star Upgrade Matrix</h2>
+            <p className="text-sm text-gray-600 mb-4">Bid amounts required to upgrade players to higher star ratings</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(UPGRADE_MATRIX).map(([initialStar, upgrades]) => (
+                <div key={initialStar} className="bg-white/60 rounded-xl p-4 border border-gray-200">
+                  <h3 className="font-bold text-lg mb-2 text-blue-600">{initialStar}★ Initial</h3>
+                  <div className="space-y-1">
+                    {Object.entries(upgrades).map(([amount, finalStar]) => (
+                      <div key={amount} className="flex justify-between text-sm">
+                        <span className="text-gray-600">SSCoin {amount}</span>
+                        <span className="font-semibold text-green-600">→ {finalStar}★</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
         {/* Player Cards */}
         <div className="space-y-3 sm:space-y-4">
           {players.map((player, index) => {
-            const nextUpgrade = getNextUpgrade(player.initialStars, player.bidAmount);
-            
+            const nextUpgrade = getNextUpgrade(player.currentPoints, player.bidAmount, player.basePrice);
+
             return (
-              <div 
-                key={player.id} 
+              <div
+                key={player.id}
                 className="glass rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-5 hover:shadow-lg transition-all duration-300 border border-white/20"
                 style={{ position: 'relative', zIndex: openDropdownIndex === index ? 100 : 1 }}
               >
@@ -569,314 +615,317 @@ export default function RealPlayersPlannerPage() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-                {/* Left Column - Input */}
-                <div className="space-y-4">
-                  <div className="relative" style={{ zIndex: openDropdownIndex === index ? 50 : 'auto' }}>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Player Selection</label>
-                    <button
-                      onClick={() => toggleDropdown(index)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:bg-gray-50 transition-colors text-left flex items-center gap-3"
-                    >
-                      {player.photo_url ? (
-                        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white/50 shadow-md relative">
-                          <OptimizedImage
-                            src={player.photo_url}
-                            alt={player.name}
-                            width={80}
-                            height={80}
-                            quality={85}
-                            className="w-full h-full object-cover"
-                            style={getPhotoStyle(player.photo_position_x_circle, player.photo_position_y_circle, player.photo_scale_circle)}
-                            fallback={
-                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
-                                <span className="text-sm font-bold text-blue-600">{player.name[0]}</span>
-                              </div>
-                            }
-                          />
-                        </div>
-                      ) : player.player_id ? (
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100 flex-shrink-0">
-                          <span className="text-sm font-bold text-blue-600">{player.name[0]}</span>
-                        </div>
-                      ) : null}
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-medium ${!player.player_id ? 'text-gray-500' : 'text-gray-900'}`}>
-                          {player.name}
-                        </div>
-                        {player.category && (
-                          <div className="text-xs text-gray-500">{player.category}</div>
-                        )}
-                      </div>
-                      <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    
-                    {/* Dropdown */}
-                    {openDropdownIndex === index && (
-                      <div className="absolute w-full mt-2 bg-white rounded-lg shadow-xl border border-gray-200 max-h-96 overflow-hidden flex flex-col" style={{ zIndex: 50 }}>
-                        {/* Search */}
-                        <div 
-                          className="p-3 border-b border-gray-200"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="text"
-                            placeholder="Search players..."
-                            value={searchTerms[index] || ''}
-                            onChange={(e) => setSearchTerms({ ...searchTerms, [index]: e.target.value })}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                            autoFocus
-                          />
-                        </div>
-                        
-                        {/* Player List */}
-                        <div 
-                          className="overflow-y-auto max-h-80"
-                          onMouseDown={(e) => e.stopPropagation()}
-                        >
-                          {getFilteredPlayersForDropdown(index).length === 0 ? (
-                            <div className="p-4 text-center text-gray-500 text-sm">
-                              {searchTerms[index] ? 'No players found' : 'All players selected'}
-                            </div>
-                          ) : (
-                            getFilteredPlayersForDropdown(index).map((realPlayer) => (
-                              <button
-                                key={realPlayer.player_id}
-                                onMouseDown={(e) => {
-                                  console.log('🖱️ MouseDown on player button', realPlayer.player_name);
-                                  e.stopPropagation();
-                                }}
-                                onClick={(e) => {
-                                  console.log('👆 Click on player button', realPlayer.player_name);
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  selectRealPlayer(realPlayer, index);
-                                }}
-                                className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 transition-colors text-left border-b border-gray-100 last:border-b-0"
-                              >
-                                {/* Player Photo */}
-                                <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 border-white/50 shadow-md relative">
-                                  {realPlayer.photo_url ? (
-                                    <OptimizedImage
-                                      src={realPlayer.photo_url}
-                                      alt={realPlayer.player_name}
-                                      width={80}
-                                      height={80}
-                                      quality={85}
-                                      className="w-full h-full object-cover"
-                                      style={getPhotoStyle(realPlayer.photo_position_x_circle, realPlayer.photo_position_y_circle, realPlayer.photo_scale_circle)}
-                                      fallback={
-                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
-                                          <span className="text-lg font-bold text-blue-600">{realPlayer.player_name[0]}</span>
-                                        </div>
-                                      }
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
-                                      <span className="text-lg font-bold text-blue-600">{realPlayer.player_name[0]}</span>
-                                    </div>
-                                  )}
+                  {/* Left Column - Input */}
+                  <div className="space-y-4">
+                    <div className="relative" style={{ zIndex: openDropdownIndex === index ? 50 : 'auto' }}>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Player Selection</label>
+                      <button
+                        onClick={() => toggleDropdown(index)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:bg-gray-50 transition-colors text-left flex items-center gap-3"
+                      >
+                        {player.photo_url ? (
+                          <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-white/50 shadow-md relative">
+                            <OptimizedImage
+                              src={player.photo_url}
+                              alt={player.name}
+                              width={80}
+                              height={80}
+                              quality={85}
+                              className="w-full h-full object-cover"
+                              style={getPhotoStyle(player.photo_position_x_circle, player.photo_position_y_circle, player.photo_scale_circle)}
+                              fallback={
+                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+                                  <span className="text-sm font-bold text-blue-600">{player.name[0]}</span>
                                 </div>
-                                
-                                {/* Player Info */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-gray-900 text-sm truncate">
-                                    {realPlayer.display_name || realPlayer.player_name}
-                                  </div>
-                                  <div className="text-xs text-gray-600 truncate">{realPlayer.team}</div>
-                                  <div className="flex items-center gap-1.5 mt-1">
-                                    {realPlayer.category && (
-                                      <span className={`px-1.5 py-0.5 text-xs font-semibold rounded ${
-                                        realPlayer.category.toLowerCase() === 'legend'
-                                          ? 'bg-yellow-100 text-yellow-800'
-                                          : 'bg-blue-100 text-blue-800'
-                                      }`}>
-                                        {realPlayer.category}
-                                      </span>
-                                    )}
-                                    <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-purple-100 text-purple-800">
-                                      {realPlayer.star_rating || 3}⭐
-                                    </span>
-                                  </div>
-                                </div>
-                                
-                                {/* Stats */}
-                                <div className="flex gap-2 text-xs flex-shrink-0">
-                                  <div className="text-center">
-                                    <div className="font-bold text-blue-600">{realPlayer.points || 0}</div>
-                                    <div className="text-gray-500">Pts</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="font-bold text-green-600">{realPlayer.goals_scored || 0}</div>
-                                    <div className="text-gray-500">G</div>
-                                  </div>
-                                </div>
-                              </button>
-                            ))
+                              }
+                            />
+                          </div>
+                        ) : player.player_id ? (
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100 flex-shrink-0">
+                            <span className="text-sm font-bold text-blue-600">{player.name[0]}</span>
+                          </div>
+                        ) : null}
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-medium ${!player.player_id ? 'text-gray-500' : 'text-gray-900'}`}>
+                            {player.name}
+                          </div>
+                          {player.category && (
+                            <div className="text-xs text-gray-500">{player.category}</div>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </div>
+                        <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Bid Amount (SSCoin)</label>
-                    <input
-                      type="number"
-                      value={player.bidAmount || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updatePlayer(player.id, 'bidAmount', value === '' ? 0 : Number(value));
-                      }}
-                      min={starRatingConfig[player.initialStars] || getMinimumBidForStars(player.initialStars)}
-                      step={10}
-                      placeholder="Enter bid amount"
-                      className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        player.player_id && player.bidAmount > 0 && player.bidAmount < (starRatingConfig[player.initialStars] || getMinimumBidForStars(player.initialStars))
+                      {/* Dropdown */}
+                      {openDropdownIndex === index && (
+                        <div className="absolute w-full mt-2 bg-white rounded-lg shadow-xl border border-gray-200 max-h-96 overflow-hidden flex flex-col" style={{ zIndex: 50 }}>
+                          {/* Search */}
+                          <div
+                            className="p-3 border-b border-gray-200"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="text"
+                              placeholder="Search players..."
+                              value={searchTerms[index] || ''}
+                              onChange={(e) => setSearchTerms({ ...searchTerms, [index]: e.target.value })}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                              autoFocus
+                            />
+                          </div>
+
+                          {/* Player List */}
+                          <div
+                            className="overflow-y-auto max-h-80"
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            {getFilteredPlayersForDropdown(index).length === 0 ? (
+                              <div className="p-4 text-center text-gray-500 text-sm">
+                                {searchTerms[index] ? 'No players found' : 'All players selected'}
+                              </div>
+                            ) : (
+                              getFilteredPlayersForDropdown(index).map((realPlayer) => (
+                                <button
+                                  key={realPlayer.player_id}
+                                  onMouseDown={(e) => {
+                                    console.log('🖱️ MouseDown on player button', realPlayer.player_name);
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    console.log('👆 Click on player button', realPlayer.player_name);
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    selectRealPlayer(realPlayer, index);
+                                  }}
+                                  className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 transition-colors text-left border-b border-gray-100 last:border-b-0"
+                                >
+                                  {/* Player Photo */}
+                                  <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 border-white/50 shadow-md relative">
+                                    {realPlayer.photo_url ? (
+                                      <OptimizedImage
+                                        src={realPlayer.photo_url}
+                                        alt={realPlayer.player_name}
+                                        width={80}
+                                        height={80}
+                                        quality={85}
+                                        className="w-full h-full object-cover"
+                                        style={getPhotoStyle(realPlayer.photo_position_x_circle, realPlayer.photo_position_y_circle, realPlayer.photo_scale_circle)}
+                                        fallback={
+                                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+                                            <span className="text-lg font-bold text-blue-600">{realPlayer.player_name[0]}</span>
+                                          </div>
+                                        }
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
+                                        <span className="text-lg font-bold text-blue-600">{realPlayer.player_name[0]}</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Player Info */}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-semibold text-gray-900 text-sm truncate">
+                                      {realPlayer.display_name || realPlayer.player_name}
+                                    </div>
+                                    <div className="text-xs text-gray-600 truncate">{realPlayer.team}</div>
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                      {realPlayer.category && (
+                                        <span className={`px-1.5 py-0.5 text-xs font-semibold rounded ${realPlayer.category.toLowerCase() === 'legend'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : 'bg-blue-100 text-blue-800'
+                                          }`}>
+                                          {realPlayer.category}
+                                        </span>
+                                      )}
+                                      <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-purple-100 text-purple-800">
+                                        {realPlayer.star_rating || 3}⭐
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Stats */}
+                                  <div className="flex gap-2 text-xs flex-shrink-0">
+                                    <div className="text-center">
+                                      <div className="font-bold text-blue-600">{realPlayer.points || 0}</div>
+                                      <div className="text-gray-500">Pts</div>
+                                    </div>
+                                    <div className="text-center">
+                                      <div className="font-bold text-green-600">{realPlayer.goals_scored || 0}</div>
+                                      <div className="text-gray-500">G</div>
+                                    </div>
+                                  </div>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Bid Amount (SSCoin)</label>
+                      <input
+                        type="number"
+                        value={player.bidAmount || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          updatePlayer(player.id, 'bidAmount', value === '' ? 0 : Number(value));
+                        }}
+                        min={player.basePrice}
+                        step={10}
+                        placeholder="Enter bid amount"
+                        className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent ${player.player_id && player.bidAmount > 0 && player.bidAmount < player.basePrice
                           ? 'border-red-500 bg-red-50'
                           : 'border-gray-300'
-                      }`}
-                      disabled={!player.player_id}
-                    />
-                    {player.player_id && player.bidAmount > 0 && player.bidAmount < (starRatingConfig[player.initialStars] || getMinimumBidForStars(player.initialStars)) ? (
-                      <p className="text-xs text-red-600 font-medium mt-1 flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                        Amount cannot be below minimum of ${starRatingConfig[player.initialStars] || getMinimumBidForStars(player.initialStars)}
-                      </p>
-                    ) : (
+                          }`}
+                        disabled={!player.player_id}
+                      />
+                      {player.player_id && player.bidAmount > 0 && player.bidAmount < player.basePrice ? (
+                        <p className="text-xs text-red-600 font-medium mt-1 flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          Amount cannot be below player's base price of ${player.basePrice}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {player.player_id
+                            ? `Player's base price: SSCoin ${player.basePrice}`
+                            : 'Select a player first'}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Matches</label>
+                      <input
+                        type="number"
+                        value={player.matches || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          updatePlayer(player.id, 'matches', value === '' ? 0 : Number(value));
+                        }}
+                        min="0"
+                        step="1"
+                        placeholder="Enter matches"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={!player.player_id}
+                      />
                       <p className="text-xs text-gray-500 mt-1">
-                        {player.player_id 
-                          ? `Minimum for ${player.initialStars}★: SSCoin ${starRatingConfig[player.initialStars] || getMinimumBidForStars(player.initialStars)}`
-                          : 'Select a player first'}
+                        {player.player_id ? 'Number of matches for salary calculation' : 'Select a player first'}
                       </p>
-                    )}
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Matches</label>
-                    <input
-                      type="number"
-                      value={player.matches || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updatePlayer(player.id, 'matches', value === '' ? 0 : Number(value));
-                      }}
-                      min="0"
-                      step="1"
-                      placeholder="Enter matches"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      disabled={!player.player_id}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      {player.player_id ? 'Number of matches for salary calculation' : 'Select a player first'}
-                    </p>
-                  </div>
-                </div>
+                  {/* Right Column - Calculations */}
+                  <div className="space-y-4">
+                    {/* Star Upgrade Display */}
+                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border-2 border-purple-200">
+                      <div className="text-sm font-medium text-gray-700 mb-2">⭐ Star Rating</div>
+                      {(() => {
+                        const currentStarsFromPoints = calculateStarRatingFromPoints(player.currentPoints);
+                        const bidDifference = player.bidAmount - player.basePrice;
+                        const pointsIncrement = Math.floor(bidDifference / 5);
+                        const projectedPoints = player.currentPoints + pointsIncrement;
+                        const projectedStars = calculateStarRatingFromPoints(projectedPoints);
 
-                {/* Right Column - Calculations */}
-                <div className="space-y-4">
-                  {/* Star Upgrade Display */}
-                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border-2 border-purple-200">
-                    <div className="text-sm font-medium text-gray-700 mb-2">⭐ Star Rating</div>
-                    {player.finalStars > player.initialStars ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl font-bold text-gray-600">{player.initialStars}★</span>
-                        <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                        </svg>
-                        <span className="text-2xl font-bold text-green-600">{player.finalStars}★</span>
-                        <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
-                          Upgraded!
-                        </span>
+                        return projectedStars > currentStarsFromPoints ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl font-bold text-gray-600">{currentStarsFromPoints}★</span>
+                            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                            <span className="text-2xl font-bold text-green-600">{projectedStars}★</span>
+                            <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                              Upgraded!
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-2xl font-bold text-gray-600">{currentStarsFromPoints}★</div>
+                        );
+                      })()}
+                      {nextUpgrade && (
+                        <p className="text-xs text-gray-600 mt-2">
+                          💡 Next upgrade: SSCoin {nextUpgrade.amount} → {nextUpgrade.stars}★ ({nextUpgrade.pointsNeeded} pts)
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Salary Display */}
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
+                      <div className="text-sm font-medium text-gray-700 mb-2">💰 Per Match Salary</div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        SSCoin {player.salaryPerMatch.toFixed(2)}
                       </div>
-                    ) : (
-                      <div className="text-2xl font-bold text-gray-600">{player.initialStars}★</div>
-                    )}
-                    {nextUpgrade && (
                       <p className="text-xs text-gray-600 mt-2">
-                        💡 Next upgrade: SSCoin {nextUpgrade.amount} → {nextUpgrade.stars}★
+                        Formula: ({player.bidAmount} ÷ 100) × {player.finalStars}★ ÷ 10
                       </p>
-                    )}
-                  </div>
-
-                  {/* Salary Display */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
-                    <div className="text-sm font-medium text-gray-700 mb-2">💰 Per Match Salary</div>
-                    <div className="text-2xl font-bold text-blue-600">
-                      SSCoin {player.salaryPerMatch.toFixed(2)}
                     </div>
-                    <p className="text-xs text-gray-600 mt-2">
-                      Formula: ({player.bidAmount} ÷ 100) × {player.finalStars}★ ÷ 10
-                    </p>
-                  </div>
 
-                  {/* Season Total */}
-                  <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-4 border-2 border-yellow-200">
-                    <div className="text-sm font-medium text-gray-700 mb-2">📊 Total Salary ({player.matches || 0} matches)</div>
-                    <div className="text-2xl font-bold text-orange-600">
-                      SSCoin {player.totalSalary.toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Bid Increments with Points Preview */}
-                  {player.player_id && player.bidAmount > 0 && (
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
-                      <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                        <span>🎯 Bid Increments (+5)</span>
-                        <span className="text-xs text-gray-500">(Stars & Points)</span>
+                    {/* Season Total */}
+                    <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-4 border-2 border-yellow-200">
+                      <div className="text-sm font-medium text-gray-700 mb-2">📊 Total Salary ({player.matches || 0} matches)</div>
+                      <div className="text-2xl font-bold text-orange-600">
+                        SSCoin {player.totalSalary.toFixed(2)}
                       </div>
-                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                        {getBidIncrements(player.initialStars, player.bidAmount).map((increment, idx) => {
-                          const isCurrentBid = increment.bid === player.bidAmount;
-                          return (
-                            <div 
-                              key={idx}
-                              className={`flex items-center justify-between text-xs py-1.5 px-2 rounded-lg ${
-                                isCurrentBid 
-                                  ? 'bg-blue-100 border border-blue-300 font-semibold' 
+                    </div>
+
+                    {/* Bid Increments with Points Preview */}
+                    {player.player_id && player.bidAmount > 0 && (
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
+                        <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                          <span>🎯 Bid Increments (+5)</span>
+                          <span className="text-xs text-gray-500">(Stars & Points)</span>
+                        </div>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {getBidIncrements(player.initialStars, player.bidAmount, player.basePrice, player.currentPoints).map((increment, idx) => {
+                            const isCurrentBid = increment.bid === player.bidAmount;
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex items-center justify-between text-xs py-1.5 px-2 rounded-lg ${isCurrentBid
+                                  ? 'bg-blue-100 border border-blue-300 font-semibold'
                                   : increment.isUpgrade
-                                  ? 'bg-green-100 border border-green-300 font-semibold'
-                                  : 'bg-white/50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className={isCurrentBid ? 'text-blue-700' : 'text-gray-700'}>
-                                  ${increment.bid}
-                                </span>
-                                {isCurrentBid && (
-                                  <span className="text-xs px-1.5 py-0.5 bg-blue-200 text-blue-700 rounded">Current</span>
-                                )}
-                                {increment.isUpgrade && !isCurrentBid && (
-                                  <span className="text-xs px-1.5 py-0.5 bg-green-200 text-green-700 rounded">⬆ Upgrade!</span>
-                                )}
+                                    ? 'bg-green-100 border border-green-300 font-semibold'
+                                    : 'bg-white/50'
+                                  }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={isCurrentBid ? 'text-blue-700' : 'text-gray-700'}>
+                                    ${increment.bid}
+                                  </span>
+                                  {isCurrentBid && (
+                                    <span className="text-xs px-1.5 py-0.5 bg-blue-200 text-blue-700 rounded">Current</span>
+                                  )}
+                                  {increment.isUpgrade && !isCurrentBid && (
+                                    <span className="text-xs px-1.5 py-0.5 bg-green-200 text-green-700 rounded">⬆ Upgrade!</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className={`font-semibold ${isCurrentBid ? 'text-blue-700' : increment.isUpgrade ? 'text-green-700' : 'text-gray-600'
+                                    }`}>
+                                    {increment.stars}⭐
+                                  </span>
+                                  <span className={`font-bold ${isCurrentBid ? 'text-blue-700' : increment.isUpgrade ? 'text-green-700' : 'text-gray-700'
+                                    }`}>
+                                    {increment.points} pts
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-3">
-                                <span className={`font-semibold ${
-                                  isCurrentBid ? 'text-blue-700' : increment.isUpgrade ? 'text-green-700' : 'text-gray-600'
-                                }`}>
-                                  {increment.stars}⭐
-                                </span>
-                                <span className={`font-bold ${
-                                  isCurrentBid ? 'text-blue-700' : increment.isUpgrade ? 'text-green-700' : 'text-gray-700'
-                                }`}>
-                                  {increment.points} pts
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-gray-600 mt-2">
+                          Base: ${player.basePrice} | Current: {player.currentPoints} pts (+1 per +5 above base)
+                        </p>
                       </div>
-                      <p className="text-xs text-gray-600 mt-2">
-                        Current: {player.finalStars}⭐ = {STAR_RATING_POINTS[player.finalStars] || 100} points
-                      </p>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

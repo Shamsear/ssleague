@@ -144,8 +144,26 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const startRound = (parseInt(weekNumber) - 1) * 7 + 1;
-        const endRound = parseInt(weekNumber) * 7;
+        // Custom week ranges
+        const weekRanges: Record<number, { start: number; end: number }> = {
+          1: { start: 1, end: 7 },
+          2: { start: 8, end: 13 },
+          3: { start: 14, end: 20 },
+          4: { start: 21, end: 26 },
+        };
+
+        const week = parseInt(weekNumber);
+        const weekRange = weekRanges[week];
+
+        if (!weekRange) {
+          return NextResponse.json(
+            { success: false, error: `Invalid week number: ${week}. Valid weeks are 1-4.` },
+            { status: 400 }
+          );
+        }
+
+        const startRound = weekRange.start;
+        const endRound = weekRange.end;
 
         console.log(`🔍 Searching for POTW candidates: week=${weekNumber}, rounds ${startRound}-${endRound}`);
 
@@ -369,8 +387,26 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const startRound = (parseInt(weekNumber) - 1) * 7 + 1;
-        const endRound = parseInt(weekNumber) * 7;
+        // Custom week ranges
+        const weekRanges: Record<number, { start: number; end: number }> = {
+          1: { start: 1, end: 7 },
+          2: { start: 8, end: 13 },
+          3: { start: 14, end: 20 },
+          4: { start: 21, end: 26 },
+        };
+
+        const week = parseInt(weekNumber);
+        const weekRange = weekRanges[week];
+
+        if (!weekRange) {
+          return NextResponse.json(
+            { success: false, error: `Invalid week number: ${week}. Valid weeks are 1-4.` },
+            { status: 400 }
+          );
+        }
+
+        const startRound = weekRange.start;
+        const endRound = weekRange.end;
 
         console.log(`🔍 Searching for TOW candidates: week=${weekNumber}, rounds ${startRound}-${endRound}`);
 

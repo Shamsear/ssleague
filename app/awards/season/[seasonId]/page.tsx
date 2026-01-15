@@ -127,7 +127,7 @@ export default function SeasonAwardsPage() {
         }
     };
 
-    const renderStats = (rawStats: any) => {
+    const renderStats = (rawStats: any, awardId: string = 'unknown') => {
         if (!rawStats) return null;
         let stats;
         try {
@@ -141,45 +141,61 @@ export default function SeasonAwardsPage() {
             'motm', 'assists', 'matchup', 'avg_goals', 'total_goals'
         ];
 
+        // Build array of all stat elements
+        const statElements: JSX.Element[] = [];
+
+        // Add clean sheet if present
+        if (stats.clean_sheet === true || stats.clean_sheet === 'true' || stats.clean_sheets > 0) {
+            statElements.push(
+                <span key={`${awardId}-clean-sheet`} className="px-2 py-1 bg-teal-100 text-teal-800 rounded border border-teal-200 text-xs font-bold flex items-center shadow-sm">
+                    🛡️ Clean Sheet
+                </span>
+            );
+        }
+
+        // Add matchup if present
+        if (stats.matchup) {
+            statElements.push(
+                <div key={`${awardId}-matchup`} className="w-full text-xs font-medium text-gray-600 italic mb-1 border-l-2 border-blue-300 pl-2">
+                    {stats.matchup}
+                </div>
+            );
+        }
+
+        // Add other stats
+        Object.entries(stats)
+            .filter(([originalKey, value]: [string, any]) => {
+                const key = originalKey.toLowerCase();
+                if (!allowedStats.includes(key)) return false;
+                if (value === null || value === '' || value === undefined) return false;
+                if (key === 'clean_sheet' || key === 'matchup') return false;
+                if (key.includes('played') && !key.includes('matches')) return false;
+                return true;
+            })
+            .forEach(([originalKey, value]: [string, any]) => {
+                const key = originalKey.toLowerCase();
+                let label = key.replace(/_/g, ' ');
+                let colorClass = 'bg-white text-gray-700 border-gray-200';
+
+                if (key === 'wins') { label = 'W'; colorClass = 'bg-green-100 text-green-800 border-green-200'; }
+                else if (key === 'losses') { label = 'L'; colorClass = 'bg-red-50 text-red-800 border-red-200'; }
+                else if (key === 'draws') { label = 'D'; colorClass = 'bg-gray-100 text-gray-800 border-gray-200'; }
+                else if (key.includes('goals') && !key.includes('against')) { label = key.replace('goals', 'G').replace('total', 'Tot').replace('avg', 'Avg'); colorClass = 'bg-blue-50 text-blue-800 border-blue-200'; }
+                else if (key === 'motm') { label = 'MOTM'; colorClass = 'bg-yellow-50 text-yellow-800 border-yellow-200'; }
+
+                statElements.push(
+                    <div key={`${awardId}-stat-${originalKey}`} className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs font-semibold shadow-sm ${colorClass}`}>
+                        <span className="capitalize">{label}:</span>
+                        <span className="font-bold">{String(value)}</span>
+                    </div>
+                );
+            });
+
         return (
             <div className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4 bg-gray-50/50 rounded-lg p-2.5 sm:p-3">
                 <div className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Performance</div>
                 <div className="flex flex-wrap gap-2">
-                    {(stats.clean_sheet === true || stats.clean_sheet === 'true' || stats.clean_sheets > 0) && (
-                        <span className="px-2 py-1 bg-teal-100 text-teal-800 rounded border border-teal-200 text-xs font-bold flex items-center shadow-sm">
-                            🛡️ Clean Sheet
-                        </span>
-                    )}
-
-                    {stats.matchup && (
-                        <div className="w-full text-xs font-medium text-gray-600 italic mb-1 border-l-2 border-blue-300 pl-2">
-                            {stats.matchup}
-                        </div>
-                    )}
-
-                    {Object.entries(stats).map(([originalKey, value]: [string, any]) => {
-                        const key = originalKey.toLowerCase();
-                        if (!allowedStats.includes(key)) return null;
-                        if (value === null || value === '' || value === undefined) return null;
-                        if (key === 'clean_sheet' || key === 'matchup') return null;
-                        if (key.includes('played') && !key.includes('matches')) return null;
-
-                        let label = key.replace(/_/g, ' ');
-                        let colorClass = 'bg-white text-gray-700 border-gray-200';
-
-                        if (key === 'wins') { label = 'W'; colorClass = 'bg-green-100 text-green-800 border-green-200'; }
-                        else if (key === 'losses') { label = 'L'; colorClass = 'bg-red-50 text-red-800 border-red-200'; }
-                        else if (key === 'draws') { label = 'D'; colorClass = 'bg-gray-100 text-gray-800 border-gray-200'; }
-                        else if (key.includes('goals') && !key.includes('against')) { label = key.replace('goals', 'G').replace('total', 'Tot').replace('avg', 'Avg'); colorClass = 'bg-blue-50 text-blue-800 border-blue-200'; }
-                        else if (key === 'motm') { label = 'MOTM'; colorClass = 'bg-yellow-50 text-yellow-800 border-yellow-200'; }
-
-                        return (
-                            <div key={originalKey} className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs font-semibold shadow-sm ${colorClass}`}>
-                                <span className="capitalize">{label}:</span>
-                                <span className="font-bold">{String(value)}</span>
-                            </div>
-                        );
-                    })}
+                    {statElements}
                 </div>
             </div>
         );
@@ -289,86 +305,89 @@ export default function SeasonAwardsPage() {
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 mb-8 sm:mb-12">
                         {/* Team Awards */}
-                        {activeTab === 'awards' && Array.isArray(awards) && awards.map((award, index) => {
-                            // Filter out invalid/duplicate awards
-                            if (!award.player_name && !award.team_name) return null;
-                            const awardType = award.award_type?.trim();
-                            if (!awardType || awardType === 'Category') return null;
+                        {activeTab === 'awards' && Array.isArray(awards) && awards
+                            .filter(award => {
+                                // Filter out invalid/duplicate awards
+                                if (!award.player_name && !award.team_name) return false;
+                                const awardType = award.award_type?.trim();
+                                if (!awardType || awardType === 'Category') return false;
+                                return true;
+                            })
+                            .map((award, index) => {
+                                const Wrapper = award.instagram_post_url ? 'a' : 'div';
 
-                            const Wrapper = award.instagram_post_url ? 'a' : 'div';
-
-                            return (
-                                <Wrapper
-                                    {...(award.instagram_post_url ? { href: award.instagram_post_url, target: '_blank', rel: 'noopener noreferrer' } : {})}
-                                    key={`award-${award.id}-${index}`}
-                                    className="group bg-white/70 backdrop-blur-xl border-2 border-white/40 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:border-yellow-300"
-                                >
-                                    {award.instagram_link && (
-                                        <div className="relative w-full overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200">
-                                            <InstagramEmbed
-                                                postUrl={award.instagram_link}
-                                                instagramPostUrl={award.instagram_post_url ? '' : undefined}
-                                                className=""
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div className="p-4 sm:p-6">
-                                        <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
-                                            <div className="text-3xl sm:text-4xl flex-shrink-0">{getAwardIcon(award.award_type)}</div>
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="font-bold text-gray-900 text-sm sm:text-base lg:text-lg leading-tight mb-1 truncate">
-                                                    {award.award_type}
-                                                </h3>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {award.round_number && (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-medium">
-                                                            Round {award.round_number}
-                                                        </span>
-                                                    )}
-                                                    {award.week_number && (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 text-[10px] sm:text-xs font-medium">
-                                                            Week {award.week_number}
-                                                        </span>
-                                                    )}
-                                                    {!award.round_number && !award.week_number && (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-100 text-green-700 text-[10px] sm:text-xs font-medium">
-                                                            Season Award
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-gradient-to-br from-yellow-50 via-orange-50 to-amber-50 border border-yellow-200/50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 group-hover:shadow-md transition-shadow">
-                                            <div className="font-bold text-lg sm:text-xl lg:text-2xl text-gray-900 mb-1 break-words">
-                                                {award.player_name || award.team_name}
-                                            </div>
-                                            {award.team_name && award.player_name && (
-                                                <div className="text-xs sm:text-sm text-gray-600 font-medium">{award.team_name}</div>
-                                            )}
-                                        </div>
-
-                                        {renderStats(award.performance_stats)}
-
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-gray-500 pt-2 border-t border-gray-200">
-                                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                </svg>
-                                                {formatDate(award.selected_at)}
-                                            </div>
-                                        </div>
-
-                                        {award.notes && (
-                                            <div className="mt-3 p-2.5 sm:p-3 bg-blue-50/50 border-l-2 border-blue-400 rounded text-[10px] sm:text-xs text-gray-700">
-                                                <span className="font-semibold">Note:</span> {award.notes}
+                                return (
+                                    <Wrapper
+                                        {...(award.instagram_post_url ? { href: award.instagram_post_url, target: '_blank', rel: 'noopener noreferrer' } : {})}
+                                        key={`award-${award.id}-${index}`}
+                                        className="group bg-white/70 backdrop-blur-xl border-2 border-white/40 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:border-yellow-300"
+                                    >
+                                        {award.instagram_link && (
+                                            <div className="relative w-full overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200">
+                                                <InstagramEmbed
+                                                    postUrl={award.instagram_link}
+                                                    instagramPostUrl={award.instagram_post_url ? '' : undefined}
+                                                    className=""
+                                                />
                                             </div>
                                         )}
-                                    </div>
-                                </Wrapper>
-                            );
-                        })}
+
+                                        <div className="p-4 sm:p-6">
+                                            <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
+                                                <div className="text-3xl sm:text-4xl flex-shrink-0">{getAwardIcon(award.award_type)}</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="font-bold text-gray-900 text-sm sm:text-base lg:text-lg leading-tight mb-1 truncate">
+                                                        {award.award_type}
+                                                    </h3>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {award.round_number && (
+                                                            <span key={`award-${index}-round`} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 text-[10px] sm:text-xs font-medium">
+                                                                Round {award.round_number}
+                                                            </span>
+                                                        )}
+                                                        {award.week_number && (
+                                                            <span key={`award-${index}-week`} className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 text-[10px] sm:text-xs font-medium">
+                                                                Week {award.week_number}
+                                                            </span>
+                                                        )}
+                                                        {!award.round_number && !award.week_number && (
+                                                            <span key={`award-${index}-season`} className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-100 text-green-700 text-[10px] sm:text-xs font-medium">
+                                                                Season Award
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-gradient-to-br from-yellow-50 via-orange-50 to-amber-50 border border-yellow-200/50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 group-hover:shadow-md transition-shadow">
+                                                <div className="font-bold text-lg sm:text-xl lg:text-2xl text-gray-900 mb-1 break-words">
+                                                    {award.player_name || award.team_name}
+                                                </div>
+                                                {award.team_name && award.player_name && (
+                                                    <div className="text-xs sm:text-sm text-gray-600 font-medium">{award.team_name}</div>
+                                                )}
+                                            </div>
+
+                                            {renderStats(award.performance_stats, `award-${index}`)}
+
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                                    <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                    </svg>
+                                                    {formatDate(award.selected_at)}
+                                                </div>
+                                            </div>
+
+                                            {award.notes && (
+                                                <div className="mt-3 p-2.5 sm:p-3 bg-blue-50/50 border-l-2 border-blue-400 rounded text-[10px] sm:text-xs text-gray-700">
+                                                    <span className="font-semibold">Note:</span> {award.notes}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Wrapper>
+                                );
+                            })}
 
                         {/* Player Awards - Reusing same component structure from public awards page */}
                         {activeTab === 'awards' && cleanedPlayerAwards.map((award, index) => {
@@ -401,21 +420,21 @@ export default function SeasonAwardsPage() {
                                         <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
                                             <div className="relative">
                                                 <div className="text-3xl sm:text-4xl flex-shrink-0">⭐</div>
-                                                {isWinner && <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>}
+                                                {isWinner && <div key={`player-${index}-winner-badge`} className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="font-bold text-gray-900 text-sm sm:text-base lg:text-lg leading-tight mb-1">
                                                     {award.award_type}
                                                 </h3>
                                                 <div className="flex flex-wrap gap-1.5">
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-medium ${award.award_category === 'individual'
+                                                    <span key={`player-${index}-category`} className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-medium ${award.award_category === 'individual'
                                                         ? 'bg-purple-100 text-purple-700'
                                                         : 'bg-indigo-100 text-indigo-700'
                                                         }`}>
                                                         {award.award_category === 'individual' ? 'Individual' : 'Category'}
                                                     </span>
                                                     {award.award_position && (
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold ${isWinner ? 'bg-yellow-100 text-yellow-800' :
+                                                        <span key={`player-${index}-position`} className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold ${isWinner ? 'bg-yellow-100 text-yellow-800' :
                                                             isRunnerUp ? 'bg-gray-200 text-gray-700' :
                                                                 isThird ? 'bg-orange-100 text-orange-700' :
                                                                     'bg-blue-100 text-blue-700'
@@ -437,12 +456,12 @@ export default function SeasonAwardsPage() {
                                             </div>
                                             <div className="flex flex-wrap gap-2 items-center">
                                                 {award.team_name && (
-                                                    <div className="text-xs sm:text-sm text-gray-600 font-medium">
+                                                    <div key={`player-${index}-team`} className="text-xs sm:text-sm text-gray-600 font-medium">
                                                         {award.team_name}
                                                     </div>
                                                 )}
                                                 {award.player_category && (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/60 text-[10px] sm:text-xs text-blue-700 font-semibold">
+                                                    <span key={`player-${index}-player-category`} className="inline-flex items-center px-2 py-0.5 rounded-md bg-white/60 text-[10px] sm:text-xs text-blue-700 font-semibold">
                                                         {award.player_category}
                                                     </span>
                                                 )}
@@ -484,7 +503,7 @@ export default function SeasonAwardsPage() {
                                         <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
                                             <div className="relative">
                                                 <div className="text-3xl sm:text-4xl flex-shrink-0">🏆</div>
-                                                {isChampion && <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>}
+                                                {isChampion && <div key={`trophy-${index}-champion-badge`} className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="font-bold text-gray-900 text-sm sm:text-base lg:text-lg leading-tight mb-1">
@@ -510,7 +529,7 @@ export default function SeasonAwardsPage() {
                                             </div>
                                             <div className="space-y-1.5">
                                                 {trophy.trophy_position && (
-                                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/70 border border-orange-200">
+                                                    <div key={`trophy-${index}-trophy-position`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/70 border border-orange-200">
                                                         <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
                                                             <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                                                         </svg>
@@ -520,7 +539,7 @@ export default function SeasonAwardsPage() {
                                                     </div>
                                                 )}
                                                 {trophy.position && (
-                                                    <div className="text-xs sm:text-sm text-gray-600 flex items-center gap-1.5">
+                                                    <div key={`trophy-${index}-league-position`} className="text-xs sm:text-sm text-gray-600 flex items-center gap-1.5">
                                                         <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                                                         </svg>
