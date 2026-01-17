@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
-import { 
-  validateLineup, 
-  isLineupEditable, 
+import {
+  validateLineup,
+  isLineupEditable,
   generateLineupId,
-  hasSubmittedLineup 
+  hasSubmittedLineup
 } from '@/lib/lineup-validation';
 
 /**
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         AND l.team_id = ${teamId}
         LIMIT 1
       `;
-      
+
       // Additional verification: ensure the returned lineup matches requested team_id
       if (lineups.length > 0 && lineups[0].team_id !== teamId) {
         console.error('❌ SECURITY: Lineup team_id mismatch!', {
@@ -92,10 +92,10 @@ export async function GET(request: NextRequest) {
     // If requesting specific team and no lineup found, return null
     // If requesting specific team and lineup found, return the lineup object
     // If requesting all lineups, return the array
-    const response = teamId 
+    const response = teamId
       ? (lineups.length > 0 ? lineups[0] : null)
       : lineups;
-    
+
     return NextResponse.json({
       success: true,
       lineups: response,
@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
       substitutes,
       submitted_by,
       submitted_by_name,
+      bypass_deadline, // NEW: Allow committee admins to bypass deadline
     } = body;
 
     console.log('📥 Lineup API - Received request:', {
@@ -132,7 +133,8 @@ export async function POST(request: NextRequest) {
       substitutes_count: substitutes?.length,
       starting_xi,
       substitutes,
-      submitted_by
+      submitted_by,
+      bypass_deadline
     });
 
     // Validation
@@ -151,14 +153,14 @@ export async function POST(request: NextRequest) {
       WHERE id = ${fixture_id}
       LIMIT 1
     `;
-    
+
     if (fixtureCheck.length === 0) {
       return NextResponse.json(
         { error: 'Fixture not found' },
         { status: 404 }
       );
     }
-    
+
     const { home_team_id, away_team_id } = fixtureCheck[0];
     if (team_id !== home_team_id && team_id !== away_team_id) {
       console.error('❌ SECURITY: Team not part of fixture!', {
@@ -173,30 +175,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if lineup can be edited (pass team_id to check home team permissions)
-    const editableCheck = await isLineupEditable(fixture_id, team_id);
-    if (!editableCheck.editable) {
-      // Check if it's because matchups exist
-      const matchupsResult = await sql`
-        SELECT COUNT(*) as count FROM matchups WHERE fixture_id = ${fixture_id}
-      `;
-      const matchupsExist = matchupsResult[0].count > 0;
-      
-      if (matchupsExist) {
+    // Check if lineup can be edited (skip if bypass_deadline is true)
+    if (!bypass_deadline) {
+      const editableCheck = await isLineupEditable(fixture_id, team_id);
+      if (!editableCheck.editable) {
+        // Check if it's because matchups exist
+        const matchupsResult = await sql`
+          SELECT COUNT(*) as count FROM matchups WHERE fixture_id = ${fixture_id}
+        `;
+        const matchupsExist = matchupsResult[0].count > 0;
+
+        if (matchupsExist) {
+          return NextResponse.json(
+            {
+              error: 'Lineup locked - matchups have been created',
+              message: 'Matchups already exist for this fixture. To edit lineup, go to the fixture page and use the \"Edit Your Lineup\" button.',
+              requires_confirmation: true
+            },
+            { status: 409 }
+          );
+        }
+
         return NextResponse.json(
-          { 
-            error: 'Lineup locked - matchups have been created',
-            message: 'Matchups already exist for this fixture. To edit lineup, go to the fixture page and use the "Edit Your Lineup" button.',
-            requires_confirmation: true
-          },
-          { status: 409 }
+          { error: editableCheck.reason || 'Lineup cannot be edited' },
+          { status: 403 }
         );
       }
-      
-      return NextResponse.json(
-        { error: editableCheck.reason || 'Lineup cannot be edited' },
-        { status: 403 }
-      );
+    } else {
+      console.log('⚠️ Bypassing deadline check (committee admin override)');
     }
 
     // Get fixture info
@@ -229,9 +235,9 @@ export async function POST(request: NextRequest) {
     if (!validation.isValid) {
       console.error('❌ Lineup validation failed:', validation.errors);
       return NextResponse.json(
-        { 
-          error: 'Lineup validation failed', 
-          errors: validation.errors 
+        {
+          error: 'Lineup validation failed',
+          errors: validation.errors
         },
         { status: 400 }
       );
@@ -240,7 +246,7 @@ export async function POST(request: NextRequest) {
     // Generate lineup ID based on fixture and team
     // This ensures each team has a unique lineup entry per fixture
     const lineupId = generateLineupId(fixture_id, team_id);
-    
+
     console.log('💾 Saving lineup:', { lineupId, fixture_id, team_id });
 
     // Check if matchups exist - if so, delete them when lineup changes

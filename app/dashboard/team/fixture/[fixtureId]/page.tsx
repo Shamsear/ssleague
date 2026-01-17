@@ -1194,9 +1194,22 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
         })
       });
 
+      // Check if response is ok first
       if (!response.ok) {
-        throw new Error('Failed to toggle null status');
+        const errorText = await response.text();
+        let errorMessage = 'Failed to toggle null status';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorData.details || errorMessage;
+        } catch {
+          // If not JSON, use the text as error message
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
+
+      // Parse successful response
+      const data = await response.json();
 
       // Update local state
       const newNullMatchups = new Set(nullMatchups);
@@ -1224,7 +1237,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
       showAlert({
         type: 'error',
         title: 'Failed',
-        message: 'Failed to toggle null status'
+        message: error instanceof Error ? error.message : 'Failed to toggle null status'
       });
     } finally {
       setIsMarkingNull(false);

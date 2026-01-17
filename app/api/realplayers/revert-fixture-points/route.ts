@@ -115,9 +115,9 @@ async function revertPlayerPoints(playerId: string, pointsChange: number, season
   const playerDoc = playerSnap.docs[0];
   const playerData = playerDoc.data();
   const currentPoints = playerData.points || STAR_RATING_BASE_POINTS[playerData.star_rating || 3];
-  
+
   // SUBTRACT the points that were added (reverse the change)
-  const newPoints = currentPoints - pointsChange;
+  const newPoints = Math.max(100, currentPoints - pointsChange); // Ensure minimum 100 points (3-star baseline)
   const newStarRating = calculateStarRating(newPoints);
   const oldStarRating = playerData.star_rating || 3;
 
@@ -138,7 +138,7 @@ async function revertPlayerPoints(playerId: string, pointsChange: number, season
   // Update realplayerstats in Neon (SEASON-SPECIFIC star rating)
   const sql = getTournamentDb();
   const statsId = `${playerId}_${seasonId}`;
-  
+
   // Update star rating in Neon stats
   await sql`
     UPDATE realplayerstats

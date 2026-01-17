@@ -10,6 +10,7 @@ import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import PromptModal from '@/components/modals/PromptModal';
 import FixtureShareButton from '@/components/FixtureShareButton';
+import CommitteeMatchupCreator from '@/components/CommitteeMatchupCreator';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 
 interface Matchup {
@@ -57,8 +58,9 @@ export default function CommitteeFixtureDetailPage() {
   const [matchups, setMatchups] = useState<Matchup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [showMatchupCreator, setShowMatchupCreator] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [editedScores, setEditedScores] = useState<{[key: number]: {home: number, away: number}}>({});
+  const [editedScores, setEditedScores] = useState<{ [key: number]: { home: number, away: number } }>({});
   const [isSaving, setIsSaving] = useState(false);
 
   // Modal system
@@ -97,7 +99,7 @@ export default function CommitteeFixtureDetailPage() {
       // Fetch fixture
       const fixtureRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}`);
       const fixtureData = await fixtureRes.json();
-      
+
       if (fixtureData.fixture) {
         setFixture(fixtureData.fixture);
       }
@@ -105,12 +107,12 @@ export default function CommitteeFixtureDetailPage() {
       // Fetch matchups
       const matchupsRes = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/matchups`);
       const matchupsData = await matchupsRes.json();
-      
+
       if (matchupsData.matchups) {
         setMatchups(matchupsData.matchups);
-        
+
         // Initialize edited scores
-        const scores: {[key: number]: {home: number, away: number}} = {};
+        const scores: { [key: number]: { home: number, away: number } } = {};
         matchupsData.matchups.forEach((m: Matchup) => {
           scores[m.position] = {
             home: m.home_goals ?? 0,
@@ -140,7 +142,7 @@ export default function CommitteeFixtureDetailPage() {
       confirmText: 'Declare WO',
       cancelText: 'Cancel'
     });
-    
+
     if (!confirmed || !fixture) return;
 
     setIsSaving(true);
@@ -190,7 +192,7 @@ export default function CommitteeFixtureDetailPage() {
       confirmText: 'Declare NULL',
       cancelText: 'Cancel'
     });
-    
+
     if (!confirmed) return;
 
     setIsSaving(true);
@@ -240,7 +242,7 @@ export default function CommitteeFixtureDetailPage() {
       placeholder: 'Reason for edit...',
       defaultValue: ''
     });
-    
+
     if (!reason) return; // User cancelled
 
     const confirmed = await showConfirm({
@@ -250,7 +252,7 @@ export default function CommitteeFixtureDetailPage() {
       confirmText: 'Save Changes',
       cancelText: 'Cancel'
     });
-    
+
     if (!confirmed) return;
 
     setIsSaving(true);
@@ -367,11 +369,10 @@ export default function CommitteeFixtureDetailPage() {
                 <div className="text-4xl font-bold text-purple-600">
                   {fixture.home_score ?? '-'} : {fixture.away_score ?? '-'}
                 </div>
-                <span className={`text-xs px-3 py-1 rounded-full font-medium ${
-                  fixture.status === 'completed' ? 'bg-green-100 text-green-700' :
+                <span className={`text-xs px-3 py-1 rounded-full font-medium ${fixture.status === 'completed' ? 'bg-green-100 text-green-700' :
                   fixture.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-blue-100 text-blue-700'
-                }`}>
+                    'bg-blue-100 text-blue-700'
+                  }`}>
                   {fixture.status}
                 </span>
               </div>
@@ -382,10 +383,9 @@ export default function CommitteeFixtureDetailPage() {
             </div>
 
             {fixture.match_status_reason && (
-              <div className={`p-3 rounded-lg mb-4 ${
-                fixture.match_status_reason.includes('wo') ? 'bg-orange-100 border-l-4 border-orange-500' :
+              <div className={`p-3 rounded-lg mb-4 ${fixture.match_status_reason.includes('wo') ? 'bg-orange-100 border-l-4 border-orange-500' :
                 'bg-gray-100 border-l-4 border-gray-500'
-              }`}>
+                }`}>
                 <p className="font-semibold text-sm">
                   {fixture.match_status_reason === 'wo_home_absent' && '⚠️ Walkover - Home team absent'}
                   {fixture.match_status_reason === 'wo_away_absent' && '⚠️ Walkover - Away team absent'}
@@ -501,13 +501,23 @@ export default function CommitteeFixtureDetailPage() {
               <div className="flex justify-center">
                 <FixtureShareButton fixture={fixture} matchups={matchups} />
               </div>
-              
+
               <button
                 onClick={() => setShowTimeline(true)}
                 className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 font-medium flex items-center justify-center"
               >
                 📋 View Complete Timeline
               </button>
+
+              {/* Create Matchups Button - Only show if matchups don't exist */}
+              {matchups.length === 0 && fixture.status !== 'completed' && (
+                <button
+                  onClick={() => setShowMatchupCreator(true)}
+                  className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 font-medium flex items-center justify-center gap-2"
+                >
+                  ⚔️ Create Matchups
+                </button>
+              )}
 
               {fixture.status !== 'completed' && (
                 <>
@@ -564,6 +574,34 @@ export default function CommitteeFixtureDetailPage() {
         isOpen={showTimeline}
         onClose={() => setShowTimeline(false)}
       />
+
+      {/* Matchup Creator Modal */}
+      {showMatchupCreator && fixture && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full">
+            <CommitteeMatchupCreator
+              fixtureId={fixtureId}
+              seasonId={fixture.season_id}
+              homeTeamId={fixture.home_team_id}
+              homeTeamName={fixture.home_team_name}
+              awayTeamId={fixture.away_team_id}
+              awayTeamName={fixture.away_team_name}
+              userId={user.uid}
+              userName={user.displayName || user.email || 'Committee Admin'}
+              onSuccess={() => {
+                setShowMatchupCreator(false);
+                showAlert({
+                  type: 'success',
+                  title: 'Matchups Created',
+                  message: 'Matchups have been created successfully!'
+                });
+                fetchFixtureData(); // Reload data
+              }}
+              onCancel={() => setShowMatchupCreator(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Alert, Confirm, and Prompt Modals */}
       <AlertModal

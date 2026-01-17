@@ -60,30 +60,26 @@ export async function PATCH(
         await sql`
       INSERT INTO fixture_audit_log (
         fixture_id,
-        action_type,
-        action_by,
-        action_by_name,
-        notes,
-        season_id,
-        round_number,
-        match_number,
-        changes
+        change_type,
+        changed_by,
+        changes,
+        tournament_id
       ) VALUES (
         ${fixtureId},
         'matchups_marked_null',
-        ${updated_by || 'system'},
         ${updated_by_name || 'Team Manager'},
-        ${is_null ? 'Matchups marked as NULL' : 'Matchups unmarked as NULL'},
-        ${fixture.season_id},
-        ${fixture.round_number},
-        ${fixture.match_number},
         ${JSON.stringify({
             matchup_positions,
             is_null,
+            updated_by: updated_by || 'system',
+            season_id: fixture.season_id,
+            round_number: fixture.round_number,
+            match_number: fixture.match_number,
             note: is_null
                 ? 'These matchups will not count in player stats but will count for salary and team stats'
                 : 'These matchups will now count in player stats'
-        })}
+        })},
+        ${fixture.season_id}
       )
     `;
 
@@ -97,8 +93,15 @@ export async function PATCH(
         });
     } catch (error) {
         console.error('Error marking matchups as null:', error);
+        console.error('Error details:', {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+        });
         return NextResponse.json(
-            { error: 'Failed to mark matchups as null' },
+            {
+                error: 'Failed to mark matchups as null',
+                details: error instanceof Error ? error.message : String(error)
+            },
             { status: 500 }
         );
     }

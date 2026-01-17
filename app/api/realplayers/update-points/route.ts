@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
       if (homeSeasonData.length > 0) {
         const homePlayerData = homeSeasonData[0];
         const currentPoints = homePlayerData.points || STAR_RATING_BASE_POINTS[homePlayerData.star_rating || 3];
-        const newPoints = currentPoints + homePointsChange;
+        const newPoints = Math.max(100, currentPoints + homePointsChange); // Ensure minimum 100 points (3-star baseline)
         const newStarRating = calculateStarRating(newPoints);
         const oldStarRating = homePlayerData.star_rating || 3;
 
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
       if (awaySeasonData.length > 0) {
         const awayPlayerData = awaySeasonData[0];
         const currentPoints = awayPlayerData.points || STAR_RATING_BASE_POINTS[awayPlayerData.star_rating || 3];
-        const newPoints = currentPoints + awayPointsChange;
+        const newPoints = Math.max(100, currentPoints + awayPointsChange); // Ensure minimum 100 points (3-star baseline)
         const newStarRating = calculateStarRating(newPoints);
         const oldStarRating = awayPlayerData.star_rating || 3;
 
