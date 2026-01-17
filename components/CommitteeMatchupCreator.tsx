@@ -29,6 +29,7 @@ interface MatchupCreatorProps {
     userName: string;
     onSuccess: () => void;
     onCancel: () => void;
+    initialTeamToEdit?: 'home' | 'away'; // NEW: Auto-open lineup setter for this team
 }
 
 export default function CommitteeMatchupCreator({
@@ -41,7 +42,8 @@ export default function CommitteeMatchupCreator({
     userId,
     userName,
     onSuccess,
-    onCancel
+    onCancel,
+    initialTeamToEdit
 }: MatchupCreatorProps) {
     const [homeLineup, setHomeLineup] = useState<Lineup | null>(null);
     const [awayLineup, setAwayLineup] = useState<Lineup | null>(null);
@@ -74,6 +76,13 @@ export default function CommitteeMatchupCreator({
     useEffect(() => {
         fetchLineups();
     }, []);
+
+    // NEW: Auto-open lineup setter if initialTeamToEdit is provided
+    useEffect(() => {
+        if (initialTeamToEdit && !isLoading) {
+            handleSetLineup(initialTeamToEdit);
+        }
+    }, [initialTeamToEdit, isLoading]);
 
     const fetchLineups = async () => {
         setIsLoading(true);
@@ -171,6 +180,8 @@ export default function CommitteeMatchupCreator({
 
     const handleSetLineup = async (team: 'home' | 'away') => {
         const teamId = team === 'home' ? homeTeamId : awayTeamId;
+        const existingLineup = team === 'home' ? homeLineup : awayLineup;
+
         console.log('🎯 Setting lineup for team:', { team, teamId, seasonId });
         setShowLineupSetter(team);
         setIsSettingLineup(true);
@@ -178,7 +189,17 @@ export default function CommitteeMatchupCreator({
         const players = await fetchTeamPlayers(teamId);
         console.log('👥 Fetched players:', players);
         setAvailablePlayers(players);
-        setSelectedPlayers([]);
+
+        // If editing existing lineup, pre-select the current players
+        if (existingLineup && existingLineup.players && existingLineup.players.length > 0) {
+            const currentPlayerIds = existingLineup.players.map(p => p.player_id);
+            const preSelectedPlayers = players.filter((p: Player) => currentPlayerIds.includes(p.player_id));
+            console.log('✏️ Editing existing lineup, pre-selecting:', preSelectedPlayers);
+            setSelectedPlayers(preSelectedPlayers);
+        } else {
+            setSelectedPlayers([]);
+        }
+
         setIsSettingLineup(false);
     };
 
@@ -527,24 +548,40 @@ export default function CommitteeMatchupCreator({
 
                     {!homeNeedsLineup && (
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                            <div className="flex items-center gap-2">
-                                <span className="text-green-600 text-xl">✓</span>
-                                <div>
-                                    <p className="font-semibold text-green-900">{homeTeamName}</p>
-                                    <p className="text-sm text-green-700">Lineup set ({homeLineup?.players.length} players)</p>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-green-600 text-xl">✓</span>
+                                    <div>
+                                        <p className="font-semibold text-green-900">{homeTeamName}</p>
+                                        <p className="text-sm text-green-700">Lineup set ({homeLineup?.players.length} players)</p>
+                                    </div>
                                 </div>
+                                <button
+                                    onClick={() => handleSetLineup('home')}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
+                                >
+                                    ✏️ Edit Lineup
+                                </button>
                             </div>
                         </div>
                     )}
 
                     {!awayNeedsLineup && (
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                            <div className="flex items-center gap-2">
-                                <span className="text-green-600 text-xl">✓</span>
-                                <div>
-                                    <p className="font-semibold text-green-900">{awayTeamName}</p>
-                                    <p className="text-sm text-green-700">Lineup set ({awayLineup?.players.length} players)</p>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-green-600 text-xl">✓</span>
+                                    <div>
+                                        <p className="font-semibold text-green-900">{awayTeamName}</p>
+                                        <p className="text-sm text-green-700">Lineup set ({awayLineup?.players.length} players)</p>
+                                    </div>
                                 </div>
+                                <button
+                                    onClick={() => handleSetLineup('away')}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
+                                >
+                                    ✏️ Edit Lineup
+                                </button>
                             </div>
                         </div>
                     )}
@@ -723,10 +760,10 @@ export default function CommitteeMatchupCreator({
                                             onClick={() => !isDisabled && handlePlayerClick(player, 'away')}
                                             disabled={isDisabled}
                                             className={`w-full text-left border-2 rounded-lg p-3 transition-all ${isDisabled
-                                                    ? 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed'
-                                                    : isSelected
-                                                        ? 'bg-blue-100 border-blue-500 shadow-md'
-                                                        : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                                                ? 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed'
+                                                : isSelected
+                                                    ? 'bg-blue-100 border-blue-500 shadow-md'
+                                                    : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50'
                                                 }`}
                                         >
                                             <div className="flex items-center justify-between">

@@ -59,6 +59,7 @@ export default function CommitteeFixtureDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showTimeline, setShowTimeline] = useState(false);
   const [showMatchupCreator, setShowMatchupCreator] = useState(false);
+  const [showLineupEditor, setShowLineupEditor] = useState<'home' | 'away' | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedScores, setEditedScores] = useState<{ [key: number]: { home: number, away: number } }>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -361,11 +362,19 @@ export default function CommitteeFixtureDetailPage() {
           {/* Match Card */}
           <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-purple-100">
             <div className="flex justify-between items-start mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">{fixture.home_team_name}</h2>
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-2xl font-bold text-gray-900">{fixture.home_team_name}</h2>
+                  <button
+                    onClick={() => setShowLineupEditor('home')}
+                    className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 font-medium"
+                  >
+                    ✏️ Edit Lineup
+                  </button>
+                </div>
                 <p className="text-sm text-gray-500">Home Team</p>
               </div>
-              <div className="text-center">
+              <div className="text-center px-6">
                 <div className="text-4xl font-bold text-purple-600">
                   {fixture.home_score ?? '-'} : {fixture.away_score ?? '-'}
                 </div>
@@ -375,9 +384,25 @@ export default function CommitteeFixtureDetailPage() {
                   }`}>
                   {fixture.status}
                 </span>
+                {matchups.length === 0 && fixture.status !== 'completed' && (
+                  <button
+                    onClick={() => setShowMatchupCreator(true)}
+                    className="mt-3 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm rounded-lg hover:from-green-700 hover:to-emerald-700 font-medium block mx-auto"
+                  >
+                    ⚔️ Add Matchups
+                  </button>
+                )}
               </div>
-              <div className="text-right">
-                <h2 className="text-2xl font-bold text-gray-900">{fixture.away_team_name}</h2>
+              <div className="flex-1 text-right">
+                <div className="flex items-center justify-between mb-2">
+                  <button
+                    onClick={() => setShowLineupEditor('away')}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium"
+                  >
+                    ✏️ Edit Lineup
+                  </button>
+                  <h2 className="text-2xl font-bold text-gray-900">{fixture.away_team_name}</h2>
+                </div>
                 <p className="text-sm text-gray-500">Away Team</p>
               </div>
             </div>
@@ -598,6 +623,35 @@ export default function CommitteeFixtureDetailPage() {
                 fetchFixtureData(); // Reload data
               }}
               onCancel={() => setShowMatchupCreator(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Lineup Editor Modal */}
+      {showLineupEditor && fixture && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full">
+            <CommitteeMatchupCreator
+              fixtureId={fixtureId}
+              seasonId={fixture.season_id}
+              homeTeamId={fixture.home_team_id}
+              homeTeamName={fixture.home_team_name}
+              awayTeamId={fixture.away_team_id}
+              awayTeamName={fixture.away_team_name}
+              userId={user.uid}
+              userName={user.displayName || user.email || 'Committee Admin'}
+              onSuccess={() => {
+                setShowLineupEditor(null);
+                showAlert({
+                  type: 'success',
+                  title: 'Lineup Updated',
+                  message: 'Lineup has been updated successfully!'
+                });
+                fetchFixtureData(); // Reload data
+              }}
+              onCancel={() => setShowLineupEditor(null)}
+              initialTeamToEdit={showLineupEditor}
             />
           </div>
         </div>
