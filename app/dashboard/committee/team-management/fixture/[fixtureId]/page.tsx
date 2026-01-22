@@ -27,6 +27,7 @@ interface Matchup {
 interface Fixture {
   id: string;
   season_id: string;
+  tournament_id?: string;
   round_number: number;
   match_number: number;
   home_team_id: string;
@@ -46,6 +47,7 @@ interface Fixture {
   created_by_name?: string;
   result_submitted_at?: string;
   result_submitted_by_name?: string;
+  scoring_type?: string;
 }
 
 export default function CommitteeFixtureDetailPage() {
@@ -350,9 +352,27 @@ export default function CommitteeFixtureDetailPage() {
           Back to Tournament
         </Link>
         <h1 className="text-3xl font-bold gradient-text">Committee Fixture Management</h1>
-        <p className="text-gray-600 mt-2">
-          Round {fixture.round_number} • Match {fixture.match_number} • {fixture.leg === 'first' ? '1st Leg' : '2nd Leg'}
-        </p>
+        <div className="flex items-center gap-3 mt-2">
+          <p className="text-gray-600">
+            Round {fixture.round_number} • Match {fixture.match_number} • {fixture.leg === 'first' ? '1st Leg' : '2nd Leg'}
+          </p>
+          {fixture.scoring_type && (
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${fixture.scoring_type === 'wins'
+                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                : fixture.scoring_type === 'hybrid'
+                  ? 'bg-purple-100 text-purple-800 border border-purple-300'
+                  : 'bg-blue-100 text-blue-800 border border-blue-300'
+              }`}>
+              {fixture.scoring_type === 'wins' ? (
+                <>🏆 Win-Based Scoring</>
+              ) : fixture.scoring_type === 'hybrid' ? (
+                <>🎯 Hybrid Scoring</>
+              ) : (
+                <>⚽ Goal-Based Scoring</>
+              )}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Main Content Grid */}

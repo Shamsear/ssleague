@@ -36,6 +36,8 @@ interface Match {
   home_deadline?: Date;
   away_deadline?: Date;
   result_deadline?: Date;
+  tournament_id?: string;
+  tournament_name?: string;
 }
 
 export default function TeamMatchesPage() {
@@ -45,6 +47,8 @@ export default function TeamMatchesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [seasonId, setSeasonId] = useState<string>('');
   const [teamId, setTeamId] = useState<string>('');
+  const [tournaments, setTournaments] = useState<any[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string>('');
   const [phaseUpdateTrigger, setPhaseUpdateTrigger] = useState(0);
 
   // Monitor phase changes via WebSocket
@@ -98,30 +102,30 @@ export default function TeamMatchesPage() {
         // Find the current/ongoing season the team is registered for
         let currentSeasonId: string | null = null;
         let teamId: string | null = null;
-        
+
         console.log('🔍 Checking registered seasons status...');
         // Check each registered season and find one that's not completed
         for (const teamSeasonDoc of teamSeasonsSnapshot.docs) {
           const teamSeasonData = teamSeasonDoc.data();
           const seasonId = teamSeasonData.season_id;
-          
+
           // Store team_id from the first registration
           if (!teamId) {
             teamId = teamSeasonData.team_id;
             setTeamId(teamId);
             console.log('🎯 Team ID:', teamId);
           }
-          
+
           // Get season details
           const seasonRef = doc(db, 'seasons', seasonId);
           const seasonDoc = await getDoc(seasonRef);
-          
+
           if (seasonDoc.exists()) {
             const seasonData = seasonDoc.data();
             const seasonStatus = seasonData.status || 'draft';
-            
+
             console.log(`  Season ${seasonId}: status = ${seasonStatus}`);
-            
+
             // Use this season if it's not completed (active, draft, ongoing, etc.)
             if (seasonStatus !== 'completed') {
               currentSeasonId = seasonId;
@@ -140,18 +144,30 @@ export default function TeamMatchesPage() {
 
         setSeasonId(currentSeasonId);
 
+        // Fetch tournaments for this season
+        const tournamentsRes = await fetchWithTokenRefresh(`/api/tournaments?season_id=${currentSeasonId}`);
+        const tournamentsData = await tournamentsRes.json();
+
+        if (tournamentsData.success && tournamentsData.tournaments) {
+          setTournaments(tournamentsData.tournaments);
+          // Auto-select first tournament
+          if (tournamentsData.tournaments.length > 0 && !selectedTournamentId) {
+            setSelectedTournamentId(tournamentsData.tournaments[0].id);
+          }
+        }
+
         // Fetch fixtures from Neon database
         console.log('🔍 Fetching fixtures from Neon for season:', currentSeasonId, 'team:', teamId);
-        
+
         const fixturesResponse = await fetchWithTokenRefresh(`/api/fixtures/team?team_id=${teamId}&season_id=${currentSeasonId}`);
-        
+
         if (!fixturesResponse.ok) {
           const errorData = await fixturesResponse.json().catch(() => ({ error: 'Unknown error' }));
           console.error('Failed to fetch fixtures from Neon:', fixturesResponse.status, errorData);
           setIsLoading(false);
           return;
         }
-        
+
         const { fixtures: fixturesList } = await fixturesResponse.json();
         console.log('📊 Found fixtures from Neon:', fixturesList.length);
 
@@ -177,7 +193,7 @@ export default function TeamMatchesPage() {
           const roundNumber = firstFixture.round_number;
           const leg = firstFixture.leg || 'first';
           const tournamentId = firstFixture.tournament_id;
-          
+
           const defaultData = {
             status: 'pending',
             home_fixture_deadline_time: '23:30',
@@ -185,13 +201,13 @@ export default function TeamMatchesPage() {
             result_entry_deadline_day_offset: 2,
             result_entry_deadline_time: '00:30',
           };
-          
+
           try {
             const response = await fetchWithTokenRefresh(`/api/round-deadlines?tournament_id=${tournamentId}&round_number=${roundNumber}&leg=${leg}`);
-            
+
             if (response.ok) {
               const { roundDeadline } = await response.json();
-              
+
               if (roundDeadline) {
                 return {
                   roundKey,
@@ -212,7 +228,7 @@ export default function TeamMatchesPage() {
             return { roundKey, data: defaultData };
           }
         });
-        
+
         // Wait for all round deadline fetches to complete
         const roundResults = await Promise.all(roundFetchPromises);
         roundResults.forEach(({ roundKey, data }) => {
@@ -229,18 +245,18 @@ export default function TeamMatchesPage() {
           const now = getISTNow();
           // Parse scheduled date as IST
           const baseDate = parseISTDate(roundData.scheduled_date);
-          
+
           // Parse deadlines using IST utilities
           const homeDeadline = createISTDateTime(
             roundData.scheduled_date,
             roundData.home_fixture_deadline_time
           );
-          
+
           const awayDeadline = createISTDateTime(
             roundData.scheduled_date,
             roundData.away_fixture_deadline_time
           );
-          
+
           // Calculate result deadline (base date + offset days + time)
           const resultDeadline = new Date(baseDate);
           resultDeadline.setDate(resultDeadline.getDate() + roundData.result_entry_deadline_day_offset);
@@ -248,32 +264,32 @@ export default function TeamMatchesPage() {
           resultDeadline.setHours(resultHour, resultMin, 0, 0);
 
           if (now < homeDeadline) {
-            return { 
-              phase: 'home_fixture' as const, 
+            return {
+              phase: 'home_fixture' as const,
               phase_label: 'Home Fixture Setup',
               home_deadline: homeDeadline,
               away_deadline: awayDeadline,
               result_deadline: resultDeadline,
             };
           } else if (now < awayDeadline) {
-            return { 
-              phase: 'fixture_entry' as const, 
+            return {
+              phase: 'fixture_entry' as const,
               phase_label: 'Fixture Entry',
               home_deadline: homeDeadline,
               away_deadline: awayDeadline,
               result_deadline: resultDeadline,
             };
           } else if (now < resultDeadline) {
-            return { 
-              phase: 'result_entry' as const, 
+            return {
+              phase: 'result_entry' as const,
               phase_label: 'Result Entry',
               home_deadline: homeDeadline,
               away_deadline: awayDeadline,
               result_deadline: resultDeadline,
             };
           } else {
-            return { 
-              phase: 'closed' as const, 
+            return {
+              phase: 'closed' as const,
               phase_label: 'Closed',
               home_deadline: homeDeadline,
               away_deadline: awayDeadline,
@@ -285,11 +301,11 @@ export default function TeamMatchesPage() {
         // Now build the matches array with round status and phase
         fixturesByRound.forEach((fixtures, roundKey) => {
           const roundData = roundDataMap.get(roundKey) || { status: 'pending' };
-          
+
           fixtures.forEach(({ fixtureDoc, fixture }) => {
             const matchDate = fixture.scheduled_date?.toDate?.() || fixture.scheduled_date;
             const phaseInfo = calculateMatchPhase(roundData, matchDate);
-            
+
             console.log('✅ Found match for current team:', {
               home: fixture.home_team_name,
               away: fixture.away_team_name,
@@ -298,7 +314,10 @@ export default function TeamMatchesPage() {
               phase: phaseInfo.phase_label,
               round: fixture.round_number
             });
-            
+
+            // Find tournament name
+            const tournament = tournamentsData.tournaments?.find((t: any) => t.id === fixture.tournament_id);
+
             allMatches.push({
               id: fixtureDoc.id,
               round_number: fixture.round_number || 0,
@@ -319,6 +338,8 @@ export default function TeamMatchesPage() {
               home_deadline: phaseInfo.home_deadline,
               away_deadline: phaseInfo.away_deadline,
               result_deadline: phaseInfo.result_deadline,
+              tournament_id: fixture.tournament_id,
+              tournament_name: tournament?.tournament_name,
             });
           });
         });
@@ -360,26 +381,31 @@ export default function TeamMatchesPage() {
     return null;
   }
 
+  // Filter matches by selected tournament
+  const filteredMatches = selectedTournamentId
+    ? matches.filter(m => m.tournament_id === selectedTournamentId)
+    : matches;
+
   // Completed: matches that BOTH have valid scores AND completed/closed status
   // This ensures we don't show matches as completed just because of incorrect status
-  const completedMatches = matches.filter(m => 
-    (m.home_score !== null && m.home_score !== undefined && 
-     m.away_score !== null && m.away_score !== undefined) &&
+  const completedMatches = filteredMatches.filter(m =>
+    (m.home_score !== null && m.home_score !== undefined &&
+      m.away_score !== null && m.away_score !== undefined) &&
     (m.status === 'completed' || m.status === 'closed')
   );
-  
+
   // Get IDs of completed matches for exclusion
   const completedMatchIds = new Set(completedMatches.map(m => m.id));
-  
+
   // Active: matches in an active round that aren't completed yet
   // These are matches where teams can work on fixtures, matchups, or results
-  const activeMatches = matches.filter(m => 
+  const activeMatches = filteredMatches.filter(m =>
     !completedMatchIds.has(m.id) &&
     m.round_status === 'active'
   );
-  
+
   // Upcoming: matches in pending/inactive rounds that aren't completed or active
-  const upcomingMatches = matches.filter(m => 
+  const upcomingMatches = filteredMatches.filter(m =>
     !completedMatchIds.has(m.id) &&
     m.round_status !== 'active' &&
     (m.round_status === 'pending' || m.round_status === 'paused' || !m.round_status)
@@ -388,7 +414,7 @@ export default function TeamMatchesPage() {
   const getMatchResultClass = (match: Match) => {
     // Show result styling if scores are available
     if (match.home_score === undefined || match.away_score === undefined) return '';
-    
+
     if (match.winner_id === user.uid) {
       return 'border-l-4 border-green-500 bg-green-50/50';
     } else if (match.winner_id) {
@@ -400,7 +426,7 @@ export default function TeamMatchesPage() {
   const getResultText = (match: Match) => {
     // Show result if scores are available
     if (match.home_score === undefined || match.away_score === undefined) return null;
-    
+
     // Check if this team won (compare with team ID, not user ID)
     if (match.winner_id === teamId) {
       return <span className="text-green-700 font-semibold">Won</span>;
@@ -439,6 +465,24 @@ export default function TeamMatchesPage() {
           )}
         </div>
       </div>
+
+      {/* Tournament Selector */}
+      {tournaments.length > 0 && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Tournament</label>
+          <select
+            value={selectedTournamentId}
+            onChange={(e) => setSelectedTournamentId(e.target.value)}
+            className="w-full sm:w-auto px-4 py-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          >
+            {tournaments.map((tournament) => (
+              <option key={tournament.id} value={tournament.id}>
+                {tournament.tournament_name} ({tournament.status})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -601,42 +645,42 @@ export default function TeamMatchesPage() {
                       return a.match_number - b.match_number;
                     })
                     .map(match => (
-                    <div key={match.id} className="glass p-4 rounded-xl border border-white/10 hover:border-primary/20 transition-all duration-300">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-xs font-medium text-gray-500">Round {match.round_number} • Match {match.match_number}</span>
-                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                          Upcoming
-                        </span>
+                      <div key={match.id} className="glass p-4 rounded-xl border border-white/10 hover:border-primary/20 transition-all duration-300">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-xs font-medium text-gray-500">Round {match.round_number} • Match {match.match_number}</span>
+                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                            Upcoming
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="text-center flex-1">
+                            <p className={`text-sm font-medium truncate ${match.home_team_id === user.uid ? 'text-[#0066FF]' : 'text-gray-700'}`}>
+                              {match.home_team_name}
+                            </p>
+                          </div>
+                          <div className="px-2 text-gray-500 text-sm font-medium">VS</div>
+                          <div className="text-center flex-1">
+                            <p className={`text-sm font-medium truncate ${match.away_team_id === user.uid ? 'text-[#0066FF]' : 'text-gray-700'}`}>
+                              {match.away_team_name}
+                            </p>
+                          </div>
+                        </div>
+                        {match.match_date && (
+                          <div className="text-center text-xs text-gray-500 mb-3">
+                            {new Date(match.match_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                          </div>
+                        )}
+                        <Link
+                          href={`/dashboard/team/fixture/${match.id}`}
+                          className="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all duration-200 border border-blue-200"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Prepare Draft Lineup
+                        </Link>
                       </div>
-                      <div className="flex justify-between items-center mb-3">
-                        <div className="text-center flex-1">
-                          <p className={`text-sm font-medium truncate ${match.home_team_id === user.uid ? 'text-[#0066FF]' : 'text-gray-700'}`}>
-                            {match.home_team_name}
-                          </p>
-                        </div>
-                        <div className="px-2 text-gray-500 text-sm font-medium">VS</div>
-                        <div className="text-center flex-1">
-                          <p className={`text-sm font-medium truncate ${match.away_team_id === user.uid ? 'text-[#0066FF]' : 'text-gray-700'}`}>
-                            {match.away_team_name}
-                          </p>
-                        </div>
-                      </div>
-                      {match.match_date && (
-                        <div className="text-center text-xs text-gray-500 mb-3">
-                          {new Date(match.match_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                        </div>
-                      )}
-                      <Link
-                        href={`/dashboard/team/fixture/${match.id}`}
-                        className="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all duration-200 border border-blue-200"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Prepare Draft Lineup
-                      </Link>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </div>
             </div>

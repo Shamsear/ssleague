@@ -17,10 +17,15 @@ export async function GET(
       );
     }
 
-    // Fetch the fixture from Neon
+    // Fetch the fixture from Neon with tournament scoring type
     const fixtures = await sql`
-      SELECT * FROM fixtures
-      WHERE id = ${fixtureId}
+      SELECT 
+        f.*,
+        ts.scoring_type
+      FROM fixtures f
+      LEFT JOIN tournaments t ON f.tournament_id = t.id
+      LEFT JOIN tournament_settings ts ON t.id = ts.tournament_id
+      WHERE f.id = ${fixtureId}
       LIMIT 1
     `;
 
@@ -59,16 +64,16 @@ export async function PATCH(
       WHERE id = ${fixtureId}
       LIMIT 1
     `;
-    
+
     if (fixtures.length === 0) {
       return NextResponse.json(
         { error: 'Fixture not found' },
         { status: 404 }
       );
     }
-    
+
     const { season_id, round_number, leg } = fixtures[0];
-    
+
     // Get round deadlines
     const deadlines = await sql`
       SELECT scheduled_date, result_entry_deadline_time, result_entry_deadline_day_offset
@@ -78,33 +83,33 @@ export async function PATCH(
       AND leg = ${leg}
       LIMIT 1
     `;
-    
+
     // Deadline check disabled - phase logic on frontend controls access
     // The frontend already checks if we're in result_entry phase before allowing MOTM/penalty updates
     if (deadlines.length > 0 && deadlines[0].scheduled_date) {
       const deadline = deadlines[0];
-      
+
       // Calculate result entry deadline for logging
       const resultDate = new Date(deadline.scheduled_date);
       resultDate.setDate(resultDate.getDate() + (deadline.result_entry_deadline_day_offset || 2));
       const resultDateStr = resultDate.toISOString().split('T')[0];
-      
+
       // Parse deadline time (HH:MM format)
       const [hours, minutes] = deadline.result_entry_deadline_time.split(':').map(Number);
-      
+
       // Create deadline in IST (UTC+5:30)
       const resultDeadline = new Date(resultDateStr);
       resultDeadline.setUTCHours(hours - 5, minutes - 30, 0, 0); // Convert IST to UTC
-      
+
       const now = new Date();
-      
+
       console.log('MOTM/Penalty update - Deadline info:', {
         now: now.toISOString(),
         deadline: resultDeadline.toISOString(),
         isPassed: now >= resultDeadline,
         note: 'Deadline check disabled - controlled by frontend phase logic'
       });
-      
+
       // Deadline check commented out - frontend phase logic controls access
       // if (now >= resultDeadline) {
       //   return NextResponse.json(
@@ -129,9 +134,9 @@ export async function PATCH(
       WHERE id = ${fixtureId}
     `;
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Match details updated successfully' 
+    return NextResponse.json({
+      success: true,
+      message: 'Match details updated successfully'
     });
   } catch (error) {
     console.error('Error updating MOTM:', error);

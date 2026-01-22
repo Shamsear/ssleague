@@ -90,6 +90,8 @@ export async function POST(request: NextRequest) {
       away_deadline_time,
       result_day_offset,
       result_deadline_time,
+      enable_category_requirements,
+      lineup_category_requirements,
       // Rewards configuration
       rewards,
       number_of_teams,
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
     // Extract season number from season_id (e.g., "SSPSLS16" -> "S16")
     const seasonMatch = season_id.match(/S(\d+)/);
     const seasonNumber = seasonMatch ? `S${seasonMatch[1]}` : season_id;
-    
+
     // Map tournament types to codes
     const typeCodeMap: Record<string, string> = {
       'league': 'L',
@@ -116,10 +118,10 @@ export async function POST(request: NextRequest) {
       'super_cup': 'SC',
       'league_cup': 'LC',
     };
-    
+
     const typeCode = typeCodeMap[tournament_type.toLowerCase()] || tournament_type.toUpperCase();
     const tournamentId = `SSPSL${seasonNumber}${typeCode}`;
-    
+
     // Use generated ID as tournament_code if not provided
     const finalTournamentCode = tournament_code || tournamentId;
 
@@ -150,6 +152,8 @@ export async function POST(request: NextRequest) {
         direct_semifinal_teams,
         qualification_threshold,
         is_pure_knockout,
+        number_of_teams,
+        rewards,
         created_at,
         updated_at
       ) VALUES (
@@ -177,6 +181,8 @@ export async function POST(request: NextRequest) {
         ${direct_semifinal_teams ?? 2},
         ${qualification_threshold ?? 75},
         ${is_pure_knockout ?? false},
+        ${number_of_teams ?? 16},
+        ${rewards ? JSON.stringify(rewards) : null},
         NOW(),
         NOW()
       )
@@ -201,6 +207,8 @@ export async function POST(request: NextRequest) {
         direct_semifinal_teams = EXCLUDED.direct_semifinal_teams,
         qualification_threshold = EXCLUDED.qualification_threshold,
         is_pure_knockout = EXCLUDED.is_pure_knockout,
+        number_of_teams = EXCLUDED.number_of_teams,
+        rewards = EXCLUDED.rewards,
         updated_at = NOW()
       RETURNING *
     `;
@@ -212,6 +220,7 @@ export async function POST(request: NextRequest) {
         season_id,
         squad_size,
         tournament_system,
+        scoring_type,
         home_deadline_time,
         away_deadline_time,
         result_day_offset,
@@ -220,6 +229,8 @@ export async function POST(request: NextRequest) {
         playoff_teams,
         direct_semifinal_teams,
         qualification_threshold,
+        enable_category_requirements,
+        lineup_category_requirements,
         created_at,
         updated_at
       ) VALUES (
@@ -227,6 +238,7 @@ export async function POST(request: NextRequest) {
         ${season_id},
         ${squad_size ?? 11},
         ${tournament_system || 'match_round'},
+        'goals',
         ${home_deadline_time || '17:00'},
         ${away_deadline_time || '17:00'},
         ${result_day_offset ?? 2},
@@ -235,6 +247,8 @@ export async function POST(request: NextRequest) {
         ${playoff_teams ?? 4},
         ${direct_semifinal_teams ?? 2},
         ${qualification_threshold ?? 75},
+        ${enable_category_requirements ?? false},
+        ${lineup_category_requirements ? JSON.stringify(lineup_category_requirements) : '{}'},
         NOW(),
         NOW()
       )
@@ -242,6 +256,7 @@ export async function POST(request: NextRequest) {
         season_id = EXCLUDED.season_id,
         squad_size = EXCLUDED.squad_size,
         tournament_system = EXCLUDED.tournament_system,
+        scoring_type = EXCLUDED.scoring_type,
         home_deadline_time = EXCLUDED.home_deadline_time,
         away_deadline_time = EXCLUDED.away_deadline_time,
         result_day_offset = EXCLUDED.result_day_offset,
@@ -250,13 +265,15 @@ export async function POST(request: NextRequest) {
         playoff_teams = EXCLUDED.playoff_teams,
         direct_semifinal_teams = EXCLUDED.direct_semifinal_teams,
         qualification_threshold = EXCLUDED.qualification_threshold,
+        enable_category_requirements = EXCLUDED.enable_category_requirements,
+        lineup_category_requirements = EXCLUDED.lineup_category_requirements,
         updated_at = NOW()
     `;
 
     // Auto-generate news for season creation
     const tournament = result[0];
     const seasonName = season_id.replace('SSPSLS', 'Season ');
-    
+
     // Generate news asynchronously (non-blocking)
     if (tournament.is_primary) {
       // Only generate news for primary tournaments (usually the league)

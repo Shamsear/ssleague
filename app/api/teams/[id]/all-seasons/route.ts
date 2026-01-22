@@ -25,7 +25,7 @@ export async function GET(
       if (teamDoc.exists) {
         const teamData = teamDoc.data();
         logoUrl = teamData?.logo_url || null;
-        
+
         // Fallback to users collection if no logo in teams
         if (!logoUrl && teamData?.user_id) {
           try {
@@ -45,15 +45,15 @@ export async function GET(
     // Fetch active seasons from Firebase to know which seasons have actually started
     const firebaseSeasons = await adminDb.collection('seasons').get();
     const activeSeasonIds = new Set();
-    const seasonStatuses: Record<string, {is_active: boolean; status: string}> = {};
-    
+    const seasonStatuses: Record<string, { is_active: boolean; status: string }> = {};
+
     firebaseSeasons.docs.forEach(doc => {
       const data = doc.data();
       seasonStatuses[doc.id] = {
         is_active: data.is_active === true,
         status: data.status
       };
-      
+
       // Check if season has actually started
       let hasStarted = false;
       if (data.start_date) {
@@ -64,7 +64,7 @@ export async function GET(
         // If no start_date, check status (backward compatibility)
         hasStarted = data.status === 'completed' || data.status === 'active';
       }
-      
+
       // Include seasons that have started (based on start_date or status)
       if (hasStarted) {
         activeSeasonIds.add(doc.id);
@@ -74,22 +74,24 @@ export async function GET(
     // Fetch all seasons for this team from Neon
     // NOTE: team_name is fetched per season to get historical team names
     // (e.g., "Hooligans" for S11, "Skill 555" for S12+)
+    // Aggregate across all tournaments per season
     const seasonStats = await sql`
       SELECT 
         team_id,
-        team_name,
+        MAX(team_name) as team_name,
         season_id,
-        matches_played,
-        wins,
-        draws,
-        losses,
-        goals_for,
-        goals_against,
-        goal_difference,
-        points,
-        position
+        SUM(matches_played) as matches_played,
+        SUM(wins) as wins,
+        SUM(draws) as draws,
+        SUM(losses) as losses,
+        SUM(goals_for) as goals_for,
+        SUM(goals_against) as goals_against,
+        SUM(goal_difference) as goal_difference,
+        SUM(points) as points,
+        MAX(position) as position
       FROM teamstats
       WHERE team_id = ${teamId}
+      GROUP BY team_id, season_id
       ORDER BY season_id DESC
     `;
 
@@ -105,7 +107,7 @@ export async function GET(
     // Process each season (only those that have started)
     for (const seasonData of seasonStats) {
       const seasonId = seasonData.season_id;
-      
+
       // Skip seasons that haven't started yet (future contract seasons)
       if (!activeSeasonIds.has(seasonId)) {
         console.log(`Skipping future season ${seasonId} for team ${teamId}`);

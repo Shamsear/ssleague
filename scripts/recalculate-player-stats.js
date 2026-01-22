@@ -10,11 +10,11 @@ const { neon } = require('@neondatabase/serverless');
 
 async function recalculatePlayerStats() {
   const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
-  
+
   const SEASON_ID = 'SSPSLS16'; // Only recalculate this season
-  
+
   console.log(`🔄 Starting Player Stats Recalculation for Season: ${SEASON_ID}\n`);
-  
+
   try {
     // Get all active player_seasons for SSPSLS16
     const playerSeasons = await sql`
@@ -28,13 +28,13 @@ async function recalculatePlayerStats() {
         AND season_id = ${SEASON_ID}
       ORDER BY team_id, player_name
     `;
-    
+
     console.log(`📊 Found ${playerSeasons.length} active player seasons to recalculate\n`);
-    
+
     let updated = 0;
     let unchanged = 0;
     let errors = 0;
-    
+
     for (const player of playerSeasons) {
       try {
         // Calculate stats from matchups
@@ -55,6 +55,7 @@ async function recalculatePlayerStats() {
               AND m.season_id = ${player.season_id}
               AND m.home_goals IS NOT NULL
               AND m.away_goals IS NOT NULL
+              AND COALESCE(m.is_null, false) = false
             GROUP BY m.home_player_id, m.season_id
           ),
           away_matches AS (
@@ -73,6 +74,7 @@ async function recalculatePlayerStats() {
               AND m.season_id = ${player.season_id}
               AND m.home_goals IS NOT NULL
               AND m.away_goals IS NOT NULL
+              AND COALESCE(m.is_null, false) = false
             GROUP BY m.away_player_id, m.season_id
           ),
           motm_count AS (
@@ -107,7 +109,7 @@ async function recalculatePlayerStats() {
             AND season_id = ${player.season_id}
           RETURNING *
         `;
-        
+
         if (result.length > 0) {
           updated++;
           if (updated % 10 === 0) {
@@ -116,25 +118,25 @@ async function recalculatePlayerStats() {
         } else {
           unchanged++;
         }
-        
+
       } catch (error) {
         errors++;
         console.error(`   ❌ Error updating ${player.player_name}:`, error.message);
       }
     }
-    
+
     console.log('\n═══════════════════════════════════════════════════════════');
     console.log('                    RECALCULATION COMPLETE                 ');
     console.log('═══════════════════════════════════════════════════════════\n');
-    
+
     console.log(`✅ Successfully updated: ${updated} players`);
     console.log(`⚪ Unchanged:            ${unchanged} players`);
     console.log(`❌ Errors:               ${errors} players\n`);
-    
+
     if (errors > 0) {
       console.log('⚠️  Some players had errors. Check the logs above for details.\n');
     }
-    
+
   } catch (error) {
     console.error('❌ Error during recalculation:', error);
     throw error;

@@ -22,11 +22,11 @@ const { neon } = require('@neondatabase/serverless');
 
 async function previewPlayerStatsComparison() {
   const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
-  
+
   const SEASON_ID = 'SSPSLS16'; // Only check this season
-  
+
   console.log(`🔍 Starting Player Stats Comparison Preview for Season: ${SEASON_ID}\n`);
-  
+
   try {
     // Get all player_seasons with their current stats for SSPSLS16
     const playerSeasons = await sql`
@@ -52,9 +52,9 @@ async function previewPlayerStatsComparison() {
         AND season_id = ${SEASON_ID}
       ORDER BY team_id, player_name
     `;
-    
+
     console.log(`📊 Found ${playerSeasons.length} active player seasons\n`);
-    
+
     const discrepancies = [];
     const summary = {
       totalPlayers: playerSeasons.length,
@@ -63,7 +63,7 @@ async function previewPlayerStatsComparison() {
       playersWithNoMatchups: 0,
       totalDiscrepancyCount: 0
     };
-    
+
     // Process each player
     for (const player of playerSeasons) {
       // Aggregate stats from matchups
@@ -96,6 +96,7 @@ async function previewPlayerStatsComparison() {
             AND m.season_id = ${player.season_id}
             AND m.home_goals IS NOT NULL
             AND m.away_goals IS NOT NULL
+            AND COALESCE(m.is_null, false) = false
           GROUP BY m.home_player_id, m.season_id
         ),
         away_matches AS (
@@ -126,6 +127,7 @@ async function previewPlayerStatsComparison() {
             AND m.season_id = ${player.season_id}
             AND m.home_goals IS NOT NULL
             AND m.away_goals IS NOT NULL
+            AND COALESCE(m.is_null, false) = false
           GROUP BY m.away_player_id, m.season_id
         ),
         motm_count AS (
@@ -152,10 +154,10 @@ async function previewPlayerStatsComparison() {
         LEFT JOIN away_matches a ON true
         LEFT JOIN motm_count m ON true
       `;
-      
+
       const stats = matchupStats[0];
       const playerDiscrepancies = [];
-      
+
       // Compare each stat
       const comparisons = [
         { name: 'matches_played', db: player.matches_played || 0, calculated: parseInt(stats.total_matches) || 0 },
@@ -167,9 +169,9 @@ async function previewPlayerStatsComparison() {
         { name: 'clean_sheets', db: player.clean_sheets || 0, calculated: parseInt(stats.total_clean_sheets) || 0 },
         { name: 'motm_awards', db: player.motm_awards || 0, calculated: parseInt(stats.total_motm) || 0 }
       ];
-      
+
       let hasDiscrepancy = false;
-      
+
       for (const comp of comparisons) {
         if (comp.db !== comp.calculated) {
           hasDiscrepancy = true;
@@ -181,11 +183,11 @@ async function previewPlayerStatsComparison() {
           });
         }
       }
-      
+
       if (hasDiscrepancy) {
         summary.playersWithDiscrepancies++;
         summary.totalDiscrepancyCount += playerDiscrepancies.length;
-        
+
         discrepancies.push({
           player_id: player.player_id,
           player_name: player.player_name,
@@ -199,42 +201,42 @@ async function previewPlayerStatsComparison() {
         summary.playersMatching++;
       }
     }
-    
+
     // Print Summary
     console.log('═══════════════════════════════════════════════════════════');
     console.log('                    SUMMARY REPORT                         ');
     console.log('═══════════════════════════════════════════════════════════\n');
-    
+
     console.log(`Total Players Analyzed:        ${summary.totalPlayers}`);
     console.log(`✅ Players Matching:            ${summary.playersMatching}`);
     console.log(`⚠️  Players with Discrepancies: ${summary.playersWithDiscrepancies}`);
     console.log(`📭 Players with No Matchups:    ${summary.playersWithNoMatchups}`);
     console.log(`🔢 Total Discrepancy Count:     ${summary.totalDiscrepancyCount}\n`);
-    
+
     // Print Detailed Discrepancies
     if (discrepancies.length > 0) {
       console.log('═══════════════════════════════════════════════════════════');
       console.log('                 DETAILED DISCREPANCIES                    ');
       console.log('═══════════════════════════════════════════════════════════\n');
-      
+
       for (const disc of discrepancies) {
         console.log(`\n🔴 ${disc.player_name} (${disc.player_id})`);
         console.log(`   Team: ${disc.team_id} | Season: ${disc.season_id}`);
         console.log('   ─────────────────────────────────────────────────────');
-        
+
         for (const d of disc.discrepancies) {
           const arrow = d.difference > 0 ? '↑' : '↓';
           const color = d.difference > 0 ? '+' : '';
           console.log(`   ${d.stat.padEnd(20)} | DB: ${String(d.inDatabase).padStart(4)} | Matchups: ${String(d.fromMatchups).padStart(4)} | ${arrow} ${color}${d.difference}`);
         }
       }
-      
+
       console.log('\n═══════════════════════════════════════════════════════════\n');
-      
+
       // Group by stat type
       console.log('📊 DISCREPANCIES BY STAT TYPE:\n');
       const statGroups = {};
-      
+
       for (const disc of discrepancies) {
         for (const d of disc.discrepancies) {
           if (!statGroups[d.stat]) {
@@ -249,44 +251,44 @@ async function previewPlayerStatsComparison() {
           statGroups[d.stat].players.push(disc.player_name);
         }
       }
-      
+
       for (const [stat, data] of Object.entries(statGroups)) {
         console.log(`   ${stat.padEnd(20)} | ${data.count} players affected | Total diff: ${data.totalDifference}`);
       }
-      
+
       console.log('\n═══════════════════════════════════════════════════════════\n');
-      
+
       // Export to JSON for further analysis
       const fs = require('fs');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const filename = `player-stats-discrepancies-${timestamp}.json`;
-      
+
       fs.writeFileSync(filename, JSON.stringify({
         timestamp: new Date().toISOString(),
         summary,
         discrepancies
       }, null, 2));
-      
+
       console.log(`📄 Detailed report saved to: ${filename}\n`);
     } else {
       console.log('✅ All player stats match perfectly! No discrepancies found.\n');
     }
-    
+
     // Recommendations
     if (summary.playersWithDiscrepancies > 0) {
       console.log('═══════════════════════════════════════════════════════════');
       console.log('                    RECOMMENDATIONS                        ');
       console.log('═══════════════════════════════════════════════════════════\n');
-      
+
       console.log('To fix discrepancies, you can:');
       console.log('1. Run the recalculation script to update player_seasons from matchups');
       console.log('2. Manually review and fix specific player stats');
       console.log('3. Check if there are missing or duplicate matchup entries\n');
-      
+
       console.log('Suggested command:');
       console.log('   node scripts/recalculate-player-stats.js\n');
     }
-    
+
   } catch (error) {
     console.error('❌ Error during comparison:', error);
     throw error;

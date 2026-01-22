@@ -1,0 +1,172 @@
+{
+  "timestamp": "2026-01-18T08:35:24.077Z",
+  "summary": {
+    "totalPlayers": 81,
+    "playersWithDiscrepancies": 5,
+    "playersMatching": 75,
+    "playersWithNoMatchups": 1,
+    "totalDiscrepancyCount": 20
+  },
+  "discrepancies": [
+    {
+      "player_id": "sspslpsl0026",
+      "player_name": "HIJAS N",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 20,
+          "fromMatchups": 21,
+          "difference": 1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 11,
+          "fromMatchups": 12,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 32,
+          "fromMatchups": 33,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 47,
+          "fromMatchups": 50,
+          "difference": 3
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0051",
+      "player_name": "Ansaf Azeez",
+      "team_id": "SSPSLT0006",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 17,
+          "fromMatchups": 16,
+          "difference": -1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 8,
+          "fromMatchups": 7,
+          "difference": -1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 31,
+          "fromMatchups": 30,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0035",
+      "player_name": "Jaseel Mohd",
+      "team_id": "SSPSLT0006",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 14,
+          "fromMatchups": 15,
+          "difference": 1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 10,
+          "fromMatchups": 11,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 45,
+          "fromMatchups": 46,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0045",
+      "player_name": "Firoz Ahammed",
+      "team_id": "SSPSLT0016",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "wins",
+          "inDatabase": 13,
+          "fromMatchups": 12,
+          "difference": -1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 8,
+          "fromMatchups": 9,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 53,
+          "fromMatchups": 52,
+          "difference": -1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 30,
+          "fromMatchups": 33,
+          "difference": 3
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 10,
+          "fromMatchups": 9,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0030",
+      "player_name": "Rashil Basheer",
+      "team_id": "SSPSLT0016",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "wins",
+          "inDatabase": 15,
+          "fromMatchups": 16,
+          "difference": 1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 7,
+          "fromMatchups": 6,
+          "difference": -1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 62,
+          "fromMatchups": 63,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 42,
+          "fromMatchups": 39,
+          "difference": -3
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 5,
+          "difference": 1
+        }
+      ]
+    }
+  ]
+}

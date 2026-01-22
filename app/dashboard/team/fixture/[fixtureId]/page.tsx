@@ -13,6 +13,7 @@ import AlertModal from '@/components/modals/AlertModal';
 import ConfirmModal from '@/components/modals/ConfirmModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import LineupDeadlineMonitor from '@/components/LineupDeadlineMonitor';
+import BlindLineupSubmission from '@/components/BlindLineupSubmission';
 
 interface Matchup {
   home_player_id: string;
@@ -82,6 +83,7 @@ export default function FixturePage() {
   const [isHomeTeam, setIsHomeTeam] = useState(false);
   const [roundDeadlines, setRoundDeadlines] = useState<RoundDeadlines | null>(null);
   const [phase, setPhase] = useState<'draft' | 'home_fixture' | 'fixture_entry' | 'result_entry' | 'closed'>('closed');
+  const [matchupMode, setMatchupMode] = useState<string>('manual');
   const [isLoading, setIsLoading] = useState(true);
 
   // Player data
@@ -154,14 +156,33 @@ export default function FixturePage() {
     const recalculatePhase = () => {
       const now = new Date();
 
-      // Parse all deadlines
-      const homeDeadline = new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`);
-      const awayDeadline = new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`);
+      // Use scheduled_date or default to today if null
+      // scheduled_date might be a full timestamp or just a date string
+      let scheduledDateStr = roundDeadlines.scheduled_date;
+      if (scheduledDateStr) {
+        // If it's a timestamp (contains 'T'), extract just the date part
+        if (typeof scheduledDateStr === 'string' && scheduledDateStr.includes('T')) {
+          scheduledDateStr = scheduledDateStr.split('T')[0];
+        } else if (scheduledDateStr instanceof Date) {
+          scheduledDateStr = scheduledDateStr.toISOString().split('T')[0];
+        }
+      } else {
+        scheduledDateStr = new Date().toISOString().split('T')[0];
+      }
 
-      const resultDate = new Date(roundDeadlines.scheduled_date);
+      // Validate and default time fields
+      const homeTime = roundDeadlines.home_fixture_deadline_time || '17:00';
+      const awayTime = roundDeadlines.away_fixture_deadline_time || '17:00';
+      const resultTime = roundDeadlines.result_entry_deadline_time || '00:30';
+
+      // Parse all deadlines
+      const homeDeadline = new Date(`${scheduledDateStr}T${homeTime}:00+05:30`);
+      const awayDeadline = new Date(`${scheduledDateStr}T${awayTime}:00+05:30`);
+
+      const resultDate = new Date(scheduledDateStr);
       resultDate.setDate(resultDate.getDate() + (roundDeadlines.result_entry_deadline_day_offset || 2));
       const resultDateStr = resultDate.toISOString().split('T')[0];
-      const resultDeadline = new Date(`${resultDateStr}T${roundDeadlines.result_entry_deadline_time}:00+05:30`);
+      const resultDeadline = new Date(`${resultDateStr}T${resultTime}:00+05:30`);
 
       // Calculate phase based on round status and deadlines
       let currentPhase: typeof phase = 'closed';
@@ -441,6 +462,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
 
         const { fixture: fixtureData } = await fixtureResponse.json();
         setFixture(fixtureData as Fixture);
+        setMatchupMode(fixtureData.matchup_mode || 'manual');
 
         // Initialize penalty goals
         setHomePenaltyGoals(fixtureData.home_penalty_goals || 0);
@@ -632,27 +654,50 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
             // All times in database are IST (UTC+5:30)
             const now = new Date();
 
-            // Parse scheduled_date and times as IST, then convert to Date objects
-            const [homeHour, homeMin] = deadlines.home_fixture_deadline_time.split(':').map(Number);
-            const homeDeadline = new Date(`${deadlines.scheduled_date}T${deadlines.home_fixture_deadline_time}:00+05:30`);
 
-            const [awayHour, awayMin] = deadlines.away_fixture_deadline_time.split(':').map(Number);
-            const awayDeadline = new Date(`${deadlines.scheduled_date}T${deadlines.away_fixture_deadline_time}:00+05:30`);
+            // Use scheduled_date or default to today if null
+            // scheduled_date might be a full timestamp or just a date string
+            let scheduledDateStr = deadlines.scheduled_date;
+            if (scheduledDateStr) {
+              // If it's a timestamp (contains 'T'), extract just the date part
+              if (typeof scheduledDateStr === 'string' && scheduledDateStr.includes('T')) {
+                scheduledDateStr = scheduledDateStr.split('T')[0];
+              } else if (scheduledDateStr instanceof Date) {
+                scheduledDateStr = scheduledDateStr.toISOString().split('T')[0];
+              }
+            } else {
+              scheduledDateStr = new Date().toISOString().split('T')[0];
+            }
+
+            // Validate and default time fields
+            const homeTime = deadlines.home_fixture_deadline_time || '17:00';
+            const awayTime = deadlines.away_fixture_deadline_time || '17:00';
+            const resultTime = deadlines.result_entry_deadline_time || '00:30';
+
+            // Parse scheduled_date and times as IST, then convert to Date objects
+            const [homeHour, homeMin] = homeTime.split(':').map(Number);
+            const homeDeadline = new Date(`${scheduledDateStr}T${homeTime}:00+05:30`);
+
+            const [awayHour, awayMin] = awayTime.split(':').map(Number);
+            const awayDeadline = new Date(`${scheduledDateStr}T${awayTime}:00+05:30`);
 
             // Result deadline is offset by days
-            const resultDate = new Date(deadlines.scheduled_date);
+            const resultDate = new Date(scheduledDateStr);
             resultDate.setDate(resultDate.getDate() + (deadlines.result_entry_deadline_day_offset || 2));
             const resultDateStr = resultDate.toISOString().split('T')[0];
-            const resultDeadline = new Date(`${resultDateStr}T${deadlines.result_entry_deadline_time}:00+05:30`);
+            const resultDeadline = new Date(`${resultDateStr}T${resultTime}:00+05:30`);
+
+            // Validate dates before logging
+            const isValidDate = (date: Date) => date instanceof Date && !isNaN(date.getTime());
 
             console.log('🕐 Phase Debug:', {
               now: now.toISOString(),
-              scheduled_date: deadlines.scheduled_date,
-              homeDeadline: homeDeadline.toISOString(),
-              awayDeadline: awayDeadline.toISOString(),
-              resultDeadline: resultDeadline.toISOString(),
-              'now < awayDeadline': now < awayDeadline,
-              'now < resultDeadline': now < resultDeadline
+              scheduled_date: scheduledDateStr,
+              homeDeadline: isValidDate(homeDeadline) ? homeDeadline.toISOString() : 'Invalid',
+              awayDeadline: isValidDate(awayDeadline) ? awayDeadline.toISOString() : 'Invalid',
+              resultDeadline: isValidDate(resultDeadline) ? resultDeadline.toISOString() : 'Invalid',
+              'now < awayDeadline': isValidDate(awayDeadline) && now < awayDeadline,
+              'now < resultDeadline': isValidDate(resultDeadline) && now < resultDeadline
             });
 
             // Calculate phase based on round status and deadlines
@@ -699,7 +744,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
             // Use round_start_time if available (actual time round started/restarted)
             // Otherwise fall back to home_fixture_deadline_time (scheduled start time)
             const actualRoundStartTimeStr = deadlines.round_start_time || deadlines.home_fixture_deadline_time;
-            const roundStartTime = new Date(`${deadlines.scheduled_date}T${actualRoundStartTimeStr}:00+05:30`);
+            const roundStartTime = new Date(`${scheduledDateStr}T${actualRoundStartTimeStr}:00+05:30`);
             const lineupDeadlineTime = roundStartTime; // Lineup deadline is exactly at round start
             setLineupDeadline(lineupDeadlineTime);
 
@@ -708,10 +753,10 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               round_start_time: deadlines.round_start_time,
               home_fixture_deadline_time: deadlines.home_fixture_deadline_time,
               actualRoundStartTimeStr,
-              roundStartTime: roundStartTime.toISOString(),
-              roundStartLocal: roundStartTime.toLocaleString(),
-              lineupDeadlineTime: lineupDeadlineTime.toISOString(),
-              lineupDeadlineLocal: lineupDeadlineTime.toLocaleString(),
+              roundStartTime: isValidDate(roundStartTime) ? roundStartTime.toISOString() : 'Invalid',
+              roundStartLocal: isValidDate(roundStartTime) ? roundStartTime.toLocaleString() : 'Invalid',
+              lineupDeadlineTime: isValidDate(lineupDeadlineTime) ? lineupDeadlineTime.toISOString() : 'Invalid',
+              lineupDeadlineLocal: isValidDate(lineupDeadlineTime) ? lineupDeadlineTime.toLocaleString() : 'Invalid',
               now: now.toISOString(),
               nowLocal: now.toLocaleString(),
               canSubmit: now < lineupDeadlineTime
@@ -722,8 +767,10 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
             // 2. Home team: can submit until home deadline (even if matchups exist, they'll be deleted)
             // 3. After home deadline: if no matchups, both teams can submit until away deadline
 
-            const homeDeadlineTime = new Date(`${deadlines.scheduled_date}T${deadlines.home_fixture_deadline_time}:00+05:30`);
-            const awayDeadlineTime = new Date(`${deadlines.scheduled_date}T${deadlines.away_fixture_deadline_time}:00+05:30`);
+            // Extract date part from scheduled_date (it might be a full timestamp)
+            const scheduledDateForDeadlines = deadlines.scheduled_date?.split('T')[0] || new Date().toISOString().split('T')[0];
+            const homeDeadlineTime = new Date(`${scheduledDateForDeadlines}T${deadlines.home_fixture_deadline_time}:00+05:30`);
+            const awayDeadlineTime = new Date(`${scheduledDateForDeadlines}T${deadlines.away_fixture_deadline_time}:00+05:30`);
 
             let canSubmit = false;
             let submitReason = '';
@@ -1688,8 +1735,24 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
             </div>
           </div>
 
-          {/* Create Matchups */}
-          {canCreateMatchups && matchups.length === 0 && (
+          {/* Blind Lineup Submission */}
+          {matchupMode === 'blind_lineup' && phase === 'home_fixture' && matchups.length === 0 && (
+            <div className="space-y-4">
+              <BlindLineupSubmission
+                fixtureId={fixtureId}
+                teamId={teamId}
+                seasonId={fixture?.season_id || ''}
+                isHomeTeam={isHomeTeam}
+                onSubmitSuccess={() => {
+                  // Reload fixture data
+                  window.location.reload();
+                }}
+              />
+            </div>
+          )}
+
+          {/* Create Matchups (Manual Mode) */}
+          {matchupMode === 'manual' && canCreateMatchups && matchups.length === 0 && (
             <div className="space-y-3 sm:space-y-4">
               <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
                 <div className="flex items-start gap-2 sm:gap-3">

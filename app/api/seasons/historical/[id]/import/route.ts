@@ -17,7 +17,7 @@ interface ImportStats {
 // (e.g., "TEAM fc" -> "Team FC", "st james" -> "St James")
 function toTitleCase(text: string): string {
   const abbreviations = ['FC', 'CF', 'ST', 'AC', 'SC', 'AFC', 'RFC', 'DC', 'BC', 'MC', 'EC'];
-  
+
   return text
     .toLowerCase()
     .split(' ')
@@ -41,14 +41,14 @@ const getOrCreatePlayerByName = async (name: string): Promise<{ playerId: string
       .where('name', '==', name)
       .limit(1)
       .get();
-    
+
     if (!existingPlayersQuery.empty) {
       const existingPlayer = existingPlayersQuery.docs[0];
       const playerId = existingPlayer.data().player_id;
       console.log(`  Found existing player: ${name} with ID: ${playerId}`);
       return { playerId, isNew: false };
     }
-    
+
     // No existing player found, generate new ID
     const playerId = await generateNewPlayerId();
     console.log(`  Will create new player: ${name} with ID: ${playerId}`);
@@ -62,11 +62,11 @@ const getOrCreatePlayerByName = async (name: string): Promise<{ playerId: string
 // Generate custom player ID (sspslpsl0001, sspslpsl0002, etc.)
 const generateNewPlayerId = async (): Promise<string> => {
   const prefix = 'sspslpsl';
-  
+
   try {
     // Get all players to find the highest number
     const playersQuery = await adminDb.collection('realplayers').get();
-    
+
     let maxNumber = 0;
     playersQuery.forEach((doc) => {
       const data = doc.data();
@@ -77,7 +77,7 @@ const generateNewPlayerId = async (): Promise<string> => {
         }
       }
     });
-    
+
     const nextNumber = maxNumber + 1;
     const paddedNumber = nextNumber.toString().padStart(4, '0');
     return `${prefix}${paddedNumber}`;
@@ -104,23 +104,23 @@ export async function POST(
       console.log(`Access denied: ${auth.error}`);
       return NextResponse.json({ error: auth.error || 'Forbidden: Super admin access required' }, { status: 401 });
     }
-    
+
     console.log('Super admin access confirmed');
 
     // Check content type to determine if this is a file upload or JSON preview import
     const contentType = request.headers.get('content-type') || '';
     console.log('Content-Type:', contentType);
-    
+
     let teamsToImport: any[] = [];
     let playersToImport: any[] = [];
-    
+
     if (contentType.includes('application/json')) {
       // Import from preview data (JSON)
       console.log('Importing from preview data (JSON)');
       const jsonData = await request.json();
       teamsToImport = jsonData.teams || [];
       playersToImport = jsonData.players || [];
-      
+
       console.log(`  - Teams to import: ${teamsToImport.length}`);
       console.log(`  - Players to import: ${playersToImport.length}`);
     } else {
@@ -128,7 +128,7 @@ export async function POST(
       console.log('Importing from Excel file');
       const formData = await request.formData();
       const file = formData.get('file') as File;
-      
+
       if (!file) {
         return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
       }
@@ -140,13 +140,13 @@ export async function POST(
       // Read Excel file
       const buffer = Buffer.from(await file.arrayBuffer());
       const workbook = XLSX.read(buffer, { type: 'buffer' });
-      
+
       // Extract teams data from Excel
       if (workbook.SheetNames.includes('Teams')) {
         const teamsSheet = workbook.Sheets['Teams'];
         teamsToImport = XLSX.utils.sheet_to_json(teamsSheet);
       }
-      
+
       // Extract players data from Excel
       if (workbook.SheetNames.includes('Players')) {
         const playersSheet = workbook.Sheets['Players'];
@@ -169,31 +169,31 @@ export async function POST(
 
     // CLEANUP PHASE: Delete existing season stats from NEON before importing
     console.log('  Starting cleanup phase for season stats in NEON...');
-    
+
     const sql = getTournamentDb();
-    
+
     // Delete all player stats for this season from NEON
     const deletedPlayerStats = await sql`
       DELETE FROM realplayerstats
       WHERE season_id = ${seasonId}
     `;
-    
+
     console.log(`  Deleted ${deletedPlayerStats.length} player stats records from NEON`);
-    
+
     // Delete all team stats for this season from NEON
     const deletedTeamStats = await sql`
       DELETE FROM teamstats
       WHERE season_id = ${seasonId}
     `;
-    
+
     console.log(`  Deleted ${deletedTeamStats.length} team stats records from NEON`);
-    
+
     // Delete all player awards for this season from NEON
     const deletedAwards = await sql`
       DELETE FROM player_awards
       WHERE season_id = ${seasonId}
     `;
-    
+
     console.log(`  Deleted ${deletedAwards.length} player awards records from NEON`);
     console.log('  Cleanup phase completed');
     console.log('  Starting fresh import...\n');
@@ -209,7 +209,7 @@ export async function POST(
     const playersByName = new Map<string, { playerId: string; data: any }>();
     const existingPlayerIds = new Set<string>();
     let maxPlayerNumber = 0;
-    
+
     allPlayersSnapshot.forEach(doc => {
       const data = doc.data();
       if (data.name) {
@@ -226,7 +226,7 @@ export async function POST(
         }
       }
     });
-    
+
     console.log(`  Found ${playersByName.size} existing players`);
     console.log(`  Max player number: ${maxPlayerNumber}`);
 
@@ -236,12 +236,12 @@ export async function POST(
       console.log('📊 Pre-loading teams...');
       // Use linked_team_id if available, otherwise fallback to id
       const teamIds = teamsToImport.map(t => t.linked_team_id || t.id).filter(Boolean);
-      
+
       if (teamIds.length > 0) {
         // Batch read teams (Firestore allows up to 10 per batch, but we'll read individually in batch)
         const teamPromises = teamIds.map(id => adminDb.collection('teams').doc(id).get());
         const teamDocs = await Promise.all(teamPromises);
-        
+
         teamDocs.forEach(doc => {
           if (doc.exists) {
             teamsCache.set(doc.id, doc.data());
@@ -259,7 +259,7 @@ export async function POST(
         try {
           // Use linked_team_id if available (from preview), otherwise skip
           const teamId = row.linked_team_id || row.id;
-          
+
           if (!teamId) {
             console.log(`  ⚠️  Skipping team "${row.team_name || row.team}" - no linked team ID`);
             continue;
@@ -273,7 +273,8 @@ export async function POST(
           }
 
           // Write team stats to NEON teamstats table
-          const teamStatsDocId = `${teamId}_${seasonId}`;
+          const tournamentId = 'historical';
+          const teamStatsDocId = `${teamId}_${seasonId}_${tournamentId}`;
           const teamName = row.team_name || currentData?.team_name || '';
           const ownerName = row.owner_name || currentData?.owner_name || '';
           const rank = parseInt(row.rank) || 0;
@@ -285,7 +286,7 @@ export async function POST(
           const goalsFor = parseInt(row.f || row.goals_for) || 0;
           const goalsAgainst = parseInt(row.a || row.goals_against) || 0;
           const goalDifference = parseInt(row.gd || row.goal_difference) || 0;
-          
+
           // Parse team trophies/cups (cup_1, cup_2, etc.)
           const teamTrophiesArr: any[] = [];
           Object.keys(row).forEach((key) => {
@@ -297,23 +298,23 @@ export async function POST(
             }
           });
           const teamTrophiesJsonStr = JSON.stringify(teamTrophiesArr);
-          
+
           // Write to NEON
           await sql`
             INSERT INTO teamstats (
-              id, team_id, season_id, team_name,
+              id, team_id, season_id, tournament_id, team_name,
               points, matches_played, wins, draws, losses,
               goals_for, goals_against, goal_difference, position, trophies,
               created_at, updated_at
             )
             VALUES (
-              ${teamStatsDocId}, ${teamId}, ${seasonId}, ${teamName},
+              ${teamStatsDocId}, ${teamId}, ${seasonId}, ${tournamentId}, ${teamName},
               ${points}, ${matchesPlayed}, ${wins}, ${draws}, ${losses},
               ${goalsFor}, ${goalsAgainst}, ${goalDifference}, ${rank || null},
               ${teamTrophiesJsonStr}::jsonb,
               NOW(), NOW()
             )
-            ON CONFLICT (team_id, season_id) DO UPDATE
+            ON CONFLICT (team_id, season_id, tournament_id) DO UPDATE
             SET
               id = EXCLUDED.id,
               team_name = EXCLUDED.team_name,
@@ -331,7 +332,7 @@ export async function POST(
           `;
           stats.teams.updated++;
           console.log(`  ✅ Updated teamstats in NEON for: ${teamName}`);
-        
+
         } catch (error: any) {
           const teamIdentifier = row.linked_team_id || row.id || row.team_name || 'unknown';
           stats.teams.errors.push(`Error updating team ${teamIdentifier}: ${error.message}`);
@@ -360,7 +361,7 @@ export async function POST(
           let playerId: string;
           let isNewPlayer: boolean;
           let currentPlayerData: any = {};
-          
+
           const existingPlayer = playersByName.get(playerNameLower);
           if (existingPlayer) {
             playerId = existingPlayer.playerId;
@@ -401,27 +402,27 @@ export async function POST(
             matches_won: matchesWon,
             matches_lost: matchesLost,
             matches_drawn: matchesDrawn,
-            
+
             // Goal statistics
             goals_scored: goalsScored,
             goals_per_game: goalsPerGame,
             goals_conceded: goalsConceded,
             conceded_per_game: concededPerGame,
             net_goals: netGoals,
-            
+
             // Other statistics
             assists: parseInt(row.assists) || 0,
             clean_sheets: cleanSheets,
-            
+
             // Points and ratings
             points: totalPoints,
             total_points: totalPoints,
             win_rate: matchesPlayed > 0 ? parseFloat(((matchesWon / matchesPlayed) * 100).toFixed(2)) : 0,
             average_rating: parseFloat(row.average_rating) || 0,
-            
+
             // Player of the Match (POTM) - nullable
             potm: row.potm ? parseInt(row.potm) : (row.POTM ? parseInt(row.POTM) : null),
-            
+
             // Current season tracking
             current_season_matches: matchesPlayed,
             current_season_wins: matchesWon
@@ -449,7 +450,7 @@ export async function POST(
             permanentPlayerData.created_at = FieldValue.serverTimestamp();
             permanentPlayerData.joined_date = FieldValue.serverTimestamp();
           }
-          
+
           // Save to realplayers
           await adminDb.collection('realplayers').doc(playerId).set(permanentPlayerData, { merge: true });
 
@@ -457,20 +458,20 @@ export async function POST(
           // Use composite ID: player_id_seasonId for easy lookup
           const statsDocId = `${playerId}_${seasonId}`;
           console.log(`  🆕 Creating stats for ${normalizedPlayerName} in season ${seasonId}`);
-          
+
           // Parse all trophies based on column heading (category_wise or individual_wise)
           const allAwards: Array<{ name: string; type: 'category' | 'individual' }> = [];
-          
+
           // Check all possible column names for trophies
           Object.keys(row).forEach(key => {
             const lowerKey = key.toLowerCase();
             const value = row[key];
-            
+
             if (value && typeof value === 'string' && value.trim()) {
               // Match: trophy columns and determine type from column name
               if (lowerKey.includes('trophy')) {
                 const awardName = value.trim();
-                
+
                 // Determine type based on column heading
                 let awardType: 'category' | 'individual' = 'individual';
                 if (lowerKey.includes('category') || lowerKey.includes('cat')) {
@@ -478,13 +479,13 @@ export async function POST(
                 } else if (lowerKey.includes('individual') || lowerKey.includes('ind')) {
                   awardType = 'individual';
                 }
-                
+
                 allAwards.push({ name: awardName, type: awardType });
                 console.log(`    🏆 Found trophy from column "${key}": ${awardName} (${awardType})`);
               }
             }
           });
-          
+
           // Also handle if trophies come as arrays (from preview)
           if (Array.isArray(row.category_trophies)) {
             row.category_trophies.forEach((trophy: string) => {
@@ -502,36 +503,36 @@ export async function POST(
               }
             });
           }
-          
+
           console.log(`  📊 Total awards found for ${normalizedPlayerName}: ${allAwards.length}`);
           if (allAwards.length > 0) {
             console.log(`  🏆 Awards: ${allAwards.map(a => `${a.name} (${a.type})`).join(', ')}`);
           }
-          
+
           // Normalize team name: if it's a previous name, use the current name
           let normalizedTeamName = row.team || row.team_name || '';
           let teamNameMatched = false;
-          
+
           if (normalizedTeamName) {
             const teamNameLower = normalizedTeamName.trim().toLowerCase();
-            
+
             // Check if this team name matches any current or previous team name
             for (const [teamId, teamData] of teamsCache.entries()) {
               const currentNameLower = teamData.team_name?.trim().toLowerCase();
               const previousNames = teamData.previous_names || teamData.name_history || [];
-              
+
               // Check if it matches the current team name
               if (currentNameLower === teamNameLower) {
                 teamNameMatched = true;
                 normalizedTeamName = teamData.team_name; // Use exact casing from database
                 break;
               }
-              
+
               // Check if it matches any previous name
-              const matchesPreviousName = previousNames.some((oldName: string) => 
+              const matchesPreviousName = previousNames.some((oldName: string) =>
                 oldName && oldName.trim().toLowerCase() === teamNameLower
               );
-              
+
               if (matchesPreviousName) {
                 // Use the current team name instead
                 console.log(`  🔄 Normalizing team name: "${normalizedTeamName}" → "${teamData.team_name}"`);
@@ -540,7 +541,7 @@ export async function POST(
                 break;
               }
             }
-            
+
             // If no match found, add a warning
             if (!teamNameMatched) {
               const warningMsg = `⚠️ Player "${normalizedPlayerName}" has team "${normalizedTeamName}" which does not match any current or previous team names`;
@@ -548,7 +549,7 @@ export async function POST(
               stats.players.errors.push(warningMsg);
             }
           }
-          
+
           // Prepare stats data for Firestore (without trophies)
           const statsData: any = {
             player_id: playerId,
@@ -565,7 +566,7 @@ export async function POST(
             created_at: FieldValue.serverTimestamp(),
             updated_at: FieldValue.serverTimestamp()
           };
-          
+
           // Write to NEON realplayerstats table (without trophies)
           await sql`
             INSERT INTO realplayerstats (
@@ -611,7 +612,7 @@ export async function POST(
               star_rating = EXCLUDED.star_rating,
               updated_at = NOW()
           `;
-          
+
           // Save awards to player_awards table with automatic type classification
           for (const award of allAwards) {
             try {

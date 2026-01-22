@@ -50,7 +50,7 @@ export async function POST(
     if (teams && Array.isArray(teams)) {
       for (const team of teams) {
         if (!team.id) continue;
-        
+
         // Update team basic info
         const teamRef = adminDb.collection('teams').doc(team.id);
         const teamUpdateData: any = {
@@ -71,8 +71,9 @@ export async function POST(
         // Update teamstats in NEON if season_stats are provided
         if (team.season_stats && seasonId) {
           const sql = getTournamentDb();
-          const teamStatsId = `${team.id}_${seasonId}`;
-          
+          const tournamentId = 'historical';
+          const teamStatsId = `${team.id}_${seasonId}_${tournamentId}`;
+
           // Extract stats fields
           const rank = team.season_stats.rank || 0;
           const points = team.season_stats.p || 0;
@@ -83,22 +84,22 @@ export async function POST(
           const goalsFor = team.season_stats.f || 0;
           const goalsAgainst = team.season_stats.a || 0;
           const goalDifference = team.season_stats.gd || 0;
-          
+
           // Update in NEON
           await sql`
             INSERT INTO teamstats (
-              id, team_id, season_id, team_name,
+              id, team_id, season_id, tournament_id, team_name,
               rank, points, matches_played, wins, draws, losses,
               goals_for, goals_against, goal_difference, position,
               created_at, updated_at
             )
             VALUES (
-              ${teamStatsId}, ${team.id}, ${seasonId}, ${team.team_name},
+              ${teamStatsId}, ${team.id}, ${seasonId}, ${tournamentId}, ${team.team_name},
               ${rank}, ${points}, ${matchesPlayed}, ${wins}, ${draws}, ${losses},
               ${goalsFor}, ${goalsAgainst}, ${goalDifference}, ${rank},
               NOW(), NOW()
             )
-            ON CONFLICT (id) DO UPDATE
+            ON CONFLICT (team_id, season_id, tournament_id) DO UPDATE
             SET
               team_name = EXCLUDED.team_name,
               rank = EXCLUDED.rank,
@@ -126,7 +127,7 @@ export async function POST(
         // First check if this is a realplayer or realplayerstats document
         const realPlayerRef = adminDb.collection('realplayers').doc(player.id);
         const realPlayerStatsRef = adminDb.collection('realplayerstats').doc(player.id);
-        
+
         const realPlayerDoc = await realPlayerRef.get();
         const realPlayerStatsDoc = await realPlayerStatsRef.get();
 
@@ -196,7 +197,7 @@ export async function POST(
           // Try to update as a single document in a players collection
           const playerRef = adminDb.collection('players').doc(player.id);
           const playerDoc = await playerRef.get();
-          
+
           if (playerDoc.exists) {
             const updateData: any = {
               name: player.name,

@@ -41,6 +41,8 @@ export interface TournamentRound {
   leg: 'first' | 'second';
   completed_matches: number;
   total_matches: number;
+  tournament_id?: string; // Added for multi-tournament support
+  tournament_name?: string; // Added for display purposes
   // Deadline configuration (stored in a separate collection)
   home_fixture_deadline_time?: string; // e.g., "17:00"
   away_fixture_deadline_time?: string; // e.g., "17:00"
@@ -76,7 +78,7 @@ function generateRoundRobinFixtures(
   // Use circle method for round-robin
   for (let round = 0; round < numRounds; round++) {
     const roundMatches: TournamentFixture[] = [];
-    
+
     for (let match = 0; match < matchesPerRound; match++) {
       let home: number, away: number;
 
@@ -156,7 +158,7 @@ export async function generateSeasonFixtures(
         throw error;
       }
     }
-    
+
     if (existingFixtures.length > 0) {
       return { success: false, error: 'Fixtures already exist for this season. Delete them first to regenerate.' };
     }
@@ -178,39 +180,39 @@ export async function generateSeasonFixtures(
 
     // Save fixtures to Neon database only
     console.log('Saving', allFixtures.length, 'fixtures to Neon database...');
-    
+
     const neonResponse = await fetch('/api/fixtures/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fixtures: allFixtures }),
     });
-    
+
     if (!neonResponse.ok) {
       const errorText = await neonResponse.text();
       throw new Error(`Failed to save fixtures to Neon: ${errorText}`);
     }
-    
+
     console.log('✅ Fixtures saved to Neon successfully');
 
     // Create round_deadlines for each unique round/leg combination
     console.log('Creating round_deadlines entries...');
-    
+
     // Get unique round/leg combinations
     const roundsSet = new Set<string>();
     allFixtures.forEach(fixture => {
       roundsSet.add(`${fixture.round_number}_${fixture.leg}`);
     });
-    
+
     // Create round_deadlines for each round
     const roundDeadlinePromises = Array.from(roundsSet).map(async (roundKey) => {
       const [roundNumber, leg] = roundKey.split('_');
-      
+
       try {
         // Use absolute URL for server-side fetch
-        const baseUrl = typeof window !== 'undefined' 
-          ? window.location.origin 
+        const baseUrl = typeof window !== 'undefined'
+          ? window.location.origin
           : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        
+
         const response = await fetch(`${baseUrl}/api/round-deadlines`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -222,7 +224,7 @@ export async function generateSeasonFixtures(
             // Deadlines will be fetched from tournament_settings by the API
           }),
         });
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`Failed to create round_deadline for round ${roundNumber} ${leg}:`, errorText);
@@ -234,7 +236,7 @@ export async function generateSeasonFixtures(
         console.error(`Error creating round_deadline for round ${roundNumber} ${leg}:`, error);
       }
     });
-    
+
     await Promise.all(roundDeadlinePromises);
     console.log('✅ All round_deadlines created');
 
@@ -251,14 +253,14 @@ export async function generateSeasonFixtures(
 export async function getSeasonFixtures(seasonId: string): Promise<TournamentFixture[]> {
   try {
     const response = await fetch(`/api/fixtures/season?season_id=${seasonId}`);
-    
+
     if (!response.ok) {
       console.error('Failed to fetch fixtures from Neon');
       return [];
     }
-    
+
     const { fixtures } = await response.json();
-    
+
     return fixtures.map((fixture: any) => ({
       ...fixture,
       created_at: fixture.created_at ? new Date(fixture.created_at) : getISTNow(),
@@ -454,7 +456,7 @@ export async function getRoundDeadlines(
 } | null> {
   try {
     const response = await fetch(`/api/round-deadlines?season_id=${seasonId}&round_number=${roundNumber}&leg=${leg}`);
-    
+
     if (!response.ok) {
       console.error('Failed to fetch round deadlines from Neon');
       return {
@@ -466,7 +468,7 @@ export async function getRoundDeadlines(
     }
 
     const { roundDeadline } = await response.json();
-    
+
     if (!roundDeadline) {
       return {
         home_fixture_deadline_time: '23:30',
@@ -530,13 +532,13 @@ export async function getFixturesByRoundsWithDeadlines(
 ): Promise<TournamentRound[]> {
   try {
     const rounds = await getFixturesByRounds(seasonId);
-    
+
     // Fetch deadline and status information for each round from Neon API
     const roundsWithDeadlines = await Promise.all(
       rounds.map(async (round) => {
         try {
           const response = await fetch(`/api/round-deadlines?season_id=${seasonId}&round_number=${round.round_number}&leg=${round.leg}`);
-          
+
           let deadlineData: any = {
             home_fixture_deadline_time: '23:30',
             away_fixture_deadline_time: '23:45',
@@ -545,14 +547,14 @@ export async function getFixturesByRoundsWithDeadlines(
             status: 'pending',
             is_active: false,
           };
-          
+
           if (response.ok) {
             const { roundDeadline } = await response.json();
             if (roundDeadline) {
               deadlineData = { ...deadlineData, ...roundDeadline };
             }
           }
-          
+
           return {
             ...round,
             ...deadlineData,
@@ -593,28 +595,28 @@ export async function updateRoundStatus(
     // Check if another round is active when trying to activate this one
     if (status === 'active' && isActive) {
       const allRounds = await getFixturesByRoundsWithDeadlines(seasonId);
-      const activeRound = allRounds.find((r: any) => 
-        r.is_active && 
+      const activeRound = allRounds.find((r: any) =>
+        r.is_active &&
         !(r.round_number === roundNumber && r.leg === leg)
       );
-      
+
       if (activeRound) {
-        return { 
-          success: false, 
-          error: `Round ${activeRound.round_number} (${activeRound.leg}) is already active` 
+        return {
+          success: false,
+          error: `Round ${activeRound.round_number} (${activeRound.leg}) is already active`
         };
       }
     }
 
     // First, get the current round deadline data
     const getResponse = await fetch(`/api/round-deadlines?season_id=${seasonId}&round_number=${roundNumber}&leg=${leg}`);
-    
+
     if (!getResponse.ok) {
       return { success: false, error: 'Failed to fetch round deadline' };
     }
-    
+
     const { roundDeadline } = await getResponse.json();
-    
+
     if (!roundDeadline) {
       return { success: false, error: 'Round deadline not found' };
     }
@@ -623,7 +625,7 @@ export async function updateRoundStatus(
     // Ensure scheduled_date is in YYYY-MM-DD format (not ISO timestamp)
     let scheduledDate = roundDeadline.scheduled_date;
     console.log('Original scheduled_date from DB:', scheduledDate, typeof scheduledDate);
-    
+
     if (scheduledDate) {
       // Extract just the date part if it's a timestamp
       if (typeof scheduledDate === 'string' && scheduledDate.includes('T')) {
@@ -634,9 +636,9 @@ export async function updateRoundStatus(
         scheduledDate = d.toISOString().split('T')[0];
       }
     }
-    
+
     console.log('Formatted scheduled_date for update:', scheduledDate);
-    
+
     const updateResponse = await fetch('/api/round-deadlines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

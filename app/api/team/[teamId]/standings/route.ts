@@ -18,25 +18,28 @@ export async function GET(
       );
     }
 
-    // Get team stats from teamstats table
+    // Get team stats from teamstats table - primary tournament only
     const teamStats = await sql`
       SELECT 
-        team_id,
-        team_name,
-        tournament_id,
-        season_id,
-        matches_played,
-        wins,
-        draws,
-        losses,
-        goals_for,
-        goals_against,
-        goal_difference,
-        points,
-        position
-      FROM teamstats
-      WHERE team_id = ${teamId}
-        AND season_id = ${seasonId}
+        ts.team_id,
+        ts.team_name,
+        ts.tournament_id,
+        ts.season_id,
+        ts.matches_played,
+        ts.wins,
+        ts.draws,
+        ts.losses,
+        ts.goals_for,
+        ts.goals_against,
+        ts.goal_difference,
+        ts.points,
+        ts.position,
+        t.tournament_name
+      FROM teamstats ts
+      JOIN tournaments t ON ts.tournament_id = t.id
+      WHERE ts.team_id = ${teamId}
+        AND ts.season_id = ${seasonId}
+        AND t.is_primary = true
       LIMIT 1
     `;
 

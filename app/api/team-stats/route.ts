@@ -23,16 +23,20 @@ export async function GET(request: NextRequest) {
     const sql = getTournamentDb();
 
     if (teamId) {
-      // Fetch single team stats
+      // Fetch single team stats - get primary tournament stats
       const teamStats = await sql`
         SELECT 
-          id, team_id, team_name, season_id,
-          matches_played, wins, draws, losses,
-          goals_for, goals_against, goal_difference,
-          points, position,
-          created_at, updated_at
-        FROM teamstats
-        WHERE team_id = ${teamId} AND season_id = ${seasonId}
+          ts.id, ts.team_id, ts.team_name, ts.season_id, ts.tournament_id,
+          ts.matches_played, ts.wins, ts.draws, ts.losses,
+          ts.goals_for, ts.goals_against, ts.goal_difference,
+          ts.points, ts.position,
+          ts.created_at, ts.updated_at,
+          t.tournament_name, t.is_primary
+        FROM teamstats ts
+        JOIN tournaments t ON ts.tournament_id = t.id
+        WHERE ts.team_id = ${teamId} 
+          AND ts.season_id = ${seasonId}
+          AND t.is_primary = true
         LIMIT 1
       `;
 
@@ -48,17 +52,20 @@ export async function GET(request: NextRequest) {
         stats: teamStats[0]
       });
     } else {
-      // Fetch all teams stats for the season
+      // Fetch all teams stats for the season - get primary tournament only
       const allTeamStats = await sql`
         SELECT 
-          id, team_id, team_name, season_id,
-          matches_played, wins, draws, losses,
-          goals_for, goals_against, goal_difference,
-          points, position,
-          created_at, updated_at
-        FROM teamstats
-        WHERE season_id = ${seasonId}
-        ORDER BY points DESC, goal_difference DESC
+          ts.id, ts.team_id, ts.team_name, ts.season_id, ts.tournament_id,
+          ts.matches_played, ts.wins, ts.draws, ts.losses,
+          ts.goals_for, ts.goals_against, ts.goal_difference,
+          ts.points, ts.position,
+          ts.created_at, ts.updated_at,
+          t.tournament_name
+        FROM teamstats ts
+        JOIN tournaments t ON ts.tournament_id = t.id
+        WHERE ts.season_id = ${seasonId}
+          AND t.is_primary = true
+        ORDER BY ts.points DESC, ts.goal_difference DESC
       `;
 
       return NextResponse.json({

@@ -30,6 +30,8 @@ export default function MatchDayManagementPage() {
   const [activeSeasonId, setActiveSeasonId] = useState<string | null>(null);
   const [seasonName, setSeasonName] = useState('');
   const [rounds, setRounds] = useState<TournamentRound[]>([]);
+  const [tournaments, setTournaments] = useState<any[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string>('');
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -62,7 +64,7 @@ export default function MatchDayManagementPage() {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000); // Update every second
-    
+
     return () => clearInterval(timer);
   }, []);
 
@@ -75,7 +77,7 @@ export default function MatchDayManagementPage() {
       // Get season - use committee admin's assigned season or active season
       let seasonId = userSeasonId;
       let season = null;
-      
+
       if (seasonId) {
         season = await getSeasonById(seasonId);
       } else {
@@ -91,25 +93,34 @@ export default function MatchDayManagementPage() {
         // Load all tournaments for this season
         const tournamentsRes = await fetchWithTokenRefresh(`/api/tournaments?season_id=${seasonId}`);
         const tournamentsData = await tournamentsRes.json();
-        
+
         if (!tournamentsData.success || !tournamentsData.tournaments || tournamentsData.tournaments.length === 0) {
           console.log('No tournaments found for season:', seasonId);
           setRounds([]);
+          setTournaments([]);
           setIsLoading(false);
           return;
         }
-        
+
+        // Store tournaments
+        setTournaments(tournamentsData.tournaments);
+
+        // Auto-select first tournament if none selected
+        if (!selectedTournamentId && tournamentsData.tournaments.length > 0) {
+          setSelectedTournamentId(tournamentsData.tournaments[0].id);
+        }
+
         // Load round_deadlines from all tournaments
         const allRounds: TournamentRound[] = [];
         for (const tournament of tournamentsData.tournaments) {
           // Fetch fixtures for this tournament
           const fixturesRes = await fetchWithTokenRefresh(`/api/tournaments/${tournament.id}/fixtures`);
           const fixturesData = await fixturesRes.json();
-          
+
           if (fixturesData.success && fixturesData.fixtures && fixturesData.fixtures.length > 0) {
             // Group fixtures by round_number and leg
             const roundsMap = new Map();
-            
+
             for (const fixture of fixturesData.fixtures) {
               const key = `${fixture.round_number}_${fixture.leg || 'first'}`;
               if (!roundsMap.has(key)) {
@@ -130,13 +141,13 @@ export default function MatchDayManagementPage() {
                   result_entry_deadline_time: '00:30',
                 });
               }
-              
+
               const round = roundsMap.get(key);
               round.total_matches++;
               if (fixture.status === 'completed') round.completed_matches++;
               round.matches.push(fixture);
             }
-            
+
             // Fetch round_deadlines for this tournament to get scheduled dates and settings
             try {
               const deadlinesRes = await fetchWithTokenRefresh(`/api/round-deadlines?tournament_id=${tournament.id}`);
@@ -164,17 +175,17 @@ export default function MatchDayManagementPage() {
             } catch (error) {
               console.error('Error fetching round deadlines for tournament:', tournament.id, error);
             }
-            
+
             allRounds.push(...Array.from(roundsMap.values()));
           }
         }
-        
+
         // Sort rounds by round number and leg
         allRounds.sort((a, b) => {
           if (a.round_number !== b.round_number) return a.round_number - b.round_number;
           return a.leg === 'first' ? -1 : 1;
         });
-        
+
         setRounds(allRounds);
         console.log('Loaded rounds from tournaments:', allRounds.length);
       }
@@ -185,19 +196,24 @@ export default function MatchDayManagementPage() {
     }
   };
 
-  const completedRounds = rounds.filter((r: any) => r.status === 'completed').length;
-  const activeRound = rounds.find((r: any) => r.is_active);
+  // Filter rounds by selected tournament
+  const filteredRounds = selectedTournamentId
+    ? rounds.filter((r: any) => r.tournament_id === selectedTournamentId)
+    : rounds;
+
+  const completedRounds = filteredRounds.filter((r: any) => r.status === 'completed').length;
+  const activeRound = filteredRounds.find((r: any) => r.is_active);
 
   const handleStartRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    
+
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
-    
+
     try {
       // Check if round has a scheduled date
-      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
-      
+      const round = filteredRounds.find(r => r.round_number === roundNumber && r.leg === leg);
+
       if (!round?.scheduled_date) {
         showAlert({
           type: 'warning',
@@ -206,7 +222,7 @@ export default function MatchDayManagementPage() {
         });
         return;
       }
-      
+
       // Start the round via API
       const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
@@ -224,7 +240,7 @@ export default function MatchDayManagementPage() {
           status: 'active',
         }),
       });
-      
+
       if (response.ok) {
         await loadRounds();
         showAlert({
@@ -253,7 +269,7 @@ export default function MatchDayManagementPage() {
 
   const handlePauseRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    
+
     const confirmed = await showConfirm({
       type: 'warning',
       title: 'Pause Round',
@@ -261,15 +277,15 @@ export default function MatchDayManagementPage() {
       confirmText: 'Pause',
       cancelText: 'Cancel'
     });
-    
+
     if (!confirmed) return;
-    
+
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      const round = filteredRounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
-      
+
       const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -286,7 +302,7 @@ export default function MatchDayManagementPage() {
           status: 'paused',
         }),
       });
-      
+
       if (response.ok) {
         await loadRounds();
       } else {
@@ -310,13 +326,13 @@ export default function MatchDayManagementPage() {
 
   const handleResumeRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    
+
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      const round = filteredRounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
-      
+
       const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -333,7 +349,7 @@ export default function MatchDayManagementPage() {
           status: 'active',
         }),
       });
-      
+
       if (response.ok) {
         await loadRounds();
       } else {
@@ -357,7 +373,7 @@ export default function MatchDayManagementPage() {
 
   const handleCompleteRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    
+
     const confirmed = await showConfirm({
       type: 'danger',
       title: 'Complete Round',
@@ -365,15 +381,15 @@ export default function MatchDayManagementPage() {
       confirmText: 'Complete',
       cancelText: 'Cancel'
     });
-    
+
     if (!confirmed) return;
-    
+
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      const round = filteredRounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
-      
+
       const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -390,7 +406,7 @@ export default function MatchDayManagementPage() {
           status: 'completed',
         }),
       });
-      
+
       if (response.ok) {
         await loadRounds();
       } else {
@@ -414,7 +430,7 @@ export default function MatchDayManagementPage() {
 
   const handleRestartRound = async (roundNumber: number, leg: 'first' | 'second') => {
     if (!activeSeasonId) return;
-    
+
     const confirmed = await showConfirm({
       type: 'warning',
       title: 'Restart Round',
@@ -422,15 +438,15 @@ export default function MatchDayManagementPage() {
       confirmText: 'Restart',
       cancelText: 'Cancel'
     });
-    
+
     if (!confirmed) return;
-    
+
     const roundId = `${roundNumber}_${leg}`;
     setActioningId(roundId);
     try {
-      const round = rounds.find(r => r.round_number === roundNumber && r.leg === leg);
+      const round = filteredRounds.find(r => r.round_number === roundNumber && r.leg === leg);
       if (!round) return;
-      
+
       // Calculate current IST time (UTC + 5:30)
       const now = new Date();
       const istOffset = 5.5 * 60 * 60 * 1000;
@@ -438,7 +454,7 @@ export default function MatchDayManagementPage() {
       const hours = istTime.getUTCHours().toString().padStart(2, '0');
       const minutes = istTime.getUTCMinutes().toString().padStart(2, '0');
       const currentISTTime = `${hours}:${minutes}`;
-      
+
       const response = await fetchWithTokenRefresh('/api/round-deadlines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -456,7 +472,7 @@ export default function MatchDayManagementPage() {
           status: 'active',
         }),
       });
-      
+
       if (response.ok) {
         await loadRounds();
         showAlert({
@@ -512,7 +528,7 @@ export default function MatchDayManagementPage() {
             Current Time (IST): {currentTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })}
           </div>
         </div>
-        
+
         <Link
           href="/dashboard/committee/team-management/tournament"
           className="inline-flex items-center px-3 py-2 sm:px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm sm:text-base font-medium rounded-xl transition-colors duration-200 shadow-sm hover:shadow-md"
@@ -525,13 +541,31 @@ export default function MatchDayManagementPage() {
         </Link>
       </div>
 
+      {/* Tournament Selector */}
+      {tournaments.length > 0 && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Tournament</label>
+          <select
+            value={selectedTournamentId}
+            onChange={(e) => setSelectedTournamentId(e.target.value)}
+            className="w-full sm:w-auto px-4 py-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          >
+            {tournaments.map((tournament) => (
+              <option key={tournament.id} value={tournament.id}>
+                {tournament.tournament_name} ({tournament.status})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Tournament Status Summary */}
       <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
               <div className="text-blue-100 text-xs sm:text-sm font-medium">Total Rounds</div>
-              <div className="text-2xl sm:text-3xl font-bold">{rounds.length}</div>
+              <div className="text-2xl sm:text-3xl font-bold">{filteredRounds.length}</div>
             </div>
             <div className="text-blue-200">
               <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -540,7 +574,7 @@ export default function MatchDayManagementPage() {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
@@ -554,7 +588,7 @@ export default function MatchDayManagementPage() {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
@@ -568,12 +602,12 @@ export default function MatchDayManagementPage() {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
           <div className="flex justify-between items-center">
             <div>
               <div className="text-purple-100 text-xs sm:text-sm font-medium">Total Fixtures</div>
-              <div className="text-2xl sm:text-3xl font-bold">{rounds.reduce((sum, r) => sum + r.total_matches, 0)}</div>
+              <div className="text-2xl sm:text-3xl font-bold">{filteredRounds.reduce((sum, r) => sum + r.total_matches, 0)}</div>
             </div>
             <div className="text-purple-200">
               <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -590,628 +624,638 @@ export default function MatchDayManagementPage() {
           <h2 className="text-base sm:text-lg font-semibold text-gray-800">Match Rounds</h2>
         </div>
         <div className="p-3 sm:p-6">
-          {rounds.length > 0 ? (
+          {filteredRounds.length > 0 ? (
             <>
-            {/* Desktop Table - Hidden on mobile */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Round</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Leg</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Phase</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadlines</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fixtures</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {rounds.map((round: any) => {
-                    const progressPercentage = round.total_matches > 0 ? Math.round((round.completed_matches / round.total_matches) * 100) : 0;
-                    const status = round.status || 'pending';
-                    const isActive = round.is_active || false;
-                    const roundId = `${round.round_number}_${round.leg}`;
-                    
-                    // Calculate current phase
-                    const calculatePhase = () => {
-                      if (status !== 'active') {
-                        return { phase: 'N/A', phaseLabel: 'Not Started', color: 'bg-gray-100 text-gray-600' };
-                      }
+              {/* Desktop Table - Hidden on mobile */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Round</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Leg</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Phase</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadlines</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fixtures</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredRounds.map((round: any) => {
+                      const progressPercentage = round.total_matches > 0 ? Math.round((round.completed_matches / round.total_matches) * 100) : 0;
+                      const status = round.status || 'pending';
+                      const isActive = round.is_active || false;
+                      const roundId = `${round.round_number}_${round.leg}`;
 
-                      if (!round.scheduled_date) {
-                        return { 
-                          phase: 'awaiting_schedule', 
-                          phaseLabel: 'Set Schedule Date', 
-                          color: 'bg-yellow-100 text-yellow-700',
-                          remaining: 'Required'
-                        };
-                      }
-
-                      // Get current time in IST
-                      const now = getISTNow();
-                      
-                      // Extract date string from scheduled_date (could be full timestamp or date string)
-                      const scheduledDateStr = typeof round.scheduled_date === 'string' && round.scheduled_date.includes('T')
-                        ? round.scheduled_date.split('T')[0]  // Extract YYYY-MM-DD from timestamp
-                        : round.scheduled_date;
-                      
-                      // Parse deadlines using IST utilities
-                      const homeDeadline = createISTDateTime(
-                        scheduledDateStr,
-                        round.home_fixture_deadline_time || '23:30'
-                      );
-                      
-                      const awayDeadline = createISTDateTime(
-                        scheduledDateStr,
-                        round.away_fixture_deadline_time || '23:45'
-                      );
-                      
-                      // Result deadline calculation - add days to the scheduled date
-                      // Parse the date parts directly to avoid timezone issues
-                      const [year, month, day] = scheduledDateStr.split('-').map(Number);
-                      const offsetDays = round.result_entry_deadline_day_offset || 2;
-                      
-                      // Create a date object in UTC, then add offset days
-                      const scheduledDate = new Date(Date.UTC(year, month - 1, day));
-                      const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-                      
-                      const resultYear = resultDateObj.getUTCFullYear();
-                      const resultMonth = String(resultDateObj.getUTCMonth() + 1).padStart(2, '0');
-                      const resultDay = String(resultDateObj.getUTCDate()).padStart(2, '0');
-                      const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
-                      const resultDeadline = createISTDateTime(
-                        resultDateStr,
-                        round.result_entry_deadline_time || '00:30'
-                      );
-
-
-                      if (now < homeDeadline) {
-                        const nowTime = now.getTime();
-                        const deadlineTime = homeDeadline.getTime();
-                        const remainingMs = deadlineTime - nowTime;
-                        const totalSeconds = Math.floor(remainingMs / 1000);
-                        const hours = Math.floor(totalSeconds / 3600);
-                        const minutes = Math.floor((totalSeconds % 3600) / 60);
-                        const seconds = totalSeconds % 60;
-                        const remainingDisplay = hours > 0
-                          ? `${hours}h ${minutes}m ${seconds}s left`
-                          : minutes > 0
-                          ? `${minutes}m ${seconds}s left`
-                          : `${seconds}s left`;
-                        return { 
-                          phase: 'home_fixture', 
-                          phaseLabel: 'Home Fixture Setup',
-                          color: 'bg-blue-100 text-blue-700',
-                          deadline: homeDeadline,
-                          remaining: remainingDisplay
-                        };
-                      } else if (now < awayDeadline) {
-                        const nowTime = now.getTime();
-                        const deadlineTime = awayDeadline.getTime();
-                        const remainingMs = deadlineTime - nowTime;
-                        const totalSeconds = Math.floor(remainingMs / 1000);
-                        const hours = Math.floor(totalSeconds / 3600);
-                        const minutes = Math.floor((totalSeconds % 3600) / 60);
-                        const seconds = totalSeconds % 60;
-                        const remainingDisplay = hours > 0
-                          ? `${hours}h ${minutes}m ${seconds}s left`
-                          : minutes > 0
-                          ? `${minutes}m ${seconds}s left`
-                          : `${seconds}s left`;
-                        return { 
-                          phase: 'fixture_entry', 
-                          phaseLabel: 'Fixture Entry',
-                          color: 'bg-purple-100 text-purple-700',
-                          deadline: awayDeadline,
-                          remaining: remainingDisplay
-                        };
-                      } else if (now < resultDeadline) {
-                        const remainingMs = resultDeadline.getTime() - now.getTime();
-                        const totalSeconds = Math.floor(remainingMs / 1000);
-                        const hours = Math.floor(totalSeconds / 3600);
-                        const minutes = Math.floor((totalSeconds % 3600) / 60);
-                        const seconds = totalSeconds % 60;
-                        const remainingDisplay = hours > 0
-                          ? `${hours}h ${minutes}m ${seconds}s left`
-                          : minutes > 0
-                          ? `${minutes}m ${seconds}s left`
-                          : `${seconds}s left`;
-                        return { 
-                          phase: 'result_entry', 
-                          phaseLabel: 'Result Entry',
-                          color: 'bg-orange-100 text-orange-700',
-                          deadline: resultDeadline,
-                          remaining: remainingDisplay
-                        };
-                      } else {
-                        // Calculate how long ago the deadline passed
-                        const timeSinceDeadline = now.getTime() - resultDeadline.getTime();
-                        const hoursPassed = Math.floor(timeSinceDeadline / (1000 * 60 * 60));
-                        const daysPassed = Math.floor(hoursPassed / 24);
-                        let expiredMsg = 'Expired';
-                        if (daysPassed > 0) {
-                          expiredMsg = `Expired ${daysPassed}d ago`;
-                        } else if (hoursPassed > 0) {
-                          expiredMsg = `Expired ${hoursPassed}h ago`;
-                        } else {
-                          expiredMsg = 'Just expired';
+                      // Calculate current phase
+                      const calculatePhase = () => {
+                        if (status !== 'active') {
+                          return { phase: 'N/A', phaseLabel: 'Not Started', color: 'bg-gray-100 text-gray-600' };
                         }
-                        return { 
-                          phase: 'closed', 
-                          phaseLabel: 'Result Entry Closed',
-                          color: 'bg-red-100 text-red-700',
-                          deadline: null,
-                          remaining: expiredMsg
-                        };
-                      }
-                    };
 
-                    const phaseInfo = calculatePhase();
-                    
-                    return (
-                      <tr
-                        key={`${round.round_number}-${round.leg}`}
-                        className={`${
-                          isActive
+                        if (!round.scheduled_date) {
+                          return {
+                            phase: 'awaiting_schedule',
+                            phaseLabel: 'Set Schedule Date',
+                            color: 'bg-yellow-100 text-yellow-700',
+                            remaining: 'Required'
+                          };
+                        }
+
+                        // Get current time in IST
+                        const now = getISTNow();
+
+                        // Extract date string from scheduled_date (could be full timestamp or date string)
+                        const scheduledDateStr = typeof round.scheduled_date === 'string' && round.scheduled_date.includes('T')
+                          ? round.scheduled_date.split('T')[0]  // Extract YYYY-MM-DD from timestamp
+                          : round.scheduled_date;
+
+                        // Parse deadlines using IST utilities
+                        const homeDeadline = createISTDateTime(
+                          scheduledDateStr,
+                          round.home_fixture_deadline_time || '23:30'
+                        );
+
+                        const awayDeadline = createISTDateTime(
+                          scheduledDateStr,
+                          round.away_fixture_deadline_time || '23:45'
+                        );
+
+                        // Result deadline calculation - add days to the scheduled date
+                        // Parse the date parts directly to avoid timezone issues
+                        const [year, month, day] = scheduledDateStr.split('-').map(Number);
+                        const offsetDays = round.result_entry_deadline_day_offset || 2;
+
+                        // Create a date object in UTC, then add offset days
+                        const scheduledDate = new Date(Date.UTC(year, month - 1, day));
+                        const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+
+                        const resultYear = resultDateObj.getUTCFullYear();
+                        const resultMonth = String(resultDateObj.getUTCMonth() + 1).padStart(2, '0');
+                        const resultDay = String(resultDateObj.getUTCDate()).padStart(2, '0');
+                        const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
+                        const resultDeadline = createISTDateTime(
+                          resultDateStr,
+                          round.result_entry_deadline_time || '00:30'
+                        );
+
+
+                        if (now < homeDeadline) {
+                          const nowTime = now.getTime();
+                          const deadlineTime = homeDeadline.getTime();
+                          const remainingMs = deadlineTime - nowTime;
+                          const totalSeconds = Math.floor(remainingMs / 1000);
+                          const hours = Math.floor(totalSeconds / 3600);
+                          const minutes = Math.floor((totalSeconds % 3600) / 60);
+                          const seconds = totalSeconds % 60;
+                          const remainingDisplay = hours > 0
+                            ? `${hours}h ${minutes}m ${seconds}s left`
+                            : minutes > 0
+                              ? `${minutes}m ${seconds}s left`
+                              : `${seconds}s left`;
+                          return {
+                            phase: 'home_fixture',
+                            phaseLabel: 'Home Fixture Setup',
+                            color: 'bg-blue-100 text-blue-700',
+                            deadline: homeDeadline,
+                            remaining: remainingDisplay
+                          };
+                        } else if (now < awayDeadline) {
+                          const nowTime = now.getTime();
+                          const deadlineTime = awayDeadline.getTime();
+                          const remainingMs = deadlineTime - nowTime;
+                          const totalSeconds = Math.floor(remainingMs / 1000);
+                          const hours = Math.floor(totalSeconds / 3600);
+                          const minutes = Math.floor((totalSeconds % 3600) / 60);
+                          const seconds = totalSeconds % 60;
+                          const remainingDisplay = hours > 0
+                            ? `${hours}h ${minutes}m ${seconds}s left`
+                            : minutes > 0
+                              ? `${minutes}m ${seconds}s left`
+                              : `${seconds}s left`;
+                          return {
+                            phase: 'fixture_entry',
+                            phaseLabel: 'Fixture Entry',
+                            color: 'bg-purple-100 text-purple-700',
+                            deadline: awayDeadline,
+                            remaining: remainingDisplay
+                          };
+                        } else if (now < resultDeadline) {
+                          const remainingMs = resultDeadline.getTime() - now.getTime();
+                          const totalSeconds = Math.floor(remainingMs / 1000);
+                          const hours = Math.floor(totalSeconds / 3600);
+                          const minutes = Math.floor((totalSeconds % 3600) / 60);
+                          const seconds = totalSeconds % 60;
+                          const remainingDisplay = hours > 0
+                            ? `${hours}h ${minutes}m ${seconds}s left`
+                            : minutes > 0
+                              ? `${minutes}m ${seconds}s left`
+                              : `${seconds}s left`;
+                          return {
+                            phase: 'result_entry',
+                            phaseLabel: 'Result Entry',
+                            color: 'bg-orange-100 text-orange-700',
+                            deadline: resultDeadline,
+                            remaining: remainingDisplay
+                          };
+                        } else {
+                          // Calculate how long ago the deadline passed
+                          const timeSinceDeadline = now.getTime() - resultDeadline.getTime();
+                          const hoursPassed = Math.floor(timeSinceDeadline / (1000 * 60 * 60));
+                          const daysPassed = Math.floor(hoursPassed / 24);
+                          let expiredMsg = 'Expired';
+                          if (daysPassed > 0) {
+                            expiredMsg = `Expired ${daysPassed}d ago`;
+                          } else if (hoursPassed > 0) {
+                            expiredMsg = `Expired ${hoursPassed}h ago`;
+                          } else {
+                            expiredMsg = 'Just expired';
+                          }
+                          return {
+                            phase: 'closed',
+                            phaseLabel: 'Result Entry Closed',
+                            color: 'bg-red-100 text-red-700',
+                            deadline: null,
+                            remaining: expiredMsg
+                          };
+                        }
+                      };
+
+                      const phaseInfo = calculatePhase();
+
+                      return (
+                        <tr
+                          key={`${round.tournament_id}-${round.round_number}-${round.leg}`}
+                          className={`${isActive
                             ? 'bg-green-50 hover:bg-green-100'
                             : status === 'completed'
-                            ? 'bg-blue-50 hover:bg-blue-100'
-                            : status === 'paused'
-                            ? 'bg-yellow-50 hover:bg-yellow-100'
-                            : 'hover:bg-gray-50'
-                        } transition-colors duration-200`}
-                      >
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <span className="font-semibold text-gray-900">Round {round.round_number}</span>
-                            {isActive && (
-                              <span className="ml-2 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">ACTIVE</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
-                            {round.leg === 'first' ? '1st Leg' : '2nd Leg'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              status === 'pending'
+                              ? 'bg-blue-50 hover:bg-blue-100'
+                              : status === 'paused'
+                                ? 'bg-yellow-50 hover:bg-yellow-100'
+                                : 'hover:bg-gray-50'
+                            } transition-colors duration-200`}
+                        >
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <span className="font-semibold text-gray-900">Round {round.round_number}</span>
+                              {isActive && (
+                                <span className="ml-2 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">ACTIVE</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
+                              {round.leg === 'first' ? '1st Leg' : '2nd Leg'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <span
+                              className={`px-2 py-1 text-xs font-medium rounded-full ${status === 'pending'
                                 ? 'bg-gray-100 text-gray-700'
                                 : status === 'active'
-                                ? 'bg-green-100 text-green-700'
-                                : status === 'paused'
-                                ? 'bg-yellow-100 text-yellow-700'
-                                : 'bg-blue-100 text-blue-700'
-                            }`}
-                          >
-                            {status.charAt(0).toUpperCase() + status.slice(1)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="space-y-1">
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${phaseInfo.color}`}>
-                              {phaseInfo.phaseLabel}
-                            </span>
-                            {phaseInfo.remaining && status === 'active' && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                {phaseInfo.remaining}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="text-xs text-gray-600 space-y-1">
-                            {round.round_start_time && (
-                              <div className="text-purple-700 font-semibold">
-                                <span className="font-bold">Round Start:</span> {round.round_start_time}
-                              </div>
-                            )}
-                            <div>
-                              <span className="font-medium text-gray-700">Home:</span> {round.home_fixture_deadline_time || '23:30'}
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Away:</span> {round.away_fixture_deadline_time || '23:45'}
-                            </div>
-                            <div>
-                              <span className="font-medium text-gray-700">Result:</span> {(() => {
-                                if (!round.scheduled_date) return 'Not scheduled';
-                                const offsetDays = round.result_entry_deadline_day_offset || 2;
-                                const scheduledDate = new Date(round.scheduled_date);
-                                const resultDate = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-                                const dateStr = resultDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
-                                return `${dateStr} ${round.result_entry_deadline_time || '00:30'}`;
-                              })()}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-sm text-gray-900">{round.total_matches}</td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="flex-1">
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${progressPercentage}%` }}
-                                />
-                              </div>
-                            </div>
-                            <span className="text-xs font-medium text-gray-600 w-12 text-right">
-                              {progressPercentage}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            {/* Start Button - Green */}
-                            {status === 'pending' && (
-                              <button
-                                onClick={() => handleStartRound(round.round_number, round.leg)}
-                                disabled={actioningId === roundId}
-                                className="inline-flex items-center px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                                title="Start Round"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              </button>
-                            )}
-
-                            {/* Pause Button - Yellow */}
-                            {status === 'active' && (
-                              <button
-                                onClick={() => handlePauseRound(round.round_number, round.leg)}
-                                disabled={actioningId === roundId}
-                                className="inline-flex items-center px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                                title="Pause Round"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              </button>
-                            )}
-
-                            {/* Resume Button - Cyan */}
-                            {status === 'paused' && (
-                              <button
-                                onClick={() => handleResumeRound(round.round_number, round.leg)}
-                                disabled={actioningId === roundId}
-                                className="inline-flex items-center px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                                title="Resume Round"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              </button>
-                            )}
-
-                            {/* Complete Button - Blue */}
-                            {status === 'active' && (
-                              <button
-                                onClick={() => handleCompleteRound(round.round_number, round.leg)}
-                                disabled={actioningId === roundId}
-                                className="inline-flex items-center px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                                title="Complete Round"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                                </svg>
-                              </button>
-                            )}
-
-                            {/* Restart Button - Purple */}
-                            {(status === 'completed' || status === 'paused') && (
-                              <button
-                                onClick={() => handleRestartRound(round.round_number, round.leg)}
-                                disabled={actioningId === roundId}
-                                className="inline-flex items-center px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                                title="Restart Round"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                              </button>
-                            )}
-
-                            {/* Edit Deadlines Button - Gray */}
-                            <Link
-                              href={`/dashboard/committee/team-management/match-days/edit?season=${activeSeasonId}&round=${round.round_number}&leg=${round.leg}`}
-                              className="inline-flex items-center px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-lg transition-colors duration-200"
-                              title="Edit Deadlines"
+                                  ? 'bg-green-100 text-green-700'
+                                  : status === 'paused'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-blue-100 text-blue-700'
+                                }`}
                             >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              {status.charAt(0).toUpperCase() + status.slice(1)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <div className="space-y-1">
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${phaseInfo.color}`}>
+                                {phaseInfo.phaseLabel}
+                              </span>
+                              {phaseInfo.remaining && status === 'active' && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {phaseInfo.remaining}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="text-xs text-gray-600 space-y-1">
+                              {round.round_start_time && (
+                                <div className="text-purple-700 font-semibold">
+                                  <span className="font-bold">Round Start:</span> {round.round_start_time}
+                                </div>
+                              )}
+                              <div>
+                                <span className="font-medium text-gray-700">Home:</span> {round.home_fixture_deadline_time || '23:30'}
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-700">Away:</span> {round.away_fixture_deadline_time || '23:45'}
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-700">Result:</span> {(() => {
+                                  if (!round.scheduled_date) return 'Not scheduled';
+                                  const offsetDays = round.result_entry_deadline_day_offset || 2;
+                                  const scheduledDate = new Date(round.scheduled_date);
+                                  const resultDate = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+                                  const dateStr = resultDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+                                  return `${dateStr} ${round.result_entry_deadline_time || '00:30'}`;
+                                })()}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-gray-900">{round.total_matches}</td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="flex-1">
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                                    style={{ width: `${progressPercentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <span className="text-xs font-medium text-gray-600 w-12 text-right">
+                                {progressPercentage}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              {/* Start Button - Green */}
+                              {status === 'pending' && (
+                                <button
+                                  onClick={() => handleStartRound(round.round_number, round.leg)}
+                                  disabled={actioningId === roundId}
+                                  className="inline-flex items-center px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                                  title="Start Round"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </button>
+                              )}
 
-            {/* Mobile Card Layout - Shown only on mobile */}
-            <div className="md:hidden space-y-4">
-              {rounds.map((round: any) => {
-                const progressPercentage = round.total_matches > 0 ? Math.round((round.completed_matches / round.total_matches) * 100) : 0;
-                const status = round.status || 'pending';
-                const isActive = round.is_active || false;
-                const roundId = `${round.round_number}_${round.leg}`;
-                
-                // Calculate current phase (same logic as desktop)
-                const calculatePhase = () => {
-                  if (status !== 'active') {
-                    return { phase: 'N/A', phaseLabel: 'Not Started', color: 'bg-gray-100 text-gray-600' };
-                  }
+                              {/* Pause Button - Yellow */}
+                              {status === 'active' && (
+                                <button
+                                  onClick={() => handlePauseRound(round.round_number, round.leg)}
+                                  disabled={actioningId === roundId}
+                                  className="inline-flex items-center px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                                  title="Pause Round"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </button>
+                              )}
 
-                  if (!round.scheduled_date) {
-                    return { 
-                      phase: 'awaiting_schedule', 
-                      phaseLabel: 'Set Schedule Date', 
-                      color: 'bg-yellow-100 text-yellow-700',
-                      remaining: 'Required'
-                    };
-                  }
+                              {/* Resume Button - Cyan */}
+                              {status === 'paused' && (
+                                <button
+                                  onClick={() => handleResumeRound(round.round_number, round.leg)}
+                                  disabled={actioningId === roundId}
+                                  className="inline-flex items-center px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                                  title="Resume Round"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </button>
+                              )}
 
-                  const now = getISTNow();
-                  const scheduledDateStr = typeof round.scheduled_date === 'string' && round.scheduled_date.includes('T')
-                    ? round.scheduled_date.split('T')[0]
-                    : round.scheduled_date;
-                  
-                  const homeDeadline = createISTDateTime(
-                    scheduledDateStr,
-                    round.home_fixture_deadline_time || '23:30'
-                  );
-                  
-                  const awayDeadline = createISTDateTime(
-                    scheduledDateStr,
-                    round.away_fixture_deadline_time || '23:45'
-                  );
-                  
-                  // Parse the date parts directly to avoid timezone issues
-                  const [year, month, day] = scheduledDateStr.split('-').map(Number);
-                  const offsetDays = round.result_entry_deadline_day_offset || 2;
-                  
-                  // Create a date object in UTC, then add offset days
-                  const scheduledDate = new Date(Date.UTC(year, month - 1, day));
-                  const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-                  
-                  const resultYear = resultDateObj.getUTCFullYear();
-                  const resultMonth = String(resultDateObj.getUTCMonth() + 1).padStart(2, '0');
-                  const resultDay = String(resultDateObj.getUTCDate()).padStart(2, '0');
-                  const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
-                  const resultDeadline = createISTDateTime(
-                    resultDateStr,
-                    round.result_entry_deadline_time || '00:30'
-                  );
+                              {/* Complete Button - Blue */}
+                              {status === 'active' && (
+                                <button
+                                  onClick={() => handleCompleteRound(round.round_number, round.leg)}
+                                  disabled={actioningId === roundId}
+                                  className="inline-flex items-center px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                                  title="Complete Round"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </button>
+                              )}
 
-                  if (now < homeDeadline) {
-                    const remainingMs = homeDeadline.getTime() - now.getTime();
-                    const totalSeconds = Math.floor(remainingMs / 1000);
-                    const hours = Math.floor(totalSeconds / 3600);
-                    const minutes = Math.floor((totalSeconds % 3600) / 60);
-                    const seconds = totalSeconds % 60;
-                    const remainingDisplay = hours > 0
-                      ? `${hours}h ${minutes}m ${seconds}s left`
-                      : minutes > 0
-                      ? `${minutes}m ${seconds}s left`
-                      : `${seconds}s left`;
-                    return { 
-                      phase: 'home_fixture', 
-                      phaseLabel: 'Home Fixture Setup',
-                      color: 'bg-blue-100 text-blue-700',
-                      deadline: homeDeadline,
-                      remaining: remainingDisplay
-                    };
-                  } else if (now < awayDeadline) {
-                    const remainingMs = awayDeadline.getTime() - now.getTime();
-                    const totalSeconds = Math.floor(remainingMs / 1000);
-                    const hours = Math.floor(totalSeconds / 3600);
-                    const minutes = Math.floor((totalSeconds % 3600) / 60);
-                    const seconds = totalSeconds % 60;
-                    const remainingDisplay = hours > 0
-                      ? `${hours}h ${minutes}m ${seconds}s left`
-                      : minutes > 0
-                      ? `${minutes}m ${seconds}s left`
-                      : `${seconds}s left`;
-                    return { 
-                      phase: 'fixture_entry', 
-                      phaseLabel: 'Fixture Entry',
-                      color: 'bg-purple-100 text-purple-700',
-                      deadline: awayDeadline,
-                      remaining: remainingDisplay
-                    };
-                  } else if (now < resultDeadline) {
-                    const remainingMs = resultDeadline.getTime() - now.getTime();
-                    const totalSeconds = Math.floor(remainingMs / 1000);
-                    const hours = Math.floor(totalSeconds / 3600);
-                    const minutes = Math.floor((totalSeconds % 3600) / 60);
-                    const seconds = totalSeconds % 60;
-                    const remainingDisplay = hours > 0
-                      ? `${hours}h ${minutes}m ${seconds}s left`
-                      : minutes > 0
-                      ? `${minutes}m ${seconds}s left`
-                      : `${seconds}s left`;
-                    return { 
-                      phase: 'result_entry', 
-                      phaseLabel: 'Result Entry',
-                      color: 'bg-orange-100 text-orange-700',
-                      deadline: resultDeadline,
-                      remaining: remainingDisplay
-                    };
-                  } else {
-                    // Calculate how long ago the deadline passed
-                    const timeSinceDeadline = now.getTime() - resultDeadline.getTime();
-                    const hoursPassed = Math.floor(timeSinceDeadline / (1000 * 60 * 60));
-                    const daysPassed = Math.floor(hoursPassed / 24);
-                    let expiredMsg = 'Expired';
-                    if (daysPassed > 0) {
-                      expiredMsg = `Expired ${daysPassed}d ago`;
-                    } else if (hoursPassed > 0) {
-                      expiredMsg = `Expired ${hoursPassed}h ago`;
-                    } else {
-                      expiredMsg = 'Just expired';
+                              {/* Restart Button - Purple */}
+                              {(status === 'completed' || status === 'paused') && (
+                                <button
+                                  onClick={() => handleRestartRound(round.round_number, round.leg)}
+                                  disabled={actioningId === roundId}
+                                  className="inline-flex items-center px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                                  title="Restart Round"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                  </svg>
+                                </button>
+                              )}
+
+                              {/* Edit Deadlines Button - Gray */}
+                              <Link
+                                href={`/dashboard/committee/team-management/match-days/edit?tournament=${round.tournament_id}&season=${activeSeasonId}&round=${round.round_number}&leg=${round.leg}`}
+                                className="inline-flex items-center px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-lg transition-colors duration-200"
+                                title="Edit Deadlines"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card Layout - Shown only on mobile */}
+              <div className="md:hidden space-y-4">
+                {filteredRounds.map((round: any) => {
+                  const progressPercentage = round.total_matches > 0 ? Math.round((round.completed_matches / round.total_matches) * 100) : 0;
+                  const status = round.status || 'pending';
+                  const isActive = round.is_active || false;
+                  const roundId = `${round.round_number}_${round.leg}`;
+
+                  // Calculate current phase (same logic as desktop)
+                  const calculatePhase = () => {
+                    if (status !== 'active') {
+                      return { phase: 'N/A', phaseLabel: 'Not Started', color: 'bg-gray-100 text-gray-600' };
                     }
-                    return { 
-                      phase: 'closed', 
-                      phaseLabel: 'Result Entry Closed',
-                      color: 'bg-red-100 text-red-700',
-                      deadline: null,
-                      remaining: expiredMsg
-                    };
-                  }
-                };
 
-                const phaseInfo = calculatePhase();
-                
-                return (
-                  <div
-                    key={`${round.round_number}-${round.leg}`}
-                    className={`rounded-xl border-2 p-4 ${
-                      isActive
+                    if (!round.scheduled_date) {
+                      return {
+                        phase: 'awaiting_schedule',
+                        phaseLabel: 'Set Schedule Date',
+                        color: 'bg-yellow-100 text-yellow-700',
+                        remaining: 'Required'
+                      };
+                    }
+
+                    const now = getISTNow();
+                    const scheduledDateStr = typeof round.scheduled_date === 'string' && round.scheduled_date.includes('T')
+                      ? round.scheduled_date.split('T')[0]
+                      : round.scheduled_date;
+
+                    const homeDeadline = createISTDateTime(
+                      scheduledDateStr,
+                      round.home_fixture_deadline_time || '23:30'
+                    );
+
+                    const awayDeadline = createISTDateTime(
+                      scheduledDateStr,
+                      round.away_fixture_deadline_time || '23:45'
+                    );
+
+                    // Parse the date parts directly to avoid timezone issues
+                    const [year, month, day] = scheduledDateStr.split('-').map(Number);
+                    const offsetDays = round.result_entry_deadline_day_offset || 2;
+
+                    // Create a date object in UTC, then add offset days
+                    const scheduledDate = new Date(Date.UTC(year, month - 1, day));
+                    const resultDateObj = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+
+                    const resultYear = resultDateObj.getUTCFullYear();
+                    const resultMonth = String(resultDateObj.getUTCMonth() + 1).padStart(2, '0');
+                    const resultDay = String(resultDateObj.getUTCDate()).padStart(2, '0');
+                    const resultDateStr = `${resultYear}-${resultMonth}-${resultDay}`;
+                    const resultDeadline = createISTDateTime(
+                      resultDateStr,
+                      round.result_entry_deadline_time || '00:30'
+                    );
+
+                    if (now < homeDeadline) {
+                      const remainingMs = homeDeadline.getTime() - now.getTime();
+                      const totalSeconds = Math.floor(remainingMs / 1000);
+                      const hours = Math.floor(totalSeconds / 3600);
+                      const minutes = Math.floor((totalSeconds % 3600) / 60);
+                      const seconds = totalSeconds % 60;
+                      const remainingDisplay = hours > 0
+                        ? `${hours}h ${minutes}m ${seconds}s left`
+                        : minutes > 0
+                          ? `${minutes}m ${seconds}s left`
+                          : `${seconds}s left`;
+                      return {
+                        phase: 'home_fixture',
+                        phaseLabel: 'Home Fixture Setup',
+                        color: 'bg-blue-100 text-blue-700',
+                        deadline: homeDeadline,
+                        remaining: remainingDisplay
+                      };
+                    } else if (now < awayDeadline) {
+                      const remainingMs = awayDeadline.getTime() - now.getTime();
+                      const totalSeconds = Math.floor(remainingMs / 1000);
+                      const hours = Math.floor(totalSeconds / 3600);
+                      const minutes = Math.floor((totalSeconds % 3600) / 60);
+                      const seconds = totalSeconds % 60;
+                      const remainingDisplay = hours > 0
+                        ? `${hours}h ${minutes}m ${seconds}s left`
+                        : minutes > 0
+                          ? `${minutes}m ${seconds}s left`
+                          : `${seconds}s left`;
+                      return {
+                        phase: 'fixture_entry',
+                        phaseLabel: 'Fixture Entry',
+                        color: 'bg-purple-100 text-purple-700',
+                        deadline: awayDeadline,
+                        remaining: remainingDisplay
+                      };
+                    } else if (now < resultDeadline) {
+                      const remainingMs = resultDeadline.getTime() - now.getTime();
+                      const totalSeconds = Math.floor(remainingMs / 1000);
+                      const hours = Math.floor(totalSeconds / 3600);
+                      const minutes = Math.floor((totalSeconds % 3600) / 60);
+                      const seconds = totalSeconds % 60;
+                      const remainingDisplay = hours > 0
+                        ? `${hours}h ${minutes}m ${seconds}s left`
+                        : minutes > 0
+                          ? `${minutes}m ${seconds}s left`
+                          : `${seconds}s left`;
+                      return {
+                        phase: 'result_entry',
+                        phaseLabel: 'Result Entry',
+                        color: 'bg-orange-100 text-orange-700',
+                        deadline: resultDeadline,
+                        remaining: remainingDisplay
+                      };
+                    } else {
+                      // Calculate how long ago the deadline passed
+                      const timeSinceDeadline = now.getTime() - resultDeadline.getTime();
+                      const hoursPassed = Math.floor(timeSinceDeadline / (1000 * 60 * 60));
+                      const daysPassed = Math.floor(hoursPassed / 24);
+                      let expiredMsg = 'Expired';
+                      if (daysPassed > 0) {
+                        expiredMsg = `Expired ${daysPassed}d ago`;
+                      } else if (hoursPassed > 0) {
+                        expiredMsg = `Expired ${hoursPassed}h ago`;
+                      } else {
+                        expiredMsg = 'Just expired';
+                      }
+                      return {
+                        phase: 'closed',
+                        phaseLabel: 'Result Entry Closed',
+                        color: 'bg-red-100 text-red-700',
+                        deadline: null,
+                        remaining: expiredMsg
+                      };
+                    }
+                  };
+
+                  const phaseInfo = calculatePhase();
+
+                  return (
+                    <div
+                      key={`${round.tournament_id}-${round.round_number}-${round.leg}`}
+                      className={`rounded-xl border-2 p-4 ${isActive
                         ? 'bg-green-50 border-green-200'
                         : status === 'completed'
-                        ? 'bg-blue-50 border-blue-200'
-                        : status === 'paused'
-                        ? 'bg-yellow-50 border-yellow-200'
-                        : 'bg-white border-gray-200'
-                    }`}
-                  >
-                    {/* Round Header */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h3 className="font-bold text-lg text-gray-900">Round {round.round_number}</h3>
-                        <span className="text-xs text-gray-600">{round.leg === 'first' ? '1st Leg' : '2nd Leg'}</span>
+                          ? 'bg-blue-50 border-blue-200'
+                          : status === 'paused'
+                            ? 'bg-yellow-50 border-yellow-200'
+                            : 'bg-white border-gray-200'
+                        }`}
+                    >
+                      {/* Round Header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h3 className="font-bold text-lg text-gray-900">Round {round.round_number}</h3>
+                          <span className="text-xs text-gray-600">{round.leg === 'first' ? '1st Leg' : '2nd Leg'}</span>
+                        </div>
+                        {isActive && (
+                          <span className="px-3 py-1 text-xs font-bold bg-green-500 text-white rounded-full">ACTIVE</span>
+                        )}
                       </div>
-                      {isActive && (
-                        <span className="px-3 py-1 text-xs font-bold bg-green-500 text-white rounded-full">ACTIVE</span>
-                      )}
-                    </div>
 
-                    {/* Status & Phase */}
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Status</p>
-                        <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
-                          status === 'pending'
+                      {/* Status & Phase */}
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Status</p>
+                          <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${status === 'pending'
                             ? 'bg-gray-100 text-gray-700'
                             : status === 'active'
-                            ? 'bg-green-100 text-green-700'
-                            : status === 'paused'
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
-                        </span>
+                              ? 'bg-green-100 text-green-700'
+                              : status === 'paused'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Current Phase</p>
+                          <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${phaseInfo.color}`}>
+                            {phaseInfo.phaseLabel}
+                          </span>
+                          {phaseInfo.remaining && status === 'active' && (
+                            <p className="text-xs text-gray-600 mt-1">{phaseInfo.remaining}</p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Current Phase</p>
-                        <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${phaseInfo.color}`}>
-                          {phaseInfo.phaseLabel}
-                        </span>
-                        {phaseInfo.remaining && status === 'active' && (
-                          <p className="text-xs text-gray-600 mt-1">{phaseInfo.remaining}</p>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Deadlines */}
-                    <div className="bg-white/50 rounded-lg p-2 mb-3">
-                      <p className="text-xs font-semibold text-gray-700 mb-1">Deadlines</p>
-                      <div className="text-xs text-gray-600 space-y-0.5">
-                        {round.round_start_time && (
-                          <div className="text-purple-700 font-semibold">
-                            <span className="font-bold">Round Start:</span> {round.round_start_time}
-                          </div>
-                        )}
-                        <div><span className="font-medium">Home:</span> {round.home_fixture_deadline_time || '23:30'}</div>
-                        <div><span className="font-medium">Away:</span> {round.away_fixture_deadline_time || '23:45'}</div>
-                        <div><span className="font-medium">Result:</span> {(() => {
-                          if (!round.scheduled_date) return 'Not scheduled';
-                          const offsetDays = round.result_entry_deadline_day_offset || 2;
-                          const scheduledDate = new Date(round.scheduled_date);
-                          const resultDate = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
-                          const dateStr = resultDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
-                          return `${dateStr} ${round.result_entry_deadline_time || '00:30'}`;
-                        })()}</div>
+                      {/* Deadlines */}
+                      <div className="bg-white/50 rounded-lg p-2 mb-3">
+                        <p className="text-xs font-semibold text-gray-700 mb-1">Deadlines</p>
+                        <div className="text-xs text-gray-600 space-y-0.5">
+                          {round.round_start_time && (
+                            <div className="text-purple-700 font-semibold">
+                              <span className="font-bold">Round Start:</span> {round.round_start_time}
+                            </div>
+                          )}
+                          <div><span className="font-medium">Home:</span> {round.home_fixture_deadline_time || '23:30'}</div>
+                          <div><span className="font-medium">Away:</span> {round.away_fixture_deadline_time || '23:45'}</div>
+                          <div><span className="font-medium">Result:</span> {(() => {
+                            if (!round.scheduled_date) return 'Not scheduled';
+                            const offsetDays = round.result_entry_deadline_day_offset || 2;
+                            const scheduledDate = new Date(round.scheduled_date);
+                            const resultDate = new Date(scheduledDate.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+                            const dateStr = resultDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+                            return `${dateStr} ${round.result_entry_deadline_time || '00:30'}`;
+                          })()}</div>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Fixtures & Progress */}
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                        <span>Fixtures: {round.total_matches}</span>
-                        <span className="font-medium">{progressPercentage}% Complete</span>
+                      {/* Fixtures & Progress */}
+                      <div className="mb-3">
+                        <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                          <span>Fixtures: {round.total_matches}</span>
+                          <span className="font-medium">{progressPercentage}% Complete</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${progressPercentage}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${progressPercentage}%` }}
-                        />
-                      </div>
-                    </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex flex-wrap gap-2">
-                      {status === 'pending' && (
-                        <button
-                          onClick={() => handleStartRound(round.round_number, round.leg)}
-                          disabled={actioningId === roundId}
-                          className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                        >
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          Start
-                        </button>
-                      )}
-
-                      {status === 'active' && (
-                        <>
+                      {/* Action Buttons */}
+                      <div className="flex flex-wrap gap-2">
+                        {status === 'pending' && (
                           <button
-                            onClick={() => handlePauseRound(round.round_number, round.leg)}
+                            onClick={() => handleStartRound(round.round_number, round.leg)}
                             disabled={actioningId === roundId}
-                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Pause
-                          </button>
-                          <button
-                            onClick={() => handleCompleteRound(round.round_number, round.leg)}
-                            disabled={actioningId === roundId}
-                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                            </svg>
-                            Complete
-                          </button>
-                        </>
-                      )}
-
-                      {status === 'paused' && (
-                        <>
-                          <button
-                            onClick={() => handleResumeRound(round.round_number, round.leg)}
-                            disabled={actioningId === roundId}
-                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                            className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
                           >
                             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            Resume
+                            Start
                           </button>
+                        )}
+
+                        {status === 'active' && (
+                          <>
+                            <button
+                              onClick={() => handlePauseRound(round.round_number, round.leg)}
+                              disabled={actioningId === roundId}
+                              className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Pause
+                            </button>
+                            <button
+                              onClick={() => handleCompleteRound(round.round_number, round.leg)}
+                              disabled={actioningId === roundId}
+                              className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                              </svg>
+                              Complete
+                            </button>
+                          </>
+                        )}
+
+                        {status === 'paused' && (
+                          <>
+                            <button
+                              onClick={() => handleResumeRound(round.round_number, round.leg)}
+                              disabled={actioningId === roundId}
+                              className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Resume
+                            </button>
+                            <button
+                              onClick={() => handleRestartRound(round.round_number, round.leg)}
+                              disabled={actioningId === roundId}
+                              className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Restart
+                            </button>
+                          </>
+                        )}
+
+                        {(status === 'completed') && (
                           <button
                             onClick={() => handleRestartRound(round.round_number, round.leg)}
                             disabled={actioningId === roundId}
@@ -1222,36 +1266,22 @@ export default function MatchDayManagementPage() {
                             </svg>
                             Restart
                           </button>
-                        </>
-                      )}
+                        )}
 
-                      {(status === 'completed') && (
-                        <button
-                          onClick={() => handleRestartRound(round.round_number, round.leg)}
-                          disabled={actioningId === roundId}
-                          className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                        <Link
+                          href={`/dashboard/committee/team-management/match-days/edit?tournament=${round.tournament_id}&season=${activeSeasonId}&round=${round.round_number}&leg=${round.leg}`}
+                          className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors duration-200"
                         >
                           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          Restart
-                        </button>
-                      )}
-
-                      <Link
-                        href={`/dashboard/committee/team-management/match-days/edit?tournament=${round.tournament_id}&season=${activeSeasonId}&round=${round.round_number}&leg=${round.leg}`}
-                        className="flex-1 min-w-[45%] inline-flex items-center justify-center px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors duration-200"
-                      >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Edit Deadlines
-                      </Link>
+                          Edit Deadlines
+                        </Link>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
             </>
           ) : (
             <div className="text-center py-12">

@@ -30,20 +30,41 @@ interface TeamStats {
   goals_for: number;
   goals_against: number;
   goal_difference: number;
+  football_budget?: number;
+  real_player_budget?: number;
+  position_reward?: { ecoin: number; sscoin: number };
+  completion_reward?: { ecoin: number; sscoin: number };
+}
+
+interface RewardStatus {
+  distributed: boolean;
+  date: string | null;
+  teams_count: number;
+  total_ecoin: number;
+  total_sscoin: number;
+  distributed_by: string | null;
+}
+
+interface RewardsStatus {
+  position_rewards: RewardStatus;
+  knockout_rewards: RewardStatus;
+  completion_bonus: RewardStatus;
 }
 
 export default function TournamentRewardsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
-  
+
   const [seasonId, setSeasonId] = useState<string>('');
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [teamStandings, setTeamStandings] = useState<TeamStats[]>([]);
+  const [rewardsStatus, setRewardsStatus] = useState<RewardsStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDistributing, setIsDistributing] = useState(false);
   const [distributionLog, setDistributionLog] = useState<string[]>([]);
+  const [whatsappMessages, setWhatsappMessages] = useState<{ summary: string; individual: string[] } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -64,22 +85,19 @@ export default function TournamentRewardsPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      
-      // Get active season from usePermissions hook
+
       if (!userSeasonId) {
         console.error('No season ID found');
         return;
       }
-      
+
       setSeasonId(userSeasonId);
-      
-      // Load tournaments for this season
+
       const response = await fetchWithTokenRefresh(`/api/tournaments?season_id=${userSeasonId}`);
       const data = await response.json();
-      
+
       if (data.success) {
-        // Filter tournaments that have rewards configured
-        const tournamentsWithRewards = data.tournaments.filter((t: Tournament) => 
+        const tournamentsWithRewards = data.tournaments.filter((t: Tournament) =>
           t.rewards && Object.keys(t.rewards).length > 0
         );
         setTournaments(tournamentsWithRewards);
@@ -93,9 +111,9 @@ export default function TournamentRewardsPage() {
 
   const loadTournamentStandings = async (tournamentId: string) => {
     try {
-      const response = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings`);
+      const response = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings-with-budgets?season_id=${seasonId}`);
       const data = await response.json();
-      
+
       if (data.success && data.standings) {
         setTeamStandings(data.standings);
       }
@@ -104,18 +122,32 @@ export default function TournamentRewardsPage() {
     }
   };
 
+  const loadRewardsStatus = async (tournamentId: string) => {
+    try {
+      const response = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/rewards/status`);
+      const data = await response.json();
+
+      if (data.success) {
+        setRewardsStatus(data.status);
+      }
+    } catch (error) {
+      console.error('Error loading rewards status:', error);
+    }
+  };
+
   const handleTournamentSelect = async (tournament: Tournament) => {
     setSelectedTournament(tournament);
     setDistributionLog([]);
     await loadTournamentStandings(tournament.id);
+    await loadRewardsStatus(tournament.id);
   };
 
-  const distributeRewards = async () => {
-    if (!selectedTournament || !seasonId) return;
-    
+  const distributeRewards = async (rewardType: 'position' | 'knockout' | 'completion') => {
+    if (!selectedTournament || !seasonId || !user) return;
+
     setIsDistributing(true);
     setDistributionLog([]);
-    
+
     try {
       const response = await fetchWithTokenRefresh('/api/tournaments/distribute-rewards', {
         method: 'POST',
@@ -125,17 +157,21 @@ export default function TournamentRewardsPage() {
         body: JSON.stringify({
           tournament_id: selectedTournament.id,
           season_id: seasonId,
+          reward_type: rewardType,
+          distributed_by: user.uid,
         }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         setDistributionLog(data.log || ['Rewards distributed successfully!']);
-        // Reload standings to show updated balances
+        setWhatsappMessages(data.whatsapp_messages || null);
         await loadTournamentStandings(selectedTournament.id);
+        await loadRewardsStatus(selectedTournament.id);
       } else {
         setDistributionLog([`Error: ${data.error}`]);
+        setWhatsappMessages(null);
       }
     } catch (error: any) {
       console.error('Error distributing rewards:', error);
@@ -147,12 +183,9 @@ export default function TournamentRewardsPage() {
 
   const getRewardsSummary = (tournament: Tournament) => {
     if (!tournament.rewards) return 'No rewards configured';
-    
+
     const parts: string[] = [];
-    
-    if (tournament.rewards.match_results) {
-      parts.push('Match Rewards');
-    }
+
     if (tournament.rewards.league_positions && tournament.rewards.league_positions.length > 0) {
       parts.push(`${tournament.rewards.league_positions.length} Position Rewards`);
     }
@@ -162,8 +195,17 @@ export default function TournamentRewardsPage() {
     if (tournament.rewards.completion_bonus) {
       parts.push('Completion Bonus');
     }
-    
+
     return parts.join(' • ') || 'Configured';
+  };
+
+  const formatDate = (date: string | null) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
   if (loading || isLoading) {
@@ -201,10 +243,10 @@ export default function TournamentRewardsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Tournament Selection */}
-          <div className="lg:col-span-1">
+          <div key="tournament-selection" className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Select Tournament</h2>
-              
+
               {tournaments.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <p className="mb-2">No tournaments with rewards configured</p>
@@ -221,19 +263,17 @@ export default function TournamentRewardsPage() {
                     <button
                       key={tournament.id}
                       onClick={() => handleTournamentSelect(tournament)}
-                      className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                        selectedTournament?.id === tournament.id
-                          ? 'border-indigo-500 bg-indigo-50'
-                          : 'border-gray-200 hover:border-indigo-300 bg-white'
-                      }`}
+                      className={`w-full text-left p-4 rounded-lg border-2 transition-all ${selectedTournament?.id === tournament.id
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 hover:border-indigo-300 bg-white'
+                        }`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="font-semibold text-gray-900">{tournament.tournament_name}</h3>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          tournament.status === 'active' ? 'bg-green-100 text-green-700' :
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tournament.status === 'active' ? 'bg-green-100 text-green-700' :
                           tournament.status === 'completed' ? 'bg-gray-100 text-gray-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
                           {tournament.status}
                         </span>
                       </div>
@@ -251,7 +291,7 @@ export default function TournamentRewardsPage() {
           </div>
 
           {/* Rewards Distribution */}
-          <div className="lg:col-span-2">
+          <div key="rewards-distribution" className="lg:col-span-2">
             {!selectedTournament ? (
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-12 text-center">
                 <div className="text-6xl mb-4">🏆</div>
@@ -260,65 +300,148 @@ export default function TournamentRewardsPage() {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Rewards Configuration Summary */}
+                {/* Rewards Status & Distribution */}
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-4">
+                  <h2 className="text-xl font-bold text-gray-900 mb-6">
                     {selectedTournament.tournament_name}
                   </h2>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    {selectedTournament.rewards.league_positions && selectedTournament.rewards.league_positions.length > 0 && (
-                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-                        <div className="text-xs text-purple-600 font-medium mb-1">League Positions</div>
-                        <div className="text-2xl font-bold text-purple-700">
-                          {selectedTournament.rewards.league_positions.length}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {selectedTournament.rewards.knockout_stages && Object.keys(selectedTournament.rewards.knockout_stages).length > 0 && (
-                      <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
-                        <div className="text-xs text-orange-600 font-medium mb-1">Knockout Stages</div>
-                        <div className="text-2xl font-bold text-orange-700">
-                          {Object.keys(selectedTournament.rewards.knockout_stages).length}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {selectedTournament.rewards.completion_bonus && (
-                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                        <div className="text-xs text-blue-600 font-medium mb-1">Completion Bonus</div>
-                        <div className="text-lg font-bold text-blue-700">
-                          {selectedTournament.rewards.completion_bonus.ecoin || 0} / {selectedTournament.rewards.completion_bonus.sscoin || 0}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {selectedTournament.rewards.match_results && (
-                      <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-                        <div className="text-xs text-green-600 font-medium mb-1">Match Rewards</div>
-                        <div className="text-sm font-bold text-green-700">Auto-distributed</div>
-                      </div>
-                    )}
-                  </div>
 
-                  <button
-                    onClick={distributeRewards}
-                    disabled={isDistributing || teamStandings.length === 0}
-                    className="w-full px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-                  >
-                    {isDistributing ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Distributing Rewards...
-                      </>
-                    ) : (
-                      <>
-                        <span>💰</span>
-                        Distribute All Rewards
-                      </>
-                    )}
-                  </button>
+                  {/* Rewards Status Grid */}
+                  {rewardsStatus && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      {/* Position Rewards Status */}
+                      <div key="position-status" className={`rounded-lg p-4 border-2 ${rewardsStatus.position_rewards.distributed
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
+                        }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700">Position Rewards</span>
+                          {rewardsStatus.position_rewards.distributed ? (
+                            <span className="text-green-600 text-xl">✅</span>
+                          ) : (
+                            <span className="text-gray-400 text-xl">⚠️</span>
+                          )}
+                        </div>
+                        {rewardsStatus.position_rewards.distributed ? (
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">
+                              Distributed: {formatDate(rewardsStatus.position_rewards.date)}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {rewardsStatus.position_rewards.teams_count} teams •
+                              {rewardsStatus.position_rewards.total_ecoin} ECoin
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500">Not yet distributed</p>
+                        )}
+                      </div>
+
+                      {/* Knockout Rewards Status */}
+                      <div key="knockout-status" className={`rounded-lg p-4 border-2 ${rewardsStatus.knockout_rewards.distributed
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
+                        }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700">Knockout Rewards</span>
+                          {rewardsStatus.knockout_rewards.distributed ? (
+                            <span className="text-green-600 text-xl">✅</span>
+                          ) : (
+                            <span className="text-gray-400 text-xl">⚠️</span>
+                          )}
+                        </div>
+                        {rewardsStatus.knockout_rewards.distributed ? (
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">
+                              Distributed: {formatDate(rewardsStatus.knockout_rewards.date)}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {rewardsStatus.knockout_rewards.teams_count} teams •
+                              {rewardsStatus.knockout_rewards.total_ecoin} ECoin
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500">Not yet distributed</p>
+                        )}
+                      </div>
+
+                      {/* Completion Bonus Status */}
+                      <div key="completion-status" className={`rounded-lg p-4 border-2 ${rewardsStatus.completion_bonus.distributed
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
+                        }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700">Completion Bonus</span>
+                          {rewardsStatus.completion_bonus.distributed ? (
+                            <span className="text-green-600 text-xl">✅</span>
+                          ) : (
+                            <span className="text-gray-400 text-xl">⚠️</span>
+                          )}
+                        </div>
+                        {rewardsStatus.completion_bonus.distributed ? (
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">
+                              Distributed: {formatDate(rewardsStatus.completion_bonus.date)}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {rewardsStatus.completion_bonus.teams_count} teams •
+                              {rewardsStatus.completion_bonus.total_ecoin} ECoin
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500">Not yet distributed</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Distribution Buttons */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button
+                      key="position-button"
+                      onClick={() => distributeRewards('position')}
+                      disabled={isDistributing || teamStandings.length === 0 || rewardsStatus?.position_rewards.distributed}
+                      className="px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                    >
+                      <span>💰</span>
+                      <div className="text-left">
+                        <div className="text-sm">Position</div>
+                        <div className="text-xs opacity-80">
+                          {rewardsStatus?.position_rewards.distributed ? 'Distributed' : 'Distribute'}
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      key="knockout-button"
+                      onClick={() => distributeRewards('knockout')}
+                      disabled={isDistributing || teamStandings.length === 0 || rewardsStatus?.knockout_rewards.distributed}
+                      className="px-6 py-4 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                    >
+                      <span>🏆</span>
+                      <div className="text-left">
+                        <div className="text-sm">Knockout</div>
+                        <div className="text-xs opacity-80">
+                          {rewardsStatus?.knockout_rewards.distributed ? 'Distributed' : 'Distribute'}
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      key="completion-button"
+                      onClick={() => distributeRewards('completion')}
+                      disabled={isDistributing || teamStandings.length === 0 || rewardsStatus?.completion_bonus.distributed}
+                      className="px-6 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                    >
+                      <span>🎁</span>
+                      <div className="text-left">
+                        <div className="text-sm">Completion</div>
+                        <div className="text-xs opacity-80">
+                          {rewardsStatus?.completion_bonus.distributed ? 'Distributed' : 'Distribute'}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Distribution Log */}
@@ -335,10 +458,66 @@ export default function TournamentRewardsPage() {
                   </div>
                 )}
 
+                {/* WhatsApp Messages */}
+                {whatsappMessages && (
+                  <div className="bg-white rounded-xl shadow-lg border border-green-200 p-6">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <span>📱 WhatsApp Messages</span>
+                    </h3>
+
+                    {/* Summary Message */}
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-800">📊 Summary Message (All Teams)</h4>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(whatsappMessages.summary);
+                            alert('Summary message copied to clipboard!');
+                          }}
+                          className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <pre className="text-sm whitespace-pre-wrap font-sans text-gray-800">
+                          {whatsappMessages.summary}
+                        </pre>
+                      </div>
+                    </div>
+
+                    {/* Individual Messages */}
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-3">👥 Individual Team Messages ({whatsappMessages.individual.length})</h4>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {whatsappMessages.individual.map((message, index) => (
+                          <div key={index} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                            <div className="flex items-start justify-between mb-2">
+                              <span className="text-xs font-semibold text-gray-600">Message {index + 1}</span>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(message);
+                                  alert(`Message ${index + 1} copied to clipboard!`);
+                                }}
+                                className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+                              >
+                                📋 Copy
+                              </button>
+                            </div>
+                            <pre className="text-xs whitespace-pre-wrap font-sans text-gray-700">
+                              {message}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Team Standings */}
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Current Standings</h3>
-                  
+
                   {teamStandings.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       No standings available for this tournament
@@ -356,6 +535,10 @@ export default function TournamentRewardsPage() {
                             <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">L</th>
                             <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">GD</th>
                             <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Pts</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-blue-600 uppercase">ECoin</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase">SSCoin</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-purple-600 uppercase">Pos Reward</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-orange-600 uppercase">Comp Reward</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -375,6 +558,40 @@ export default function TournamentRewardsPage() {
                               <td className="px-4 py-3 text-sm font-bold text-indigo-600 text-center">
                                 {team.points}
                               </td>
+                              <td className="px-4 py-3 text-sm text-blue-600 text-center font-medium">
+                                {team.football_budget?.toLocaleString() || 0}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-green-600 text-center font-medium">
+                                {team.real_player_budget?.toLocaleString() || 0}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                {team.position_reward && (team.position_reward.ecoin > 0 || team.position_reward.sscoin > 0) ? (
+                                  <div className="flex flex-col gap-1">
+                                    {team.position_reward.ecoin > 0 && (
+                                      <span className="text-blue-600 font-semibold">+{team.position_reward.ecoin}</span>
+                                    )}
+                                    {team.position_reward.sscoin > 0 && (
+                                      <span className="text-green-600 font-semibold">+{team.position_reward.sscoin}</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                {team.completion_reward && (team.completion_reward.ecoin > 0 || team.completion_reward.sscoin > 0) ? (
+                                  <div className="flex flex-col gap-1">
+                                    {team.completion_reward.ecoin > 0 && (
+                                      <span className="text-blue-600 font-semibold">+{team.completion_reward.ecoin}</span>
+                                    )}
+                                    {team.completion_reward.sscoin > 0 && (
+                                      <span className="text-green-600 font-semibold">+{team.completion_reward.sscoin}</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -391,12 +608,12 @@ export default function TournamentRewardsPage() {
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h4 className="font-semibold text-blue-900 mb-2">💡 How Rewards Distribution Works:</h4>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• <strong>Match Rewards:</strong> Already distributed automatically after each match</li>
-            <li>• <strong>League Position Rewards:</strong> Based on final standings (position in table)</li>
-            <li>• <strong>Knockout Stage Rewards:</strong> For winners, runners-up, and losers at each knockout stage</li>
-            <li>• <strong>Group Elimination Rewards:</strong> For teams eliminated in group stage (Group+Knockout format)</li>
-            <li>• <strong>Completion Bonus:</strong> Given to ALL teams that completed the tournament</li>
-            <li>• All rewards are recorded in team transaction history with proper descriptions</li>
+            <li key="position-info">• <strong>Position Rewards:</strong> Distributed once based on final standings (cannot be re-distributed)</li>
+            <li key="knockout-info">• <strong>Knockout Rewards:</strong> Distributed after knockout stages complete (cannot be re-distributed)</li>
+            <li key="completion-info">• <strong>Completion Bonus:</strong> Given to ALL teams that completed the tournament (one-time only)</li>
+            <li key="tracking-info">• <strong>Tracking:</strong> All distributions are tracked to prevent duplicates</li>
+            <li key="status-info">• <strong>Status Indicators:</strong> Green checkmark (✅) means already distributed, Warning (⚠️) means pending</li>
+            <li key="transaction-info">• All rewards are recorded in team transaction history with proper descriptions</li>
           </ul>
         </div>
       </div>

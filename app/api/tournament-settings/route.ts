@@ -55,10 +55,11 @@ export async function POST(request: NextRequest) {
   try {
     const sql = getTournamentDb();
     const body = await request.json();
-    const { 
+    const {
       tournament_id,
       squad_size,
       tournament_system,
+      scoring_type,
       home_deadline_time,
       away_deadline_time,
       result_day_offset,
@@ -82,14 +83,14 @@ export async function POST(request: NextRequest) {
     const tournamentResult = await sql`
       SELECT season_id FROM tournaments WHERE id = ${tournament_id} LIMIT 1
     `;
-    
+
     if (tournamentResult.length === 0) {
       return NextResponse.json(
         { error: 'Tournament not found' },
         { status: 404 }
       );
     }
-    
+
     const season_id = tournamentResult[0].season_id;
 
     // Upsert (insert or update if exists)
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
         season_id,
         squad_size,
         tournament_system,
+        scoring_type,
         home_deadline_time,
         away_deadline_time,
         result_day_offset,
@@ -116,6 +118,7 @@ export async function POST(request: NextRequest) {
         ${season_id},
         ${squad_size ?? null},
         ${tournament_system || 'match_round'},
+        ${scoring_type || 'goals'},
         ${home_deadline_time || '17:00'},
         ${away_deadline_time || '17:00'},
         ${result_day_offset ?? 2},
@@ -132,6 +135,7 @@ export async function POST(request: NextRequest) {
       ON CONFLICT (tournament_id) DO UPDATE SET
         squad_size = EXCLUDED.squad_size,
         tournament_system = EXCLUDED.tournament_system,
+        scoring_type = EXCLUDED.scoring_type,
         home_deadline_time = EXCLUDED.home_deadline_time,
         away_deadline_time = EXCLUDED.away_deadline_time,
         result_day_offset = EXCLUDED.result_day_offset,
@@ -145,9 +149,9 @@ export async function POST(request: NextRequest) {
         updated_at = NOW()
     `;
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: 'Tournament settings saved successfully' 
+      message: 'Tournament settings saved successfully'
     });
   } catch (error) {
     console.error('Error saving tournament settings:', error);
@@ -177,9 +181,9 @@ export async function DELETE(request: NextRequest) {
       WHERE tournament_id = ${tournamentId}
     `;
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: 'Tournament settings deleted successfully' 
+      message: 'Tournament settings deleted successfully'
     });
   } catch (error) {
     console.error('Error deleting tournament settings:', error);

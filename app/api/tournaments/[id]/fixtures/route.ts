@@ -12,7 +12,7 @@ export async function POST(
     const sql = getTournamentDb();
     const { id: tournamentId } = await params;
     const body = await request.json();
-    const { is_two_legged } = body;
+    const { is_two_legged, matchup_mode = 'manual' } = body;
 
     // Get teams already assigned to this tournament from teamstats
     const assignedTeams = await sql`
@@ -87,7 +87,7 @@ export async function POST(
         team_name: teamData?.team_name || 'Unknown Team'
       });
     }
-    
+
     // Sort teams by name for consistent fixture generation
     const teams = teamsData.sort((a, b) => a.team_name.localeCompare(b.team_name));
 
@@ -101,12 +101,13 @@ export async function POST(
         tournamentId,
         tournamentData.season_id,
         teams,
-        is_two_legged ?? true
+        is_two_legged ?? true,
+        matchup_mode
       );
     } else if (tournamentData.has_group_stage) {
       // Group format: Divide into groups, then round-robin within each group
       console.log('Generating group stage fixtures...');
-      
+
       // Check if manual group assignment is required
       if (tournamentData.group_assignment_mode === 'manual') {
         // Fetch manual group assignments
@@ -115,22 +116,22 @@ export async function POST(
           FROM tournament_team_groups
           WHERE tournament_id = ${tournamentId}
         `;
-        
+
         if (groupAssignments.length === 0) {
           return NextResponse.json(
             { success: false, error: 'Manual group assignment mode is enabled but no teams have been assigned to groups. Please assign teams to groups first.' },
             { status: 400 }
           );
         }
-        
+
         // Map teams to their groups
         const teamGroupMap = new Map(groupAssignments.map(a => [a.team_id, a.group_name]));
-        
+
         // Add group info to teams
         teams.forEach(team => {
           team.group = teamGroupMap.get(team.id) || null;
         });
-        
+
         // Check if all teams are assigned
         if (teams.some(t => !t.group)) {
           return NextResponse.json(
@@ -139,7 +140,7 @@ export async function POST(
           );
         }
       }
-      
+
       fixtures = generateGroupStageFixtures(
         tournamentId,
         tournamentData.season_id,
@@ -181,6 +182,7 @@ export async function POST(
           away_team_name,
           status,
           leg,
+          matchup_mode,
           created_at,
           updated_at
         ) VALUES (
@@ -195,6 +197,7 @@ export async function POST(
           ${fixture.away_team_name},
           ${fixture.status},
           ${fixture.leg},
+          ${fixture.matchup_mode || 'manual'},
           NOW(),
           NOW()
         )
@@ -203,10 +206,10 @@ export async function POST(
 
     // Create round_deadlines for each round
     const uniqueRounds = [...new Set(fixtures.map(f => `${f.round_number}_${f.leg}`))];
-    
+
     for (const roundKey of uniqueRounds) {
       const [roundNumber, leg] = roundKey.split('_');
-      
+
       await sql`
         INSERT INTO round_deadlines (
           tournament_id,
@@ -331,7 +334,8 @@ function generateRoundRobinFixtures(
   tournamentId: string,
   seasonId: string,
   teams: any[],
-  isTwoLegged: boolean
+  isTwoLegged: boolean,
+  matchupMode: string = 'manual'
 ) {
   const fixtures: any[] = [];
   const teamList = [...teams];
@@ -378,10 +382,10 @@ function generateRoundRobinFixtures(
       // Decide home/away based on balance - team with fewer home games gets home advantage
       let home = homeIdx;
       let away = awayIdx;
-      
+
       const team1Balance = homeAwayBalance[teamList[homeIdx].id];
       const team2Balance = homeAwayBalance[teamList[awayIdx].id];
-      
+
       // If one team has significantly fewer home games, give them home advantage
       if (team2Balance < team1Balance - 1) {
         // Swap: team2 gets home
@@ -414,6 +418,7 @@ function generateRoundRobinFixtures(
         away_team_name: teamList[away].team_name,
         status: 'scheduled',
         leg: 'first',
+        matchup_mode: matchupMode,
       });
     }
   }
@@ -440,6 +445,7 @@ function generateRoundRobinFixtures(
         away_team_name: firstLegFixture.home_team_name,
         status: 'scheduled',
         leg: 'second',
+        matchup_mode: matchupMode,
       });
     });
   }
@@ -457,15 +463,15 @@ function generateGroupStageFixtures(
   groupAssignmentMode?: string
 ) {
   const fixtures: any[] = [];
-  
+
   // Divide teams into groups based on mode
   const groups: any[][] = [];
-  
+
   if (groupAssignmentMode === 'manual') {
     // Manual mode: teams already have .group property assigned
     // Group teams by their assigned group
     const groupMap = new Map<string, any[]>();
-    
+
     teams.forEach(team => {
       const groupName = team.group;
       if (!groupMap.has(groupName)) {
@@ -473,7 +479,7 @@ function generateGroupStageFixtures(
       }
       groupMap.get(groupName)!.push(team);
     });
-    
+
     // Convert map to array, sorted by group name
     const sortedGroupNames = Array.from(groupMap.keys()).sort();
     sortedGroupNames.forEach(groupName => {
@@ -491,7 +497,6 @@ function generateGroupStageFixtures(
   }
 
   // Generate fixtures for each group
-  let overallRound = 0;
   groups.forEach((groupTeams, groupIndex) => {
     const groupName = String.fromCharCode(65 + groupIndex); // A, B, C, D...
     const teamList = [...groupTeams];
@@ -515,7 +520,7 @@ function generateGroupStageFixtures(
 
     // Generate first leg with randomized home/away
     for (let round = 0; round < numRounds; round++) {
-      overallRound++;
+      const roundNumber = round + 1; // Use same round numbers for all groups
       let matchNumber = 0;
 
       for (let match = 0; match < matchesPerRound; match++) {
@@ -539,10 +544,10 @@ function generateGroupStageFixtures(
         // Decide home/away based on balance
         let home = homeIdx;
         let away = awayIdx;
-        
+
         const team1Balance = homeAwayBalance[teamList[homeIdx].id];
         const team2Balance = homeAwayBalance[teamList[awayIdx].id];
-        
+
         if (team2Balance < team1Balance - 1) {
           home = awayIdx;
           away = homeIdx;
@@ -556,13 +561,13 @@ function generateGroupStageFixtures(
         homeAwayBalance[teamList[home].id]++;
         homeAwayBalance[teamList[away].id]--;
 
-        const fixtureId = `${tournamentId}_grp${groupName}_leg1_r${round + 1}_m${matchNumber}`;
+        const fixtureId = `${tournamentId}_grp${groupName}_leg1_r${roundNumber}_m${matchNumber}`;
 
         fixtures.push({
           id: fixtureId,
           tournament_id: tournamentId,
           season_id: seasonId,
-          round_number: overallRound,
+          round_number: roundNumber, // Same round number for all groups
           match_number: matchNumber,
           home_team_id: teamList[home].id,
           away_team_id: teamList[away].id,
@@ -581,7 +586,6 @@ function generateGroupStageFixtures(
       const roundsInFirstLeg = numRounds;
 
       groupFirstLegFixtures.forEach((firstLegFixture) => {
-        overallRound++;
         const secondLegRoundNumber = firstLegFixture.round_number + roundsInFirstLeg;
         const fixtureId = `${tournamentId}_grp${groupName}_leg2_r${secondLegRoundNumber}_m${firstLegFixture.match_number}`;
 
@@ -590,7 +594,7 @@ function generateGroupStageFixtures(
           id: fixtureId,
           tournament_id: tournamentId,
           season_id: seasonId,
-          round_number: overallRound,
+          round_number: secondLegRoundNumber, // Parallel round numbers for second leg too
           match_number: firstLegFixture.match_number,
           home_team_id: firstLegFixture.away_team_id, // Swapped
           away_team_id: firstLegFixture.home_team_id, // Swapped
@@ -615,14 +619,14 @@ function generateKnockoutFixtures(
   playoffTeams: number
 ) {
   const fixtures: any[] = [];
-  
+
   // Ensure playoff teams is a power of 2 (2, 4, 8, 16...)
   const validSizes = [2, 4, 8, 16, 32];
   const actualPlayoffTeams = validSizes.find(size => size >= Math.min(playoffTeams, teams.length)) || 2;
-  
+
   // Take only the number of teams that fit the bracket
   const bracketTeams = teams.slice(0, actualPlayoffTeams);
-  
+
   if (bracketTeams.length < 2) {
     return fixtures;
   }
@@ -638,7 +642,7 @@ function generateKnockoutFixtures(
 
   let currentRound = 1;
   let teamsInRound = bracketTeams.length;
-  
+
   // Generate fixtures for each knockout round
   while (teamsInRound >= 2) {
     const roundName = rounds[teamsInRound.toString()] || `Round ${currentRound}`;

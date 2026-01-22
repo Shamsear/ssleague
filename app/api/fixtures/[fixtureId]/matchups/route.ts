@@ -22,7 +22,7 @@ async function distributeMatchRewards(params: {
     .where('transaction_type', '==', 'match_reward')
     .limit(1000)
     .get();
-  
+
   const hasExistingReward = existingRewardsSnapshot.docs.some(doc => {
     const description = doc.data().description || '';
     return description.includes(`Fixture: ${fixtureId}`);
@@ -96,11 +96,11 @@ async function distributeMatchRewards(params: {
     const teamSeasonDocId = `${home_team_id}_${seasonId}`;
     const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonDocId);
     const teamSeasonDoc = await teamSeasonRef.get();
-    
+
     if (teamSeasonDoc.exists) {
       const currentFootballBudget = teamSeasonDoc.data()?.football_budget || 0;
       const currentRealBudget = teamSeasonDoc.data()?.real_player_budget || 0;
-      
+
       await teamSeasonRef.update({
         football_budget: currentFootballBudget + homeECoin,
         real_player_budget: currentRealBudget + homeSSCoin,
@@ -174,11 +174,11 @@ async function distributeMatchRewards(params: {
     const teamSeasonDocId = `${away_team_id}_${seasonId}`;
     const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonDocId);
     const teamSeasonDoc = await teamSeasonRef.get();
-    
+
     if (teamSeasonDoc.exists) {
       const currentFootballBudget = teamSeasonDoc.data()?.football_budget || 0;
       const currentRealBudget = teamSeasonDoc.data()?.real_player_budget || 0;
-      
+
       await teamSeasonRef.update({
         football_budget: currentFootballBudget + awayECoin,
         real_player_budget: currentRealBudget + awaySSCoin,
@@ -300,23 +300,23 @@ export async function POST(
       );
     }
 
-    // Get fixture to extract season_id and round_number
+    // Get fixture to extract season_id, round_number, and tournament_id
     const fixtures = await sql`
-      SELECT season_id, round_number, home_team_id, away_team_id, home_team_name, away_team_name 
+      SELECT season_id, round_number, tournament_id, home_team_id, away_team_id, home_team_name, away_team_name 
       FROM fixtures 
       WHERE id = ${fixtureId} 
       LIMIT 1
     `;
-    
+
     if (fixtures.length === 0) {
       return NextResponse.json(
         { error: 'Fixture not found' },
         { status: 404 }
       );
     }
-    
+
     const fixture = fixtures[0];
-    const { season_id: seasonId, round_number: roundNumber, home_team_id, away_team_id, home_team_name, away_team_name } = fixture;
+    const { season_id: seasonId, round_number: roundNumber, tournament_id: tournamentId, home_team_id, away_team_id, home_team_name, away_team_name } = fixture;
 
     // Check if matchups already exist
     const existingMatchups = await sql`
@@ -331,7 +331,7 @@ export async function POST(
     if (matchupsExist && !allow_overwrite) {
       console.log('⚠️ Race condition detected: Matchups already exist');
       return NextResponse.json(
-        { 
+        {
           error: 'MATCHUPS_ALREADY_EXIST',
           message: 'Fixture has already been created by the other team'
         },
@@ -356,6 +356,7 @@ export async function POST(
         INSERT INTO matchups (
           fixture_id,
           season_id,
+          tournament_id,
           round_number,
           home_player_id,
           home_player_name,
@@ -368,6 +369,7 @@ export async function POST(
         ) VALUES (
           ${fixtureId},
           ${seasonId},
+          ${tournamentId},
           ${roundNumber},
           ${matchup.home_player_id},
           ${matchup.home_player_name},
@@ -453,8 +455,8 @@ export async function POST(
 
     console.log(`✅ Matchups ${wasOverwritten ? 'updated' : 'created'} successfully by ${created_by}`);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: wasOverwritten ? 'Matchups updated successfully' : 'Matchups created successfully',
       was_overwritten: wasOverwritten
     });
@@ -547,16 +549,16 @@ export async function PATCH(
       WHERE f.id = ${fixtureId}
       LIMIT 1
     `;
-    
+
     if (fixtures.length === 0) {
       return NextResponse.json(
         { error: 'Fixture not found' },
         { status: 404 }
       );
     }
-    
+
     const { season_id, round_number, leg, home_penalty_goals, away_penalty_goals } = fixtures[0];
-    
+
     // Get round deadlines
     const deadlines = await sql`
       SELECT scheduled_date, result_entry_deadline_time, result_entry_deadline_day_offset
@@ -566,33 +568,33 @@ export async function PATCH(
       AND leg = ${leg}
       LIMIT 1
     `;
-    
+
     // Deadline check disabled - phase logic on frontend controls access
     // The frontend already checks if we're in result_entry phase before allowing submission
     if (deadlines.length > 0 && deadlines[0].scheduled_date) {
       const deadline = deadlines[0];
-      
+
       // Calculate result entry deadline for logging
       const resultDate = new Date(deadline.scheduled_date);
       resultDate.setDate(resultDate.getDate() + (deadline.result_entry_deadline_day_offset || 2));
       const resultDateStr = resultDate.toISOString().split('T')[0];
-      
+
       // Parse deadline time (HH:MM format)
       const [hours, minutes] = deadline.result_entry_deadline_time.split(':').map(Number);
-      
+
       // Create deadline in IST (UTC+5:30)
       const resultDeadline = new Date(resultDateStr);
       resultDeadline.setUTCHours(hours - 5, minutes - 30, 0, 0); // Convert IST to UTC
-      
+
       const now = new Date();
-      
+
       console.log('Result entry - Deadline info:', {
         now: now.toISOString(),
         deadline: resultDeadline.toISOString(),
         isPassed: now >= resultDeadline,
         note: 'Deadline check disabled - controlled by frontend phase logic'
       });
-      
+
       // Deadline check commented out - frontend phase logic controls access
       // if (now >= resultDeadline) {
       //   return NextResponse.json(
@@ -637,7 +639,7 @@ export async function PATCH(
       FROM matchups
       WHERE fixture_id = ${fixtureId}
     `;
-    
+
     const homeSubPenalty = Number(matchupsWithPenalties[0]?.total_home_sub_penalty) || 0;
     const awaySubPenalty = Number(matchupsWithPenalties[0]?.total_away_sub_penalty) || 0;
 
@@ -689,7 +691,7 @@ export async function PATCH(
     try {
       console.log('📊 Updating team stats...');
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-      
+
       // Get fixture details for team stats update
       const fixtureDetails = await sql`
         SELECT home_team_id, away_team_id
@@ -697,7 +699,7 @@ export async function PATCH(
         WHERE id = ${fixtureId}
         LIMIT 1
       `;
-      
+
       if (fixtureDetails.length > 0) {
         const teamStatsResponse = await fetch(`${baseUrl}/api/teamstats/update-stats`, {
           method: 'POST',
@@ -754,8 +756,8 @@ export async function PATCH(
       // Don't fail the entire request if fantasy calculation fails
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Results saved successfully',
       fixture_status: 'completed'
     });

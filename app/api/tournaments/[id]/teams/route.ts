@@ -24,16 +24,18 @@ export async function GET(
 
     const seasonId = tournament[0].season_id;
 
-    // Get all teams for this season with their tournament assignment status
+    // Get all unique teams for this season with their participation status in THIS tournament
+    // Use DISTINCT ON to get one row per team, prioritizing the current tournament
     const teams = await sql`
-      SELECT 
+      SELECT DISTINCT ON (team_id)
         team_id,
         team_name,
-        tournament_id,
         CASE WHEN tournament_id = ${tournamentId} THEN true ELSE false END as is_participating
       FROM teamstats
       WHERE season_id = ${seasonId}
-      ORDER BY team_name ASC
+      ORDER BY team_id, 
+               CASE WHEN tournament_id = ${tournamentId} THEN 0 ELSE 1 END,
+               team_name ASC
     `;
 
     return NextResponse.json({
@@ -83,30 +85,90 @@ export async function POST(
 
     const seasonId = tournament[0].season_id;
 
-    // First, remove all existing team assignments for this tournament
-    await sql`
-      UPDATE teamstats
-      SET tournament_id = NULL
+    // Get currently assigned teams for this tournament
+    const currentTeams = await sql`
+      SELECT team_id 
+      FROM teamstats
       WHERE tournament_id = ${tournamentId}
         AND season_id = ${seasonId}
     `;
 
-    // Then assign the selected teams to this tournament
-    if (team_ids.length > 0) {
-      for (const teamId of team_ids) {
-        await sql`
-          UPDATE teamstats
-          SET tournament_id = ${tournamentId}
-          WHERE team_id = ${teamId}
+    const currentTeamIds = new Set(currentTeams.map((t: any) => t.team_id));
+    const newTeamIds = new Set(team_ids);
+
+    // Determine which teams to add and which to remove
+    const teamsToAdd = team_ids.filter(id => !currentTeamIds.has(id));
+    const teamsToRemove = Array.from(currentTeamIds).filter(id => !newTeamIds.has(id));
+
+    console.log(`Tournament ${tournamentId}:`);
+    console.log(`  - Current teams: ${currentTeamIds.size}`);
+    console.log(`  - New selection: ${newTeamIds.size}`);
+    console.log(`  - To add: ${teamsToAdd.length}`);
+    console.log(`  - To remove: ${teamsToRemove.length}`);
+
+    // Remove teams that are no longer selected (preserves their stats in other tournaments)
+    if (teamsToRemove.length > 0) {
+      await sql`
+        DELETE FROM teamstats
+        WHERE tournament_id = ${tournamentId}
+          AND season_id = ${seasonId}
+          AND team_id = ANY(${teamsToRemove})
+      `;
+      console.log(`  ✅ Removed ${teamsToRemove.length} teams from tournament`);
+    }
+
+    // Add new teams to the tournament
+    if (teamsToAdd.length > 0) {
+      for (const teamId of teamsToAdd) {
+        // Get team name from existing teamstats or teams table
+        const existingTeam = await sql`
+          SELECT team_name 
+          FROM teamstats 
+          WHERE team_id = ${teamId} 
             AND season_id = ${seasonId}
+          LIMIT 1
+        `;
+
+        const teamName = existingTeam[0]?.team_name || 'Unknown Team';
+
+        // Insert new entry with ID format: teamid_seasonid_tournamentid
+        await sql`
+          INSERT INTO teamstats (
+            id, team_id, tournament_id, season_id, team_name,
+            position, points, matches_played,
+            wins, draws, losses,
+            goals_for, goals_against, goal_difference,
+            created_at, updated_at
+          )
+          VALUES (
+            ${teamId + '_' + seasonId + '_' + tournamentId},
+            ${teamId},
+            ${tournamentId},
+            ${seasonId},
+            ${teamName},
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+            NOW(), NOW()
+          )
+          ON CONFLICT (team_id, season_id, tournament_id) 
+          DO UPDATE SET
+            team_name = EXCLUDED.team_name,
+            updated_at = NOW()
         `;
       }
+      console.log(`  ✅ Added ${teamsToAdd.length} new teams to tournament`);
     }
 
     return NextResponse.json({
       success: true,
-      message: `${team_ids.length} team(s) assigned to tournament`,
-      assigned_count: team_ids.length
+      message: `Tournament updated: ${teamsToAdd.length} added, ${teamsToRemove.length} removed`,
+      assigned_count: team_ids.length,
+      changes: {
+        added: teamsToAdd.length,
+        removed: teamsToRemove.length,
+        unchanged: team_ids.length - teamsToAdd.length
+      }
     });
   } catch (error) {
     console.error('Error assigning teams to tournament:', error);

@@ -1,0 +1,127 @@
+🔍 Checking tournaments table schema...
+
+📋 Columns in tournaments table:
+================================
+  id                        text                 NOT NULL
+  season_id                 text                 NOT NULL
+  tournament_type           text                 NOT NULL
+  tournament_name           text                 NOT NULL
+  tournament_code           text                 NULL
+  status                    text                 NULL
+  start_date                timestamp without time zone NULL
+  end_date                  timestamp without time zone NULL
+  description               text                 NULL
+  is_primary                boolean              NULL
+  display_order             integer              NULL
+  created_at                timestamp without time zone NULL
+  updated_at                timestamp without time zone NULL
+  include_in_fantasy        boolean              NULL
+  has_group_stage           boolean              NULL
+  number_of_groups          integer              NULL
+  teams_per_group           integer              NULL
+  teams_advancing_per_group integer              NULL
+  has_knockout_stage        boolean              NULL
+  playoff_teams             integer              NULL
+  direct_semifinal_teams    integer              NULL
+  qualification_threshold   integer              NULL
+  is_pure_knockout          boolean              NULL
+  include_in_awards         boolean              NULL
+  has_league_stage          boolean              NULL
+  group_assignment_mode     character varying    NULL
+  is_historical             boolean              NULL
+  rewards                   jsonb                NULL
+  number_of_teams           integer              NULL
+
+📊 Sample data (first row):
+{
+  "id": "SSPSLS16EL",
+  "season_id": "SSPSLS16",
+  "tournament_type": "uel",
+  "tournament_name": "SS Super League S16 Pro League",
+  "tournament_code": "SSPSLS16EL",
+  "status": "active",
+  "start_date": "2026-01-19T18:00:00.000Z",
+  "end_date": null,
+  "description": null,
+  "is_primary": false,
+  "display_order": 1,
+  "created_at": "2026-01-18T17:15:19.340Z",
+  "updated_at": "2026-01-18T17:15:43.753Z",
+  "include_in_fantasy": true,
+  "has_group_stage": true,
+  "number_of_groups": 1,
+  "teams_per_group": 6,
+  "teams_advancing_per_group": 2,
+  "has_knockout_stage": true,
+  "playoff_teams": 2,
+  "direct_semifinal_teams": 2,
+  "qualification_threshold": 75,
+  "is_pure_knockout": false,
+  "include_in_awards": true,
+  "has_league_stage": false,
+  "group_assignment_mode": "manual",
+  "is_historical": false,
+  "rewards": {
+    "match_results": {
+      "win_ecoin": 30,
+      "draw_ecoin": 20,
+      "loss_ecoin": 10,
+      "win_sscoin": 6,
+      "draw_sscoin": 4,
+      "loss_sscoin": 2
+    },
+    "knockout_stages": {
+      "winner": {
+        "ecoin": 500,
+        "sscoin": 0
+      },
+      "runner_up": {
+        "ecoin": 350,
+        "sscoin": 0
+      },
+      "semi_final_loser": {
+        "ecoin": 1500,
+        "sscoin": 150
+      },
+      "round_of_16_loser": {
+        "ecoin": 400,
+        "sscoin": 40
+      },
+      "round_of_32_loser": {
+        "ecoin": 200,
+        "sscoin": 20
+      },
+      "quarter_final_loser": {
+        "ecoin": 750,
+        "sscoin": 75
+      }
+    },
+    "completion_bonus": {
+      "ecoin": 0,
+      "sscoin": 0
+    },
+    "league_positions": [
+      {
+        "ecoin": 200,
+        "sscoin": 0,
+        "position": 3
+      },
+      {
+        "ecoin": 200,
+        "sscoin": 0,
+        "position": 4
+      },
+      {
+        "ecoin": 200,
+        "sscoin": 0,
+        "position": 5
+      },
+      {
+        "ecoin": 200,
+        "sscoin": 0,
+        "position": 6
+      }
+    ]
+  },
+  "number_of_teams": 6
+}

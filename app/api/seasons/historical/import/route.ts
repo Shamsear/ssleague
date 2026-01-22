@@ -79,7 +79,7 @@ async function updateProgress(importId: string, updates: Partial<ImportProgress>
   try {
     const progressRef = adminDb.collection('import_progress').doc(importId);
     const progressDoc = await progressRef.get();
-    
+
     if (progressDoc.exists) {
       const current = progressDoc.data() as ImportProgress;
       const updated = { ...current, ...updates };
@@ -100,18 +100,18 @@ async function updateProgress(importId: string, updates: Partial<ImportProgress>
 // Generate season ID (SSPSLS12 for season 12, etc.)
 async function generateSeasonId(seasonData: ImportSeasonData['seasonInfo'], existingSeasonIds?: string[]): Promise<string> {
   const prefix = 'SSPSLS';
-  
+
   // If season number is provided, use it
   if (seasonData.seasonNumber) {
     return `${prefix}${seasonData.seasonNumber}`;
   }
-  
+
   // Otherwise, try to extract from season name
   const match = seasonData.name?.match(/\d+/);
   if (match) {
     return `${prefix}${match[0]}`;
   }
-  
+
   // Fallback: find highest season number and increment
   // If existing IDs provided (optimization), use them
   if (existingSeasonIds) {
@@ -126,11 +126,11 @@ async function generateSeasonId(seasonData: ImportSeasonData['seasonInfo'], exis
     });
     return `${prefix}${maxNumber + 1}`;
   }
-  
+
   // Fallback to querying (shouldn't happen with proper seasonNumber)
   const seasonsQuery = await adminDb.collection('seasons').get();
   let maxNumber = 0;
-  
+
   seasonsQuery.forEach((doc) => {
     const id = doc.id;
     if (id.startsWith(prefix)) {
@@ -140,7 +140,7 @@ async function generateSeasonId(seasonData: ImportSeasonData['seasonInfo'], exis
       }
     }
   });
-  
+
   return `${prefix}${maxNumber + 1}`;
 }
 
@@ -149,7 +149,7 @@ async function createSeason(seasonData: ImportSeasonData['seasonInfo']): Promise
   console.log('🆔 Generating season ID...');
   const seasonId = await generateSeasonId(seasonData);
   console.log('✅ Generated season ID:', seasonId);
-  
+
   console.log('📝 Preparing season document...');
   const seasonDoc = {
     season_number: seasonData.seasonNumber,
@@ -175,7 +175,7 @@ async function createSeason(seasonData: ImportSeasonData['seasonInfo']): Promise
     console.error('Error details:', error.message, error.stack);
     throw error;
   }
-  
+
   return seasonId;
 }
 
@@ -200,37 +200,37 @@ function chunkArray<T>(array: T[], chunkSize: number): T[][] {
 
 // Smart detection: Check if this is a re-import by sampling first 10 players
 async function detectReimport(
-  playerNames: string[], 
+  playerNames: string[],
   teamNames: string[]
 ): Promise<{ isReimport: boolean; matchRate: number; sampleSize: number }> {
   if (playerNames.length === 0 && teamNames.length === 0) {
     return { isReimport: false, matchRate: 0, sampleSize: 0 };
   }
-  
+
   console.log('🔍 Smart detection: Checking if this is a re-import...');
   const startTime = Date.now();
-  
+
   // Sample first 10 players (or fewer if less available)
   const sampleSize = Math.min(10, playerNames.length);
   const sampleNames = playerNames.slice(0, sampleSize);
-  
+
   try {
     // Quick query to check how many of the sample exist
     const sampleQuery = await adminDb.collection('realplayers')
       .where('name', 'in', sampleNames)
       .get();
-    
+
     const matchCount = sampleQuery.size;
     const matchRate = matchCount / sampleSize;
     const isReimport = matchRate >= 0.8; // 80% threshold
-    
+
     const duration = Date.now() - startTime;
     console.log(`✅ Detection complete in ${duration}ms:`);
     console.log(`   - Sample size: ${sampleSize}`);
     console.log(`   - Matches found: ${matchCount}`);
     console.log(`   - Match rate: ${(matchRate * 100).toFixed(1)}%`);
     console.log(`   - Classification: ${isReimport ? 'RE-IMPORT' : 'NEW IMPORT'}`);
-    
+
     return { isReimport, matchRate, sampleSize };
   } catch (error) {
     console.error('❌ Error in smart detection:', error);
@@ -246,7 +246,7 @@ async function batchLoadForReimport(
 ): Promise<BatchLookupData> {
   console.log('📦 Batch loading for RE-IMPORT (optimized path)...');
   const startTime = Date.now();
-  
+
   const result: BatchLookupData = {
     existingTeams: new Map(),
     existingPlayers: new Map(),
@@ -255,27 +255,27 @@ async function batchLoadForReimport(
     allPlayerIds: [],
     allSeasonIds: []
   };
-  
+
   try {
     // For re-imports, we skip selective queries and just load IDs + stats
     // This assumes entities already exist (which detection confirmed)
-    
+
     const queries: Promise<any>[] = [];
-    
+
     // 1. Get ALL players with full data (needed for player linking/matching)
     console.log('   Loading all players (full data for matching)...');
     queries.push(
       adminDb.collection('realplayers')
         .get()
     );
-    
+
     // 2. Get ALL teams with full data (needed for linking)
     console.log('   Loading all teams (full data for linking)...');
     queries.push(
       adminDb.collection('teams')
         .get()
     );
-    
+
     // 3. Get season IDs only
     console.log('   Loading season IDs...');
     queries.push(
@@ -283,7 +283,7 @@ async function batchLoadForReimport(
         .select()
         .get()
     );
-    
+
     // 4. Load stats if season exists
     if (!isNewSeason) {
       console.log(`   Loading stats for existing season ${seasonId}...`);
@@ -293,12 +293,12 @@ async function batchLoadForReimport(
           .get()
       );
     }
-    
+
     // Execute all queries in parallel
     const results = await Promise.all(queries);
-    
+
     let resultIndex = 0;
-    
+
     // Process players - store full data for matching
     const playersSnapshot = results[resultIndex++];
     playersSnapshot.forEach((doc: any) => {
@@ -315,7 +315,7 @@ async function batchLoadForReimport(
         }
       }
     });
-    
+
     // Process teams - store full data for linking
     const teamsSnapshot = results[resultIndex++];
     teamsSnapshot.forEach((doc: any) => {
@@ -327,13 +327,13 @@ async function batchLoadForReimport(
         doc: data
       });
     });
-    
+
     // Process season IDs
     const seasonsSnapshot = results[resultIndex++];
     seasonsSnapshot.forEach((doc: any) => {
       result.allSeasonIds.push(doc.id);
     });
-    
+
     // Process stats (if loaded)
     if (!isNewSeason && resultIndex < results.length) {
       const statsSnapshot = results[resultIndex++];
@@ -345,7 +345,7 @@ async function batchLoadForReimport(
         }
       });
     }
-    
+
     const duration = Date.now() - startTime;
     console.log(`✅ Re-import batch load complete in ${duration}ms:`);
     console.log(`   - Player IDs: ${result.allPlayerIds.length}`);
@@ -353,7 +353,7 @@ async function batchLoadForReimport(
     console.log(`   - Season IDs: ${result.allSeasonIds.length}`);
     console.log(`   - Stats: ${result.existingStats.size}`);
     console.log(`   - Note: Skipped selective queries (entities assumed to exist)`);
-    
+
     return result;
   } catch (error) {
     console.error('❌ Error in re-import batch load:', error);
@@ -364,14 +364,14 @@ async function batchLoadForReimport(
 // Batch load all existing entities to minimize Firebase reads
 // Uses SELECTIVE LOADING - only queries entities that might match import data
 async function batchLoadExistingEntities(
-  teamNames: string[], 
-  playerNames: string[], 
+  teamNames: string[],
+  playerNames: string[],
   seasonId: string,
   isNewSeason: boolean = false
 ): Promise<BatchLookupData> {
   console.log('🔍 Batch loading existing entities (SELECTIVE MODE)...');
   const startTime = Date.now();
-  
+
   const result: BatchLookupData = {
     existingTeams: new Map(),
     existingPlayers: new Map(),
@@ -380,19 +380,19 @@ async function batchLoadExistingEntities(
     allPlayerIds: [],
     allSeasonIds: []
   };
-  
+
   try {
     // Prepare queries
     const queries: Promise<any>[] = [];
-    
+
     // 1. Query for SPECIFIC teams (selective loading)
     // Firestore 'in' operator supports max 30 items, so chunk if needed
     if (teamNames.length > 0) {
       const uniqueTeamNames = [...new Set(teamNames.filter(n => n).map(n => n.toLowerCase()))];
       const teamChunks = chunkArray(uniqueTeamNames, 30); // Max 30 per 'in' query
-      
+
       console.log(`   Querying ${uniqueTeamNames.length} specific teams in ${teamChunks.length} chunk(s)`);
-      
+
       teamChunks.forEach((chunk) => {
         queries.push(
           adminDb.collection('teams')
@@ -405,14 +405,14 @@ async function batchLoadExistingEntities(
         );
       });
     }
-    
+
     // 2. Query for SPECIFIC players (selective loading)
     if (playerNames.length > 0) {
       const uniquePlayerNames = [...new Set(playerNames)];
       const playerChunks = chunkArray(uniquePlayerNames, 30);
-      
+
       console.log(`   Querying ${uniquePlayerNames.length} specific players in ${playerChunks.length} chunk(s)`);
-      
+
       playerChunks.forEach((chunk) => {
         queries.push(
           adminDb.collection('realplayers')
@@ -421,26 +421,26 @@ async function batchLoadExistingEntities(
         );
       });
     }
-    
+
     // 3. Get ALL players with full data (needed for player matching)
     queries.push(
       adminDb.collection('realplayers')
         .get()
     );
-    
+
     // 4. Get ALL teams for linking and counter (need full data for team linking)
     queries.push(
       adminDb.collection('teams')
         .get()
     );
-    
+
     // 5. Get season IDs only
     queries.push(
       adminDb.collection('seasons')
         .select()
         .get()
     );
-    
+
     // 6. Stats query - skip if it's a new season (won't have stats yet)
     if (!isNewSeason) {
       console.log(`   Querying stats for season ${seasonId}`);
@@ -452,16 +452,16 @@ async function batchLoadExistingEntities(
     } else {
       console.log(`   Skipping stats query (new season)`);
     }
-    
+
     // Execute all queries in parallel
     const results = await Promise.all(queries);
-    
+
     // Calculate result indices based on query structure
     const teamChunkCount = teamNames.length > 0 ? Math.ceil([...new Set(teamNames.filter(n => n).map(n => n.toLowerCase()))].length / 30) : 0;
     const playerChunkCount = playerNames.length > 0 ? Math.ceil([...new Set(playerNames.filter(n => n))].length / 30) : 0;
-    
+
     let resultIndex = 0;
-    
+
     // Process team query results (may be multiple chunks)
     for (let i = 0; i < teamChunkCount; i++) {
       const teamsSnapshot = results[resultIndex++];
@@ -476,7 +476,7 @@ async function batchLoadExistingEntities(
         }
       });
     }
-    
+
     // Process player query results (may be multiple chunks)
     for (let i = 0; i < playerChunkCount; i++) {
       const playersSnapshot = results[resultIndex++];
@@ -491,14 +491,14 @@ async function batchLoadExistingEntities(
         }
       });
     }
-    
+
     // Process ALL players (for counter and matching) - merge with existing players
     const allPlayersSnapshot = results[resultIndex++];
     allPlayersSnapshot.forEach((doc: any) => {
       const data = doc.data();
       if (data.player_id) {
         result.allPlayerIds.push(data.player_id);
-        
+
         // Also add to existingPlayers map if not already there (for matching by name)
         const playerName = data.name?.toLowerCase();
         if (playerName && !result.existingPlayers.has(playerName)) {
@@ -509,13 +509,13 @@ async function batchLoadExistingEntities(
         }
       }
     });
-    
+
     // Process ALL teams (for counter and linking) - merge with existing teams
     const allTeamsSnapshot = results[resultIndex++];
     allTeamsSnapshot.forEach((doc: any) => {
       const data = doc.data();
       result.allTeamIds.push(doc.id);
-      
+
       // Also add to existingTeams map if not already there (for linking by ID)
       const teamName = data.team_name?.toLowerCase();
       if (teamName && !result.existingTeams.has(teamName)) {
@@ -525,13 +525,13 @@ async function batchLoadExistingEntities(
         });
       }
     });
-    
+
     // Process season IDs
     const seasonsSnapshot = results[resultIndex++];
     seasonsSnapshot.forEach((doc: any) => {
       result.allSeasonIds.push(doc.id);
     });
-    
+
     // Process stats (if query was executed)
     if (!isNewSeason && resultIndex < results.length) {
       const statsSnapshot = results[resultIndex++];
@@ -543,14 +543,14 @@ async function batchLoadExistingEntities(
         }
       });
     }
-    
+
     const duration = Date.now() - startTime;
     console.log(`✅ Batch load complete in ${duration}ms:`);
     console.log(`   - Teams: ${result.existingTeams.size} existing, ${result.allTeamIds.length} total IDs`);
     console.log(`   - Players: ${result.existingPlayers.size} existing, ${result.allPlayerIds.length} total IDs`);
     console.log(`   - Stats: ${result.existingStats.size} existing for season`);
     console.log(`   - Seasons: ${result.allSeasonIds.length} total IDs`);
-    
+
     return result;
   } catch (error) {
     console.error('❌ Error in batch load:', error);
@@ -565,7 +565,7 @@ let nextTeamIdNumber: number | null = null;
 function initializeTeamIdCounter(allTeamIds: string[]): void {
   const prefix = 'SSPSLT';
   let maxNumber = 0;
-  
+
   allTeamIds.forEach((id) => {
     if (id.startsWith(prefix)) {
       const numberPart = parseInt(id.substring(prefix.length));
@@ -574,24 +574,24 @@ function initializeTeamIdCounter(allTeamIds: string[]): void {
       }
     }
   });
-  
+
   nextTeamIdNumber = maxNumber + 1;
   console.log(`🔢 Initialized team ID counter at: ${nextTeamIdNumber}`);
 }
 
 async function generateNewTeamId(): Promise<string> {
   const prefix = 'SSPSLT';
-  
+
   try {
     // Counter should be initialized before calling this
     if (nextTeamIdNumber === null) {
       throw new Error('Team ID counter not initialized. Call initializeTeamIdCounter first.');
     }
-    
+
     // Increment and use the counter
     const currentNumber = nextTeamIdNumber;
     nextTeamIdNumber++;
-    
+
     const paddedNumber = currentNumber.toString().padStart(4, '0');
     const newId = `${prefix}${paddedNumber}`;
     console.log(`🆔 Generated team ID: ${newId}`);
@@ -608,7 +608,7 @@ async function generateNewTeamId(): Promise<string> {
 // (e.g., "TEAM fc" -> "Team FC", "st james" -> "St James")
 function toTitleCase(text: string): string {
   const abbreviations = ['FC', 'CF', 'ST', 'AC', 'SC', 'AFC', 'RFC', 'DC', 'BC', 'MC', 'EC'];
-  
+
   return text
     .toLowerCase()
     .split(' ')
@@ -626,21 +626,21 @@ function toTitleCase(text: string): string {
 
 // Helper function to import teams and create them as database entities with login credentials
 async function importTeams(
-  seasonId: string, 
-  teams: ImportTeamData[], 
-  importId: string, 
+  seasonId: string,
+  teams: ImportTeamData[],
+  importId: string,
   batchLookup: BatchLookupData
 ): Promise<Map<string, string>> {
   let batch = adminDb.batch();
   const teamMap = new Map<string, string>(); // team_name -> teamId mapping
-  
+
   for (let i = 0; i < teams.length; i++) {
     const team = teams[i];
-    
+
     // Normalize team name to Title Case (e.g., "TEAM fc" -> "Team Fc")
     const normalizedTeamName = toTitleCase(team.team_name);
     console.log(`Processing team: "${team.team_name}" → "${normalizedTeamName}"`);
-    
+
     // Check if manually linked to existing team
     let existingTeam = null;
     if (team.linked_team_id) {
@@ -648,7 +648,7 @@ async function importTeams(
       // The linked team should already be in the batch lookup if it exists
       const linkedTeam = Array.from(batchLookup.existingTeams.values())
         .find(t => t.teamId === team.linked_team_id);
-      
+
       if (linkedTeam) {
         existingTeam = linkedTeam;
         console.log(`🔗 Manually linked team: "${team.team_name}" → "${existingTeam.doc.team_name}" (${team.linked_team_id})`);
@@ -656,27 +656,27 @@ async function importTeams(
         console.log(`⚠️ Warning: Linked team ID ${team.linked_team_id} not found in batch lookup for "${team.team_name}"`);
       }
     }
-    
+
     // If not manually linked, check if team exists by name using batch lookup
     if (!existingTeam && team.team_name) {
       existingTeam = batchLookup.existingTeams.get(team.team_name.toLowerCase());
     }
-    
+
     let teamId: string;
     let isExistingTeam = false;
-    
+
     if (existingTeam) {
       // Team exists, use existing team ID and update it
       teamId = existingTeam.teamId;
       isExistingTeam = true;
       teamMap.set(normalizedTeamName, teamId);
-      
+
       console.log(`Found existing team: ${normalizedTeamName} (${teamId})`);
-      
+
       // Update existing team - only permanent data
       const existingData = existingTeam.doc;
       const updatedSeasons = existingData.seasons ? [...existingData.seasons, seasonId] : [seasonId];
-      
+
       // Check if team name has changed
       const nameChanged = existingData.team_name !== normalizedTeamName;
       const updateData: any = {
@@ -685,7 +685,7 @@ async function importTeams(
         total_seasons_participated: updatedSeasons.length,
         updated_at: FieldValue.serverTimestamp()
       };
-      
+
       // If name changed, track it in name history and update current name
       if (nameChanged) {
         console.log(`   🔄 Team name changed: "${existingData.team_name}" → "${normalizedTeamName}"`);
@@ -697,18 +697,19 @@ async function importTeams(
         updateData.name_history = nameHistory;
         updateData.previous_names = nameHistory; // Also store as previous_names for easier querying
       }
-      
+
       const teamRef = adminDb.collection('teams').doc(teamId);
       batch.update(teamRef, updateData);
-      
+
       // Create separate teamstats document for this season
-      const teamStatsDocId = `${teamId}_${seasonId}`;
+      const tournamentId = 'historical';
+      const teamStatsDocId = `${teamId}_${seasonId}_${tournamentId}`;
       const sql = getTournamentDb();
-      
+
       // Helper function to parse trophy strings like "UCL CHAMPIONS" or "CUP RUNNERS UP"
       const parseTrophyName = (rawName: string): { name: string; position: string | null } => {
         const normalized = rawName.trim().toUpperCase();
-        
+
         // Check for common position indicators
         if (normalized.endsWith('CHAMPIONS') || normalized.endsWith('CHAMPION')) {
           const trophyName = normalized.replace(/CHAMPIONS?$/, '').trim();
@@ -726,11 +727,11 @@ async function importTeams(
           const trophyName = normalized.replace(/THIRD PLACE$/, '').trim();
           return { name: trophyName, position: 'Third Place' };
         }
-        
+
         // If no position indicator found, return name with null position
         return { name: rawName.trim(), position: null };
       };
-      
+
       // Parse team trophies/cups from Excel (cup_1, cup_2, etc.)
       const teamTrophies: Array<{ type: string; name: string; position: string | null }> = [];
       Object.keys(team).forEach((key) => {
@@ -758,7 +759,7 @@ async function importTeams(
           }
         }
       });
-      
+
       await sql`
         INSERT INTO teamstats (
           id, team_id, season_id, team_name, tournament_id,
@@ -773,7 +774,7 @@ async function importTeams(
           ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
           NOW(), NOW()
         )
-        ON CONFLICT (team_id, season_id) DO UPDATE
+        ON CONFLICT (team_id, season_id, tournament_id) DO UPDATE
         SET
           team_name = EXCLUDED.team_name,
           points = EXCLUDED.points,
@@ -787,9 +788,9 @@ async function importTeams(
           position = EXCLUDED.position,
           updated_at = NOW()
       `;
-      
+
       console.log(`✅ Updated teamstats in NEON for: ${normalizedTeamName}`);
-      
+
       // ✅ Insert trophies into team_trophies table with separate name and position
       // 1. Add league position trophies
       const leaguePosition = team.rank || team.position;
@@ -814,7 +815,7 @@ async function importTeams(
           ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
         `;
       }
-      
+
       // 2. Add cup trophies from Excel with separate name and position
       for (const trophy of teamTrophies) {
         await sql`
@@ -827,25 +828,25 @@ async function importTeams(
           ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
         `;
       }
-      
+
       console.log(`✅ Inserted ${teamTrophies.length + (leaguePosition <= 2 ? 1 : 0)} trophies for ${normalizedTeamName}`);
-      
+
     } else {
       // Team doesn't exist, create new team with custom ID
       teamId = await generateNewTeamId();
       teamMap.set(normalizedTeamName, teamId);
-      
+
       console.log(`Creating new team: ${normalizedTeamName} (${teamId})`);
-      
+
       // Create Firebase Auth user and Firestore user document for the team
       try {
         const username = normalizedTeamName.toLowerCase().replace(/\s+/g, ''); // Use team name as username (lowercase, no spaces)
         const email = `${(username || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@historical.team`;
         const password = (normalizedTeamName.length >= 6 ? normalizedTeamName : `${normalizedTeamName}123`).toLowerCase(); // Ensure password is at least 6 characters and lowercase
-        
+
         let userRecord;
         let userUid: string;
-        
+
         // Check if user with this email already exists
         try {
           userRecord = await admin.auth().getUserByEmail(email);
@@ -865,7 +866,7 @@ async function importTeams(
             throw getUserError;
           }
         }
-        
+
         // Create/Update user document in Firestore
         const userDoc: any = {
           uid: userUid,
@@ -876,27 +877,27 @@ async function importTeams(
           isApproved: true, // Auto-approve historical teams
           updatedAt: FieldValue.serverTimestamp(),
           createdAt: FieldValue.serverTimestamp(), // Always set for new imports
-          
+
           // Team-specific data
           teamName: normalizedTeamName,
           teamId: teamId,
           logoUrl: '',
           players: [],
-          
+
           // Mark as historical
           isHistorical: true,
           source: 'historical_import'
         }
-        
+
         console.log(`👤 Creating user document:`);
         console.log(`   - Email: ${email}`);
         console.log(`   - Username: ${username}`);
         console.log(`   - UID: ${userUid}`);
         console.log(`   - Password: ${password}`);
-        
+
         const userRef = adminDb.collection('users').doc(userUid);
         batch.set(userRef, userDoc, { merge: true });
-        
+
         // CRITICAL: Create username entry in usernames collection for login
         const usernameRef = adminDb.collection('usernames').doc(username);
         const usernameDoc = {
@@ -904,54 +905,54 @@ async function importTeams(
           createdAt: FieldValue.serverTimestamp()
         };
         batch.set(usernameRef, usernameDoc);
-        
+
         console.log(`✅ User document queued for batch write: ${normalizedTeamName}`);
         console.log(`✅ Username entry queued: ${username} -> ${userUid}`);
-        
+
         // Create team document with reference to user - only permanent data
         const teamDoc = {
           id: teamId,
           team_name: normalizedTeamName,
           owner_name: team.owner_name,
-          
+
           // Link to Firebase Auth user
           userId: userUid,
           userEmail: email,
           hasUserAccount: true,
-          
+
           // Season relationship
           seasons: [seasonId],       // Array to track which seasons this team participated in
           current_season_id: seasonId,
-          
+
           // Team metadata
           is_active: true,
           is_historical: true,
           created_at: FieldValue.serverTimestamp(),
           updated_at: FieldValue.serverTimestamp(),
-          
+
           // Name tracking for teams that change names
           name_history: [], // Will store previous names
           previous_names: [], // Duplicate for easier querying
-          
+
           // Performance tracking
           total_seasons_participated: 1
         };
-        
+
         const teamRef = adminDb.collection('teams').doc(teamId);
         batch.set(teamRef, teamDoc);
-        
+
         // Create team stats in NEON instead of Firebase
         const teamStatsDocId = `${teamId}_${seasonId}`;
         const sqlTeam = getTournamentDb();
-        
+
         // Helper function to parse trophy strings like "UCL CHAMPIONS" or "CUP RUNNERS UP"
         const parseTrophyNameNew = (rawName: any): { name: string; position: string | null } => {
           // Convert to string and handle non-string values
           const nameStr = String(rawName || '').trim();
           if (!nameStr) return { name: '', position: null };
-          
+
           const normalized = nameStr.toUpperCase();
-          
+
           // Check for common position indicators
           if (normalized.endsWith('CHAMPIONS') || normalized.endsWith('CHAMPION')) {
             const trophyName = normalized.replace(/CHAMPIONS?$/, '').trim();
@@ -969,11 +970,11 @@ async function importTeams(
             const trophyName = normalized.replace(/THIRD PLACE$/, '').trim();
             return { name: trophyName, position: 'Third Place' };
           }
-          
+
           // If no position indicator found, return name with null position
           return { name: nameStr, position: null };
         };
-        
+
         // Parse team trophies/cups
         const teamTrophies2: Array<{ type: string; name: string; position: string | null }> = [];
         Object.keys(team).forEach((key) => {
@@ -1001,7 +1002,7 @@ async function importTeams(
             }
           }
         });
-        
+
         await sqlTeam`
           INSERT INTO teamstats (
             id, team_id, season_id, team_name, tournament_id,
@@ -1030,9 +1031,9 @@ async function importTeams(
             position = EXCLUDED.position,
             updated_at = NOW()
         `;
-        
+
         console.log(`✅ Created teamstats in NEON for new team: ${normalizedTeamName}`);
-        
+
         // ✅ Insert trophies into team_trophies table with separate name and position
         // 1. Add league position trophies
         const positionNew = team.rank || team.position;
@@ -1057,7 +1058,7 @@ async function importTeams(
             ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
           `;
         }
-        
+
         // 2. Add cup trophies from Excel with separate name and position
         for (const trophy of teamTrophies2) {
           await sqlTeam`
@@ -1070,43 +1071,43 @@ async function importTeams(
             ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
           `;
         }
-        
+
         console.log(`✅ Inserted ${teamTrophies2.length + (positionNew <= 2 ? 1 : 0)} trophies for ${normalizedTeamName}`);
-        
+
       } catch (userError: any) {
         console.error(`❌ Error creating user for team ${normalizedTeamName}:`, userError);
-        
+
         // If user creation fails, still create the team document without user reference
         const teamDoc = {
           id: teamId,
           team_name: normalizedTeamName,
           owner_name: team.owner_name,
-          
+
           // Mark as missing user account
           hasUserAccount: false,
           userCreationError: userError.message,
-          
+
           // Season relationship
           seasons: [seasonId],
           current_season_id: seasonId,
-          
+
           // Team metadata
           is_active: true,
           is_historical: true,
           created_at: FieldValue.serverTimestamp(),
           updated_at: FieldValue.serverTimestamp(),
-          
+
           // Performance tracking
           total_seasons_participated: 1
         };
-        
+
         const teamRef = adminDb.collection('teams').doc(teamId);
         batch.set(teamRef, teamDoc);
-        
+
         // Create separate teamstats document for this season in NEON (error fallback)
         const teamStatsDocId = `${teamId}_${seasonId}`;
         const sql3 = getTournamentDb();
-        
+
         await sql3`
           INSERT INTO teamstats (
             id, team_id, season_id, team_name, tournament_id,
@@ -1135,18 +1136,18 @@ async function importTeams(
             position = EXCLUDED.position,
             updated_at = NOW()
         `;
-        
+
         console.log(`✅ Created teamstats in NEON (fallback): ${normalizedTeamName}`);
       }
     }
-    
+
     // Update progress
     await updateProgress(importId, {
       processedItems: i + 1,
       progress: ((i + 1) / teams.length) * 100,
       currentTask: `Creating team entity: ${normalizedTeamName}`
     });
-    
+
     // Commit batch every 200 documents to avoid Firestore limits
     if ((i + 1) % 200 === 0) {
       await batch.commit();
@@ -1154,7 +1155,7 @@ async function importTeams(
       batch = adminDb.batch();
     }
   }
-  
+
   await batch.commit();
   return teamMap;
 }
@@ -1166,7 +1167,7 @@ let nextPlayerIdNumber: number | null = null;
 function initializePlayerIdCounter(allPlayerIds: string[]): void {
   const prefix = 'sspslpsl';
   let maxNumber = 0;
-  
+
   allPlayerIds.forEach((playerId) => {
     if (playerId.startsWith(prefix)) {
       const numberPart = parseInt(playerId.substring(prefix.length));
@@ -1175,7 +1176,7 @@ function initializePlayerIdCounter(allPlayerIds: string[]): void {
       }
     }
   });
-  
+
   nextPlayerIdNumber = maxNumber + 1;
   console.log(`🔢 Initialized player ID counter at: ${nextPlayerIdNumber}`);
 }
@@ -1183,17 +1184,17 @@ function initializePlayerIdCounter(allPlayerIds: string[]): void {
 // Generate custom player ID (sspslpsl0001, sspslpsl0002, etc.)
 function generateNewPlayerId(): string {
   const prefix = 'sspslpsl';
-  
+
   try {
     // Counter should be initialized before calling this
     if (nextPlayerIdNumber === null) {
       throw new Error('Player ID counter not initialized. Call initializePlayerIdCounter first.');
     }
-    
+
     // Increment and use the counter
     const currentNumber = nextPlayerIdNumber;
     nextPlayerIdNumber++;
-    
+
     const paddedNumber = currentNumber.toString().padStart(4, '0');
     const newId = `${prefix}${paddedNumber}`;
     console.log(`🆔 Generated player ID: ${newId}`);
@@ -1218,10 +1219,10 @@ function getOrCreatePlayerByName(name: string, batchLookup: BatchLookupData): { 
       console.log(`  💾 Using cached player ID: ${name} -> ${cachedData.playerId}`);
       return cachedData;
     }
-    
+
     // Check batch lookup for existing player (no Firebase read!)
     const existingPlayer = name ? batchLookup.existingPlayers.get(name.toLowerCase()) : null;
-    
+
     if (existingPlayer) {
       console.log(`  ✅ Found existing player: ${name} with ID: ${existingPlayer.playerId}`);
       const result = { playerId: existingPlayer.playerId, isNew: false, playerDoc: existingPlayer.doc };
@@ -1229,7 +1230,7 @@ function getOrCreatePlayerByName(name: string, batchLookup: BatchLookupData): { 
       playerIdCache.set(name, result);
       return result;
     }
-    
+
     // No existing player found, generate new ID
     const playerId = generateNewPlayerId();
     console.log(`  🆕 Will create new player: ${name} with ID: ${playerId}`);
@@ -1245,16 +1246,16 @@ function getOrCreatePlayerByName(name: string, batchLookup: BatchLookupData): { 
 
 // Helper function to import players and link them to teams and seasons
 async function importPlayers(
-  seasonId: string, 
-  players: ImportPlayerData[], 
-  teams: ImportTeamData[], 
-  teamMap: Map<string, string>, 
-  importId: string, 
+  seasonId: string,
+  players: ImportPlayerData[],
+  teams: ImportTeamData[],
+  teamMap: Map<string, string>,
+  importId: string,
   batchLookup: BatchLookupData
 ): Promise<string[]> {
   let batch = adminDb.batch();
   const playerIds: string[] = [];
-  
+
   // Create a map of team names to calculate team statistics
   const teamStatsMap = new Map<string, {
     playerCount: number;
@@ -1262,7 +1263,7 @@ async function importPlayers(
     totalPoints: number;
     totalMatches: number;
   }>();
-  
+
   // Initialize team stats map
   teams.forEach(team => {
     if (team.team_name) {
@@ -1274,23 +1275,23 @@ async function importPlayers(
       });
     }
   });
-  
+
   // Get SQL connection for checking existing stats (resume functionality)
   const sqlPlayer = getTournamentDb();
-  
+
   for (let i = 0; i < players.length; i++) {
     const player = players[i];
-    
+
     // Normalize player name to Title Case
     const normalizedPlayerName = toTitleCase(player.name);
     const normalizedPlayerTeam = toTitleCase(player.team);
-    console.log(`Processing player ${i+1}/${players.length}: "${player.name}" → "${normalizedPlayerName}" (Team: "${player.team}" → "${normalizedPlayerTeam}")`);
-    
+    console.log(`Processing player ${i + 1}/${players.length}: "${player.name}" → "${normalizedPlayerName}" (Team: "${player.team}" → "${normalizedPlayerTeam}")`);
+
     // Check if player is manually linked to an existing player
     let playerId: string;
     let isNewPlayer: boolean;
     let playerDoc: any;
-    
+
     if (player.linked_player_id) {
       // User manually linked this player - use the linked player ID
       playerId = player.linked_player_id;
@@ -1312,14 +1313,14 @@ async function importPlayers(
       playerDoc = result.playerDoc;
     }
     playerIds.push(playerId);
-    
+
     // RESUME CHECK: Skip if this player already has stats in the database
     const existingStatsCheck = await sqlPlayer`
       SELECT id FROM realplayerstats 
       WHERE player_id = ${playerId} AND season_id = ${seasonId}
       LIMIT 1
     `;
-    
+
     if (existingStatsCheck.length > 0) {
       console.log(`  ⏭️  Skipping ${normalizedPlayerName} - already imported`);
       // Update progress
@@ -1330,10 +1331,10 @@ async function importPlayers(
       });
       continue; // Skip to next player
     }
-    
+
     // Use existing player data from batch lookup (no Firebase read!)
     const currentPlayerData: any = playerDoc || {};
-    
+
     // Create new stats object in the realplayers format with ALL statistics fields
     const matchesPlayed = player.total_matches || 0;
     const goalsScored = player.goals_scored || 0;
@@ -1344,41 +1345,41 @@ async function importPlayers(
     const cleanSheets = player.cleansheets || 0;
     const totalPoints = player.total_points || player.points || 0;
     const potm = player.potm ?? null; // Player of the Match (nullable)
-    
+
     const newStats = {
       // Match statistics
       matches_played: matchesPlayed,
       matches_won: matchesWon,
       matches_lost: matchesLost,
       matches_drawn: matchesDrawn,
-      
+
       // Goal statistics
       goals_scored: goalsScored,
       goals_per_game: matchesPlayed > 0 ? parseFloat((goalsScored / matchesPlayed).toFixed(2)) : 0,
       goals_conceded: goalsConceded,
       conceded_per_game: matchesPlayed > 0 ? parseFloat((goalsConceded / matchesPlayed).toFixed(2)) : 0,
       net_goals: goalsScored - goalsConceded,
-      
+
       // Other statistics
       clean_sheets: cleanSheets,
       potm: potm, // Player of the Match (nullable)
-      
+
       // Points and ratings
       points: totalPoints,
       total_points: totalPoints,
       win_rate: matchesPlayed > 0 ? parseFloat(((matchesWon / matchesPlayed) * 100).toFixed(2)) : 0,
       average_rating: 0, // Default to 0 for new season
-      
+
       // Current season tracking
       current_season_matches: matchesPlayed,
       current_season_wins: matchesWon
     };
-    
+
     // 1. Create/Update permanent player document in realplayers collection
     const permanentPlayerDoc: any = {
       player_id: playerId,
       name: player.name,
-      
+
       // Basic permanent info (keep existing or set defaults)
       display_name: currentPlayerData?.display_name || player.name,
       email: currentPlayerData?.email || '',
@@ -1391,53 +1392,53 @@ async function importPlayers(
       is_active: true,
       is_available: currentPlayerData?.is_available !== false,
       notes: currentPlayerData?.notes || '',
-      
+
       // Metadata
       updated_at: FieldValue.serverTimestamp()
     };
-    
+
     if (isNewPlayer) {
       permanentPlayerDoc.created_at = FieldValue.serverTimestamp();
       permanentPlayerDoc.joined_date = FieldValue.serverTimestamp();
     }
-    
+
     // Update name to normalized version
     permanentPlayerDoc.name = normalizedPlayerName;
     permanentPlayerDoc.display_name = currentPlayerData?.display_name || normalizedPlayerName;
-    
+
     // Save to realplayers collection
     const playerRef = adminDb.collection('realplayers').doc(playerId);
     batch.set(playerRef, permanentPlayerDoc, { merge: true });
-    
+
     // 2. Create/Update season-specific stats document in realplayerstats collection
     // Use composite ID: player_id_seasonId for easy lookup
     const statsDocId = `${playerId}_${seasonId}`;
     const existingStatsDocId = batchLookup.existingStats.get(statsDocId);
-    
+
     let isNewStats = false;
-    
+
     if (existingStatsDocId) {
       console.log(`  📋 Updating stats for ${player.name} in season ${seasonId}`);
     } else {
       isNewStats = true;
       console.log(`  🆕 Creating stats for ${player.name} in season ${seasonId}`);
     }
-    
+
     // Write player stats to NEON instead of Firebase
     // sqlPlayer is already declared at the function level (line 1279)
     const teamIdForPlayer = teamMap.get(normalizedPlayerTeam) || null;
-    
+
     // Parse trophies from Excel data (handles numbered columns like category_wise_trophy_1, category_wise_trophy_2, etc.)
     const playerAwards: Array<{ award_name: string; award_position: string | null; type: 'category' | 'individual' }> = [];
-    
+
     // Helper function to parse trophy/award name and extract position
     const parseAwardName = (rawName: any): { name: string; position: string | null } => {
       // Convert to string and handle non-string values
       const nameStr = String(rawName || '').trim();
       if (!nameStr) return { name: '', position: null };
-      
+
       const normalized = nameStr.toUpperCase();
-      
+
       // Check for position indicators
       if (normalized.endsWith('RUNNER UP') || normalized.endsWith('RUNNER-UP')) {
         const awardName = normalized.replace(/RUNNER[\s-]*UP$/, '').trim();
@@ -1451,11 +1452,11 @@ async function importPlayers(
         const awardName = normalized.replace(/(THIRD|3RD)\s+PLACE$/, '').trim();
         return { name: awardName, position: 'Third Place' };
       }
-      
+
       // If no position indicator found, return name with null position
       return { name: nameStr, position: null };
     };
-    
+
     // First, check if trophies come as arrays from preview (category_trophies, individual_trophies)
     if (Array.isArray((player as any).category_trophies)) {
       (player as any).category_trophies.forEach((trophy: string) => {
@@ -1467,7 +1468,7 @@ async function importPlayers(
         }
       });
     }
-    
+
     if (Array.isArray((player as any).individual_trophies)) {
       (player as any).individual_trophies.forEach((trophy: string) => {
         if (trophy && trophy.trim()) {
@@ -1478,20 +1479,20 @@ async function importPlayers(
         }
       });
     }
-    
+
     // Also scan all player properties for trophy columns (for direct Excel imports)
     Object.keys(player).forEach((key) => {
       const lowerKey = key.toLowerCase();
       const value = (player as any)[key];
-      
+
       // Skip if already processed as arrays
       if (lowerKey === 'category_trophies' || lowerKey === 'individual_trophies') return;
-      
+
       // Skip empty values
       if (!value || value === '') return;
-      
+
       const parsed = parseAwardName(value);
-      
+
       // Only add if award name is not empty
       if (parsed.name) {
         // Check for category trophies (Cat Trophy, category_wise_trophy_1, etc.)
@@ -1506,15 +1507,15 @@ async function importPlayers(
         }
       }
     });
-    
+
     console.log(`  🏆 Total awards found for ${normalizedPlayerName}: ${playerAwards.length}`);
     if (playerAwards.length > 0) {
       console.log(`  🏆 Awards: ${playerAwards.map(a => `${a.award_name} (${a.type})`).join(', ')}`);
     }
-    
+
     // For backward compatibility, still store in trophies JSONB (but we'll use player_awards table as primary)
     const trophiesJson = JSON.stringify(playerAwards.map(a => ({ type: a.type, name: a.award_name })));
-    
+
     await sqlPlayer`
       INSERT INTO realplayerstats (
         id, player_id, season_id, player_name, tournament_id,
@@ -1560,15 +1561,15 @@ async function importPlayers(
         trophies = EXCLUDED.trophies,
         updated_at = NOW()
     `;
-    
+
     console.log(`✅ Created/Updated player stats in NEON: ${normalizedPlayerName}`);
-    
+
     // ✅ Insert player awards into player_awards table with separate name and position
     for (const award of playerAwards) {
       try {
         // Determine player_category: use player's position category
         const playerCategory = player.category || null;
-        
+
         await sqlPlayer`
           INSERT INTO player_awards (
             player_id, player_name, season_id, 
@@ -1591,11 +1592,11 @@ async function importPlayers(
         // Continue with other awards even if one fails
       }
     }
-    
+
     if (playerAwards.length > 0) {
       console.log(`✅ Inserted ${playerAwards.length} awards for ${normalizedPlayerName}`);
     }
-    
+
     // Update team statistics
     const teamStats = normalizedPlayerTeam ? teamStatsMap.get(normalizedPlayerTeam.toLowerCase()) : null;
     if (teamStats) {
@@ -1604,14 +1605,14 @@ async function importPlayers(
       teamStats.totalPoints += player.total_points || 0;
       teamStats.totalMatches = Math.max(teamStats.totalMatches, player.total_matches || 0);
     }
-    
+
     // Update progress
     await updateProgress(importId, {
       processedItems: i + 1,
       progress: ((i + 1) / players.length) * 100,
       currentTask: `Creating player: ${normalizedPlayerName} (${normalizedPlayerTeam})`
     });
-    
+
     // Commit batch every 400 documents to avoid Firestore limits
     if ((i + 1) % 400 === 0) {
       await batch.commit();
@@ -1619,42 +1620,42 @@ async function importPlayers(
       batch = adminDb.batch();
     }
   }
-  
+
   await batch.commit();
-  
+
   // Now update team performance statistics
   await updateTeamPerformanceStats(seasonId, teamStatsMap, teams, teamMap);
-  
+
   return playerIds;
 }
 
 // Helper function to update team performance statistics
 async function updateTeamPerformanceStats(
-  seasonId: string, 
+  seasonId: string,
   teamStatsMap: Map<string, { playerCount: number; totalGoals: number; totalPoints: number; totalMatches: number }>,
   teams: ImportTeamData[],
   teamMap: Map<string, string>
 ) {
   const batch = adminDb.batch();
-  
+
   for (const team of teams) {
     const teamStats = team.team_name ? teamStatsMap.get(team.team_name.toLowerCase()) : null;
     const teamId = team.team_name ? teamMap.get(team.team_name) : null;
-    
+
     if (!teamStats || !teamId) continue;
-    
+
     // Update the teamstats document with player count
     const teamStatsDocId = `${teamId}_${seasonId}`;
     const teamStatsRef = adminDb.collection('teamstats').doc(teamStatsDocId);
-    
+
     const teamStatsUpdateData = {
       players_count: teamStats.playerCount,
       updated_at: FieldValue.serverTimestamp()
     };
-    
+
     batch.update(teamStatsRef, teamStatsUpdateData);
   }
-  
+
   // Commit the batch updates
   if (teams.length > 0) {
     try {
@@ -1670,7 +1671,7 @@ export async function POST(request: NextRequest) {
   console.log('\n' + '='.repeat(80));
   console.log('📥 POST /api/seasons/historical/import - New import request received');
   console.log('='.repeat(80));
-  
+
   try {
     console.log('📖 Reading request body...');
     const importData: ImportSeasonData = await request.json();
@@ -1681,14 +1682,14 @@ export async function POST(request: NextRequest) {
       seasonNumber: importData.seasonInfo?.seasonNumber,
       fileName: importData.seasonInfo?.fileName
     });
-    
+
     const importId = uuidv4();
     console.log('🆔 Generated import ID:', importId);
-    
+
     // Calculate total items to process
     const totalItems = importData.teams.length + importData.players.length;
     console.log('📊 Total items to import:', totalItems);
-    
+
     // Initialize progress tracking in Firestore
     const initialProgress: ImportProgress = {
       importId,
@@ -1699,11 +1700,11 @@ export async function POST(request: NextRequest) {
       processedItems: 0,
       startTime: new Date()
     };
-    
+
     await adminDb.collection('import_progress').doc(importId).set(initialProgress);
     console.log('💾 Initial progress stored in Firestore');
     console.log('Import ID:', importId);
-    
+
     // Start the import process asynchronously
     console.log('🚀 Starting async processImport function...');
     processImport(importId, importData).catch(error => {
@@ -1716,14 +1717,14 @@ export async function POST(request: NextRequest) {
         endTime: new Date()
       });
     });
-    
+
     console.log('✅ Import API response sent (process running in background)');
     return NextResponse.json({
       success: true,
       importId,
       message: 'Import started successfully'
     });
-    
+
   } catch (error: any) {
     console.error('❌ Error starting import:', error);
     console.error('Error message:', error.message);
@@ -1737,66 +1738,66 @@ export async function POST(request: NextRequest) {
 
 async function processImport(importId: string, importData: ImportSeasonData) {
   console.log('🚀 Starting import process:', importId);
-  console.log('📊 Import data:', { 
-    teamsCount: importData.teams.length, 
+  console.log('📊 Import data:', {
+    teamsCount: importData.teams.length,
     playersCount: importData.players.length,
     seasonNumber: importData.seasonInfo.seasonNumber,
     fileName: importData.seasonInfo.fileName
   });
-  
+
   try {
     // Clear player ID cache and reset counters at the start of each import
     playerIdCache.clear();
     nextPlayerIdNumber = null; // Reset player counter
     nextTeamIdNumber = null; // Reset team counter
     console.log('🗑️ Player ID cache cleared and counters reset');
-    
+
     // Step 1: Create season
     console.log('📅 Step 1: Creating season...');
     console.log('Season info:', JSON.stringify(importData.seasonInfo, null, 2));
-    
+
     await updateProgress(importId, {
       status: 'importing_season',
       currentTask: 'Creating season record...',
       progress: 5
     });
     console.log('✅ Progress updated to: importing_season (5%)');
-    
+
     console.log('🔧 Calling createSeason function...');
     const seasonId = await createSeason(importData.seasonInfo);
     console.log('✅ Season created successfully:', seasonId);
-    
+
     await updateProgress(importId, {
       seasonId,
       progress: 10
     });
-    
+
     // Step 2: Check if season already exists to optimize stats loading
     const existingSeasonDoc = await adminDb.collection('seasons').doc(seasonId).get();
     const isNewSeason = !existingSeasonDoc.exists;
     console.log(`🆕 Season ${seasonId} is ${isNewSeason ? 'NEW' : 'EXISTING'}`);
-    
+
     // Step 3: Smart detection - Is this a re-import?
     console.log('🧠 Step 3: Running smart detection...');
     await updateProgress(importId, {
       currentTask: 'Detecting import type (new vs re-import)...',
       progress: 12
     });
-    
+
     const teamNames = importData.teams.map(t => t.team_name);
     const playerNames = importData.players.map(p => p.name);
     const detection = await detectReimport(playerNames, teamNames);
-    
+
     await updateProgress(importId, {
-      currentTask: detection.isReimport 
+      currentTask: detection.isReimport
         ? `Re-import detected (${(detection.matchRate * 100).toFixed(0)}% match) - using optimized path`
         : `New import detected (${(detection.matchRate * 100).toFixed(0)}% match) - using selective loading`,
       progress: 15
     });
-    
+
     // Step 4: Choose optimal loading strategy based on detection
     let batchLookup: BatchLookupData;
-    
+
     if (detection.isReimport) {
       // RE-IMPORT PATH: Skip selective queries, just load IDs + stats
       console.log('🔄 Using RE-IMPORT optimization (skipping selective queries)...');
@@ -1806,15 +1807,15 @@ async function processImport(importId: string, importData: ImportSeasonData) {
       console.log('🆕 Using SELECTIVE LOADING (querying specific entities)...');
       batchLookup = await batchLoadExistingEntities(teamNames, playerNames, seasonId, isNewSeason);
     }
-    
+
     // Initialize ID counters from batch loaded data
     initializeTeamIdCounter(batchLookup.allTeamIds);
     initializePlayerIdCounter(batchLookup.allPlayerIds);
-    
+
     await updateProgress(importId, {
       progress: 20
     });
-    
+
     // Step 4: Import teams and get team mapping
     let teamMap = new Map<string, string>();
     if (importData.teams.length > 0) {
@@ -1823,10 +1824,10 @@ async function processImport(importId: string, importData: ImportSeasonData) {
         currentTask: 'Creating team entities with login credentials...',
         processedItems: 0
       });
-      
+
       teamMap = await importTeams(seasonId, importData.teams, importId, batchLookup);
     }
-    
+
     // Step 5: Import players and link them to teams
     if (importData.players.length > 0) {
       await updateProgress(importId, {
@@ -1834,10 +1835,10 @@ async function processImport(importId: string, importData: ImportSeasonData) {
         currentTask: 'Creating players and linking to teams...',
         processedItems: 0
       });
-      
+
       await importPlayers(seasonId, importData.players, importData.teams, teamMap, importId, batchLookup);
     }
-    
+
     // Step 6: Complete
     await updateProgress(importId, {
       status: 'completed',
@@ -1846,12 +1847,12 @@ async function processImport(importId: string, importData: ImportSeasonData) {
       processedItems: importData.teams.length + importData.players.length,
       endTime: new Date()
     });
-    
+
     // Clear cache and reset counters after successful import
     playerIdCache.clear();
     nextPlayerIdNumber = null;
     nextTeamIdNumber = null;
-    
+
   } catch (error: any) {
     await updateProgress(importId, {
       status: 'failed',
@@ -1871,7 +1872,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const importId = searchParams.get('importId');
-    
+
     if (!importId) {
       console.log('⚠️ GET progress - No import ID provided');
       return NextResponse.json(
@@ -1879,10 +1880,10 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     // Read progress from Firestore
     const progressDoc = await adminDb.collection('import_progress').doc(importId).get();
-    
+
     if (!progressDoc.exists) {
       console.log(`⚠️ GET progress - Import ID ${importId} not found in Firestore`);
       return NextResponse.json(
@@ -1890,9 +1891,9 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       );
     }
-    
+
     const progress = progressDoc.data() as ImportProgress;
-    
+
     // Only log periodically to avoid spam (every 10th request or on status change)
     const shouldLog = Math.random() < 0.1 || progress.status !== 'initializing';
     if (shouldLog) {
@@ -1903,12 +1904,12 @@ export async function GET(request: NextRequest) {
         processedItems: `${progress.processedItems}/${progress.totalItems}`
       });
     }
-    
+
     return NextResponse.json({
       success: true,
       progress
     });
-    
+
   } catch (error: any) {
     console.error('Error fetching import progress:', error);
     return NextResponse.json(

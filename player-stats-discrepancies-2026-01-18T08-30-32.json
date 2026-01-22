@@ -1,0 +1,172 @@
+{
+  "timestamp": "2026-01-18T08:30:32.262Z",
+  "summary": {
+    "totalPlayers": 81,
+    "playersWithDiscrepancies": 5,
+    "playersMatching": 76,
+    "playersWithNoMatchups": 0,
+    "totalDiscrepancyCount": 20
+  },
+  "discrepancies": [
+    {
+      "player_id": "sspslpsl0026",
+      "player_name": "HIJAS N",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 20,
+          "fromMatchups": 21,
+          "difference": 1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 11,
+          "fromMatchups": 12,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 32,
+          "fromMatchups": 33,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 47,
+          "fromMatchups": 50,
+          "difference": 3
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0018",
+      "player_name": "SIRAJ",
+      "team_id": "SSPSLT0002",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 25,
+          "fromMatchups": 26,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 2,
+          "fromMatchups": 3,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 5,
+          "fromMatchups": 6,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0045",
+      "player_name": "Firoz Ahammed",
+      "team_id": "SSPSLT0016",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "wins",
+          "inDatabase": 13,
+          "fromMatchups": 12,
+          "difference": -1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 8,
+          "fromMatchups": 9,
+          "difference": 1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 53,
+          "fromMatchups": 52,
+          "difference": -1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 30,
+          "fromMatchups": 33,
+          "difference": 3
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 10,
+          "fromMatchups": 9,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0030",
+      "player_name": "Rashil Basheer",
+      "team_id": "SSPSLT0016",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "wins",
+          "inDatabase": 15,
+          "fromMatchups": 16,
+          "difference": 1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 7,
+          "fromMatchups": 6,
+          "difference": -1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 62,
+          "fromMatchups": 63,
+          "difference": 1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 42,
+          "fromMatchups": 39,
+          "difference": -3
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 4,
+          "fromMatchups": 5,
+          "difference": 1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0022",
+      "player_name": "SHAFIR CKD",
+      "team_id": "SSPSLT0023",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 0,
+          "fromMatchups": 1,
+          "difference": 1
+        },
+        {
+          "stat": "draws",
+          "inDatabase": 0,
+          "fromMatchups": 1,
+          "difference": 1
+        },
+        {
+          "stat": "clean_sheets",
+          "inDatabase": 0,
+          "fromMatchups": 1,
+          "difference": 1
+        }
+      ]
+    }
+  ]
+}

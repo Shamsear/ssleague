@@ -57,11 +57,11 @@ export async function POST(
     // Get team name and team ID from user data
     const teamName = userData.teamName || userData.username || 'Team';
     const teamId = userData.teamId; // User document should have teamId field
-    
+
     // Check if team document exists
     let teamDocId: string;
     let existingTeamQuery: any = { empty: true };
-    
+
     if (teamId) {
       // Try to get team document by teamId from user data
       const teamDoc = await adminDb.collection('teams').doc(teamId).get();
@@ -72,14 +72,14 @@ export async function POST(
         console.log(`📋 Will create team_season document: ${teamDocId}_${seasonId}`);
       }
     }
-    
+
     if (!teamId || existingTeamQuery.empty) {
       // Fallback: Try to find team by owner_uid
       const teamQuery = await adminDb.collection('teams')
         .where('owner_uid', '==', userId)
         .limit(1)
         .get();
-      
+
       if (!teamQuery.empty) {
         teamDocId = teamQuery.docs[0].id;
         existingTeamQuery = teamQuery;
@@ -95,7 +95,7 @@ export async function POST(
         }, { status: 404 });
       }
     }
-    
+
     // Check if team has already made a decision for this season
     let teamSeasonId = `${teamDocId}_${seasonId}`;
     const existingTeamSeason = await adminDb.collection('team_seasons').doc(teamSeasonId).get();
@@ -105,7 +105,7 @@ export async function POST(
       const statusMessage = existingData.status === 'registered'
         ? 'You have already joined this season'
         : 'You have already declined this season';
-      
+
       return NextResponse.json({
         success: false,
         message: statusMessage,
@@ -115,7 +115,7 @@ export async function POST(
     // Determine if this is a dual-currency season based on season type
     const seasonNumber = parseInt(seasonId.replace(/\D/g, '')) || 0;
     const isDualCurrency = seasonData.type === 'multi';
-    
+
     // Use season settings for budgets (with fallbacks)
     let footballBudget = isDualCurrency ? (seasonData.euro_budget || 10000) : 0;
     let realPlayerBudget = isDualCurrency ? (seasonData.dollar_budget || 5000) : 0;
@@ -123,19 +123,19 @@ export async function POST(
     let skippedSeasons = 0;
     let penaltyAmount = 0;
     let lastPlayedSeason: any = null;
-    
+
     // Find team's last played season
     if (!existingTeamQuery.empty) {
       const existingTeamData = existingTeamQuery.docs[0].data();
       const teamSeasons = existingTeamData.seasons || [];
-      
+
       if (teamSeasons.length > 0) {
         // Get all previous team_seasons to find last played
         const teamSeasonsQuery = await adminDb.collection('team_seasons')
           .where('team_id', '==', teamDocId)
           .where('status', '==', 'registered')
           .get();
-        
+
         let lastSeasonNumber = 0;
         teamSeasonsQuery.docs.forEach(doc => {
           const data = doc.data();
@@ -145,17 +145,17 @@ export async function POST(
             lastPlayedSeason = data;
           }
         });
-        
+
         // Check if there's a gap (skipped seasons)
         if (lastSeasonNumber > 0 && seasonNumber > lastSeasonNumber + 1) {
           skippedSeasons = seasonNumber - lastSeasonNumber - 1;
-          
+
           // Calculate penalty: €500 per skipped season (adjustable)
           const penaltyPerSeason = 500;
           penaltyAmount = skippedSeasons * penaltyPerSeason;
-          
+
           console.log(`⚠️ Team ${teamName} skipped ${skippedSeasons} season(s). Penalty: €${penaltyAmount}`);
-          
+
           // Use last season's ending budget (frozen budget)
           if (lastPlayedSeason.currency_system === 'dual') {
             footballBudget = (lastPlayedSeason.football_budget || 10000) - penaltyAmount;
@@ -163,13 +163,13 @@ export async function POST(
           } else {
             startingBalance = (lastPlayedSeason.budget || 15000) - penaltyAmount;
           }
-          
+
           console.log(`💰 Budget carried from Season ${lastSeasonNumber}: Football €${footballBudget}, Real $${realPlayerBudget}`);
         } else if (lastSeasonNumber === seasonNumber - 1) {
           // Sequential registration - budget will be set by season-end process
           // This means they completed their 2-season contract
           console.log(`✅ Team ${teamName} continuing from Season ${lastSeasonNumber} (sequential)`);
-          
+
           // Use last season's budget (should have been updated by season-end process)
           if (lastPlayedSeason.currency_system === 'dual') {
             footballBudget = lastPlayedSeason.football_budget || 10000;
@@ -186,22 +186,22 @@ export async function POST(
       const seasonPrefix = seasonId.replace(/\d+$/, '');
       const nextSeasonId = `${seasonPrefix}${seasonNumber + 1}`;
       const nextTeamSeasonId = `${teamDocId}_${nextSeasonId}`;
-      
+
       // Generate unique contract ID
       const contractId = `contract_${teamDocId}_${seasonId}_${Date.now()}`;
-      
+
       console.log(`📝 Creating 2-season team contract for ${teamName}: ${seasonId} & ${nextSeasonId}`);
-      
+
       const batch = adminDb.batch();
-      
+
       // Team must exist at this point (we returned error above if not)
       // Update team with BOTH seasons
       const existingTeamDoc = existingTeamQuery.docs[0];
       const existingData = existingTeamDoc.data();
-      const updatedSeasons = existingData.seasons 
-        ? [...existingData.seasons, seasonId, nextSeasonId] 
+      const updatedSeasons = existingData.seasons
+        ? [...existingData.seasons, seasonId, nextSeasonId]
         : [seasonId, nextSeasonId];
-      
+
       const teamRef = adminDb.collection('teams').doc(teamDocId);
       batch.update(teamRef, {
         seasons: updatedSeasons,
@@ -220,50 +220,16 @@ export async function POST(
           fantasy_joined_at: FieldValue.serverTimestamp()
         })
       });
-      
-      // Create teamstats records in NEON for both seasons
-      const sql = getTournamentDb();
-      
-      // Insert current season stats to Neon (tournament_id will be added when tournament is created)
-      await sql`
-        INSERT INTO teamstats (
-          id, team_id, season_id, team_name,
-          position, points, matches_played, wins, draws, losses,
-          goals_for, goals_against, goal_difference, 
-          created_at, updated_at
-        )
-        VALUES (
-          ${teamDocId + '_' + seasonId}, ${teamDocId}, ${seasonId}, ${teamName},
-          0, 0, 0, 0, 0, 0,
-          0, 0, 0, 
-          NOW(), NOW()
-        )
-        ON CONFLICT (team_id, season_id) DO NOTHING
-      `;
-      
-      // Insert next season stats to Neon (tournament_id will be added when tournament is created)
-      await sql`
-        INSERT INTO teamstats (
-          id, team_id, season_id, team_name,
-          position, points, matches_played, wins, draws, losses,
-          goals_for, goals_against, goal_difference,
-          created_at, updated_at
-        )
-        VALUES (
-          ${teamDocId + '_' + nextSeasonId}, ${teamDocId}, ${nextSeasonId}, ${teamName},
-          0, 0, 0, 0, 0, 0,
-          0, 0, 0,
-          NOW(), NOW()
-        )
-        ON CONFLICT (team_id, season_id) DO NOTHING
-      `;
-      
+
+      // NOTE: teamstats entries will be created when teams are assigned to tournaments
+      // Don't create them here since we need tournament_id for the new ID format (teamid_tournamentid)
+
       // Recalculate teamSeasonId in case teamDocId was updated
       teamSeasonId = `${teamDocId}_${seasonId}`;
-      
+
       // Create team_seasons record for joining (auction mechanics)
       const teamSeasonRef = adminDb.collection('team_seasons').doc(teamSeasonId);
-      
+
       const teamSeasonData: any = {
         team_id: teamDocId, // Reference to the team document
         user_id: userId, // For backwards compatibility with dashboard checks
@@ -274,19 +240,19 @@ export async function POST(
         team_email: userData.email,
         team_logo: userData.logoUrl || '',
         status: 'registered',
-        
+
         // Contract fields
         contract_id: contractId,
         contract_start_season: seasonId,
         contract_end_season: nextSeasonId,
         contract_length: 2,
         is_auto_registered: false, // This is the initial registration
-        
+
         // Penalty tracking (if team skipped seasons)
         skipped_seasons: skippedSeasons,
         penalty_amount: penaltyAmount,
         last_played_season: lastPlayedSeason ? lastPlayedSeason.season_id : null,
-        
+
         players_count: 0,
         position_counts: {
           GK: 0,
@@ -307,7 +273,7 @@ export async function POST(
         created_at: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
       };
-      
+
       // Add budget fields based on season type
       if (isDualCurrency) {
         // Dual currency system for Season 16+
@@ -325,9 +291,9 @@ export async function POST(
         teamSeasonData.total_spent = 0;
         teamSeasonData.currency_system = 'single'; // Flag for easy identification
       }
-      
+
       batch.set(teamSeasonRef, teamSeasonData);
-      
+
       // Log initial balance transactions
       if (isDualCurrency) {
         // Log football budget
@@ -353,10 +319,10 @@ export async function POST(
           'football' // For legacy single currency system
         );
       }
-      
+
       // Create team_seasons record for NEXT season (auto-registered)
       const nextTeamSeasonRef = adminDb.collection('team_seasons').doc(nextTeamSeasonId);
-      
+
       const nextTeamSeasonData: any = {
         team_id: teamDocId,
         user_id: userId,
@@ -367,14 +333,14 @@ export async function POST(
         team_email: userData.email,
         team_logo: userData.logoUrl || '',
         status: 'registered',
-        
+
         // Contract fields
         contract_id: contractId,
         contract_start_season: seasonId,
         contract_end_season: nextSeasonId,
         contract_length: 2,
         is_auto_registered: true, // This is auto-created from contract
-        
+
         players_count: 0,
         position_counts: {
           GK: 0,
@@ -395,7 +361,7 @@ export async function POST(
         created_at: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
       };
-      
+
       // Budget for next season will be calculated at the end of current season
       // based on remaining balance + bonuses/penalties
       // DO NOT set budget here - it will be set when Season 16 ends
@@ -416,11 +382,11 @@ export async function POST(
         nextTeamSeasonData.currency_system = 'single';
         nextTeamSeasonData.budget_pending = true;
       }
-      
+
       batch.set(nextTeamSeasonRef, nextTeamSeasonData);
-      
+
       console.log(`✅ Created team contract ${contractId} for ${teamName}: ${teamSeasonId} & ${nextTeamSeasonId}`);
-      
+
       // Commit all operations
       await batch.commit();
 
@@ -434,13 +400,13 @@ export async function POST(
       if (joinFantasy) {
         try {
           const fantasySql = getFantasyDb();
-          
+
           // Determine league ID (format: SSPSLFLS + season number)
           const seasonNumber = seasonId.replace('SSPSLS', '');
           const leagueId = `SSPSLFLS${seasonNumber}`;
-          
+
           console.log(`🎮 Creating fantasy team for ${teamName} in league ${leagueId}`);
-          
+
           // Get league budget
           const leagueResult = await fantasySql`
             SELECT budget_per_team FROM fantasy_leagues 
@@ -448,7 +414,7 @@ export async function POST(
             LIMIT 1
           `;
           const budgetPerTeam = leagueResult[0]?.budget_per_team || 100.00;
-          
+
           // Create fantasy team entry with proper fields
           await fantasySql`
             INSERT INTO fantasy_teams (
@@ -485,7 +451,7 @@ export async function POST(
               budget_remaining = ${budgetPerTeam},
               updated_at = NOW()
           `;
-          
+
           console.log(`✅ Fantasy team created: ${teamDocId}`);
         } catch (fantasyError) {
           console.error('Failed to create fantasy team:', fantasyError);
@@ -593,7 +559,7 @@ export async function POST(
         created_at: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
       };
-      
+
       // Add zero budgets based on season type
       if (isDualCurrency) {
         declineData.football_budget = 0;
@@ -609,7 +575,7 @@ export async function POST(
         declineData.total_spent = 0;
         declineData.currency_system = 'single';
       }
-      
+
       await adminDb.collection('team_seasons').doc(teamSeasonId).set(declineData);
 
       return NextResponse.json({

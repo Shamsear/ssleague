@@ -1,0 +1,58 @@
+🔍 Checking teamstats table schema...
+
+📋 Columns in teamstats table:
+================================
+  id                        text                 NOT NULL
+  team_id                   text                 NOT NULL
+  tournament_id             text                 NOT NULL
+  season_id                 text                 NOT NULL
+  team_name                 text                 NOT NULL
+  position                  integer              NULL
+  points                    integer              NULL
+  matches_played            integer              NULL
+  wins                      integer              NULL
+  draws                     integer              NULL
+  losses                    integer              NULL
+  goals_for                 integer              NULL
+  goals_against             integer              NULL
+  goal_difference           integer              NULL
+  current_form              text                 NULL
+  win_streak                integer              NULL
+  unbeaten_streak           integer              NULL
+  trophies                  jsonb                NULL
+  processed_fixtures        jsonb                NULL
+  points_deducted           integer              NULL
+  created_at                timestamp without time zone NULL
+  updated_at                timestamp without time zone NULL
+
+📊 Sample data (first row):
+{
+  "id": "SSPSLT0018_SSPSLS15_historical",
+  "team_id": "SSPSLT0018",
+  "tournament_id": "historical",
+  "season_id": "SSPSLS15",
+  "team_name": "Titans FC",
+  "position": 18,
+  "points": 22,
+  "matches_played": 34,
+  "wins": 7,
+  "draws": 1,
+  "losses": 24,
+  "goals_for": 157,
+  "goals_against": 377,
+  "goal_difference": -220,
+  "current_form": null,
+  "win_streak": 0,
+  "unbeaten_streak": 0,
+  "trophies": [],
+  "processed_fixtures": [],
+  "points_deducted": 0,
+  "created_at": "2025-11-10T06:29:05.747Z",
+  "updated_at": "2025-11-16T07:03:21.770Z"
+}
+
+🔑 Primary Key:
+  teamstats_new2_pkey: PRIMARY KEY (id)
+
+📈 Row count:
+  Total rows: 126
