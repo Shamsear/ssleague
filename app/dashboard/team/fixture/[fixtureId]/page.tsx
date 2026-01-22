@@ -85,6 +85,7 @@ export default function FixturePage() {
   const [phase, setPhase] = useState<'draft' | 'home_fixture' | 'fixture_entry' | 'result_entry' | 'closed'>('closed');
   const [matchupMode, setMatchupMode] = useState<string>('manual');
   const [isLoading, setIsLoading] = useState(true);
+  const [tournamentSystem, setTournamentSystem] = useState<string>('goals'); // 'goals' or 'wins'
 
   // Player data
   const [homePlayers, setHomePlayers] = useState<any[]>([]);
@@ -158,16 +159,18 @@ export default function FixturePage() {
 
       // Use scheduled_date or default to today if null
       // scheduled_date might be a full timestamp or just a date string
+      // IMPORTANT: Convert to IST date, not UTC date
       let scheduledDateStr = roundDeadlines.scheduled_date;
       if (scheduledDateStr) {
-        // If it's a timestamp (contains 'T'), extract just the date part
-        if (typeof scheduledDateStr === 'string' && scheduledDateStr.includes('T')) {
-          scheduledDateStr = scheduledDateStr.split('T')[0];
-        } else if (scheduledDateStr instanceof Date) {
-          scheduledDateStr = scheduledDateStr.toISOString().split('T')[0];
-        }
+        // Parse the date and convert to IST
+        const scheduledDate = new Date(scheduledDateStr);
+        // Convert to IST by adding 5:30 hours
+        const istDate = new Date(scheduledDate.getTime() + (5.5 * 60 * 60 * 1000));
+        scheduledDateStr = istDate.toISOString().split('T')[0];
       } else {
-        scheduledDateStr = new Date().toISOString().split('T')[0];
+        // Use current date in IST
+        const istNow = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+        scheduledDateStr = istNow.toISOString().split('T')[0];
       }
 
       // Validate and default time fields
@@ -249,15 +252,49 @@ export default function FixturePage() {
     const homeSubPenalties = matchups.reduce((sum, m) => sum + (m.home_sub_penalty ?? 0), 0);
     const awaySubPenalties = matchups.reduce((sum, m) => sum + (m.away_sub_penalty ?? 0), 0);
 
-    // Total goals including penalties
-    const homeTotalGoals = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
-    const awayTotalGoals = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
+    // Calculate scores based on tournament system
+    let homeTotalScore, awayTotalScore, homePlayerScore, awayPlayerScore;
+    
+    if (tournamentSystem === 'wins') {
+      // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+      let homePoints = 0;
+      let awayPoints = 0;
+      
+      matchups.forEach(m => {
+        if (m.home_goals !== null && m.away_goals !== null) {
+          const homeGoals = (m.home_goals ?? 0);
+          const awayGoals = (m.away_goals ?? 0);
+          
+          if (homeGoals > awayGoals) {
+            homePoints += 3; // Home wins
+          } else if (awayGoals > homeGoals) {
+            awayPoints += 3; // Away wins
+          } else {
+            homePoints += 1; // Draw
+            awayPoints += 1; // Draw
+          }
+        }
+      });
+      
+      homePlayerScore = homePoints;
+      awayPlayerScore = awayPoints;
+      
+      // Add penalties (these are already points in win-based system)
+      homeTotalScore = homePoints + awaySubPenalties + homePenaltyGoals;
+      awayTotalScore = awayPoints + homeSubPenalties + awayPenaltyGoals;
+    } else {
+      // Goal-based scoring: sum of all goals
+      homePlayerScore = homePlayerGoals;
+      awayPlayerScore = awayPlayerGoals;
+      homeTotalScore = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
+      awayTotalScore = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
+    }
 
     const hasResults = matchups.some(m => m.home_goals !== null);
     const winner = hasResults
-      ? homeTotalGoals > awayTotalGoals
+      ? homeTotalScore > awayTotalScore
         ? fixture.home_team_name
-        : awayTotalGoals > homeTotalGoals
+        : awayTotalScore > homeTotalScore
           ? fixture.away_team_name
           : 'DRAW'
       : '';
@@ -325,10 +362,10 @@ ${hasSubstitutions ? `━━━━━━━━━━━━━━━━━━━�
 ${substitutions.map(m => {
       let subText = [];
       if (m.home_substituted) {
-        subText.push(`WARNING Home: +${m.home_sub_penalty || 0} penalty goals awarded to ${fixture.away_team_name}`);
+        subText.push(`WARNING Home: +${m.home_sub_penalty || 0} penalty ${tournamentSystem === 'wins' ? 'points' : 'goals'} awarded to ${fixture.away_team_name}`);
       }
       if (m.away_substituted) {
-        subText.push(`WARNING Away: +${m.away_sub_penalty || 0} penalty goals awarded to ${fixture.home_team_name}`);
+        subText.push(`WARNING Away: +${m.away_sub_penalty || 0} penalty ${tournamentSystem === 'wins' ? 'points' : 'goals'} awarded to ${fixture.home_team_name}`);
       }
       return subText.join('\n');
     }).join('\n')}
@@ -338,13 +375,13 @@ ${substitutions.map(m => {
 *SCORE BREAKDOWN:*
 
 *${fixture.home_team_name}*
-Total: *${hasResults ? homeTotalGoals : 0}* goals
-${hasResults && (homePlayerGoals > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0) ? `   - Player Goals: ${homePlayerGoals}
-${awaySubPenalties > 0 ? `   - Opponent Sub Penalties: +${awaySubPenalties}\n` : ''}${homePenaltyGoals > 0 ? `   - Fine/Violation Goals: +${homePenaltyGoals}\n` : ''}` : ''}
+Total: *${hasResults ? homeTotalScore : 0}* ${tournamentSystem === 'wins' ? 'points' : 'goals'}
+${hasResults && (homePlayerScore > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0) ? `   - Player ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: ${homePlayerScore}
+${awaySubPenalties > 0 ? `   - Opponent Sub Penalties: +${awaySubPenalties}\n` : ''}${homePenaltyGoals > 0 ? `   - Fine/Violation ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: +${homePenaltyGoals}\n` : ''}` : ''}
 *${fixture.away_team_name}*
-Total: *${hasResults ? awayTotalGoals : 0}* goals
-${hasResults && (awayPlayerGoals > 0 || homeSubPenalties > 0 || awayPenaltyGoals > 0) ? `   - Player Goals: ${awayPlayerGoals}
-${homeSubPenalties > 0 ? `   - Opponent Sub Penalties: +${homeSubPenalties}\n` : ''}${awayPenaltyGoals > 0 ? `   - Fine/Violation Goals: +${awayPenaltyGoals}\n` : ''}` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total: *${hasResults ? awayTotalScore : 0}* ${tournamentSystem === 'wins' ? 'points' : 'goals'}
+${hasResults && (awayPlayerScore > 0 || homeSubPenalties > 0 || awayPenaltyGoals > 0) ? `   - Player ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: ${awayPlayerScore}
+${homeSubPenalties > 0 ? `   - Opponent Sub Penalties: +${homeSubPenalties}\n` : ''}${awayPenaltyGoals > 0 ? `   - Fine/Violation ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: +${awayPenaltyGoals}\n` : ''}` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 *MAN OF THE MATCH*
 ${hasResults ? `${motmName}` : 'To be announced'}
@@ -464,6 +501,22 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
         setFixture(fixtureData as Fixture);
         setMatchupMode(fixtureData.matchup_mode || 'manual');
 
+        // Fetch tournament settings to get scoring system
+        try {
+          const tournamentResponse = await fetchWithTokenRefresh(`/api/tournament-settings?tournament_id=${fixtureData.tournament_id}`);
+          if (tournamentResponse.ok) {
+            const tournamentData = await tournamentResponse.json();
+            // The API returns { settings: {...} }
+            const scoringType = tournamentData.settings?.scoring_type || 'goals';
+            setTournamentSystem(scoringType);
+            console.log('🏆 Tournament scoring type:', scoringType);
+          }
+        } catch (error) {
+          console.error('Error fetching tournament settings:', error);
+          // Default to goals if fetch fails
+          setTournamentSystem('goals');
+        }
+
         // Initialize penalty goals
         setHomePenaltyGoals(fixtureData.home_penalty_goals || 0);
         setAwayPenaltyGoals(fixtureData.away_penalty_goals || 0);
@@ -512,8 +565,19 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
           season_id: fixtureData.season_id
         });
 
+        // Construct round deadline API URL
+        const roundDeadlineUrl = `/api/round-deadlines?tournament_id=${fixtureData.tournament_id}&round_number=${fixtureData.round_number}&leg=${fixtureData.leg || 'first'}`;
+        console.log('🔗 Fetching Round Deadlines:', {
+          url: roundDeadlineUrl,
+          params: {
+            tournament_id: fixtureData.tournament_id,
+            round_number: fixtureData.round_number,
+            leg: fixtureData.leg || 'first'
+          }
+        });
+
         const [roundResponse, homePlayersResponse, awayPlayersResponse, matchupsResponse, homeLineupResponse, awayLineupResponse] = await Promise.all([
-          fetch(`/api/round-deadlines?tournament_id=${fixtureData.tournament_id}&round_number=${fixtureData.round_number}&leg=${fixtureData.leg || 'first'}`),
+          fetch(roundDeadlineUrl),
           fetch(`/api/player-seasons?team_id=${fixtureData.home_team_id}&season_id=${fixtureData.season_id}`),
           fetch(`/api/player-seasons?team_id=${fixtureData.away_team_id}&season_id=${fixtureData.season_id}`),
           fetch(`/api/fixtures/${fixtureId}/matchups`),
@@ -636,8 +700,33 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
         if (roundResponse.ok) {
           const { roundDeadline } = await roundResponse.json();
 
+          console.log('📅 Round Deadline Data Fetched:', {
+            tournament_id: fixtureData.tournament_id,
+            round_number: fixtureData.round_number,
+            leg: fixtureData.leg || 'first',
+            raw_data: roundDeadline,
+            has_data: !!roundDeadline,
+            fields: roundDeadline ? Object.keys(roundDeadline) : []
+          });
+
           if (roundDeadline && roundDeadline.home_fixture_deadline_time && roundDeadline.away_fixture_deadline_time) {
             const deadlines = roundDeadline as RoundDeadlines;
+
+            console.log('✅ Round Deadline Details:', {
+              id: deadlines.id,
+              tournament_id: deadlines.tournament_id,
+              round_number: deadlines.round_number,
+              leg: deadlines.leg,
+              status: deadlines.status,
+              scheduled_date: deadlines.scheduled_date,
+              round_start_time: deadlines.round_start_time,
+              lineup_deadline_time: deadlines.lineup_deadline_time,
+              home_fixture_deadline_time: deadlines.home_fixture_deadline_time,
+              away_fixture_deadline_time: deadlines.away_fixture_deadline_time,
+              result_entry_deadline_time: deadlines.result_entry_deadline_time,
+              created_at: deadlines.created_at,
+              updated_at: deadlines.updated_at
+            });
             setRoundDeadlines(deadlines);
 
             // Skip deadline calculation if round hasn't been scheduled yet
@@ -657,16 +746,18 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
 
             // Use scheduled_date or default to today if null
             // scheduled_date might be a full timestamp or just a date string
+            // IMPORTANT: Convert to IST date, not UTC date
             let scheduledDateStr = deadlines.scheduled_date;
             if (scheduledDateStr) {
-              // If it's a timestamp (contains 'T'), extract just the date part
-              if (typeof scheduledDateStr === 'string' && scheduledDateStr.includes('T')) {
-                scheduledDateStr = scheduledDateStr.split('T')[0];
-              } else if (scheduledDateStr instanceof Date) {
-                scheduledDateStr = scheduledDateStr.toISOString().split('T')[0];
-              }
+              // Parse the date and convert to IST
+              const scheduledDate = new Date(scheduledDateStr);
+              // Convert to IST by adding 5:30 hours
+              const istDate = new Date(scheduledDate.getTime() + (5.5 * 60 * 60 * 1000));
+              scheduledDateStr = istDate.toISOString().split('T')[0];
             } else {
-              scheduledDateStr = new Date().toISOString().split('T')[0];
+              // Use current date in IST
+              const istNow = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+              scheduledDateStr = istNow.toISOString().split('T')[0];
             }
 
             // Validate and default time fields
@@ -1346,8 +1437,8 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-7xl">
-        {/* Lineup Deadline Monitor */}
-        {roundDeadlines && roundDeadlines.scheduled_date && roundDeadlines.round_start_time && (
+        {/* Lineup Deadline Monitor - Only show for manual mode */}
+        {matchupMode !== 'blind_lineup' && roundDeadlines && roundDeadlines.scheduled_date && roundDeadlines.round_start_time && (
           <div className="mb-6">
             <LineupDeadlineMonitor
               seasonId={fixture.season_id}
@@ -1472,246 +1563,252 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
               </div>
             </div>
 
-            {/* Phase Info & Deadlines */}
-            <div className="relative overflow-hidden p-4 sm:p-5 bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50 rounded-xl sm:rounded-2xl border border-indigo-100 shadow-inner">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-200 to-purple-200 rounded-full blur-2xl opacity-20"></div>
-              <div className="relative flex items-start gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm sm:text-base text-gray-800 font-semibold mb-2">{phaseInfo.description}</p>
-                  {roundDeadlines && lineupDeadline && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">📅</span>
-                        <span>Match: {roundDeadlines.scheduled_date}</span>
+
+            {/* Phase Info & Deadlines - Only show for manual mode */}
+            {matchupMode !== 'blind_lineup' && (
+              <div className="relative overflow-hidden p-4 sm:p-5 bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-50 rounded-xl sm:rounded-2xl border border-indigo-100 shadow-inner">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-200 to-purple-200 rounded-full blur-2xl opacity-20"></div>
+                <div className="relative flex items-start gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm sm:text-base text-gray-800 font-semibold mb-2">{phaseInfo.description}</p>
+                    {roundDeadlines && lineupDeadline && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📅</span>
+                          <span>Match: {roundDeadlines.scheduled_date}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">⏰</span>
+                          <span>Lineup Deadline: {lineupDeadline.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">⏰</span>
-                        <span>Lineup Deadline: {lineupDeadline.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST</span>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
+            )}
 
-        {/* Lineup Submission Section */}
-        <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-xl border border-white/20 p-5 sm:p-8 overflow-hidden mb-6">
-          <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full blur-3xl opacity-20 -z-10"></div>
 
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 to-purple-900 bg-clip-text text-transparent">Team Lineups</h2>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">Submit your starting XI and substitutes</p>
-              </div>
-            </div>
-          </div>
+            {/* Lineup Submission Section - Only show for manual mode */}
+            {matchupMode !== 'blind_lineup' && (
+              <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-xl border border-white/20 p-5 sm:p-8 overflow-hidden mb-6">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full blur-3xl opacity-20 -z-10"></div>
 
-          {/* Lineup Deadline Info */}
-          {lineupDeadline && (() => {
-            const now = new Date();
-            const homeDeadline = roundDeadlines && roundDeadlines.scheduled_date
-              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`)
-              : null;
-            const awayDeadline = roundDeadlines && roundDeadlines.scheduled_date
-              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`)
-              : null;
-
-            // Home team can edit until home deadline
-            const canHomeEdit = isHomeTeam && homeDeadline && now < homeDeadline;
-
-            // After home deadline, if no matchups exist, both teams can edit until away deadline
-            const inFixtureEntryPhase = homeDeadline && awayDeadline && now >= homeDeadline && now < awayDeadline;
-            const canEditDuringFixtureEntry = inFixtureEntryPhase && matchups.length === 0;
-
-            const isOpen = canSubmitLineup || canHomeEdit || canEditDuringFixtureEntry;
-
-            return (
-              <div className={`mb-4 p-4 rounded-xl border-2 ${isOpen
-                ? 'bg-green-50 border-green-300'
-                : 'bg-red-50 border-red-300'
-                }`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <svg className={`w-5 h-5 ${isOpen ? 'text-green-600' : 'text-red-600'
-                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className={`text-sm font-semibold ${isOpen ? 'text-green-900' : 'text-red-900'
-                    }`}>
-                    {isOpen ? '✓ Lineup Submission Open' : '⏰ Lineup Submission Closed'}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-700">
-                  {canEditDuringFixtureEntry
-                    ? `⚡ Both teams can edit lineup & create fixture until: ${awayDeadline?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (First to submit wins!)`
-                    : canHomeEdit && !canSubmitLineup
-                      ? `🏠 Home team can edit until: ${homeDeadline?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST`
-                      : matchups.length > 0 && !canSubmitLineup
-                        ? '🔒 Lineups locked: Matchups have been created'
-                        : `Deadline: ${lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (Round start time)`
-                  }
-                </p>
-              </div>
-            );
-          })()}
-
-          {/* Lineup Status Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            {/* Home Team Lineup Status */}
-            <div className={`p-4 rounded-xl border-2 transition-all ${homeLineupSubmitted
-              ? 'bg-green-50 border-green-300'
-              : 'bg-gray-50 border-gray-300'
-              }`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
-                  </svg>
-                  <span className="text-sm font-semibold text-gray-900">🏠 {fixture.home_team_name}</span>
-                </div>
-                {homeLineupSubmitted && (
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </div>
-              <p className={`text-xs font-medium ${homeLineupSubmitted ? 'text-green-700' : 'text-gray-600'
-                }`}>
-                {homeLineupSubmitted
-                  ? '✓ Lineup Submitted'
-                  : '⏳ Waiting for lineup'}
-              </p>
-            </div>
-
-            {/* Away Team Lineup Status */}
-            <div className={`p-4 rounded-xl border-2 transition-all ${awayLineupSubmitted
-              ? 'bg-green-50 border-green-300'
-              : 'bg-gray-50 border-gray-300'
-              }`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                  <span className="text-sm font-semibold text-gray-900">✈️ {fixture.away_team_name}</span>
-                </div>
-                {awayLineupSubmitted && (
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </div>
-              <p className={`text-xs font-medium ${awayLineupSubmitted ? 'text-green-700' : 'text-gray-600'
-                }`}>
-                {awayLineupSubmitted
-                  ? '✓ Lineup Submitted'
-                  : '⏳ Waiting for lineup'}
-              </p>
-            </div>
-          </div>
-
-          {/* Submit/Edit Lineup Button */}
-          {(() => {
-            // Check if home team can edit (before home deadline)
-            const now = new Date();
-            const homeDeadline = roundDeadlines && roundDeadlines.scheduled_date
-              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`)
-              : null;
-            const awayDeadline = roundDeadlines && roundDeadlines.scheduled_date
-              ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`)
-              : null;
-
-            const canHomeEdit = isHomeTeam && homeDeadline && now < homeDeadline;
-
-            // After home deadline, if no matchups exist, both teams can edit until away deadline
-            const inFixtureEntryPhase = homeDeadline && awayDeadline && now >= homeDeadline && now < awayDeadline;
-            const canEditDuringFixtureEntry = inFixtureEntryPhase && matchups.length === 0;
-
-            // Show button if: can submit OR home team can edit OR both can edit during fixture entry
-            const showButton = canSubmitLineup || canHomeEdit || canEditDuringFixtureEntry;
-
-            if (showButton) {
-              return (
-                <>
-                  <Link
-                    href={`/dashboard/team/fixture/${fixtureId}/lineup`}
-                    className="group relative w-full px-5 py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 text-white font-bold rounded-2xl hover:from-purple-700 hover:via-pink-700 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.02] flex items-center justify-center gap-3 overflow-hidden"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 group-hover:animate-shimmer"></div>
-                    <div className="relative flex items-center gap-3">
-                      <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                       </svg>
-                      <span className="text-base sm:text-lg">
-                        {isHomeTeam && homeLineupSubmitted ? '✏️ Edit Your Lineup' :
-                          !isHomeTeam && awayLineupSubmitted ? '✏️ Edit Your Lineup' :
-                            '📝 Submit Your Lineup'}
-                      </span>
                     </div>
-                  </Link>
-                  {canHomeEdit && matchups.length > 0 && (
-                    <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-orange-900">⚠️ Warning</p>
-                          <p className="text-xs text-orange-700 mt-1">
-                            Editing your lineup will delete the existing matchups. You'll need to recreate them after saving your changes.
-                          </p>
-                        </div>
-                      </div>
+                    <div>
+                      <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 to-purple-900 bg-clip-text text-transparent">Team Lineups</h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">Submit your starting XI and substitutes</p>
                     </div>
-                  )}
-                  {canEditDuringFixtureEntry && (
-                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-blue-900">ℹ️ Fixture Entry Phase</p>
-                          <p className="text-xs text-blue-700 mt-1">
-                            Home team didn't create fixture. Both teams can now edit lineup and create matchups. Your changes are private until you submit. First to submit wins!
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              );
-            }
+                  </div>
+                </div>
 
-            return (
-              <div className="text-center py-4 text-gray-600">
-                <p className="text-sm font-medium">
-                  {matchups.length > 0
-                    ? '🔒 Lineups locked: Matchups created'
-                    : '⏰ Lineup submission deadline has passed'
+                {/* Lineup Deadline Info */}
+                {lineupDeadline && (() => {
+                  const now = new Date();
+                  const homeDeadline = roundDeadlines && roundDeadlines.scheduled_date
+                    ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`)
+                    : null;
+                  const awayDeadline = roundDeadlines && roundDeadlines.scheduled_date
+                    ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`)
+                    : null;
+
+                  // Home team can edit until home deadline
+                  const canHomeEdit = isHomeTeam && homeDeadline && now < homeDeadline;
+
+                  // After home deadline, if no matchups exist, both teams can edit until away deadline
+                  const inFixtureEntryPhase = homeDeadline && awayDeadline && now >= homeDeadline && now < awayDeadline;
+                  const canEditDuringFixtureEntry = inFixtureEntryPhase && matchups.length === 0;
+
+                  const isOpen = canSubmitLineup || canHomeEdit || canEditDuringFixtureEntry;
+
+                  return (
+                    <div className={`mb-4 p-4 rounded-xl border-2 ${isOpen
+                      ? 'bg-green-50 border-green-300'
+                      : 'bg-red-50 border-red-300'
+                      }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <svg className={`w-5 h-5 ${isOpen ? 'text-green-600' : 'text-red-600'
+                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className={`text-sm font-semibold ${isOpen ? 'text-green-900' : 'text-red-900'
+                          }`}>
+                          {isOpen ? '✓ Lineup Submission Open' : '⏰ Lineup Submission Closed'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-700">
+                        {canEditDuringFixtureEntry
+                          ? `⚡ Both teams can edit lineup & create fixture until: ${awayDeadline?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (First to submit wins!)`
+                          : canHomeEdit && !canSubmitLineup
+                            ? `🏠 Home team can edit until: ${homeDeadline?.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST`
+                            : matchups.length > 0 && !canSubmitLineup
+                              ? '🔒 Lineups locked: Matchups have been created'
+                              : `Deadline: ${lineupDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' })} IST (Round start time)`
+                        }
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Lineup Status Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  {/* Home Team Lineup Status */}
+                  <div className={`p-4 rounded-xl border-2 transition-all ${homeLineupSubmitted
+                    ? 'bg-green-50 border-green-300'
+                    : 'bg-gray-50 border-gray-300'
+                    }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                        </svg>
+                        <span className="text-sm font-semibold text-gray-900">🏠 {fixture.home_team_name}</span>
+                      </div>
+                      {homeLineupSubmitted && (
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className={`text-xs font-medium ${homeLineupSubmitted ? 'text-green-700' : 'text-gray-600'
+                      }`}>
+                      {homeLineupSubmitted
+                        ? '✓ Lineup Submitted'
+                        : '⏳ Waiting for lineup'}
+                    </p>
+                  </div>
+
+                  {/* Away Team Lineup Status */}
+                  <div className={`p-4 rounded-xl border-2 transition-all ${awayLineupSubmitted
+                    ? 'bg-green-50 border-green-300'
+                    : 'bg-gray-50 border-gray-300'
+                    }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                        <span className="text-sm font-semibold text-gray-900">✈️ {fixture.away_team_name}</span>
+                      </div>
+                      {awayLineupSubmitted && (
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className={`text-xs font-medium ${awayLineupSubmitted ? 'text-green-700' : 'text-gray-600'
+                      }`}>
+                      {awayLineupSubmitted
+                        ? '✓ Lineup Submitted'
+                        : '⏳ Waiting for lineup'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Submit/Edit Lineup Button - Only show for manual mode */}
+                {matchupMode !== 'blind_lineup' && (() => {
+                  // Check if home team can edit (before home deadline)
+                  const now = new Date();
+                  const homeDeadline = roundDeadlines && roundDeadlines.scheduled_date
+                    ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.home_fixture_deadline_time}:00+05:30`)
+                    : null;
+                  const awayDeadline = roundDeadlines && roundDeadlines.scheduled_date
+                    ? new Date(`${roundDeadlines.scheduled_date}T${roundDeadlines.away_fixture_deadline_time}:00+05:30`)
+                    : null;
+
+                  const canHomeEdit = isHomeTeam && homeDeadline && now < homeDeadline;
+
+                  // After home deadline, if no matchups exist, both teams can edit until away deadline
+                  const inFixtureEntryPhase = homeDeadline && awayDeadline && now >= homeDeadline && now < awayDeadline;
+                  const canEditDuringFixtureEntry = inFixtureEntryPhase && matchups.length === 0;
+
+                  // Show button if: can submit OR home team can edit OR both can edit during fixture entry
+                  const showButton = canSubmitLineup || canHomeEdit || canEditDuringFixtureEntry;
+
+                  if (showButton) {
+                    return (
+                      <>
+                        <Link
+                          href={`/dashboard/team/fixture/${fixtureId}/lineup`}
+                          className="group relative w-full px-5 py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 text-white font-bold rounded-2xl hover:from-purple-700 hover:via-pink-700 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.02] flex items-center justify-center gap-3 overflow-hidden"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 group-hover:animate-shimmer"></div>
+                          <div className="relative flex items-center gap-3">
+                            <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                            <span className="text-base sm:text-lg">
+                              {isHomeTeam && homeLineupSubmitted ? '✏️ Edit Your Lineup' :
+                                !isHomeTeam && awayLineupSubmitted ? '✏️ Edit Your Lineup' :
+                                  '📝 Submit Your Lineup'}
+                            </span>
+                          </div>
+                        </Link>
+                        {canHomeEdit && matchups.length > 0 && (
+                          <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                            <div className="flex items-start gap-2">
+                              <svg className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                              <div className="flex-1">
+                                <p className="text-xs font-semibold text-orange-900">⚠️ Warning</p>
+                                <p className="text-xs text-orange-700 mt-1">
+                                  Editing your lineup will delete the existing matchups. You'll need to recreate them after saving your changes.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {canEditDuringFixtureEntry && (
+                          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-start gap-2">
+                              <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div className="flex-1">
+                                <p className="text-xs font-semibold text-blue-900">ℹ️ Fixture Entry Phase</p>
+                                <p className="text-xs text-blue-700 mt-1">
+                                  Home team didn't create fixture. Both teams can now edit lineup and create matchups. Your changes are private until you submit. First to submit wins!
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
                   }
-                </p>
-                <p className="text-xs mt-1">
-                  {matchups.length > 0
-                    ? 'Lineups cannot be edited once matchups are created to maintain fair play'
-                    : 'Lineups are now locked for this fixture'
-                  }
-                </p>
+
+                  return (
+                    <div className="text-center py-4 text-gray-600">
+                      <p className="text-sm font-medium">
+                        {matchups.length > 0
+                          ? '🔒 Lineups locked: Matchups created'
+                          : '⏰ Lineup submission deadline has passed'
+                        }
+                      </p>
+                      <p className="text-xs mt-1">
+                        {matchups.length > 0
+                          ? 'Lineups cannot be edited once matchups are created to maintain fair play'
+                          : 'Lineups are now locked for this fixture'
+                        }
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
-            );
-          })()}
+            )}
+          </div>
         </div>
 
         {/* Matchups Section */}
@@ -2121,29 +2218,70 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                     const homeSubPenalties = matchups.reduce((sum, m) => sum + (m.home_sub_penalty ?? 0), 0);
                     const awaySubPenalties = matchups.reduce((sum, m) => sum + (m.away_sub_penalty ?? 0), 0);
 
-                    // Total goals including all penalties
-                    const homeTotalGoals = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
-                    const awayTotalGoals = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
+                    // Calculate scores based on tournament system
+                    let homeTotalScore, awayTotalScore;
+                    
+                    if (tournamentSystem === 'wins') {
+                      // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+                      let homePoints = 0;
+                      let awayPoints = 0;
+                      
+                      matchups.forEach(m => {
+                        if (m.home_goals !== null && m.away_goals !== null) {
+                          const homeGoals = (m.home_goals ?? 0);
+                          const awayGoals = (m.away_goals ?? 0);
+                          
+                          if (homeGoals > awayGoals) {
+                            homePoints += 3; // Home wins
+                          } else if (awayGoals > homeGoals) {
+                            awayPoints += 3; // Away wins
+                          } else {
+                            homePoints += 1; // Draw
+                            awayPoints += 1; // Draw
+                          }
+                        }
+                      });
+                      
+                      // Add penalties (these are already points in win-based system)
+                      homeTotalScore = homePoints + awaySubPenalties + homePenaltyGoals;
+                      awayTotalScore = awayPoints + homeSubPenalties + awayPenaltyGoals;
+                    } else {
+                      // Goal-based scoring: sum of all goals
+                      homeTotalScore = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
+                      awayTotalScore = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
+                    }
 
-                    const winner = homeTotalGoals > awayTotalGoals ? 'home' : awayTotalGoals > homeTotalGoals ? 'away' : 'draw';
+                    const winner = homeTotalScore > awayTotalScore ? 'home' : awayTotalScore > homeTotalScore ? 'away' : 'draw';
 
                     return (
                       <div className="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 border-2 border-blue-300 rounded-2xl p-4 sm:p-6 shadow-xl">
-                        <h3 className="text-center text-sm font-semibold text-gray-600 mb-4">Match Result</h3>
+                        <h3 className="text-center text-sm font-semibold text-gray-600 mb-4">
+                          Match Result {tournamentSystem === 'wins' && '(Points)'}
+                        </h3>
                         <div className="grid grid-cols-3 gap-4 items-center mb-4">
                           {/* Home Total */}
                           <div className={`text-center p-4 rounded-xl ${winner === 'home' ? 'bg-green-500 text-white shadow-lg scale-105' : 'bg-white text-gray-700'
                             } transition-all`}>
                             <div className="text-xs sm:text-sm font-medium mb-1">{fixture.home_team_name}</div>
-                            <div className="text-3xl sm:text-4xl font-bold">{homeTotalGoals}</div>
+                            <div className="text-3xl sm:text-4xl font-bold">{homeTotalScore}</div>
                             {winner === 'home' && <div className="text-xs mt-1 font-semibold">✓ WINNER</div>}
                             {/* Breakdown */}
-                            {(awaySubPenalties > 0 || homePenaltyGoals > 0) && (
+                            {tournamentSystem === 'wins' ? (
+                              // Show W-D-L for win-based system
                               <div className="text-xs mt-2 opacity-90">
-                                ({homePlayerGoals}
-                                {awaySubPenalties > 0 && ` +${awaySubPenalties}s`}
-                                {homePenaltyGoals > 0 && ` +${homePenaltyGoals}f`})
+                                {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) > (m.away_goals ?? 0)).length}W-
+                                {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) === (m.away_goals ?? 0)).length}D-
+                                {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) < (m.away_goals ?? 0)).length}L
                               </div>
+                            ) : (
+                              // Show goal breakdown for goal-based system
+                              (awaySubPenalties > 0 || homePenaltyGoals > 0) && (
+                                <div className="text-xs mt-2 opacity-90">
+                                  ({homePlayerGoals}
+                                  {awaySubPenalties > 0 && ` +${awaySubPenalties}s`}
+                                  {homePenaltyGoals > 0 && ` +${homePenaltyGoals}f`})
+                                </div>
+                              )
                             )}
                           </div>
 
@@ -2162,20 +2300,30 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                           <div className={`text-center p-4 rounded-xl ${winner === 'away' ? 'bg-green-500 text-white shadow-lg scale-105' : 'bg-white text-gray-700'
                             } transition-all`}>
                             <div className="text-xs sm:text-sm font-medium mb-1">{fixture.away_team_name}</div>
-                            <div className="text-3xl sm:text-4xl font-bold">{awayTotalGoals}</div>
+                            <div className="text-3xl sm:text-4xl font-bold">{awayTotalScore}</div>
                             {winner === 'away' && <div className="text-xs mt-1 font-semibold">✓ WINNER</div>}
                             {/* Breakdown */}
-                            {(homeSubPenalties > 0 || awayPenaltyGoals > 0) && (
+                            {tournamentSystem === 'wins' ? (
+                              // Show W-D-L for win-based system
                               <div className="text-xs mt-2 opacity-90">
-                                ({awayPlayerGoals}
-                                {homeSubPenalties > 0 && ` +${homeSubPenalties}s`}
-                                {awayPenaltyGoals > 0 && ` +${awayPenaltyGoals}f`})
+                                {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.away_goals ?? 0) > (m.home_goals ?? 0)).length}W-
+                                {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) === (m.away_goals ?? 0)).length}D-
+                                {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.away_goals ?? 0) < (m.home_goals ?? 0)).length}L
                               </div>
+                            ) : (
+                              // Show goal breakdown for goal-based system
+                              (homeSubPenalties > 0 || awayPenaltyGoals > 0) && (
+                                <div className="text-xs mt-2 opacity-90">
+                                  ({awayPlayerGoals}
+                                  {homeSubPenalties > 0 && ` +${homeSubPenalties}s`}
+                                  {awayPenaltyGoals > 0 && ` +${awayPenaltyGoals}f`})
+                                </div>
+                              )
                             )}
                           </div>
                         </div>
-                        {/* Legend */}
-                        {(homeSubPenalties > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0 || awayPenaltyGoals > 0) && (
+                        {/* Legend - only show for goal-based system */}
+                        {tournamentSystem === 'goals' && (homeSubPenalties > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0 || awayPenaltyGoals > 0) && (
                           <div className="text-center text-xs text-gray-600 pt-2 border-t border-gray-300">
                             s = sub penalty, f = fine
                           </div>
@@ -2459,38 +2607,89 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                     const homeSubPenalties = matchups.reduce((sum, m) => sum + (m.home_sub_penalty ?? 0), 0);
                     const awaySubPenalties = matchups.reduce((sum, m) => sum + (m.away_sub_penalty ?? 0), 0);
 
-                    // Total including penalties
-                    const homeTotalGoals = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
-                    const awayTotalGoals = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
-                    const winner = homeTotalGoals > awayTotalGoals ? 'home' : awayTotalGoals > homeTotalGoals ? 'away' : 'draw';
+                    // Calculate scores based on tournament system
+                    let homeTotalScore, awayTotalScore;
+                    
+                    if (tournamentSystem === 'wins') {
+                      // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+                      let homePoints = 0;
+                      let awayPoints = 0;
+                      
+                      // Use matchResults state for live updates
+                      Object.entries(matchResults).forEach(([position, result]: [string, any]) => {
+                        const homeGoals = result?.home_goals ?? 0;
+                        const awayGoals = result?.away_goals ?? 0;
+                        
+                        if (homeGoals > awayGoals) {
+                          homePoints += 3; // Home wins
+                        } else if (awayGoals > homeGoals) {
+                          awayPoints += 3; // Away wins
+                        } else if (homeGoals === awayGoals && homeGoals > 0) {
+                          homePoints += 1; // Draw (only if both scored)
+                          awayPoints += 1; // Draw
+                        }
+                      });
+                      
+                      // Add penalties (these are already points in win-based system)
+                      homeTotalScore = homePoints + awaySubPenalties + homePenaltyGoals;
+                      awayTotalScore = awayPoints + homeSubPenalties + awayPenaltyGoals;
+                    } else {
+                      // Goal-based scoring: sum of all goals
+                      homeTotalScore = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
+                      awayTotalScore = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
+                    }
+                    
+                    const winner = homeTotalScore > awayTotalScore ? 'home' : awayTotalScore > homeTotalScore ? 'away' : 'draw';
 
                     return (
                       <div className="bg-gradient-to-r from-blue-100 to-purple-100 border-2 border-blue-300 rounded-xl p-4">
-                        <div className="text-center text-xs font-semibold text-gray-600 mb-2">Current Score</div>
+                        <div className="text-center text-xs font-semibold text-gray-600 mb-2">
+                          Current Score {tournamentSystem === 'wins' && '(Points)'}
+                        </div>
                         <div className="grid grid-cols-3 gap-3 items-center">
                           <div className="text-center">
                             <div className="text-xs text-gray-600 mb-1">{fixture.home_team_name}</div>
                             <div className={`text-2xl font-bold ${winner === 'home' ? 'text-green-600' : 'text-gray-700'
-                              }`}>{homeTotalGoals}</div>
-                            {(awaySubPenalties > 0 || homePenaltyGoals > 0) && (
+                              }`}>{homeTotalScore}</div>
+                            {tournamentSystem === 'wins' ? (
+                              // Show matchup wins for win-based system
                               <div className="text-xs text-gray-500 mt-1">
-                                ({homePlayerGoals}
-                                {awaySubPenalties > 0 && ` +${awaySubPenalties}s`}
-                                {homePenaltyGoals > 0 && ` +${homePenaltyGoals}f`})
+                                {Object.values(matchResults).filter((m: any) => (m?.home_goals ?? 0) > (m?.away_goals ?? 0)).length}W-
+                                {Object.values(matchResults).filter((m: any) => (m?.home_goals ?? 0) === (m?.away_goals ?? 0) && (m?.home_goals ?? 0) > 0).length}D-
+                                {Object.values(matchResults).filter((m: any) => (m?.home_goals ?? 0) < (m?.away_goals ?? 0)).length}L
                               </div>
+                            ) : (
+                              // Show goal breakdown for goal-based system
+                              (awaySubPenalties > 0 || homePenaltyGoals > 0) && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  ({homePlayerGoals}
+                                  {awaySubPenalties > 0 && ` +${awaySubPenalties}s`}
+                                  {homePenaltyGoals > 0 && ` +${homePenaltyGoals}f`})
+                                </div>
+                              )
                             )}
                           </div>
                           <div className="text-center text-gray-400 font-bold">-</div>
                           <div className="text-center">
                             <div className="text-xs text-gray-600 mb-1">{fixture.away_team_name}</div>
                             <div className={`text-2xl font-bold ${winner === 'away' ? 'text-green-600' : 'text-gray-700'
-                              }`}>{awayTotalGoals}</div>
-                            {(homeSubPenalties > 0 || awayPenaltyGoals > 0) && (
+                              }`}>{awayTotalScore}</div>
+                            {tournamentSystem === 'wins' ? (
+                              // Show matchup wins for win-based system
                               <div className="text-xs text-gray-500 mt-1">
-                                ({awayPlayerGoals}
-                                {homeSubPenalties > 0 && ` +${homeSubPenalties}s`}
-                                {awayPenaltyGoals > 0 && ` +${awayPenaltyGoals}f`})
+                                {Object.values(matchResults).filter((m: any) => (m?.away_goals ?? 0) > (m?.home_goals ?? 0)).length}W-
+                                {Object.values(matchResults).filter((m: any) => (m?.home_goals ?? 0) === (m?.away_goals ?? 0) && (m?.away_goals ?? 0) > 0).length}D-
+                                {Object.values(matchResults).filter((m: any) => (m?.away_goals ?? 0) < (m?.home_goals ?? 0)).length}L
                               </div>
+                            ) : (
+                              // Show goal breakdown for goal-based system
+                              (homeSubPenalties > 0 || awayPenaltyGoals > 0) && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  ({awayPlayerGoals}
+                                  {homeSubPenalties > 0 && ` +${homeSubPenalties}s`}
+                                  {awayPenaltyGoals > 0 && ` +${awayPenaltyGoals}f`})
+                                </div>
+                              )
                             )}
                           </div>
                         </div>
@@ -2499,9 +2698,11 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                             <span className="text-xs bg-yellow-200 text-yellow-800 px-3 py-1 rounded-full font-semibold">Draw</span>
                           </div>
                         )}
-                        <div className="text-center mt-2 text-xs text-gray-500">
-                          s = sub penalty, f = fine
-                        </div>
+                        {tournamentSystem === 'goals' && (
+                          <div className="text-center mt-2 text-xs text-gray-500">
+                            s = sub penalty, f = fine
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

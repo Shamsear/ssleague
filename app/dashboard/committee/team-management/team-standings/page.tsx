@@ -11,11 +11,42 @@ import TournamentStandings from '@/components/tournament/TournamentStandings';
 
 export default function TeamStandingsPage() {
   const { user, loading } = useAuth();
-  const { selectedTournamentId } = useTournamentContext();
+  const { selectedTournamentId, seasonId, setSeasonId } = useTournamentContext();
   const router = useRouter();
   
   // Get tournament info for display
   const { data: tournament } = useTournament(selectedTournamentId);
+
+  // Fetch and set active season for committee admin
+  useEffect(() => {
+    const fetchActiveSeason = async () => {
+      if (!user || user.role !== 'committee_admin') return;
+
+      try {
+        // Get active season from Firebase
+        const { db } = await import('@/lib/firebase/config');
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        
+        const seasonsRef = collection(db, 'seasons');
+        const activeSeasonQuery = query(seasonsRef, where('isActive', '==', true));
+        const snapshot = await getDocs(activeSeasonQuery);
+        
+        if (!snapshot.empty) {
+          const activeSeason = snapshot.docs[0];
+          const activeSeasonId = activeSeason.id;
+          
+          console.log('📝 [Committee Standings] Found active season:', activeSeasonId);
+          setSeasonId(activeSeasonId);
+        } else {
+          console.log('⚠️ [Committee Standings] No active season found');
+        }
+      } catch (error) {
+        console.error('❌ [Committee Standings] Error fetching active season:', error);
+      }
+    };
+
+    fetchActiveSeason();
+  }, [user, setSeasonId]);
 
   useEffect(() => {
     if (!loading && !user) {

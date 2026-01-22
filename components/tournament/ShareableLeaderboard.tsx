@@ -3,6 +3,23 @@
 import { useRef, useState } from 'react';
 import { toPng } from 'html-to-image';
 
+interface GroupTeam {
+  team_id: string;
+  team_name: string;
+  team_logo?: string;
+  group: string;
+  matches_played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goals_for: number;
+  goals_against: number;
+  goal_difference: number;
+  points: number;
+  position: number;
+  qualifies: boolean;
+}
+
 interface TeamStats {
   team_id: string;
   team_name: string;
@@ -18,7 +35,8 @@ interface TeamStats {
 }
 
 interface ShareableLeaderboardProps {
-  standings: TeamStats[];
+  standings?: TeamStats[];
+  groupStandings?: Record<string, GroupTeam[]>;
   tournamentName: string;
   seasonName?: string;
   format?: string;
@@ -27,16 +45,33 @@ interface ShareableLeaderboardProps {
 }
 
 export default function ShareableLeaderboard({ 
-  standings, 
+  standings,
+  groupStandings,
   tournamentName,
   seasonName,
   format = 'league',
   selectedRound = null,
-  availableRounds = []
 }: ShareableLeaderboardProps) {
   const leaderboardRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<string>('');
+
+  // Initialize selected group for group stage
+  useState(() => {
+    if (groupStandings && !selectedGroup) {
+      const groups = Object.keys(groupStandings).sort();
+      if (groups.length > 0) {
+        setSelectedGroup(groups[0]);
+      }
+    }
+  });
+
+  const isGroupStage = format === 'group_stage' && groupStandings;
+  const groups = isGroupStage ? Object.keys(groupStandings).sort() : [];
+  const currentStandings = isGroupStage && selectedGroup 
+    ? groupStandings[selectedGroup] 
+    : standings || [];
 
   const generateImage = async () => {
     if (!leaderboardRef.current) return;
@@ -132,6 +167,26 @@ export default function ShareableLeaderboard({
 
   return (
     <div className="space-y-4">
+      {/* Group Selector for Group Stage */}
+      {isGroupStage && groups.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <span className="text-sm font-semibold text-gray-700 flex items-center">Select Group:</span>
+          {groups.map((group) => (
+            <button
+              key={group}
+              onClick={() => setSelectedGroup(group)}
+              className={`px-3 py-1.5 rounded-lg font-medium transition-all text-sm ${
+                selectedGroup === group
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Group {group}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-3">
         <button
@@ -213,7 +268,7 @@ export default function ShareableLeaderboard({
           {/* Leaderboard Title */}
           <div className="bg-white px-6 py-4 text-center">
             <h2 className="text-2xl font-bold text-gray-800 uppercase">
-              LEADERBOARD
+              {isGroupStage ? `GROUP ${selectedGroup} STANDINGS` : 'LEADERBOARD'}
               {selectedRound && ` - AFTER ROUND ${selectedRound}`}
             </h2>
           </div>
@@ -238,7 +293,7 @@ export default function ShareableLeaderboard({
                 </tr>
               </thead>
               <tbody>
-                {standings.map((team, index) => (
+                {currentStandings.map((team: any, index: number) => (
                   <tr 
                     key={team.team_id}
                     className={`${

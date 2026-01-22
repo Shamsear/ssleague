@@ -27,6 +27,7 @@ export default function TournamentSelector() {
       seasonId,
       effectiveSeasonId,
       tournamentsCount: tournaments?.length || 0,
+      tournaments: tournaments?.map(t => ({ id: t.id, name: t.tournament_name, type: t.tournament_type })),
       selectedTournamentId,
       isLoading
     });

@@ -124,8 +124,8 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
 
   return (
     <div className="space-y-6">
-      {/* Round Selector - Only show for league standings */}
-      {showLeagueStandings && availableRounds.length > 0 && (
+      {/* Round Selector - Show for both league and group stage */}
+      {(showLeagueStandings || showGroupStandings) && availableRounds.length > 0 && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 sm:p-6">
           <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4">
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -192,8 +192,8 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
         </div>
       )}
 
-      {/* Share Leaderboard Feature - Only show for league standings */}
-      {showLeagueStandings && standings && standings.length > 0 && (
+      {/* Share Leaderboard Feature - Show for both league and group stage */}
+      {((showLeagueStandings && standings && standings.length > 0) || (showGroupStandings && groupStandings)) && (
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-6">
           <div className="flex items-center gap-3 mb-4">
             <span className="text-3xl">📸</span>
@@ -203,7 +203,8 @@ export default function TournamentStandings({ tournamentId, currentUserId }: Tou
             </div>
           </div>
           <ShareableLeaderboard 
-            standings={standings}
+            standings={showLeagueStandings ? standings : undefined}
+            groupStandings={showGroupStandings ? groupStandings : undefined}
             tournamentName={tournament_name || 'Tournament'}
             seasonName={season_name}
             format={format}

@@ -5,6 +5,7 @@ import { useState } from 'react';
 interface GroupTeam {
   team_id: string;
   team_name: string;
+  team_logo?: string;
   group: string;
   matches_played: number;
   wins: number;
@@ -142,20 +143,37 @@ export default function GroupStageStandings({ groupStandings, currentUserId }: G
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-bold text-gray-900">
-                          {team.team_name}
+                      <div className="flex items-center gap-3">
+                        {/* Team Logo */}
+                        {team.team_logo ? (
+                          <img 
+                            src={team.team_logo} 
+                            alt={`${team.team_name} logo`}
+                            className="w-10 h-10 rounded-full object-cover border-2 border-gray-200 flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                            {team.team_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        
+                        <div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {team.team_name}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            {isCurrentUser && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                                Your Team
+                              </span>
+                            )}
+                            {team.qualifies && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                                Qualified
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        {isCurrentUser && (
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                            Your Team
-                          </span>
-                        )}
-                        {team.qualifies && (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium ml-2">
-                            Qualified
-                          </span>
-                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">

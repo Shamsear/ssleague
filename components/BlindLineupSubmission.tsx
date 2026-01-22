@@ -40,14 +40,19 @@ export default function BlindLineupSubmission({
         try {
             setIsLoading(true);
 
-            // Fetch available players
+            // Fetch available players from player_seasons table
             const playersRes = await fetchWithTokenRefresh(
-                `/api/team/players?team_id=${teamId}&season_id=${seasonId}`
+                `/api/player-seasons?team_id=${teamId}&season_id=${seasonId}`
             );
             const playersData = await playersRes.json();
 
-            if (playersData.success) {
-                setAvailablePlayers(playersData.players || []);
+            console.log('🎮 Blind Lineup - Players fetched:', playersData);
+
+            if (playersData.players && Array.isArray(playersData.players)) {
+                setAvailablePlayers(playersData.players);
+            } else {
+                console.error('❌ No players found or invalid response:', playersData);
+                setAvailablePlayers([]);
             }
 
             // Fetch lineup status
@@ -223,8 +228,8 @@ export default function BlindLineupSubmission({
                         <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-gray-700">Your lineup:</span>
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${lineupStatus?.my_lineup
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-yellow-100 text-yellow-700'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-yellow-100 text-yellow-700'
                                 }`}>
                                 {lineupStatus?.my_lineup ? '✅ Submitted' : '⏳ Not submitted'}
                             </span>
@@ -232,8 +237,8 @@ export default function BlindLineupSubmission({
                         <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-gray-700">Opponent:</span>
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${lineupStatus?.opponent_submitted
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-gray-100 text-gray-700'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-700'
                                 }`}>
                                 {lineupStatus?.opponent_submitted ? '✅ Submitted' : '⏳ Waiting...'}
                             </span>
@@ -297,8 +302,8 @@ export default function BlindLineupSubmission({
                                         onDragOver={(e) => handleDragOver(e, index)}
                                         onDrop={(e) => handleDrop(e, index)}
                                         className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-move transition-all ${player.is_substitute
-                                                ? 'border-gray-200 bg-gray-50'
-                                                : 'border-blue-200 bg-blue-50'
+                                            ? 'border-gray-200 bg-gray-50'
+                                            : 'border-blue-200 bg-blue-50'
                                             } ${draggedIndex === index ? 'opacity-50' : ''}`}
                                     >
                                         <div className="flex items-center gap-2 flex-1">
@@ -309,8 +314,8 @@ export default function BlindLineupSubmission({
                                                 {player.player_name}
                                             </span>
                                             <span className={`ml-auto px-2 py-1 rounded text-xs font-semibold ${player.is_substitute
-                                                    ? 'bg-gray-200 text-gray-700'
-                                                    : 'bg-blue-200 text-blue-700'
+                                                ? 'bg-gray-200 text-gray-700'
+                                                : 'bg-blue-200 text-blue-700'
                                                 }`}>
                                                 {player.is_substitute ? 'Substitute' : 'Playing'}
                                             </span>

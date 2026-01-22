@@ -21,7 +21,7 @@ export default function TeamLeaderboardPage() {
   // Fetch and set the team's season if not already set
   useEffect(() => {
     const fetchTeamSeason = async () => {
-      if (!user || user.role !== 'team' || seasonId) return;
+      if (!user || user.role !== 'team') return;
 
       try {
         // Get active season from Firebase
@@ -36,6 +36,8 @@ export default function TeamLeaderboardPage() {
           const activeSeason = snapshot.docs[0];
           const activeSeasonId = activeSeason.id;
           
+          console.log('📝 [Leaderboard] Found active season:', activeSeasonId);
+          
           // Check if team is registered for this season
           const teamSeasonsRef = collection(db, 'team_seasons');
           const teamSeasonQuery = query(
@@ -47,10 +49,12 @@ export default function TeamLeaderboardPage() {
           const teamSeasonSnapshot = await getDocs(teamSeasonQuery);
           
           if (!teamSeasonSnapshot.empty) {
-            console.log('📝 [Leaderboard] Setting team season ID:', activeSeasonId);
+            console.log('📝 [Leaderboard] Team is registered, setting season ID:', activeSeasonId);
             setSeasonId(activeSeasonId);
           } else {
-            console.log('⚠️ [Leaderboard] Team not registered for active season');
+            console.log('⚠️ [Leaderboard] Team not registered for active season, but setting it anyway for viewing');
+            // Set it anyway so they can view the leaderboard
+            setSeasonId(activeSeasonId);
           }
         } else {
           console.log('⚠️ [Leaderboard] No active season found');
@@ -61,7 +65,7 @@ export default function TeamLeaderboardPage() {
     };
 
     fetchTeamSeason();
-  }, [user, seasonId, setSeasonId]);
+  }, [user, setSeasonId]);
 
   useEffect(() => {
     if (!loading && !user) {

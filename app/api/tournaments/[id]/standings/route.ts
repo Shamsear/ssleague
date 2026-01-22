@@ -102,7 +102,7 @@ export async function GET(
     // Handle different tournament formats
     if (tournament.has_group_stage) {
       // Group Stage format - calculate standings per group
-      const groupStandings = calculateGroupStandings(fixtures, tournament.teams_advancing_per_group || 2);
+      const groupStandings = await calculateGroupStandings(fixtures, tournament.teams_advancing_per_group || 2);
       
       return NextResponse.json({
         success: true,
@@ -260,7 +260,7 @@ async function calculateLeagueStandings(fixtures: any[], sql: any) {
   return standings;
 }
 
-function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) {
+async function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) {
   const groups: Record<string, any> = {};
 
   // Filter only group stage fixtures
@@ -282,6 +282,7 @@ function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) {
       groups[groupName][homeTeamId] = {
         team_id: homeTeamId,
         team_name: fixture.home_team_name,
+        team_logo: null,
         group: groupName,
         matches_played: 0,
         wins: 0,
@@ -299,6 +300,7 @@ function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) {
       groups[groupName][awayTeamId] = {
         team_id: awayTeamId,
         team_name: fixture.away_team_name,
+        team_logo: null,
         group: groupName,
         matches_played: 0,
         wins: 0,
@@ -339,6 +341,36 @@ function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) {
       awayTeam.points += 1;
     }
   });
+
+  // Fetch team logos from Firebase
+  const allTeamIds = new Set<string>();
+  Object.values(groups).forEach((group: any) => {
+    Object.keys(group).forEach(teamId => allTeamIds.add(teamId));
+  });
+
+  if (allTeamIds.size > 0) {
+    try {
+      const { db } = await import('@/lib/firebase/config');
+      const { collection, getDocs } = await import('firebase/firestore');
+      
+      const teamsRef = collection(db, 'teams');
+      const teamsSnapshot = await getDocs(teamsRef);
+      
+      teamsSnapshot.forEach((doc) => {
+        const teamData = doc.data();
+        const teamId = doc.id;
+        
+        // Update team logo in all groups where this team appears
+        Object.values(groups).forEach((group: any) => {
+          if (group[teamId]) {
+            group[teamId].team_logo = teamData.logo_url || teamData.team_logo || teamData.logoUrl || null;
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error fetching team logos for group stage:', error);
+    }
+  }
 
   // Sort each group and determine qualification
   const sortedGroups: Record<string, any[]> = {};
