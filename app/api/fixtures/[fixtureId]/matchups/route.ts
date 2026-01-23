@@ -624,11 +624,39 @@ export async function PATCH(
     }
 
     // Calculate total scores from all matchups
+    // Need to check tournament scoring type
+    const tournamentInfo = await sql`
+      SELECT t.id as tournament_id, ts.scoring_type
+      FROM fixtures f
+      JOIN tournaments t ON f.tournament_id = t.id
+      LEFT JOIN tournament_settings ts ON t.id = ts.tournament_id
+      WHERE f.id = ${fixtureId}
+      LIMIT 1
+    `;
+    
+    const scoringType = tournamentInfo[0]?.scoring_type || 'goals';
+    
     let totalHomeScore = 0;
     let totalAwayScore = 0;
-    for (const result of results) {
-      totalHomeScore += result.home_goals;
-      totalAwayScore += result.away_goals;
+    
+    if (scoringType === 'wins') {
+      // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+      for (const result of results) {
+        if (result.home_goals > result.away_goals) {
+          totalHomeScore += 3; // Home wins
+        } else if (result.away_goals > result.home_goals) {
+          totalAwayScore += 3; // Away wins
+        } else {
+          totalHomeScore += 1; // Draw
+          totalAwayScore += 1; // Draw
+        }
+      }
+    } else {
+      // Goal-based scoring: sum of all goals
+      for (const result of results) {
+        totalHomeScore += result.home_goals;
+        totalAwayScore += result.away_goals;
+      }
     }
 
     // Get substitution penalties from matchups
