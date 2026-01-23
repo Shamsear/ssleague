@@ -176,7 +176,7 @@ export default function TeamMatchesPage() {
         // Build a map of fixture data first
         const fixturesByRound = new Map<string, any[]>();
         fixturesList.forEach((fixture: any) => {
-          const roundKey = `${fixture.round_number}_${fixture.leg || 'first'}`;
+          const roundKey = `${fixture.tournament_id}_${fixture.round_number}_${fixture.leg || 'first'}`;
           if (!fixturesByRound.has(roundKey)) {
             fixturesByRound.set(roundKey, []);
           }
