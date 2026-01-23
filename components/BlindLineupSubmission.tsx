@@ -59,6 +59,19 @@ export default function BlindLineupSubmission({
             const statusRes = await fetchWithTokenRefresh(
                 `/api/fixtures/${fixtureId}/submit-lineup?team_id=${teamId}`
             );
+
+            if (!statusRes.ok) {
+                console.error('Failed to fetch lineup status:', statusRes.status, statusRes.statusText);
+                // Try to parse error message if possible
+                try {
+                    const errorData = await statusRes.json();
+                    console.error('Error details:', errorData);
+                } catch (e) {
+                    console.error('Could not parse error response');
+                }
+                return; // Don't set lineup status if request failed
+            }
+
             const statusData = await statusRes.json();
 
             if (statusData.success) {
@@ -204,7 +217,9 @@ export default function BlindLineupSubmission({
         );
     }
 
-    const canEdit = !lineupStatus?.lineups_locked;
+    // In blind lineup mode, once submitted, it's locked (can't be changed)
+    // This is different from regular lineups where you can edit until the deadline
+    const canEdit = !lineupStatus?.lineups_locked && !lineupStatus?.my_lineup;
     const playingPlayers = selectedPlayers.filter(p => !p.is_substitute);
     const substitutePlayers = selectedPlayers.filter(p => p.is_substitute);
 
@@ -216,8 +231,11 @@ export default function BlindLineupSubmission({
                     🔒 Blind Lineup Mode
                 </h3>
                 <p className="text-sm text-purple-700">
-                    Submit your player order (1-5). Your opponent won't see this until the home fixture phase ends.
+                    Submit your player order (1-5 playing + up to 2 substitutes). Your opponent won't see this until the home fixture phase ends.
                     Matchups will be auto-created: Your Player 1 vs Their Player 1, etc.
+                </p>
+                <p className="text-sm text-purple-800 font-semibold mt-2">
+                    ⚠️ Warning: Once submitted, your lineup cannot be changed!
                 </p>
             </div>
 
@@ -363,11 +381,48 @@ export default function BlindLineupSubmission({
             ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
                     <p className="text-gray-700 font-medium mb-2">
-                        Lineups are locked. Home fixture phase has ended.
+                        {lineupStatus?.lineups_locked
+                            ? 'Lineups are locked. Home fixture phase has ended.'
+                            : 'Lineup submitted and locked.'}
                     </p>
                     <p className="text-sm text-gray-600">
-                        Matchups have been created based on your submitted lineup order.
+                        {lineupStatus?.lineups_locked
+                            ? 'Matchups have been created based on your submitted lineup order.'
+                            : 'In blind lineup mode, lineups cannot be changed after submission. Your lineup is locked until matchups are created.'}
                     </p>
+
+                    {/* Show submitted lineup */}
+                    {selectedPlayers.length > 0 && (
+                        <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                                Your Submitted Lineup
+                            </h4>
+                            <div className="space-y-2">
+                                {selectedPlayers.map((player) => (
+                                    <div
+                                        key={player.position}
+                                        className={`flex items-center gap-3 p-3 rounded-lg border ${player.is_substitute
+                                            ? 'border-gray-200 bg-gray-50'
+                                            : 'border-blue-200 bg-blue-50'
+                                            }`}
+                                    >
+                                        <span className="text-lg font-bold text-gray-700 w-8">
+                                            {player.position}.
+                                        </span>
+                                        <span className="font-medium text-gray-900">
+                                            {player.player_name}
+                                        </span>
+                                        <span className={`ml-auto px-2 py-1 rounded text-xs font-semibold ${player.is_substitute
+                                            ? 'bg-gray-200 text-gray-700'
+                                            : 'bg-blue-200 text-blue-700'
+                                            }`}>
+                                            {player.is_substitute ? 'Substitute' : 'Playing'}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

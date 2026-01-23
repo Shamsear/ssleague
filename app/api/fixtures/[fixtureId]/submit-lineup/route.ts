@@ -156,7 +156,7 @@ export async function POST(
     } catch (error: any) {
         console.error('Error submitting lineup:', error);
         return NextResponse.json(
-            { success: false, error: error.message },
+            { success: false, error: error?.message || String(error) || 'Failed to submit lineup' },
             { status: 500 }
         );
     }
@@ -223,6 +223,21 @@ export async function GET(
         const myLineup = lineups.find(l => l.team_id === teamId);
         const opponentLineup = lineups.find(l => l.team_id !== teamId);
 
+        // Helper function to safely parse players (handles both string and already-parsed object)
+        const parsePlayers = (players: any) => {
+            if (!players) return null;
+            if (typeof players === 'string') {
+                try {
+                    return JSON.parse(players);
+                } catch (e) {
+                    console.error('Failed to parse players JSON:', e);
+                    return null;
+                }
+            }
+            // Already an object
+            return players;
+        };
+
         return NextResponse.json({
             success: true,
             matchup_mode: fixture.matchup_mode,
@@ -231,10 +246,10 @@ export async function GET(
             both_submitted: bothSubmitted,
             lineups_locked: fixture.lineups_locked,
             can_view_opponent: canViewLineups,
-            my_lineup: myLineup ? JSON.parse(myLineup.players as string) : null,
+            my_lineup: myLineup ? parsePlayers(myLineup.players) : null,
             my_submitted_at: myLineup?.submitted_at,
             opponent_lineup: canViewLineups && opponentLineup
-                ? JSON.parse(opponentLineup.players as string)
+                ? parsePlayers(opponentLineup.players)
                 : null,
             opponent_submitted: !!opponentLineup
         });
@@ -242,7 +257,7 @@ export async function GET(
     } catch (error: any) {
         console.error('Error fetching lineup status:', error);
         return NextResponse.json(
-            { success: false, error: error.message },
+            { success: false, error: error?.message || String(error) || 'Failed to fetch lineup status' },
             { status: 500 }
         );
     }
