@@ -632,7 +632,9 @@ export default function TournamentDashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pairing_method: 'standard',
-          start_date: new Date().toISOString().split('T')[0]
+          start_date: new Date().toISOString().split('T')[0],
+          matchup_mode: matchupMode, // Use selected matchup mode
+          is_two_legged: isTwoLegged // Use selected leg configuration
         })
       });
 

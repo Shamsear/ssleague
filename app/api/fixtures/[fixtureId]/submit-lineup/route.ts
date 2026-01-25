@@ -49,7 +49,7 @@ export async function POST(
         // Fetch fixture details
         const fixtures = await sql`
       SELECT 
-        id, tournament_id, season_id, matchup_mode,
+        id, tournament_id, season_id, matchup_mode, round_number,
         home_team_id, away_team_id,
         home_lineup_submitted, away_lineup_submitted, lineups_locked
       FROM fixtures
@@ -133,9 +133,10 @@ export async function POST(
       `;
         }
 
+
         // Check if both teams have submitted
         const updatedFixtures = await sql`
-      SELECT home_lineup_submitted, away_lineup_submitted
+      SELECT home_lineup_submitted, away_lineup_submitted, lineups_locked
       FROM fixtures
       WHERE id = ${fixtureId}
       LIMIT 1
@@ -143,6 +144,156 @@ export async function POST(
 
         const bothSubmitted = updatedFixtures[0].home_lineup_submitted &&
             updatedFixtures[0].away_lineup_submitted;
+        const lineupsLocked = updatedFixtures[0].lineups_locked;
+
+        // Auto-create matchups if both teams submitted and lineups not locked yet
+        if (bothSubmitted && !lineupsLocked) {
+            try {
+                console.log(`🎯 Both teams submitted for fixture ${fixtureId}, auto-creating matchups...`);
+
+                // Fetch both lineups
+                const lineups = await sql`
+                    SELECT team_id, players
+                    FROM lineup_submissions
+                    WHERE fixture_id = ${fixtureId}
+                `;
+
+                if (lineups.length !== 2) {
+                    throw new Error('Both team lineups not found');
+                }
+
+                const homeLineup = lineups.find(l => l.team_id === fixture.home_team_id);
+                const awayLineup = lineups.find(l => l.team_id === fixture.away_team_id);
+
+                if (!homeLineup || !awayLineup) {
+                    throw new Error('Could not find lineups for both teams');
+                }
+
+                // Helper function to safely parse players
+                const parsePlayers = (players: any) => {
+                    if (!players) return null;
+                    if (typeof players === 'string') {
+                        try {
+                            return JSON.parse(players);
+                        } catch (e) {
+                            console.error('Failed to parse players JSON:', e);
+                            return null;
+                        }
+                    }
+                    return players;
+                };
+
+                // Parse lineups
+                const homePlayers = parsePlayers(homeLineup.players);
+                const awayPlayers = parsePlayers(awayLineup.players);
+
+                if (!homePlayers || !awayPlayers) {
+                    throw new Error('Failed to parse lineup data');
+                }
+
+                // Get playing players only and sort by position
+                const homePlayingPlayers = homePlayers
+                    .filter((p: any) => !p.is_substitute)
+                    .sort((a: any, b: any) => a.position - b.position);
+
+                const awayPlayingPlayers = awayPlayers
+                    .filter((p: any) => !p.is_substitute)
+                    .sort((a: any, b: any) => a.position - b.position);
+
+                // Validate both have exactly 5 playing players
+                if (homePlayingPlayers.length !== 5 || awayPlayingPlayers.length !== 5) {
+                    throw new Error('Both teams must have exactly 5 playing players');
+                }
+
+                // Delete existing matchups (if any)
+                await sql`
+                    DELETE FROM matchups
+                    WHERE fixture_id = ${fixtureId}
+                `;
+
+                // Create matchups by pairing players in order
+                const matchupsCreated = [];
+                for (let i = 0; i < 5; i++) {
+                    const homePlayer = homePlayingPlayers[i];
+                    const awayPlayer = awayPlayingPlayers[i];
+
+                    await sql`
+                        INSERT INTO matchups (
+                            fixture_id,
+                            tournament_id,
+                            season_id,
+                            round_number,
+                            position,
+                            home_player_id,
+                            away_player_id,
+                            home_player_name,
+                            away_player_name,
+                            home_goals,
+                            away_goals,
+                            created_at,
+                            updated_at
+                        ) VALUES (
+                            ${fixtureId},
+                            ${fixture.tournament_id},
+                            ${fixture.season_id},
+                            ${fixture.round_number || 1},
+                            ${i + 1},
+                            ${homePlayer.player_id},
+                            ${awayPlayer.player_id},
+                            ${homePlayer.player_name},
+                            ${awayPlayer.player_name},
+                            NULL,
+                            NULL,
+                            NOW(),
+                            NOW()
+                        )
+                    `;
+
+                    matchupsCreated.push({
+                        position: i + 1,
+                        home_player_name: homePlayer.player_name,
+                        away_player_name: awayPlayer.player_name
+                    });
+                }
+
+                // Lock lineups
+                await sql`
+                    UPDATE fixtures
+                    SET lineups_locked = true
+                    WHERE id = ${fixtureId}
+                `;
+
+                await sql`
+                    UPDATE lineup_submissions
+                    SET is_locked = true
+                    WHERE fixture_id = ${fixtureId}
+                `;
+
+                console.log(`✅ Auto-created ${matchupsCreated.length} matchups for fixture ${fixtureId}`);
+
+                return NextResponse.json({
+                    success: true,
+                    lineup_submitted: true,
+                    both_submitted: true,
+                    matchups_created: true,
+                    matchups_count: matchupsCreated.length,
+                    matchups: matchupsCreated,
+                    message: `Both teams submitted! ${matchupsCreated.length} matchups created automatically.`
+                });
+
+            } catch (error: any) {
+                console.error('❌ Error auto-creating matchups:', error);
+                // Still return success for lineup submission
+                return NextResponse.json({
+                    success: true,
+                    lineup_submitted: true,
+                    both_submitted: true,
+                    matchups_created: false,
+                    message: 'Both teams submitted! Matchups will be created shortly.',
+                    error: error.message
+                });
+            }
+        }
 
         return NextResponse.json({
             success: true,

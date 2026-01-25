@@ -14,7 +14,12 @@ export async function POST(
         const params = await context.params;
         const tournamentId = params.id;
         const body = await request.json();
-        const { start_date, pairing_method = 'standard' } = body;
+        const {
+            start_date,
+            pairing_method = 'standard',
+            matchup_mode = 'manual', // Allow changing from blind_lineup to manual
+            is_two_legged = false // Allow changing leg configuration
+        } = body;
 
         // Get tournament details
         const [tournament] = await sql`
@@ -121,46 +126,69 @@ export async function POST(
         // Create first round knockout fixtures
         for (let i = 0; i < pairings.length; i++) {
             const pairing = pairings[i];
-            const fixtureId = `${tournamentId}_KO_${knockoutRounds[0]}_${i + 1}`;
+            const currentKnockoutRound = knockoutRounds[0];
 
-            const scheduledDate = new Date(baseDate);
-            scheduledDate.setDate(scheduledDate.getDate() + Math.floor(i / 2) * 3); // 3 days between match days
+            // Determine if this round should be 2-legged
+            // Finals are ALWAYS 1 leg, regardless of is_two_legged setting
+            const isFinalRound = currentKnockoutRound === 'final';
+            const shouldBeTwoLegged = is_two_legged && !isFinalRound;
+            const legsToCreate = shouldBeTwoLegged ? 2 : 1;
 
-            await sql`
-        INSERT INTO fixtures (
-          id, tournament_id, season_id,
-          home_team_id, home_team_name,
-          away_team_id, away_team_name,
-          round_number, leg,
-          knockout_round,
-          scheduled_date,
-          status,
-          created_at, updated_at
-        ) VALUES (
-          ${fixtureId},
-          ${tournamentId},
-          ${tournament.season_id},
-          ${pairing.home.team_id},
-          ${pairing.home.team_name},
-          ${pairing.away.team_id},
-          ${pairing.away.team_name},
-          ${currentRound},
-          1,
-          ${knockoutRounds[0]},
-          ${scheduledDate.toISOString().split('T')[0]},
-          'scheduled',
-          NOW(), NOW()
-        )
-      `;
+            // Create fixtures for each leg
+            for (let legNum = 1; legNum <= legsToCreate; legNum++) {
+                const legSuffix = legsToCreate > 1 ? `_leg${legNum}` : '';
+                const fixtureId = `${tournamentId}_KO_${currentKnockoutRound}_m${i + 1}${legSuffix}`;
 
-            createdFixtures.push({
-                id: fixtureId,
-                round: knockoutRounds[0],
-                match_number: i + 1,
-                home_team: pairing.home.team_name,
-                away_team: pairing.away.team_name,
-                scheduled_date: scheduledDate.toISOString().split('T')[0]
-            });
+                const scheduledDate = new Date(baseDate);
+                // First leg: base date + match offset
+                // Second leg: base date + match offset + 7 days
+                const dayOffset = Math.floor(i / 2) * 3 + (legNum === 2 ? 7 : 0);
+                scheduledDate.setDate(scheduledDate.getDate() + dayOffset);
+
+                // For 2-legged ties, swap home/away for second leg
+                const homeTeam = (legsToCreate === 2 && legNum === 2) ? pairing.away : pairing.home;
+                const awayTeam = (legsToCreate === 2 && legNum === 2) ? pairing.home : pairing.away;
+
+                await sql`
+          INSERT INTO fixtures (
+            id, tournament_id, season_id,
+            home_team_id, home_team_name,
+            away_team_id, away_team_name,
+            round_number, leg,
+            knockout_round,
+            matchup_mode,
+            scheduled_date,
+            status,
+            created_at, updated_at
+          ) VALUES (
+            ${fixtureId},
+            ${tournamentId},
+            ${tournament.season_id},
+            ${homeTeam.team_id},
+            ${homeTeam.team_name},
+            ${awayTeam.team_id},
+            ${awayTeam.team_name},
+            ${currentRound},
+            ${legNum},
+            ${currentKnockoutRound},
+            ${matchup_mode},
+            ${scheduledDate.toISOString().split('T')[0]},
+            'scheduled',
+            NOW(), NOW()
+          )
+        `;
+
+                createdFixtures.push({
+                    id: fixtureId,
+                    round: currentKnockoutRound,
+                    match_number: i + 1,
+                    leg: legNum,
+                    home_team: homeTeam.team_name,
+                    away_team: awayTeam.team_name,
+                    scheduled_date: scheduledDate.toISOString().split('T')[0],
+                    matchup_mode: matchup_mode
+                });
+            }
         }
 
         return NextResponse.json({

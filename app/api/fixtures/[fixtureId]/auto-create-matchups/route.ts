@@ -14,7 +14,7 @@ export async function POST(
         // Fetch fixture
         const fixtures = await sql`
       SELECT 
-        id, tournament_id, season_id, matchup_mode,
+        id, tournament_id, season_id, matchup_mode, round_number, leg,
         home_team_id, away_team_id, home_team_name, away_team_name,
         home_lineup_submitted, away_lineup_submitted, lineups_locked
       FROM fixtures
@@ -79,9 +79,31 @@ export async function POST(
             );
         }
 
+        // Helper function to safely parse players (handles both string and already-parsed object)
+        const parsePlayers = (players: any) => {
+            if (!players) return null;
+            if (typeof players === 'string') {
+                try {
+                    return JSON.parse(players);
+                } catch (e) {
+                    console.error('Failed to parse players JSON:', e);
+                    return null;
+                }
+            }
+            // Already an object
+            return players;
+        };
+
         // Parse lineups
-        const homePlayers = JSON.parse(homeLineup.players as string);
-        const awayPlayers = JSON.parse(awayLineup.players as string);
+        const homePlayers = parsePlayers(homeLineup.players);
+        const awayPlayers = parsePlayers(awayLineup.players);
+
+        if (!homePlayers || !awayPlayers) {
+            return NextResponse.json(
+                { success: false, error: 'Failed to parse lineup data' },
+                { status: 400 }
+            );
+        }
 
         // Get playing players only (not substitutes) and sort by position
         const homePlayingPlayers = homePlayers
@@ -116,14 +138,14 @@ export async function POST(
                 fixture_id: fixtureId,
                 tournament_id: fixture.tournament_id,
                 season_id: fixture.season_id,
-                matchup_number: i + 1,
+                round_number: fixture.round_number,
+                position: i + 1,
                 home_player_id: homePlayer.player_id,
                 away_player_id: awayPlayer.player_id,
                 home_player_name: homePlayer.player_name,
                 away_player_name: awayPlayer.player_name,
-                home_score: null,
-                away_score: null,
-                status: 'pending'
+                home_goals: null,
+                away_goals: null
             });
         }
 
@@ -134,28 +156,28 @@ export async function POST(
           fixture_id,
           tournament_id,
           season_id,
-          matchup_number,
+          round_number,
+          position,
           home_player_id,
           away_player_id,
           home_player_name,
           away_player_name,
-          home_score,
-          away_score,
-          status,
+          home_goals,
+          away_goals,
           created_at,
           updated_at
         ) VALUES (
           ${matchup.fixture_id},
           ${matchup.tournament_id},
           ${matchup.season_id},
-          ${matchup.matchup_number},
+          ${matchup.round_number},
+          ${matchup.position},
           ${matchup.home_player_id},
           ${matchup.away_player_id},
           ${matchup.home_player_name},
           ${matchup.away_player_name},
-          ${matchup.home_score},
-          ${matchup.away_score},
-          ${matchup.status},
+          ${matchup.home_goals},
+          ${matchup.away_goals},
           NOW(),
           NOW()
         )

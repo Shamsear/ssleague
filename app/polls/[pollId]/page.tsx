@@ -11,7 +11,7 @@ interface PollOption {
     player_id?: string;
     team_id?: string;
     votes: number;
-}
+}che
 
 interface PlayerStats {
     matches_played: number;
