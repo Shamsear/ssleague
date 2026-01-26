@@ -56,6 +56,10 @@ interface Fixture {
   // Penalty/Fine goals
   home_penalty_goals?: number;
   away_penalty_goals?: number;
+  // Knockout fields
+  knockout_round?: 'quarter_finals' | 'semi_finals' | 'finals' | 'third_place' | null;
+  scoring_system?: 'goals' | 'wins' | null;
+  matchup_mode?: 'manual' | 'blind_lineup' | null;
 }
 
 interface RoundDeadlines {
@@ -86,6 +90,7 @@ export default function FixturePage() {
   const [matchupMode, setMatchupMode] = useState<string>('manual');
   const [isLoading, setIsLoading] = useState(true);
   const [tournamentSystem, setTournamentSystem] = useState<string>('goals'); // 'goals' or 'wins'
+  const [scoringSystem, setScoringSystem] = useState<string>('goals'); // Fixture-level scoring system
 
   // Player data
   const [homePlayers, setHomePlayers] = useState<any[]>([]);
@@ -255,7 +260,10 @@ export default function FixturePage() {
     // Calculate scores based on tournament system
     let homeTotalScore, awayTotalScore, homePlayerScore, awayPlayerScore;
     
-    if (tournamentSystem === 'wins') {
+    // Use fixture-level scoring_system if available, otherwise fall back to tournament system
+    const activeScoring = scoringSystem || tournamentSystem;
+    
+    if (activeScoring === 'wins') {
       // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
       let homePoints = 0;
       let awayPoints = 0;
@@ -279,7 +287,8 @@ export default function FixturePage() {
       homePlayerScore = homePoints;
       awayPlayerScore = awayPoints;
       
-      // Add penalties (these are already points in win-based system)
+      // IMPORTANT: Penalties and fines are ALWAYS in goals, not points
+      // They get added to the total score (which is in points for win-based)
       homeTotalScore = homePoints + awaySubPenalties + homePenaltyGoals;
       awayTotalScore = awayPoints + homeSubPenalties + awayPenaltyGoals;
     } else {
@@ -306,6 +315,15 @@ export default function FixturePage() {
     const seasonMatch = fixture.season_id.match(/\d+$/);
     const seasonNumber = seasonMatch ? seasonMatch[0] : '15';
 
+    // Get knockout round display name
+    const knockoutRoundName = fixture.knockout_round
+      ? fixture.knockout_round === 'quarter_finals' ? 'QUARTER FINALS'
+        : fixture.knockout_round === 'semi_finals' ? 'SEMI FINALS'
+          : fixture.knockout_round === 'finals' ? 'FINALS'
+            : fixture.knockout_round === 'third_place' ? 'THIRD PLACE PLAYOFF'
+              : ''
+      : '';
+
     // Get substitution details
     const substitutions = matchups.filter(m => m.home_substituted || m.away_substituted);
     const hasSubstitutions = substitutions.length > 0;
@@ -319,11 +337,9 @@ export default function FixturePage() {
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-*MATCHDAY ${fixture.round_number}* - ${fixture.leg === 'first' ? '1st' : '2nd'} Leg
+${knockoutRoundName ? `*${knockoutRoundName}* 🏆\n\n` : `*MATCHDAY ${fixture.round_number}* - ${fixture.leg === 'first' ? '1st' : '2nd'} Leg\n\n`}*${fixture.home_team_name}*  vs  *${fixture.away_team_name}*
 
-*${fixture.home_team_name}*  vs  *${fixture.away_team_name}*
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${scoringSystem && scoringSystem !== tournamentSystem ? `\n⚡ *${scoringSystem === 'wins' ? 'WIN-BASED' : 'GOAL-BASED'} SCORING*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 *MATCHUPS:*
 
@@ -362,10 +378,10 @@ ${hasSubstitutions ? `━━━━━━━━━━━━━━━━━━━�
 ${substitutions.map(m => {
       let subText = [];
       if (m.home_substituted) {
-        subText.push(`WARNING Home: +${m.home_sub_penalty || 0} penalty ${tournamentSystem === 'wins' ? 'points' : 'goals'} awarded to ${fixture.away_team_name}`);
+        subText.push(`WARNING Home: +${m.home_sub_penalty || 0} penalty goals awarded to ${fixture.away_team_name}`);
       }
       if (m.away_substituted) {
-        subText.push(`WARNING Away: +${m.away_sub_penalty || 0} penalty ${tournamentSystem === 'wins' ? 'points' : 'goals'} awarded to ${fixture.home_team_name}`);
+        subText.push(`WARNING Away: +${m.away_sub_penalty || 0} penalty goals awarded to ${fixture.home_team_name}`);
       }
       return subText.join('\n');
     }).join('\n')}
@@ -375,13 +391,13 @@ ${substitutions.map(m => {
 *SCORE BREAKDOWN:*
 
 *${fixture.home_team_name}*
-Total: *${hasResults ? homeTotalScore : 0}* ${tournamentSystem === 'wins' ? 'points' : 'goals'}
-${hasResults && (homePlayerScore > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0) ? `   - Player ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: ${homePlayerScore}
-${awaySubPenalties > 0 ? `   - Opponent Sub Penalties: +${awaySubPenalties}\n` : ''}${homePenaltyGoals > 0 ? `   - Fine/Violation ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: +${homePenaltyGoals}\n` : ''}` : ''}
+Total: *${hasResults ? homeTotalScore : 0}* ${activeScoring === 'wins' ? 'points' : 'goals'}
+${hasResults && (homePlayerScore > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0) ? `   - Player ${activeScoring === 'wins' ? 'Points' : 'Goals'}: ${homePlayerScore}
+${awaySubPenalties > 0 ? `   - Opponent Sub Penalties: +${awaySubPenalties} goals\n` : ''}${homePenaltyGoals > 0 ? `   - Fine/Violation Goals: +${homePenaltyGoals}\n` : ''}` : ''}
 *${fixture.away_team_name}*
-Total: *${hasResults ? awayTotalScore : 0}* ${tournamentSystem === 'wins' ? 'points' : 'goals'}
-${hasResults && (awayPlayerScore > 0 || homeSubPenalties > 0 || awayPenaltyGoals > 0) ? `   - Player ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: ${awayPlayerScore}
-${homeSubPenalties > 0 ? `   - Opponent Sub Penalties: +${homeSubPenalties}\n` : ''}${awayPenaltyGoals > 0 ? `   - Fine/Violation ${tournamentSystem === 'wins' ? 'Points' : 'Goals'}: +${awayPenaltyGoals}\n` : ''}` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total: *${hasResults ? awayTotalScore : 0}* ${activeScoring === 'wins' ? 'points' : 'goals'}
+${hasResults && (awayPlayerScore > 0 || homeSubPenalties > 0 || awayPenaltyGoals > 0) ? `   - Player ${activeScoring === 'wins' ? 'Points' : 'Goals'}: ${awayPlayerScore}
+${homeSubPenalties > 0 ? `   - Opponent Sub Penalties: +${homeSubPenalties} goals\n` : ''}${awayPenaltyGoals > 0 ? `   - Fine/Violation Goals: +${awayPenaltyGoals}\n` : ''}` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 *MAN OF THE MATCH*
 ${hasResults ? `${motmName}` : 'To be announced'}
@@ -500,6 +516,11 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
         const { fixture: fixtureData } = await fixtureResponse.json();
         setFixture(fixtureData as Fixture);
         setMatchupMode(fixtureData.matchup_mode || 'manual');
+        
+        // Set scoring system from fixture (overrides tournament setting for knockout)
+        const fixtureScoring = fixtureData.scoring_system || 'goals';
+        setScoringSystem(fixtureScoring);
+        console.log('⚽ Fixture scoring system:', fixtureScoring);
 
         // Fetch tournament settings to get scoring system
         try {
@@ -1477,15 +1498,40 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                   </div>
                   <div>
                     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-gray-900 via-indigo-900 to-purple-900 bg-clip-text text-transparent">
-                      Round {fixture.round_number}
+                      {fixture.knockout_round ? (
+                        <>
+                          {fixture.knockout_round === 'quarter_finals' && '⚔️ Quarter Finals'}
+                          {fixture.knockout_round === 'semi_finals' && '🏆 Semi Finals'}
+                          {fixture.knockout_round === 'finals' && '👑 Finals'}
+                          {fixture.knockout_round === 'third_place' && '🥉 Third Place'}
+                        </>
+                      ) : (
+                        `Round ${fixture.round_number}`
+                      )}
                     </h1>
                     <div className="flex items-center gap-2 mt-1">
+                      {fixture.knockout_round && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold rounded-full shadow-sm">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                          KNOCKOUT
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full">
                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
                         </svg>
                         {fixture.leg === 'first' ? '1st' : '2nd'} Leg
                       </span>
+                      {scoringSystem && scoringSystem !== tournamentSystem && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 text-xs font-medium rounded-full">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                          </svg>
+                          {scoringSystem === 'wins' ? 'Win-Based' : 'Goal-Based'} Scoring
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />

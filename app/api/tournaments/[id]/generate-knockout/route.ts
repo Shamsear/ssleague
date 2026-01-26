@@ -18,7 +18,8 @@ export async function POST(
             start_date,
             pairing_method = 'standard',
             matchup_mode = 'manual', // Allow changing from blind_lineup to manual
-            is_two_legged = false // Allow changing leg configuration
+            is_two_legged = false, // Allow changing leg configuration
+            knockout_format = 'single_leg' // New: single_leg, two_leg, or round_robin
         } = body;
 
         // Get tournament details
@@ -128,11 +129,30 @@ export async function POST(
             const pairing = pairings[i];
             const currentKnockoutRound = knockoutRounds[0];
 
-            // Determine if this round should be 2-legged
-            // Finals are ALWAYS 1 leg, regardless of is_two_legged setting
+            // Determine fixture format based on knockout_format parameter
+            // Finals are ALWAYS 1 leg, regardless of settings
             const isFinalRound = currentKnockoutRound === 'final';
-            const shouldBeTwoLegged = is_two_legged && !isFinalRound;
-            const legsToCreate = shouldBeTwoLegged ? 2 : 1;
+            
+            let legsToCreate = 1;
+            let actualKnockoutFormat = knockout_format;
+            
+            if (isFinalRound) {
+                // Finals are always single leg
+                actualKnockoutFormat = 'single_leg';
+                legsToCreate = 1;
+            } else if (knockout_format === 'two_leg' || is_two_legged) {
+                // Two-legged format
+                actualKnockoutFormat = 'two_leg';
+                legsToCreate = 2;
+            } else if (knockout_format === 'round_robin') {
+                // Round robin format (all vs all)
+                actualKnockoutFormat = 'round_robin';
+                legsToCreate = 1;
+            } else {
+                // Single leg format
+                actualKnockoutFormat = 'single_leg';
+                legsToCreate = 1;
+            }
 
             // Create fixtures for each leg
             for (let legNum = 1; legNum <= legsToCreate; legNum++) {
@@ -156,6 +176,7 @@ export async function POST(
             away_team_id, away_team_name,
             round_number, leg,
             knockout_round,
+            knockout_format,
             matchup_mode,
             scheduled_date,
             status,
@@ -171,6 +192,7 @@ export async function POST(
             ${currentRound},
             ${legNum},
             ${currentKnockoutRound},
+            ${actualKnockoutFormat},
             ${matchup_mode},
             ${scheduledDate.toISOString().split('T')[0]},
             'scheduled',
@@ -183,6 +205,7 @@ export async function POST(
                     round: currentKnockoutRound,
                     match_number: i + 1,
                     leg: legNum,
+                    knockout_format: actualKnockoutFormat,
                     home_team: homeTeam.team_name,
                     away_team: awayTeam.team_name,
                     scheduled_date: scheduledDate.toISOString().split('T')[0],

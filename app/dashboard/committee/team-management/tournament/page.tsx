@@ -132,7 +132,18 @@ export default function TournamentDashboardPage() {
   const [selectedRound, setSelectedRound] = useState<number>(1);
   const [isTwoLegged, setIsTwoLegged] = useState(true);
   const [matchupMode, setMatchupMode] = useState<'manual' | 'blind_lineup'>('manual');
+  const [knockoutFormat, setKnockoutFormat] = useState<'single_leg' | 'two_leg' | 'round_robin'>('single_leg');
+  const [scoringSystem, setScoringSystem] = useState<'goals' | 'wins'>('goals');
   const [isGeneratingKnockout, setIsGeneratingKnockout] = useState(false);
+
+  // Round-wise knockout generation state
+  const [knockoutRoundType, setKnockoutRoundType] = useState<'quarter_finals' | 'semi_finals' | 'finals' | 'third_place'>('quarter_finals');
+  const [knockoutRoundNumber, setKnockoutRoundNumber] = useState<number>(12);
+  const [knockoutNumTeams, setKnockoutNumTeams] = useState<number>(8);
+  const [knockoutSelectedTeams, setKnockoutSelectedTeams] = useState<string[]>([]);
+  const [knockoutPairingMethod, setKnockoutPairingMethod] = useState<'standard' | 'manual' | 'random'>('standard');
+  const [availableTeamsForKnockout, setAvailableTeamsForKnockout] = useState<any[]>([]);
+  const [isGeneratingKnockoutRound, setIsGeneratingKnockoutRound] = useState(false);
 
   // Standings State
   const [selectedTournamentForStandings, setSelectedTournamentForStandings] = useState<string>('');
@@ -264,7 +275,7 @@ export default function TournamentDashboardPage() {
     if (!editingTournament) return;
     const isPureKnockout = editingTournament.has_knockout_stage && !editingTournament.has_league_stage && !editingTournament.has_group_stage;
     if (editingTournament.is_pure_knockout !== isPureKnockout) {
-      setEditingTournament(prev => ({
+      setEditingTournament((prev: any) => ({
         ...prev!,
         is_pure_knockout: isPureKnockout
       }));
@@ -428,6 +439,7 @@ export default function TournamentDashboardPage() {
           direct_semifinal_teams: 2,
           qualification_threshold: 75,
           is_pure_knockout: false,
+          enable_category_requirements: false,
           lineup_category_requirements: {},
           number_of_teams: 16,
           rewards: {
@@ -634,7 +646,9 @@ export default function TournamentDashboardPage() {
           pairing_method: 'standard',
           start_date: new Date().toISOString().split('T')[0],
           matchup_mode: matchupMode, // Use selected matchup mode
-          is_two_legged: isTwoLegged // Use selected leg configuration
+          is_two_legged: isTwoLegged, // Use selected leg configuration
+          knockout_format: knockoutFormat, // Use selected knockout format
+          scoring_system: scoringSystem // Use selected scoring system
         })
       });
 
@@ -644,7 +658,7 @@ export default function TournamentDashboardPage() {
         showAlert({
           type: 'success',
           title: 'Knockout Fixtures Generated',
-          message: `${data.fixtures_created} ${data.knockout_structure.first_round} fixtures created successfully!`
+          message: `${data.fixtures_created} ${(data as any).knockout_structure?.first_round || 'knockout'} fixtures created successfully!`
         });
         await loadTournamentFixtures(selectedTournamentForFixtures);
       } else {
@@ -664,6 +678,135 @@ export default function TournamentDashboardPage() {
     } finally {
       setIsGeneratingKnockout(false);
     }
+  };
+
+  // NEW: Round-wise knockout generation
+  const handleGenerateKnockoutRound = async () => {
+    if (!selectedTournamentForFixtures) {
+      showAlert({
+        type: 'warning',
+        title: 'No Tournament Selected',
+        message: 'Please select a tournament first'
+      });
+      return;
+    }
+
+    if (knockoutSelectedTeams.length !== knockoutNumTeams) {
+      showAlert({
+        type: 'warning',
+        title: 'Incorrect Number of Teams',
+        message: `Please select exactly ${knockoutNumTeams} teams. Currently selected: ${knockoutSelectedTeams.length}`
+      });
+      return;
+    }
+
+    const roundNames = {
+      quarter_finals: 'Quarter Finals',
+      semi_finals: 'Semi Finals',
+      finals: 'Finals',
+      third_place: 'Third Place Playoff'
+    };
+
+    const confirmed = await showConfirm({
+      type: 'info',
+      title: `Generate ${roundNames[knockoutRoundType]}`,
+      message: `This will create ${roundNames[knockoutRoundType]} fixtures for Round ${knockoutRoundNumber} with ${knockoutNumTeams} teams using ${knockoutFormat} format and ${scoringSystem} scoring.`,
+      confirmText: 'Generate',
+      cancelText: 'Cancel'
+    });
+
+    if (!confirmed) return;
+
+    setIsGeneratingKnockoutRound(true);
+    try {
+      // Prepare teams array with seed information
+      const teamsData = knockoutSelectedTeams.map((teamId, index) => {
+        const team = availableTeamsForKnockout.find(t => t.team_id === teamId);
+        return {
+          team_id: teamId,
+          team_name: team?.team_name || 'Unknown Team',
+          seed: index + 1
+        };
+      });
+
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${selectedTournamentForFixtures}/generate-knockout-round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          knockout_round: knockoutRoundType,
+          round_number: knockoutRoundNumber,
+          num_teams: knockoutNumTeams,
+          knockout_format: knockoutFormat,
+          scoring_system: scoringSystem,
+          matchup_mode: matchupMode,
+          teams: teamsData,
+          pairing_method: knockoutPairingMethod,
+          start_date: new Date().toISOString().split('T')[0],
+          created_by: user?.uid,
+          created_by_name: (user as any)?.displayName || user?.email
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        showAlert({
+          type: 'success',
+          title: 'Round Generated',
+          message: `${data.fixtures_created} fixtures created for ${roundNames[knockoutRoundType]}!`
+        });
+        await loadTournamentFixtures(selectedTournamentForFixtures);
+        // Reset selections
+        setKnockoutSelectedTeams([]);
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Generation Failed',
+          message: data.error || 'Failed to generate knockout round'
+        });
+      }
+    } catch (error: any) {
+      console.error('Error generating knockout round:', error);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to generate knockout round: ' + error.message
+      });
+    } finally {
+      setIsGeneratingKnockoutRound(false);
+    }
+  };
+
+  // Load available teams for knockout selection
+  const loadAvailableTeamsForKnockout = async (tournamentId: string) => {
+    try {
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/teams`);
+      const data = await res.json();
+      if (data.success && data.teams) {
+        setAvailableTeamsForKnockout(data.teams);
+      }
+    } catch (error) {
+      console.error('Error loading teams:', error);
+    }
+  };
+
+  // Toggle team selection
+  const toggleKnockoutTeam = (teamId: string) => {
+    setKnockoutSelectedTeams(prev => {
+      if (prev.includes(teamId)) {
+        return prev.filter(id => id !== teamId);
+      } else {
+        if (prev.length >= knockoutNumTeams) {
+          showAlert({
+            type: 'warning',
+            title: 'Maximum Teams Selected',
+            message: `You can only select ${knockoutNumTeams} teams for this round.`
+          });
+          return prev;
+        }
+        return [...prev, teamId];
+      }
+    });
   };
 
   const handleDeleteTournamentFixtures = async () => {
@@ -1595,7 +1738,237 @@ export default function TournamentDashboardPage() {
                   </div>
                 )}
 
-                {/* Action Buttons */}
+                {/* Knockout Format Selection */}
+                {selectedTournamentForFixtures && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Knockout Format <span className="text-xs text-gray-500">(for knockout generation)</span>
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <button
+                        onClick={() => setKnockoutFormat('single_leg')}
+                        className={`px-4 py-3 rounded-xl border-2 transition-all ${knockoutFormat === 'single_leg'
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                      >
+                        <div className="font-semibold">Single Leg</div>
+                        <div className="text-xs mt-1">5 matchups (1v1, 2v2...)</div>
+                      </button>
+                      <button
+                        onClick={() => setKnockoutFormat('two_leg')}
+                        className={`px-4 py-3 rounded-xl border-2 transition-all ${knockoutFormat === 'two_leg'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                      >
+                        <div className="font-semibold">Two Legs</div>
+                        <div className="text-xs mt-1">Home + Away fixtures</div>
+                      </button>
+                      <button
+                        onClick={() => setKnockoutFormat('round_robin')}
+                        className={`px-4 py-3 rounded-xl border-2 transition-all ${knockoutFormat === 'round_robin'
+                            ? 'border-orange-500 bg-orange-50 text-orange-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                      >
+                        <div className="font-semibold">Round Robin</div>
+                        <div className="text-xs mt-1">25 matchups (all vs all)</div>
+                      </button>
+                    </div>
+                    {knockoutFormat === 'round_robin' && (
+                      <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                        <p className="text-xs text-orange-700">
+                          <strong>Round Robin:</strong> Each of 5 players from home team plays against each of 5 players from away team (5×5 = 25 matchups). Winner determined by total wins.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Scoring System Selection */}
+                {selectedTournamentForFixtures && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Scoring System <span className="text-xs text-gray-500">(applies to all formats)</span>
+                    </label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setScoringSystem('goals')}
+                        className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all ${scoringSystem === 'goals'
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                      >
+                        <div className="font-semibold">⚽ Goal-Based</div>
+                        <div className="text-xs mt-1">Winner by total goals scored</div>
+                      </button>
+                      <button
+                        onClick={() => setScoringSystem('wins')}
+                        className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all ${scoringSystem === 'wins'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                      >
+                        <div className="font-semibold">🏆 Win-Based</div>
+                        <div className="text-xs mt-1">3 pts for win, 1 for draw</div>
+                      </button>
+                    </div>
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <strong>{scoringSystem === 'goals' ? 'Goal-Based' : 'Win-Based'}:</strong> {scoringSystem === 'goals' 
+                          ? 'Team with most total goals wins. Penalties and substitution penalties count as goals.' 
+                          : 'Each matchup win = 3 points, draw = 1 point. Team with most points wins. Penalties and substitution penalties count as points.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Round-Wise Knockout Generation */}
+                {selectedTournamentForFixtures && (
+                  <div className="mb-6 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-200 rounded-2xl">
+                    <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Round-Wise Knockout Generation
+                    </h3>
+                    <p className="text-sm text-purple-700 mb-4">Generate one knockout round at a time with custom settings for each round.</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      {/* Round Type */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Round Type</label>
+                        <select
+                          value={knockoutRoundType}
+                          onChange={(e) => setKnockoutRoundType(e.target.value as any)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value="quarter_finals">Quarter Finals</option>
+                          <option value="semi_finals">Semi Finals</option>
+                          <option value="finals">Finals</option>
+                          <option value="third_place">Third Place Playoff</option>
+                        </select>
+                      </div>
+
+                      {/* Round Number */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Round Number</label>
+                        <input
+                          type="number"
+                          value={knockoutRoundNumber}
+                          onChange={(e) => setKnockoutRoundNumber(parseInt(e.target.value))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                          placeholder="e.g., 12"
+                        />
+                      </div>
+
+                      {/* Number of Teams */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Teams</label>
+                        <select
+                          value={knockoutNumTeams}
+                          onChange={(e) => {
+                            setKnockoutNumTeams(parseInt(e.target.value));
+                            setKnockoutSelectedTeams([]); // Reset selections
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value={2}>2 teams (Finals)</option>
+                          <option value={4}>4 teams (Semi Finals)</option>
+                          <option value={8}>8 teams (Quarter Finals)</option>
+                          <option value={16}>16 teams (Round of 16)</option>
+                        </select>
+                      </div>
+
+                      {/* Pairing Method */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Pairing Method</label>
+                        <select
+                          value={knockoutPairingMethod}
+                          onChange={(e) => setKnockoutPairingMethod(e.target.value as any)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        >
+                          <option value="standard">Standard (1 vs 8, 2 vs 7...)</option>
+                          <option value="manual">Manual (selection order)</option>
+                          <option value="random">Random Draw</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Team Selection */}
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Select Teams ({knockoutSelectedTeams.length}/{knockoutNumTeams})
+                        </label>
+                        <button
+                          onClick={() => {
+                            loadAvailableTeamsForKnockout(selectedTournamentForFixtures);
+                          }}
+                          className="text-xs text-purple-600 hover:text-purple-700 font-medium"
+                        >
+                          Load Teams
+                        </button>
+                      </div>
+
+                      {availableTeamsForKnockout.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-60 overflow-y-auto p-3 bg-white rounded-lg border border-gray-200">
+                          {availableTeamsForKnockout.map((team, index) => (
+                            <button
+                              key={team.team_id}
+                              onClick={() => toggleKnockoutTeam(team.team_id)}
+                              className={`p-2 rounded-lg text-xs font-medium transition-all ${
+                                knockoutSelectedTeams.includes(team.team_id)
+                                  ? 'bg-purple-600 text-white shadow-md'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1">
+                                {knockoutSelectedTeams.includes(team.team_id) && (
+                                  <span className="font-bold">
+                                    {knockoutSelectedTeams.indexOf(team.team_id) + 1}.
+                                  </span>
+                                )}
+                                <span className="truncate">{team.team_name}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
+                          <p className="text-sm text-gray-500">Click "Load Teams" to see available teams</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Generate Button */}
+                    <button
+                      onClick={handleGenerateKnockoutRound}
+                      disabled={isGeneratingKnockoutRound || knockoutSelectedTeams.length !== knockoutNumTeams}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                    >
+                      {isGeneratingKnockoutRound ? (
+                        <>
+                          <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Generating Round...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Generate Knockout Round
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Regular Fixture Generation Buttons */}
                 {selectedTournamentForFixtures && (
                   <div className="flex flex-wrap gap-3">
                     <button
@@ -1742,6 +2115,19 @@ export default function TournamentDashboardPage() {
                           <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                             R{fixture.round_number}
                           </span>
+                          {(fixture as any).knockout_round && (
+                            <span className="text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-0.5 rounded-full font-bold">
+                              {(fixture as any).knockout_round === 'quarter_finals' && '⚔️ QF'}
+                              {(fixture as any).knockout_round === 'semi_finals' && '🏆 SF'}
+                              {(fixture as any).knockout_round === 'finals' && '👑 FINAL'}
+                              {(fixture as any).knockout_round === 'third_place' && '🥉 3rd'}
+                            </span>
+                          )}
+                          {(fixture as any).scoring_system && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                              {(fixture as any).scoring_system === 'wins' ? '🏆 Wins' : '⚽ Goals'}
+                            </span>
+                          )}
                           {fixture.group_name && (
                             <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
                               Group {fixture.group_name}
@@ -3128,7 +3514,7 @@ export default function TournamentDashboardPage() {
                                 type="number"
                                 min="0"
                                 max="5"
-                                value={newTournament.lineup_category_requirements?.[category.id] || 0}
+                                value={(newTournament.lineup_category_requirements as any)?.[category.id] || 0}
                                 onChange={(e) => {
                                   const val = parseInt(e.target.value) || 0;
                                   setNewTournament({
