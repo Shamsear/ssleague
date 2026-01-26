@@ -156,9 +156,6 @@ export async function POST(
 
             // Create fixtures for each leg
             for (let legNum = 1; legNum <= legsToCreate; legNum++) {
-                const legSuffix = legsToCreate > 1 ? `_leg${legNum}` : '';
-                const fixtureId = `${tournamentId}_KO_${currentKnockoutRound}_m${i + 1}${legSuffix}`;
-
                 const scheduledDate = new Date(baseDate);
                 // First leg: base date + match offset
                 // Second leg: base date + match offset + 7 days
@@ -169,12 +166,12 @@ export async function POST(
                 const homeTeam = (legsToCreate === 2 && legNum === 2) ? pairing.away : pairing.home;
                 const awayTeam = (legsToCreate === 2 && legNum === 2) ? pairing.home : pairing.away;
 
-                await sql`
+                const result = await sql`
           INSERT INTO fixtures (
-            id, tournament_id, season_id,
+            tournament_id, season_id,
             home_team_id, home_team_name,
             away_team_id, away_team_name,
-            round_number, leg,
+            round_number, match_number, leg,
             knockout_round,
             knockout_format,
             matchup_mode,
@@ -182,7 +179,6 @@ export async function POST(
             status,
             created_at, updated_at
           ) VALUES (
-            ${fixtureId},
             ${tournamentId},
             ${tournament.season_id},
             ${homeTeam.team_id},
@@ -190,6 +186,7 @@ export async function POST(
             ${awayTeam.team_id},
             ${awayTeam.team_name},
             ${currentRound},
+            ${i + 1},
             ${legNum},
             ${currentKnockoutRound},
             ${actualKnockoutFormat},
@@ -198,10 +195,13 @@ export async function POST(
             'scheduled',
             NOW(), NOW()
           )
+          RETURNING id
         `;
+        
+                const actualFixtureId = result[0].id;
 
                 createdFixtures.push({
-                    id: fixtureId,
+                    id: actualFixtureId,
                     round: currentKnockoutRound,
                     match_number: i + 1,
                     leg: legNum,

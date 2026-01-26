@@ -636,48 +636,75 @@ export async function PATCH(
     
     const scoringType = tournamentInfo[0]?.scoring_type || 'goals';
     
+    // Get substitution penalties from matchups
+    const matchupsWithPenalties = await sql`
+      SELECT 
+        position,
+        COALESCE(home_sub_penalty, 0) as home_sub_penalty,
+        COALESCE(away_sub_penalty, 0) as away_sub_penalty
+      FROM matchups
+      WHERE fixture_id = ${fixtureId}
+      ORDER BY position ASC
+    `;
+
+    // Create a map of penalties by position
+    const penaltiesMap = new Map();
+    matchupsWithPenalties.forEach((m: any) => {
+      penaltiesMap.set(m.position, {
+        home_sub_penalty: Number(m.home_sub_penalty) || 0,
+        away_sub_penalty: Number(m.away_sub_penalty) || 0
+      });
+    });
+    
     let totalHomeScore = 0;
     let totalAwayScore = 0;
     
     if (scoringType === 'wins') {
       // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+      // Substitution penalties are added to the MATCHUP score to determine winner
+      // but NOT to player stats
       for (const result of results) {
-        if (result.home_goals > result.away_goals) {
-          totalHomeScore += 3; // Home wins
-        } else if (result.away_goals > result.home_goals) {
-          totalAwayScore += 3; // Away wins
+        const penalties = penaltiesMap.get(result.position) || { home_sub_penalty: 0, away_sub_penalty: 0 };
+        
+        // Calculate matchup score WITH substitution penalties
+        // home_sub_penalty = penalty awarded TO away (when home subs)
+        // away_sub_penalty = penalty awarded TO home (when away subs)
+        const homeMatchupScore = result.home_goals + penalties.away_sub_penalty; // Home gets penalty when away subs
+        const awayMatchupScore = result.away_goals + penalties.home_sub_penalty; // Away gets penalty when home subs
+        
+        console.log(`Matchup ${result.position}: Home ${result.home_goals}+${penalties.away_sub_penalty} = ${homeMatchupScore} vs Away ${result.away_goals}+${penalties.home_sub_penalty} = ${awayMatchupScore}`);
+        
+        if (homeMatchupScore > awayMatchupScore) {
+          totalHomeScore += 3; // Home wins this matchup
+        } else if (awayMatchupScore > homeMatchupScore) {
+          totalAwayScore += 3; // Away wins this matchup
         } else {
           totalHomeScore += 1; // Draw
           totalAwayScore += 1; // Draw
         }
       }
+      
+      // Add fine/violation penalty goals to total score (these affect final result)
+      totalHomeScore += (Number(home_penalty_goals) || 0);
+      totalAwayScore += (Number(away_penalty_goals) || 0);
+      
+      console.log(`Win-based scoring - Total points: Home ${totalHomeScore}, Away ${totalAwayScore} (includes ${home_penalty_goals || 0} and ${away_penalty_goals || 0} fine penalties)`);
     } else {
-      // Goal-based scoring: sum of all goals
+      // Goal-based scoring: sum of all goals INCLUDING substitution penalties
       for (const result of results) {
         totalHomeScore += result.home_goals;
         totalAwayScore += result.away_goals;
       }
+      
+      // In goal-based, substitution penalties are added to total score
+      const totalHomeSubPenalty = Array.from(penaltiesMap.values()).reduce((sum: number, p: any) => sum + p.home_sub_penalty, 0);
+      const totalAwaySubPenalty = Array.from(penaltiesMap.values()).reduce((sum: number, p: any) => sum + p.away_sub_penalty, 0);
+      
+      totalHomeScore += totalAwaySubPenalty + (Number(home_penalty_goals) || 0);
+      totalAwayScore += totalHomeSubPenalty + (Number(away_penalty_goals) || 0);
+      
+      console.log(`Goal-based scoring - Total goals: Home ${totalHomeScore}, Away ${totalAwayScore} (includes sub penalties and fine penalties)`);
     }
-
-    // Get substitution penalties from matchups
-    const matchupsWithPenalties = await sql`
-      SELECT 
-        COALESCE(SUM(home_sub_penalty), 0) as total_home_sub_penalty,
-        COALESCE(SUM(away_sub_penalty), 0) as total_away_sub_penalty
-      FROM matchups
-      WHERE fixture_id = ${fixtureId}
-    `;
-
-    const homeSubPenalty = Number(matchupsWithPenalties[0]?.total_home_sub_penalty) || 0;
-    const awaySubPenalty = Number(matchupsWithPenalties[0]?.total_away_sub_penalty) || 0;
-
-    // Add penalty/fine goals to total scores
-    // Home team gets: their goals + away's substitution penalties + fine/violation goals
-    // Away team gets: their goals + home's substitution penalties + fine/violation goals
-    totalHomeScore += awaySubPenalty + (Number(home_penalty_goals) || 0);
-    totalAwayScore += homeSubPenalty + (Number(away_penalty_goals) || 0);
-
-    console.log(`Total scores including all penalties - Home: ${totalHomeScore} (goals + ${awaySubPenalty} sub penalties + ${home_penalty_goals} fine penalties), Away: ${totalAwayScore} (goals + ${homeSubPenalty} sub penalties + ${away_penalty_goals} fine penalties)`);
 
     // Determine match result
     let matchResult: 'home_win' | 'away_win' | 'draw';
@@ -741,6 +768,7 @@ export async function PATCH(
             away_score: totalAwayScore,
             home_penalty_goals: Number(home_penalty_goals) || 0,
             away_penalty_goals: Number(away_penalty_goals) || 0,
+            scoring_type: scoringType,
             matchups: results
           })
         });

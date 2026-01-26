@@ -182,30 +182,13 @@ export async function POST(
     }
 
     // Insert fixtures into database
-    if (fixturesToCreate.length > 0) {
-      const values = fixturesToCreate.map(f => `(
-        ${sql([f.tournament_id])},
-        ${sql([f.season_id])},
-        ${f.round_number},
-        ${f.match_number},
-        ${sql([f.home_team_id])},
-        ${sql([f.home_team_name])},
-        ${sql([f.away_team_id])},
-        ${sql([f.away_team_name])},
-        ${sql([f.knockout_round])},
-        ${sql([f.knockout_format])},
-        ${sql([f.scoring_system])},
-        ${sql([f.matchup_mode])},
-        ${sql([f.leg])},
-        ${sql([f.status])},
-        ${f.scheduled_date ? sql([f.scheduled_date]) : 'NULL'},
-        ${created_by ? sql([created_by]) : 'NULL'},
-        ${created_by_name ? sql([created_by_name]) : 'NULL'},
-        NOW()
-      )`).join(',');
-
+    for (const fixture of fixturesToCreate) {
+      // Generate fixture ID
+      const fixtureId = `${tournamentId}_ko_r${fixture.round_number}_m${fixture.match_number}_${fixture.leg}`;
+      
       await sql`
         INSERT INTO fixtures (
+          id,
           tournament_id,
           season_id,
           round_number,
@@ -221,10 +204,28 @@ export async function POST(
           leg,
           status,
           scheduled_date,
-          created_by,
-          created_by_name,
-          created_at
-        ) VALUES ${sql.unsafe(values)}
+          created_at,
+          updated_at
+        ) VALUES (
+          ${fixtureId},
+          ${fixture.tournament_id},
+          ${fixture.season_id},
+          ${fixture.round_number},
+          ${fixture.match_number},
+          ${fixture.home_team_id},
+          ${fixture.home_team_name},
+          ${fixture.away_team_id},
+          ${fixture.away_team_name},
+          ${fixture.knockout_round},
+          ${fixture.knockout_format},
+          ${fixture.scoring_system},
+          ${fixture.matchup_mode},
+          ${fixture.leg},
+          ${fixture.status},
+          ${fixture.scheduled_date || null},
+          NOW(),
+          NOW()
+        )
       `;
     }
 

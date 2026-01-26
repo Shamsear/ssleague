@@ -265,18 +265,22 @@ export default function FixturePage() {
     
     if (activeScoring === 'wins') {
       // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+      // Substitution penalties are added to MATCHUP score to determine winner
       let homePoints = 0;
       let awayPoints = 0;
       
       matchups.forEach(m => {
         if (m.home_goals !== null && m.away_goals !== null) {
-          const homeGoals = (m.home_goals ?? 0);
-          const awayGoals = (m.away_goals ?? 0);
+          // Add substitution penalties to matchup scores
+          // home_sub_penalty = penalty awarded TO away (when home subs)
+          // away_sub_penalty = penalty awarded TO home (when away subs)
+          const homeMatchupScore = (m.home_goals ?? 0) + (m.away_sub_penalty ?? 0);
+          const awayMatchupScore = (m.away_goals ?? 0) + (m.home_sub_penalty ?? 0);
           
-          if (homeGoals > awayGoals) {
-            homePoints += 3; // Home wins
-          } else if (awayGoals > homeGoals) {
-            awayPoints += 3; // Away wins
+          if (homeMatchupScore > awayMatchupScore) {
+            homePoints += 3; // Home wins this matchup
+          } else if (awayMatchupScore > homeMatchupScore) {
+            awayPoints += 3; // Away wins this matchup
           } else {
             homePoints += 1; // Draw
             awayPoints += 1; // Draw
@@ -287,10 +291,9 @@ export default function FixturePage() {
       homePlayerScore = homePoints;
       awayPlayerScore = awayPoints;
       
-      // IMPORTANT: Penalties and fines are ALWAYS in goals, not points
-      // They get added to the total score (which is in points for win-based)
-      homeTotalScore = homePoints + awaySubPenalties + homePenaltyGoals;
-      awayTotalScore = awayPoints + homeSubPenalties + awayPenaltyGoals;
+      // Add fine/violation penalties to total (these affect final result)
+      homeTotalScore = homePoints + homePenaltyGoals;
+      awayTotalScore = awayPoints + awayPenaltyGoals;
     } else {
       // Goal-based scoring: sum of all goals
       homePlayerScore = homePlayerGoals;
@@ -344,13 +347,9 @@ ${scoringSystem && scoringSystem !== tournamentSystem ? `\n⚡ *${scoringSystem 
 *MATCHUPS:*
 
 ${matchups.map((m, idx) => {
-      // Format player names with substitution info
-      const homePlayerDisplay = m.home_substituted
-        ? `${m.home_original_player_name} (${m.home_player_name})`
-        : m.home_player_name;
-      const awayPlayerDisplay = m.away_substituted
-        ? `${m.away_original_player_name} (${m.away_player_name})`
-        : m.away_player_name;
+      // Format player names - show substitute name only (not original)
+      const homePlayerDisplay = m.home_substituted ? m.home_player_name : m.home_player_name;
+      const awayPlayerDisplay = m.away_substituted ? m.away_player_name : m.away_player_name;
 
       let line = '';
       if (hasResults && m.home_goals !== null && m.away_goals !== null) {
@@ -373,15 +372,15 @@ ${homeSubstitutes.length > 0 ? `*${fixture.home_team_name}:*\n${homeSubstitutes.
 
 ${hasSubstitutions ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-*SUBSTITUTIONS & PENALTIES:*
+*SUBSTITUTIONS MADE:*
 
 ${substitutions.map(m => {
       let subText = [];
       if (m.home_substituted) {
-        subText.push(`WARNING Home: +${m.home_sub_penalty || 0} penalty goals awarded to ${fixture.away_team_name}`);
+        subText.push(`⚠️ ${fixture.home_team_name}: ${m.home_original_player_name} → ${m.home_player_name} (+${m.home_sub_penalty || 0} penalty to opponent)`);
       }
       if (m.away_substituted) {
-        subText.push(`WARNING Away: +${m.away_sub_penalty || 0} penalty goals awarded to ${fixture.home_team_name}`);
+        subText.push(`⚠️ ${fixture.away_team_name}: ${m.away_original_player_name} → ${m.away_player_name} (+${m.away_sub_penalty || 0} penalty to opponent)`);
       }
       return subText.join('\n');
     }).join('\n')}
@@ -392,12 +391,14 @@ ${substitutions.map(m => {
 
 *${fixture.home_team_name}*
 Total: *${hasResults ? homeTotalScore : 0}* ${activeScoring === 'wins' ? 'points' : 'goals'}
-${hasResults && (homePlayerScore > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0) ? `   - Player ${activeScoring === 'wins' ? 'Points' : 'Goals'}: ${homePlayerScore}
-${awaySubPenalties > 0 ? `   - Opponent Sub Penalties: +${awaySubPenalties} goals\n` : ''}${homePenaltyGoals > 0 ? `   - Fine/Violation Goals: +${homePenaltyGoals}\n` : ''}` : ''}
+${hasResults && activeScoring === 'wins' ? `   - Matchup Points: ${homePlayerScore}
+${homePenaltyGoals > 0 ? `   - Fine/Violation Goals: +${homePenaltyGoals}\n` : ''}` : hasResults ? `   - Player Goals: ${homePlayerScore}
+${awaySubPenalties > 0 ? `   - Opponent Sub Penalties: +${awaySubPenalties}\n` : ''}${homePenaltyGoals > 0 ? `   - Fine/Violation Goals: +${homePenaltyGoals}\n` : ''}` : ''}
 *${fixture.away_team_name}*
 Total: *${hasResults ? awayTotalScore : 0}* ${activeScoring === 'wins' ? 'points' : 'goals'}
-${hasResults && (awayPlayerScore > 0 || homeSubPenalties > 0 || awayPenaltyGoals > 0) ? `   - Player ${activeScoring === 'wins' ? 'Points' : 'Goals'}: ${awayPlayerScore}
-${homeSubPenalties > 0 ? `   - Opponent Sub Penalties: +${homeSubPenalties} goals\n` : ''}${awayPenaltyGoals > 0 ? `   - Fine/Violation Goals: +${awayPenaltyGoals}\n` : ''}` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${hasResults && activeScoring === 'wins' ? `   - Matchup Points: ${awayPlayerScore}
+${awayPenaltyGoals > 0 ? `   - Fine/Violation Goals: +${awayPenaltyGoals}\n` : ''}` : hasResults ? `   - Player Goals: ${awayPlayerScore}
+${homeSubPenalties > 0 ? `   - Opponent Sub Penalties: +${homeSubPenalties}\n` : ''}${awayPenaltyGoals > 0 ? `   - Fine/Violation Goals: +${awayPenaltyGoals}\n` : ''}` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 *MAN OF THE MATCH*
 ${hasResults ? `${motmName}` : 'To be announced'}
@@ -2269,18 +2270,22 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                     
                     if (tournamentSystem === 'wins') {
                       // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+                      // Substitution penalties are added to MATCHUP score to determine winner
                       let homePoints = 0;
                       let awayPoints = 0;
                       
                       matchups.forEach(m => {
                         if (m.home_goals !== null && m.away_goals !== null) {
-                          const homeGoals = (m.home_goals ?? 0);
-                          const awayGoals = (m.away_goals ?? 0);
+                          // Add substitution penalties to matchup scores
+                          // home_sub_penalty = penalty awarded TO away (when home subs)
+                          // away_sub_penalty = penalty awarded TO home (when away subs)
+                          const homeMatchupScore = (m.home_goals ?? 0) + (m.away_sub_penalty ?? 0);
+                          const awayMatchupScore = (m.away_goals ?? 0) + (m.home_sub_penalty ?? 0);
                           
-                          if (homeGoals > awayGoals) {
-                            homePoints += 3; // Home wins
-                          } else if (awayGoals > homeGoals) {
-                            awayPoints += 3; // Away wins
+                          if (homeMatchupScore > awayMatchupScore) {
+                            homePoints += 3; // Home wins this matchup
+                          } else if (awayMatchupScore > homeMatchupScore) {
+                            awayPoints += 3; // Away wins this matchup
                           } else {
                             homePoints += 1; // Draw
                             awayPoints += 1; // Draw
@@ -2288,9 +2293,9 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                         }
                       });
                       
-                      // Add penalties (these are already points in win-based system)
-                      homeTotalScore = homePoints + awaySubPenalties + homePenaltyGoals;
-                      awayTotalScore = awayPoints + homeSubPenalties + awayPenaltyGoals;
+                      // Add fine/violation penalties to total (these affect final result)
+                      homeTotalScore = homePoints + homePenaltyGoals;
+                      awayTotalScore = awayPoints + awayPenaltyGoals;
                     } else {
                       // Goal-based scoring: sum of all goals
                       homeTotalScore = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
@@ -2658,27 +2663,36 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                     
                     if (tournamentSystem === 'wins') {
                       // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+                      // Substitution penalties are added to MATCHUP score to determine winner
                       let homePoints = 0;
                       let awayPoints = 0;
                       
                       // Use matchResults state for live updates
-                      Object.entries(matchResults).forEach(([position, result]: [string, any]) => {
-                        const homeGoals = result?.home_goals ?? 0;
-                        const awayGoals = result?.away_goals ?? 0;
+                      Object.entries(matchResults).forEach(([positionStr, result]: [string, any]) => {
+                        const position = parseInt(positionStr);
+                        const matchup = matchups[position];
                         
-                        if (homeGoals > awayGoals) {
-                          homePoints += 3; // Home wins
-                        } else if (awayGoals > homeGoals) {
-                          awayPoints += 3; // Away wins
-                        } else if (homeGoals === awayGoals && homeGoals > 0) {
-                          homePoints += 1; // Draw (only if both scored)
-                          awayPoints += 1; // Draw
+                        if (matchup && result) {
+                          // Add substitution penalties to matchup scores
+                          // home_sub_penalty = penalty awarded TO away (when home subs)
+                          // away_sub_penalty = penalty awarded TO home (when away subs)
+                          const homeMatchupScore = (result?.home_goals ?? 0) + (matchup.away_sub_penalty ?? 0);
+                          const awayMatchupScore = (result?.away_goals ?? 0) + (matchup.home_sub_penalty ?? 0);
+                          
+                          if (homeMatchupScore > awayMatchupScore) {
+                            homePoints += 3; // Home wins this matchup
+                          } else if (awayMatchupScore > homeMatchupScore) {
+                            awayPoints += 3; // Away wins this matchup
+                          } else if (homeMatchupScore === awayMatchupScore && homeMatchupScore > 0) {
+                            homePoints += 1; // Draw (only if both scored)
+                            awayPoints += 1; // Draw
+                          }
                         }
                       });
                       
-                      // Add penalties (these are already points in win-based system)
-                      homeTotalScore = homePoints + awaySubPenalties + homePenaltyGoals;
-                      awayTotalScore = awayPoints + homeSubPenalties + awayPenaltyGoals;
+                      // Add fine/violation penalties to total (these affect final result)
+                      homeTotalScore = homePoints + homePenaltyGoals;
+                      awayTotalScore = awayPoints + awayPenaltyGoals;
                     } else {
                       // Goal-based scoring: sum of all goals
                       homeTotalScore = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
@@ -3498,37 +3512,245 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                   </div>
                 </div>
               ) : (
-                // View Only Mode (non result_entry phase)
+                // View Only Mode (non result_entry phase OR closed with results)
                 <div className="space-y-3">
-                  {matchups.map((matchup, idx) => (
-                    <div key={idx} className="p-4 bg-gray-50 rounded-xl">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-2">
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500 mb-1">Home Player</p>
-                          <p className="font-medium text-gray-900">{matchup.home_player_name}</p>
+                  {/* Show results if they exist (even in closed phase) */}
+                  {matchups.some(m => m.home_goals !== null) ? (
+                    <>
+                      {/* Team Totals & Winner */}
+                      {(() => {
+                        // Calculate player goals from matchups
+                        const homePlayerGoals = matchups.reduce((sum, m) => sum + (m.home_goals ?? 0), 0);
+                        const awayPlayerGoals = matchups.reduce((sum, m) => sum + (m.away_goals ?? 0), 0);
+
+                        // Calculate substitution penalties (awarded TO opponent)
+                        const homeSubPenalties = matchups.reduce((sum, m) => sum + (m.home_sub_penalty ?? 0), 0);
+                        const awaySubPenalties = matchups.reduce((sum, m) => sum + (m.away_sub_penalty ?? 0), 0);
+
+                        // Calculate scores based on tournament system
+                        let homeTotalScore, awayTotalScore;
+                        
+                        if (tournamentSystem === 'wins') {
+                          // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
+                          let homePoints = 0;
+                          let awayPoints = 0;
+                          
+                          matchups.forEach(m => {
+                            if (m.home_goals !== null && m.away_goals !== null) {
+                              const homeMatchupScore = (m.home_goals ?? 0) + (m.away_sub_penalty ?? 0);
+                              const awayMatchupScore = (m.away_goals ?? 0) + (m.home_sub_penalty ?? 0);
+                              
+                              if (homeMatchupScore > awayMatchupScore) {
+                                homePoints += 3; // Home wins
+                              } else if (awayMatchupScore > homeMatchupScore) {
+                                awayPoints += 3; // Away wins
+                              } else {
+                                homePoints += 1; // Draw
+                                awayPoints += 1; // Draw
+                              }
+                            }
+                          });
+                          
+                          // Add penalties (these are already points in win-based system)
+                          homeTotalScore = homePoints + homePenaltyGoals;
+                          awayTotalScore = awayPoints + awayPenaltyGoals;
+                        } else {
+                          // Goal-based scoring: sum of all goals
+                          homeTotalScore = homePlayerGoals + awaySubPenalties + homePenaltyGoals;
+                          awayTotalScore = awayPlayerGoals + homeSubPenalties + awayPenaltyGoals;
+                        }
+
+                        const winner = homeTotalScore > awayTotalScore ? 'home' : awayTotalScore > homeTotalScore ? 'away' : 'draw';
+
+                        return (
+                          <div className="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 border-2 border-blue-300 rounded-2xl p-4 sm:p-6 shadow-xl mb-4">
+                            <h3 className="text-center text-sm font-semibold text-gray-600 mb-4">
+                              Match Result {tournamentSystem === 'wins' && '(Points)'}
+                            </h3>
+                            <div className="grid grid-cols-3 gap-4 items-center mb-4">
+                              {/* Home Total */}
+                              <div className={`text-center p-4 rounded-xl ${winner === 'home' ? 'bg-green-500 text-white shadow-lg scale-105' : 'bg-white text-gray-700'
+                                } transition-all`}>
+                                <div className="text-xs sm:text-sm font-medium mb-1">{fixture.home_team_name}</div>
+                                <div className="text-3xl sm:text-4xl font-bold">{homeTotalScore}</div>
+                                {winner === 'home' && <div className="text-xs mt-1 font-semibold">✓ WINNER</div>}
+                                {/* Breakdown */}
+                                {tournamentSystem === 'wins' ? (
+                                  // Show W-D-L for win-based system
+                                  <div className="text-xs mt-2 opacity-90">
+                                    {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) > (m.away_goals ?? 0)).length}W-
+                                    {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) === (m.away_goals ?? 0)).length}D-
+                                    {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) < (m.away_goals ?? 0)).length}L
+                                  </div>
+                                ) : (
+                                  // Show goal breakdown for goal-based system
+                                  (awaySubPenalties > 0 || homePenaltyGoals > 0) && (
+                                    <div className="text-xs mt-2 opacity-90">
+                                      ({homePlayerGoals}
+                                      {awaySubPenalties > 0 && ` +${awaySubPenalties}s`}
+                                      {homePenaltyGoals > 0 && ` +${homePenaltyGoals}f`})
+                                    </div>
+                                  )
+                                )}
+                              </div>
+
+                              {/* VS or Draw */}
+                              <div className="text-center">
+                                {winner === 'draw' ? (
+                                  <div className="bg-yellow-400 text-yellow-900 px-4 py-2 rounded-full font-bold text-sm shadow-lg">
+                                    DRAW
+                                  </div>
+                                ) : (
+                                  <div className="text-2xl font-bold text-gray-400">-</div>
+                                )}
+                              </div>
+
+                              {/* Away Total */}
+                              <div className={`text-center p-4 rounded-xl ${winner === 'away' ? 'bg-green-500 text-white shadow-lg scale-105' : 'bg-white text-gray-700'
+                                } transition-all`}>
+                                <div className="text-xs sm:text-sm font-medium mb-1">{fixture.away_team_name}</div>
+                                <div className="text-3xl sm:text-4xl font-bold">{awayTotalScore}</div>
+                                {winner === 'away' && <div className="text-xs mt-1 font-semibold">✓ WINNER</div>}
+                                {/* Breakdown */}
+                                {tournamentSystem === 'wins' ? (
+                                  // Show W-D-L for win-based system
+                                  <div className="text-xs mt-2 opacity-90">
+                                    {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.away_goals ?? 0) > (m.home_goals ?? 0)).length}W-
+                                    {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.home_goals ?? 0) === (m.away_goals ?? 0)).length}D-
+                                    {matchups.filter(m => m.home_goals !== null && m.away_goals !== null && (m.away_goals ?? 0) < (m.home_goals ?? 0)).length}L
+                                  </div>
+                                ) : (
+                                  // Show goal breakdown for goal-based system
+                                  (homeSubPenalties > 0 || awayPenaltyGoals > 0) && (
+                                    <div className="text-xs mt-2 opacity-90">
+                                      ({awayPlayerGoals}
+                                      {homeSubPenalties > 0 && ` +${homeSubPenalties}s`}
+                                      {awayPenaltyGoals > 0 && ` +${awayPenaltyGoals}f`})
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                            {/* Legend - only show for goal-based system */}
+                            {tournamentSystem === 'goals' && (homeSubPenalties > 0 || awaySubPenalties > 0 || homePenaltyGoals > 0 || awayPenaltyGoals > 0) && (
+                              <div className="text-center text-xs text-gray-600 pt-2 border-t border-gray-300">
+                                s = sub penalty, f = fine
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Man of the Match Display */}
+                      {fixture.motm_player_name && (
+                        <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 rounded-xl p-4 mb-4">
+                          <div className="flex items-center justify-center gap-3">
+                            <svg className="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                            <div>
+                              <div className="text-xs font-semibold text-yellow-700 uppercase tracking-wide">Man of the Match</div>
+                              <div className="text-lg font-bold text-yellow-900">{fixture.motm_player_name}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Matchup Results */}
+                      {matchups.map((matchup, idx) => {
+                        const hasResult = matchup.home_goals !== null && matchup.away_goals !== null;
+                        const homeWon = hasResult && matchup.home_goals! > matchup.away_goals!;
+                        const awayWon = hasResult && matchup.away_goals! > matchup.home_goals!;
+                        const isDraw = hasResult && matchup.home_goals === matchup.away_goals;
+                        const isPOTD = fixture.motm_player_id && (fixture.motm_player_id === matchup.home_player_id || fixture.motm_player_id === matchup.away_player_id);
+
+                        return (
+                          <div key={idx} className={`p-4 rounded-xl border-2 ${isPOTD ? 'bg-gradient-to-br from-yellow-50 via-amber-50 to-yellow-100 border-yellow-400' : 'bg-white border-gray-200'}`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="text-sm font-semibold text-gray-700">Match #{matchup.position}</span>
+                              {isPOTD && (
+                                <div className="flex items-center gap-1 px-2 py-1 bg-yellow-400 text-yellow-900 rounded-full text-xs font-bold">
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                  MOTM
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Substitution Info */}
+                            {(matchup.home_substituted || matchup.away_substituted) && (
+                              <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs">
+                                {matchup.home_substituted && (
+                                  <div className="text-yellow-800">
+                                    🔁 Home: {matchup.home_original_player_name} → {matchup.home_player_name} (+{matchup.home_sub_penalty} to away)
+                                  </div>
+                                )}
+                                {matchup.away_substituted && (
+                                  <div className="text-yellow-800">
+                                    🔁 Away: {matchup.away_original_player_name} → {matchup.away_player_name} (+{matchup.away_sub_penalty} to home)
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-3 gap-4 items-center">
+                              <div className="text-center">
+                                <p className="text-xs text-gray-500 mb-1">{matchup.home_player_name}</p>
+                                <p className={`text-2xl font-bold ${homeWon ? 'text-green-600' : isDraw ? 'text-yellow-600' : 'text-gray-400'}`}>
+                                  {matchup.home_goals ?? 0}
+                                </p>
+                              </div>
+                              <div className="text-center text-gray-400 font-bold">-</div>
+                              <div className="text-center">
+                                <p className="text-xs text-gray-500 mb-1">{matchup.away_player_name}</p>
+                                <p className={`text-2xl font-bold ${awayWon ? 'text-green-600' : isDraw ? 'text-yellow-600' : 'text-gray-400'}`}>
+                                  {matchup.away_goals ?? 0}
+                                </p>
+                              </div>
+                            </div>
+
+                            {matchup.match_duration && (
+                              <div className="text-center text-xs text-gray-500 mt-2">
+                                ({matchup.match_duration} min)
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    // No results yet - show matchups only
+                    matchups.map((matchup, idx) => (
+                      <div key={idx} className="p-4 bg-gray-50 rounded-xl">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-2">
+                          <div className="text-center">
+                            <p className="text-xs text-gray-500 mb-1">Home Player</p>
+                            <p className="font-medium text-gray-900">{matchup.home_player_name}</p>
+                          </div>
+
+                          <div className="flex justify-center">
+                            <div className="bg-green-100 text-green-700 rounded-full px-4 py-2 text-sm font-medium">VS</div>
+                          </div>
+
+                          <div className="text-center">
+                            <p className="text-xs text-gray-500 mb-1">Away Player</p>
+                            <p className="font-medium text-gray-900">{matchup.away_player_name}</p>
+                          </div>
                         </div>
 
-                        <div className="flex justify-center">
-                          <div className="bg-green-100 text-green-700 rounded-full px-4 py-2 text-sm font-medium">VS</div>
-                        </div>
-
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500 mb-1">Away Player</p>
-                          <p className="font-medium text-gray-900">{matchup.away_player_name}</p>
+                        {/* Match info */}
+                        <div className="text-center text-xs text-gray-500 pt-2 border-t border-gray-200">
+                          <span>Match #{matchup.position}</span>
+                          {matchup.match_duration && (
+                            <span className="ml-2 text-green-600 font-medium">
+                              ({matchup.match_duration} min)
+                            </span>
+                          )}
                         </div>
                       </div>
-
-                      {/* Match info */}
-                      <div className="text-center text-xs text-gray-500 pt-2 border-t border-gray-200">
-                        <span>Match #{matchup.position}</span>
-                        {matchup.match_duration && (
-                          <span className="ml-2 text-green-600 font-medium">
-                            ({matchup.match_duration} min)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               )}
             </div>

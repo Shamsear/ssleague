@@ -20,7 +20,7 @@ interface MatchupResult {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { season_id, fixture_id, home_team_id, away_team_id, matchups, home_score, away_score, home_penalty_goals, away_penalty_goals, is_edit } = body;
+    const { season_id, fixture_id, home_team_id, away_team_id, matchups, home_score, away_score, home_penalty_goals, away_penalty_goals, scoring_type, is_edit } = body;
 
     if (!season_id || !fixture_id || !home_team_id || !away_team_id) {
       return NextResponse.json(
@@ -29,11 +29,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use provided scores if available, otherwise calculate from matchups
-    let homeTeamGoals = home_score !== undefined ? home_score : 0;
-    let awayTeamGoals = away_score !== undefined ? away_score : 0;
+    const tournamentScoringType = scoring_type || 'goals';
 
-    if (home_score === undefined && matchups && Array.isArray(matchups)) {
+    // Calculate goals for team stats (WITHOUT substitution penalties)
+    // Substitution penalties affect match result but not player/team goal stats
+    let homeTeamGoals = 0;
+    let awayTeamGoals = 0;
+
+    if (matchups && Array.isArray(matchups)) {
       for (const matchup of matchups as MatchupResult[]) {
         if (matchup.home_goals !== null && matchup.away_goals !== null) {
           homeTeamGoals += matchup.home_goals;
@@ -42,46 +45,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch tournament scoring type to determine how to calculate wins
-    const sql = getTournamentDb();
-    const fixtureData = await sql`
-      SELECT t.id as tournament_id, ts.scoring_type
-      FROM fixtures f
-      JOIN tournaments t ON f.tournament_id = t.id
-      LEFT JOIN tournament_settings ts ON t.id = ts.tournament_id
-      WHERE f.id = ${fixture_id}
-      LIMIT 1
-    `;
-
-    const scoringType = fixtureData[0]?.scoring_type || 'goals';
+    // Add fine/violation penalty goals to team stats (these DO count as goals)
+    homeTeamGoals += (Number(home_penalty_goals) || 0);
+    awayTeamGoals += (Number(away_penalty_goals) || 0);
 
     // Determine match result based on scoring type
     let homeWon: boolean;
     let awayWon: boolean;
     let draw: boolean;
 
-    if (scoringType === 'wins') {
-      // WIN-BASED SCORING: Count matchup wins
-      let homeMatchupsWon = 0;
-      let awayMatchupsWon = 0;
+    if (tournamentScoringType === 'wins') {
+      // WIN-BASED SCORING: Use the provided scores (which include sub penalties for determining winner)
+      // But goals_for/goals_against should NOT include sub penalties
+      homeWon = home_score > away_score;
+      awayWon = away_score > home_score;
+      draw = home_score === away_score;
 
-      if (matchups && Array.isArray(matchups)) {
-        for (const matchup of matchups as MatchupResult[]) {
-          if (matchup.home_goals !== null && matchup.away_goals !== null) {
-            if (matchup.home_goals > matchup.away_goals) {
-              homeMatchupsWon++;
-            } else if (matchup.away_goals > matchup.home_goals) {
-              awayMatchupsWon++;
-            }
-          }
-        }
-      }
-
-      homeWon = homeMatchupsWon > awayMatchupsWon;
-      awayWon = awayMatchupsWon > homeMatchupsWon;
-      draw = homeMatchupsWon === awayMatchupsWon;
-
-      console.log(`✓ Win-based scoring: Home ${homeMatchupsWon} matchups - ${awayMatchupsWon} matchups Away | Result: ${homeWon ? 'Home Win' : awayWon ? 'Away Win' : 'Draw'}`);
+      console.log(`✓ Win-based scoring: Home ${home_score} points - ${away_score} points Away | Result: ${homeWon ? 'Home Win' : awayWon ? 'Away Win' : 'Draw'}`);
+      console.log(`✓ Team goals (without sub penalties): Home ${homeTeamGoals} - ${awayTeamGoals} Away`);
     } else {
       // GOAL-BASED SCORING: Use total goals (current/default behavior)
       homeWon = homeTeamGoals > awayTeamGoals;
@@ -91,7 +72,23 @@ export async function POST(request: NextRequest) {
       console.log(`✓ Goal-based scoring: Home ${homeTeamGoals} goals - ${awayTeamGoals} goals Away | Result: ${homeWon ? 'Home Win' : awayWon ? 'Away Win' : 'Draw'}`);
     }
 
-    // Update home team stats
+    // Fetch tournament_id from fixture
+    const sql = getTournamentDb();
+    const fixtureData = await sql`
+      SELECT tournament_id
+      FROM fixtures
+      WHERE id = ${fixture_id}
+      LIMIT 1
+    `;
+
+    if (fixtureData.length === 0) {
+      return NextResponse.json(
+        { error: 'Fixture not found' },
+        { status: 404 }
+      );
+    }
+
+    // Update home team stats (goals WITHOUT sub penalties)
     await updateTeamStats({
       team_id: home_team_id,
       season_id,
@@ -107,7 +104,7 @@ export async function POST(request: NextRequest) {
       is_edit: is_edit || false
     });
 
-    // Update away team stats
+    // Update away team stats (goals WITHOUT sub penalties)
     await updateTeamStats({
       team_id: away_team_id,
       season_id,

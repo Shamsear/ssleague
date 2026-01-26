@@ -24,18 +24,16 @@ export async function GET(
 
     const seasonId = tournament[0].season_id;
 
-    // Get all unique teams for this season with their participation status in THIS tournament
-    // Use DISTINCT ON to get one row per team, prioritizing the current tournament
+    // Get only teams that are participating in THIS tournament
     const teams = await sql`
-      SELECT DISTINCT ON (team_id)
+      SELECT 
         team_id,
         team_name,
-        CASE WHEN tournament_id = ${tournamentId} THEN true ELSE false END as is_participating
+        true as is_participating
       FROM teamstats
       WHERE season_id = ${seasonId}
-      ORDER BY team_id, 
-               CASE WHEN tournament_id = ${tournamentId} THEN 0 ELSE 1 END,
-               team_name ASC
+        AND tournament_id = ${tournamentId}
+      ORDER BY team_name ASC
     `;
 
     return NextResponse.json({

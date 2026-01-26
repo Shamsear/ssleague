@@ -282,6 +282,34 @@ export default function TournamentDashboardPage() {
     }
   }, [editingTournament?.has_knockout_stage, editingTournament?.has_league_stage, editingTournament?.has_group_stage]);
 
+  // Auto-update number of teams when knockout round type changes
+  useEffect(() => {
+    const teamsByRoundType = {
+      'quarter_finals': 8,
+      'semi_finals': 4,
+      'finals': 2,
+      'third_place': 2
+    };
+    const newNumTeams = teamsByRoundType[knockoutRoundType];
+    if (newNumTeams !== knockoutNumTeams) {
+      setKnockoutNumTeams(newNumTeams);
+      setKnockoutSelectedTeams([]); // Reset selections when changing round type
+    }
+  }, [knockoutRoundType]);
+
+  // Auto-calculate next round number based on existing fixtures
+  useEffect(() => {
+    if (selectedTournamentForFixtures && tournamentFixtures.length > 0) {
+      const fixturesForTournament = tournamentFixtures.filter(f => f.tournament_id === selectedTournamentForFixtures);
+      if (fixturesForTournament.length > 0) {
+        const maxRound = Math.max(...fixturesForTournament.map(f => f.round_number || 0));
+        const nextRound = maxRound + 1;
+        // Only update if different to prevent infinite loops
+        setKnockoutRoundNumber(prev => prev !== nextRound ? nextRound : prev);
+      }
+    }
+  }, [selectedTournamentForFixtures, tournamentFixtures]);
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
@@ -780,13 +808,108 @@ export default function TournamentDashboardPage() {
   // Load available teams for knockout selection
   const loadAvailableTeamsForKnockout = async (tournamentId: string) => {
     try {
-      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/teams`);
+      // Fetch teams with their standings
+      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings`);
       const data = await res.json();
-      if (data.success && data.teams) {
-        setAvailableTeamsForKnockout(data.teams);
+      
+      console.log('Standings API response:', data);
+      
+      if (data.success) {
+        let allTeams: any[] = [];
+        let isGroupStage = false;
+        
+        // Handle different response formats
+        if (data.format === 'group_stage' && data.groupStandings) {
+          // Group stage format - keep group structure for smart selection
+          isGroupStage = true;
+          const groups = data.groupStandings;
+          const groupNames = Object.keys(groups).sort();
+          
+          // For group stage, select top N teams from each group
+          // Example: For 8 teams (QF), if 4 groups, take top 2 from each
+          const teamsPerGroup = Math.ceil(knockoutNumTeams / groupNames.length);
+          
+          groupNames.forEach(groupName => {
+            const groupTeams = groups[groupName]
+              .sort((a: any, b: any) => {
+                if (a.position !== b.position) return a.position - b.position;
+                return (b.points || 0) - (a.points || 0);
+              })
+              .slice(0, teamsPerGroup); // Take top N from each group
+            
+            allTeams = allTeams.concat(groupTeams);
+          });
+          
+          // Sort by group position for display (1st place teams first, then 2nd place, etc.)
+          allTeams.sort((a: any, b: any) => {
+            if (a.position !== b.position) return a.position - b.position;
+            return a.group.localeCompare(b.group);
+          });
+          
+        } else if (data.format === 'league' && data.standings) {
+          // League format - take top N teams overall
+          allTeams = data.standings;
+        } else if (data.standings) {
+          // Fallback - direct standings array
+          allTeams = data.standings;
+        }
+        
+        if (allTeams.length === 0) {
+          showAlert({
+            type: 'warning',
+            title: 'No Teams Found',
+            message: 'No teams with standings found. Make sure fixtures have been completed.'
+          });
+          return;
+        }
+        
+        // For non-group stage, sort by position/points
+        if (!isGroupStage) {
+          allTeams = allTeams.sort((a: any, b: any) => {
+            if (a.position && b.position && a.position !== b.position) {
+              return a.position - b.position;
+            }
+            return (b.points || 0) - (a.points || 0);
+          });
+          
+          // Assign positions if not already set
+          allTeams.forEach((team, index) => {
+            if (!team.position) {
+              team.position = index + 1;
+            }
+          });
+        }
+        
+        setAvailableTeamsForKnockout(allTeams);
+        
+        // Auto-select top teams based on round type
+        const numToSelect = Math.min(knockoutNumTeams, allTeams.length);
+        const topTeams = allTeams.slice(0, numToSelect).map((t: any) => t.team_id);
+        setKnockoutSelectedTeams(topTeams);
+        
+        const selectionMessage = isGroupStage 
+          ? `Loaded ${allTeams.length} teams from groups. Top teams from each group auto-selected.`
+          : `Loaded ${allTeams.length} teams. Top ${numToSelect} teams auto-selected based on standings.`;
+        
+        showAlert({
+          type: 'success',
+          title: 'Teams Loaded',
+          message: selectionMessage
+        });
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Load Failed',
+          message: data.error || 'Failed to load teams'
+        });
       }
     } catch (error) {
       console.error('Error loading teams:', error);
+      showAlert({
+        type: 'error',
+        title: 'Load Failed',
+        message: 'Failed to load teams. Please try again.'
+      });
     }
   };
 
@@ -1851,38 +1974,41 @@ export default function TournamentDashboardPage() {
                         </select>
                       </div>
 
-                      {/* Round Number */}
+                      {/* Round Number - Auto-calculated */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Round Number</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Round Number
+                          <span className="ml-2 text-xs text-purple-600 font-normal">(Auto-set to next round)</span>
+                        </label>
                         <input
                           type="number"
                           value={knockoutRoundNumber}
                           onChange={(e) => setKnockoutRoundNumber(parseInt(e.target.value))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                          placeholder="e.g., 12"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-purple-50"
+                          placeholder="Auto-calculated"
                         />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Automatically set to {knockoutRoundNumber} (next available round)
+                        </p>
                       </div>
 
-                      {/* Number of Teams */}
+                      {/* Number of Teams - Auto-determined by Round Type */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Teams</label>
-                        <select
-                          value={knockoutNumTeams}
-                          onChange={(e) => {
-                            setKnockoutNumTeams(parseInt(e.target.value));
-                            setKnockoutSelectedTeams([]); // Reset selections
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                        >
-                          <option value={2}>2 teams (Finals)</option>
-                          <option value={4}>4 teams (Semi Finals)</option>
-                          <option value={8}>8 teams (Quarter Finals)</option>
-                          <option value={16}>16 teams (Round of 16)</option>
-                        </select>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Number of Teams
+                          <span className="ml-2 text-xs text-purple-600 font-normal">(Auto-set by round type)</span>
+                        </label>
+                        <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-700 font-medium">
+                          {knockoutNumTeams} teams
+                          {knockoutRoundType === 'quarter_finals' && ' (Quarter Finals)'}
+                          {knockoutRoundType === 'semi_finals' && ' (Semi Finals)'}
+                          {knockoutRoundType === 'finals' && ' (Finals)'}
+                          {knockoutRoundType === 'third_place' && ' (Third Place)'}
+                        </div>
                       </div>
 
                       {/* Pairing Method */}
-                      <div>
+                      <div>     
                         <label className="block text-sm font-medium text-gray-700 mb-2">Pairing Method</label>
                         <select
                           value={knockoutPairingMethod}
@@ -1896,7 +2022,7 @@ export default function TournamentDashboardPage() {
                       </div>
                     </div>
 
-                    {/* Team Selection */}
+                    {/* Team Selection with Structure Preview */}
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <label className="block text-sm font-medium text-gray-700">
@@ -1906,38 +2032,108 @@ export default function TournamentDashboardPage() {
                           onClick={() => {
                             loadAvailableTeamsForKnockout(selectedTournamentForFixtures);
                           }}
-                          className="text-xs text-purple-600 hover:text-purple-700 font-medium"
+                          className="px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 font-medium transition-colors"
                         >
-                          Load Teams
+                          📊 Load & Auto-Select Top Teams
                         </button>
                       </div>
 
                       {availableTeamsForKnockout.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-60 overflow-y-auto p-3 bg-white rounded-lg border border-gray-200">
-                          {availableTeamsForKnockout.map((team, index) => (
-                            <button
-                              key={team.team_id}
-                              onClick={() => toggleKnockoutTeam(team.team_id)}
-                              className={`p-2 rounded-lg text-xs font-medium transition-all ${
-                                knockoutSelectedTeams.includes(team.team_id)
-                                  ? 'bg-purple-600 text-white shadow-md'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              }`}
-                            >
-                              <div className="flex items-center gap-1">
-                                {knockoutSelectedTeams.includes(team.team_id) && (
-                                  <span className="font-bold">
-                                    {knockoutSelectedTeams.indexOf(team.team_id) + 1}.
-                                  </span>
+                        <>
+                          {/* Knockout Structure Preview */}
+                          {knockoutSelectedTeams.length === knockoutNumTeams && (
+                            <div className="mb-3 p-3 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
+                              <h4 className="text-xs font-bold text-purple-900 mb-2">🏆 Knockout Structure Preview</h4>
+                              <div className="space-y-1 text-xs">
+                                {knockoutPairingMethod === 'standard' && (
+                                  <>
+                                    {Array.from({ length: knockoutNumTeams / 2 }, (_, i) => {
+                                      const team1 = availableTeamsForKnockout.find(t => t.team_id === knockoutSelectedTeams[i]);
+                                      const team2 = availableTeamsForKnockout.find(t => t.team_id === knockoutSelectedTeams[knockoutNumTeams - 1 - i]);
+                                      return (
+                                        <div key={i} className="flex items-center justify-between py-1 px-2 bg-white rounded">
+                                          <span className="font-medium text-gray-700">
+                                            #{i + 1} {team1?.team_name || 'Team'}
+                                          </span>
+                                          <span className="text-purple-600 font-bold">VS</span>
+                                          <span className="font-medium text-gray-700">
+                                            #{knockoutNumTeams - i} {team2?.team_name || 'Team'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </>
                                 )}
-                                <span className="truncate">{team.team_name}</span>
+                                {knockoutPairingMethod === 'manual' && (
+                                  <p className="text-gray-600">Manual pairing: Teams will be paired in selection order</p>
+                                )}
+                                {knockoutPairingMethod === 'random' && (
+                                  <p className="text-gray-600">Random draw: Teams will be randomly paired</p>
+                                )}
                               </div>
-                            </button>
-                          ))}
-                        </div>
+                            </div>
+                          )}
+
+                          {/* Team Grid */}
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-60 overflow-y-auto p-3 bg-white rounded-lg border border-gray-200">
+                            {availableTeamsForKnockout.map((team, index) => {
+                              const isSelected = knockoutSelectedTeams.includes(team.team_id);
+                              const selectionOrder = knockoutSelectedTeams.indexOf(team.team_id) + 1;
+                              const isTopTeam = index < knockoutNumTeams;
+                              
+                              return (
+                                <button
+                                  key={team.team_id}
+                                  onClick={() => toggleKnockoutTeam(team.team_id)}
+                                  className={`p-2 rounded-lg text-xs font-medium transition-all relative ${
+                                    isSelected
+                                      ? 'bg-purple-600 text-white shadow-md ring-2 ring-purple-400'
+                                      : isTopTeam
+                                        ? 'bg-green-50 text-gray-700 hover:bg-green-100 border border-green-200'
+                                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                  }`}
+                                >
+                                  <div className="flex flex-col items-start gap-1">
+                                    <div className="flex items-center gap-1 w-full">
+                                      <span className={`text-xs font-bold ${isSelected ? 'text-purple-200' : 'text-gray-400'}`}>
+                                        #{team.position || index + 1}
+                                      </span>
+                                      {team.group_name && (
+                                        <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${
+                                          isSelected 
+                                            ? 'bg-white/20 text-white' 
+                                            : 'bg-blue-100 text-blue-700'
+                                        }`}>
+                                          {team.group_name}
+                                        </span>
+                                      )}
+                                      {isSelected && (
+                                        <span className="ml-auto bg-white text-purple-600 px-1.5 py-0.5 rounded text-xs font-bold">
+                                          {selectionOrder}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="truncate w-full text-left">{team.team_name}</span>
+                                    <div className="flex items-center gap-2 text-xs opacity-75">
+                                      <span>{team.points || 0} pts</span>
+                                      {team.matches_played > 0 && (
+                                        <span>• {team.wins || 0}W</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
                       ) : (
-                        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
-                          <p className="text-sm text-gray-500">Click "Load Teams" to see available teams</p>
+                        <div className="p-6 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-2 border-dashed border-gray-300 text-center">
+                          <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                          <p className="text-sm font-medium text-gray-700 mb-1">No teams loaded</p>
+                          <p className="text-xs text-gray-500 mb-3">Click the button above to load teams from standings</p>
+                          <p className="text-xs text-gray-400">Top {knockoutNumTeams} teams will be auto-selected</p>
                         </div>
                       )}
                     </div>
