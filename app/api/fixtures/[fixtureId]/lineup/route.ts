@@ -58,10 +58,10 @@ async function logLineupChange(params: {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { fixtureId: string } }
+  { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
-    const { fixtureId } = params;
+    const { fixtureId } = await params;
     
     const auth = await verifyAuth(['team'], request);
     if (!auth.authenticated) {
@@ -662,39 +662,132 @@ export async function PUT(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { fixtureId: string } }
+  { params }: { params: Promise<{ fixtureId: string }> }
 ) {
   try {
-    const { fixtureId } = params;
+    const { fixtureId } = await params;
+    const searchParams = request.nextUrl.searchParams;
+    const teamType = searchParams.get('team_type');
 
-    const auth = await verifyAuth(['team', 'committee'], request);
-    if (!auth.authenticated) {
-      return NextResponse.json(
-        { success: false, error: auth.error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    // Get fixture from Neon (not Firebase)
+    const sql = getTournamentDb();
+    
+    const fixtures = await sql`
+      SELECT * FROM fixtures WHERE id = ${fixtureId} LIMIT 1
+    `;
 
-    // Get fixture with lineup data
-    const fixtureRef = adminDb.collection('fixtures').doc(fixtureId);
-    const fixtureDoc = await fixtureRef.get();
-
-    if (!fixtureDoc.exists) {
+    if (fixtures.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Fixture not found' },
-        { status: 404 }
+        { status: 404 } 
       );
     }
 
-    const fixture = fixtureDoc.data()!;
+    const fixture = fixtures[0];
+
+    // If team_type is specified, return only that team's lineup from lineups table
+    if (teamType) {
+      if (teamType !== 'home' && teamType !== 'away') {
+        return NextResponse.json(
+          { success: false, error: 'team_type must be "home" or "away"' },
+          { status: 400 }
+        );
+      }
+
+      const teamId = teamType === 'home' ? fixture.home_team_id : fixture.away_team_id;
+
+      // Query the lineups table
+      const lineups = await sql`
+        SELECT * FROM lineups 
+        WHERE fixture_id = ${fixtureId} 
+        AND team_id = ${teamId}
+        LIMIT 1
+      `;
+
+      console.log(`Lineup query for ${teamType} team (${teamId}):`, lineups);
+
+      if (lineups.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'No lineup submitted yet' },
+          { status: 404 }
+        );
+      }
+
+      const lineup = lineups[0];
+
+      // The lineups table has starting_xi and substitutes arrays with player IDs
+      // We need to fetch player names from the players table
+      const playerIds = [...(lineup.starting_xi || []), ...(lineup.substitutes || [])];
+
+      if (playerIds.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'No players in lineup' },
+          { status: 404 }
+        );
+      }
+
+      // Fetch player names
+      const players = await sql`
+        SELECT player_id, player_name 
+        FROM player_seasons 
+        WHERE player_id = ANY(${playerIds})
+        AND season_id = ${lineup.season_id}
+      `;
+
+      // Create a map of player_id to player_name
+      const playerMap = new Map(players.map(p => [p.player_id, p.player_name]));
+
+      // Format the lineup with player names
+      const formattedLineup = [];
+      
+      // Add starting XI
+      (lineup.starting_xi || []).forEach((playerId: string, index: number) => {
+        formattedLineup.push({
+          player_id: playerId,
+          player_name: playerMap.get(playerId) || 'Unknown Player',
+          position: index + 1,
+          is_substitute: false,
+        });
+      });
+
+      // Add substitutes
+      (lineup.substitutes || []).forEach((playerId: string, index: number) => {
+        formattedLineup.push({
+          player_id: playerId,
+          player_name: playerMap.get(playerId) || 'Unknown Player',
+          position: (lineup.starting_xi?.length || 0) + index + 1,
+          is_substitute: true,
+        });
+      });
+
+      return NextResponse.json({
+        success: true,
+        lineup: formattedLineup,
+        locked: lineup.is_locked || false,
+        submitted_at: lineup.submitted_at || lineup.created_at || null,
+      });
+    }
+
+    // Return both lineups from lineups table
+    const homeLineups = await sql`
+      SELECT * FROM lineups 
+      WHERE fixture_id = ${fixtureId} 
+      AND team_id = ${fixture.home_team_id}
+      LIMIT 1
+    `;
+
+    const awayLineups = await sql`
+      SELECT * FROM lineups 
+      WHERE fixture_id = ${fixtureId} 
+      AND team_id = ${fixture.away_team_id}
+      LIMIT 1
+    `;
 
     return NextResponse.json({
       success: true,
       data: {
-        home_lineup: fixture.home_lineup || null,
-        away_lineup: fixture.away_lineup || null,
-        home_lineup_submitted_at: fixture.home_lineup_submitted_at || null,
-        away_lineup_submitted_at: fixture.away_lineup_submitted_at || null,
+        home_lineup: homeLineups.length > 0 ? homeLineups[0] : null,
+        away_lineup: awayLineups.length > 0 ? awayLineups[0] : null,
       },
     });
   } catch (error: any) {

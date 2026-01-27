@@ -1372,67 +1372,67 @@ export default function TournamentDashboardPage() {
         </div>
 
         {/* Modern Tab Navigation */}
-        <div className="mb-6 sm:mb-8">
-          <div className="glass rounded-2xl p-2 inline-flex gap-2 shadow-lg border border-white/20 overflow-x-auto">
+        <div className="mb-6 sm:mb-8 -mx-4 sm:mx-0">
+          <div className="glass rounded-none sm:rounded-2xl p-2 flex gap-1 sm:gap-2 shadow-lg border-y sm:border border-white/20 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-2 whitespace-nowrap ${activeTab === 'overview'
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-1 sm:gap-2 whitespace-nowrap flex-shrink-0 snap-start ${activeTab === 'overview'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
                 }`}
             >
-              <span className="text-base sm:text-lg">📊</span>
+              <span className="text-sm sm:text-lg">📊</span>
               <span>Overview</span>
             </button>
             <button
               onClick={() => setActiveTab('teams')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-2 whitespace-nowrap ${activeTab === 'teams'
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-1 sm:gap-2 whitespace-nowrap flex-shrink-0 snap-start ${activeTab === 'teams'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
                 }`}
             >
-              <span className="text-base sm:text-lg">👥</span>
+              <span className="text-sm sm:text-lg">👥</span>
               <span>Teams</span>
             </button>
             <button
               onClick={() => setActiveTab('groups')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-2 whitespace-nowrap ${activeTab === 'groups'
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-1 sm:gap-2 whitespace-nowrap flex-shrink-0 snap-start ${activeTab === 'groups'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
                 }`}
             >
-              <span className="text-base sm:text-lg">🎯</span>
+              <span className="text-sm sm:text-lg">🎯</span>
               <span>Groups</span>
             </button>
             <button
               onClick={() => setActiveTab('fixtures')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-2 whitespace-nowrap ${activeTab === 'fixtures'
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-1 sm:gap-2 whitespace-nowrap flex-shrink-0 snap-start ${activeTab === 'fixtures'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
                 }`}
             >
-              <span className="text-base sm:text-lg">📅</span>
+              <span className="text-sm sm:text-lg">📅</span>
               <span>Fixtures</span>
             </button>
             <button
               onClick={() => setActiveTab('standings')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-2 whitespace-nowrap ${activeTab === 'standings'
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-1 sm:gap-2 whitespace-nowrap flex-shrink-0 snap-start ${activeTab === 'standings'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
                 }`}
             >
-              <span className="text-base sm:text-lg">🏆</span>
+              <span className="text-sm sm:text-lg">🏆</span>
               <span>Standings</span>
             </button>
             <button
               onClick={() => setActiveTab('management')}
-              className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-2 whitespace-nowrap ${activeTab === 'management'
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all inline-flex items-center gap-1 sm:gap-2 whitespace-nowrap flex-shrink-0 snap-start ${activeTab === 'management'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
                 }`}
             >
-              <span className="text-base sm:text-lg">⚙️</span>
-              <span>Management</span>
+              <span className="text-sm sm:text-lg">⚙️</span>
+              <span>Manage</span>
             </button>
           </div>
         </div>
