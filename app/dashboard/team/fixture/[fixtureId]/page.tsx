@@ -63,8 +63,13 @@ interface Fixture {
 }
 
 interface RoundDeadlines {
+  id: string;
+  tournament_id: string;
+  round_number: number;
+  leg: string;
   scheduled_date: string;
   round_start_time?: string;
+  lineup_deadline_time?: string;
   home_fixture_deadline_time: string;
   away_fixture_deadline_time: string;
   home_substitution_deadline_time?: string;
@@ -74,6 +79,8 @@ interface RoundDeadlines {
   result_entry_deadline_day_offset: number;
   result_entry_deadline_time: string;
   status: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export default function FixturePage() {
@@ -1350,7 +1357,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
           matchup_positions: [position],
           is_null: newIsNull,
           updated_by: user.uid,
-          updated_by_name: user.displayName || user.email
+          updated_by_name: (user as any).displayName || user.email
         })
       });
 
@@ -2610,14 +2617,6 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                     </button>
                   )}
 
-                  {/* Deadline Passed Message */}
-                  {phase === 'closed' && matchups.some(m => m.home_goals !== null) && (
-                    <div className="p-4 bg-gray-100 border-2 border-gray-300 rounded-xl text-center">
-                      <p className="text-sm font-semibold text-gray-700">🔒 Result entry period has ended</p>
-                      <p className="text-xs text-gray-600 mt-1">Results cannot be modified after the deadline</p>
-                    </div>
-                  )}
-
                   {/* WhatsApp Share Button (with results) */}
                   {matchups.some(m => m.home_goals !== null) && (
                     <button
@@ -3018,7 +3017,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                         type="button"
                         onClick={() => {
                           // Calculate best player based on performance
-                          let bestPlayer = null;
+                          let bestPlayer: { id: string; name: string; goals: number; conceded: number; result: string } | null = null;
                           let bestScore = -999;
 
                           matchups.forEach((m, idx) => {
@@ -3064,7 +3063,7 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                             }
                           });
 
-                          if (bestPlayer) {
+                          if (bestPlayer !== null) {
                             setMotmPlayerId(bestPlayer.id);
                             showAlert({
                               type: 'info',
