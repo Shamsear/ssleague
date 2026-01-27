@@ -195,6 +195,7 @@ export async function isLineupEditable(
     LEFT JOIN round_deadlines rd ON 
       f.round_number = rd.round_number 
       AND f.season_id = rd.season_id
+      AND f.tournament_id = rd.tournament_id
       AND f.leg = rd.leg
     WHERE f.id = ${fixtureId}
     LIMIT 1
@@ -206,11 +207,12 @@ export async function isLineupEditable(
 
   const fixture = result[0];
 
-  // Check if fixture has been generated (status changed from 'scheduled')
-  if (fixture.fixture_status && fixture.fixture_status !== 'scheduled') {
+  // Don't block based on fixture_status alone - check actual deadlines
+  // Only block if fixture is actually completed/finalized
+  if (fixture.fixture_status && (fixture.fixture_status === 'completed' || fixture.fixture_status === 'finalized')) {
     return { 
       editable: false, 
-      reason: 'Lineup locked - fixture has been generated'
+      reason: 'Lineup locked - fixture has been completed'
     };
   }
 
@@ -229,11 +231,26 @@ export async function isLineupEditable(
       scheduledDateStr = String(fixture.scheduled_date).split('T')[0];
     }
     
-    // Calculate all deadlines
-    const homeDeadlineTime = new Date(`${scheduledDateStr}T${fixture.home_fixture_deadline_time}:00+05:30`);
-    const awayDeadlineTime = new Date(`${scheduledDateStr}T${fixture.away_fixture_deadline_time}:00+05:30`);
+    // Use the same time parsing as fixture page
+    const homeTime = fixture.home_fixture_deadline_time || '17:00';
+    const awayTime = fixture.away_fixture_deadline_time || '17:00';
+    
+    // Parse times (HH:MM format)
+    const [homeHour, homeMin] = homeTime.split(':').map(Number);
+    const [awayHour, awayMin] = awayTime.split(':').map(Number);
+    
+    // Create deadlines in UTC by converting from IST (UTC+5:30)
+    const homeDeadline = new Date(scheduledDateStr);
+    homeDeadline.setUTCHours(homeHour - 5, homeMin - 30, 0, 0);
+    
+    const awayDeadline = new Date(scheduledDateStr);
+    awayDeadline.setUTCHours(awayHour - 5, awayMin - 30, 0, 0);
+    
+    // Round start time (for display purposes)
     const roundStartTimeStr = fixture.round_start_time || fixture.home_fixture_deadline_time || '14:00';
-    const roundStart = new Date(`${scheduledDateStr}T${roundStartTimeStr}:00+05:30`);
+    const [startHour, startMin] = roundStartTimeStr.split(':').map(Number);
+    const roundStart = new Date(scheduledDateStr);
+    roundStart.setUTCHours(startHour - 5, startMin - 30, 0, 0);
     
     // Check if matchups exist
     const matchupsResult = await sql`
@@ -246,44 +263,84 @@ export async function isLineupEditable(
     // Determine if user is home team
     const isHomeTeam = teamId === fixture.home_team_id;
     
+    // Determine current phase based on round status and deadlines
+    let currentPhase: 'draft' | 'home_fixture' | 'fixture_entry' | 'result_entry' | 'closed' = 'closed';
+    
+    // If round_status is null or undefined, determine phase by deadlines only
+    if (!fixture.round_status || fixture.round_status === 'pending' || fixture.round_status === 'scheduled') {
+      // Round hasn't started yet OR no status set - check if we're before the first deadline
+      if (now < homeDeadline) {
+        currentPhase = 'draft';
+      } else {
+        // If we're past home deadline but round status is still pending, treat as draft
+        currentPhase = 'draft';
+      }
+    } else if (fixture.round_status === 'in_progress' || fixture.round_status === 'started' || fixture.round_status === 'active') {
+      if (now < homeDeadline) {
+        currentPhase = 'home_fixture';
+      } else if (now < awayDeadline) {
+        currentPhase = 'fixture_entry';
+      } else {
+        currentPhase = 'result_entry';
+      }
+    } else if (fixture.round_status === 'completed' || fixture.round_status === 'finalized') {
+      currentPhase = 'closed';
+    } else {
+      // Unknown status - determine by deadlines
+      if (now < homeDeadline) {
+        currentPhase = 'draft';
+      } else if (now < awayDeadline) {
+        currentPhase = 'fixture_entry';
+      } else {
+        currentPhase = 'result_entry';
+      }
+    }
+    
     console.log('🕐 Lineup Editability Check:', {
       fixtureId,
       teamId,
       isHomeTeam,
       matchupsExist,
+      currentPhase,
+      round_status: fixture.round_status,
       now: now.toISOString(),
-      homeDeadline: homeDeadlineTime.toISOString(),
-      awayDeadline: awayDeadlineTime.toISOString(),
+      homeDeadline: homeDeadline.toISOString(),
+      awayDeadline: awayDeadline.toISOString(),
       roundStart: roundStart.toISOString()
     });
     
-    // Determine editability based on phase and matchups
+    // Determine editability based on phase and matchups (same logic as fixture page)
     let editable = false;
     let reason = '';
     let deadline = roundStart.toISOString();
     
-    if (matchupsExist) {
+    if (currentPhase === 'draft') {
+      // Draft mode - can always edit
+      editable = true;
+      reason = 'Round not started yet - draft mode';
+      deadline = homeDeadline.toISOString();
+    } else if (matchupsExist) {
       // Matchups exist - only home team can edit before home deadline
-      if (isHomeTeam && now < homeDeadlineTime) {
+      if (isHomeTeam && now < homeDeadline) {
         editable = true;
         reason = 'Home team can edit until home deadline (will delete matchups)';
-        deadline = homeDeadlineTime.toISOString();
+        deadline = homeDeadline.toISOString();
       } else {
         editable = false;
         reason = 'Lineup locked - matchups have been created';
       }
     } else {
-      // No matchups yet
-      if (now < homeDeadlineTime) {
+      // No matchups yet - check phase
+      if (now < homeDeadline) {
         // Before home deadline - anyone can edit
         editable = true;
         reason = 'Before home deadline';
-        deadline = homeDeadlineTime.toISOString();
-      } else if (now < awayDeadlineTime) {
+        deadline = homeDeadline.toISOString();
+      } else if (now < awayDeadline) {
         // After home deadline, before away deadline - both teams can edit
         editable = true;
         reason = 'Fixture entry phase - both teams can edit';
-        deadline = awayDeadlineTime.toISOString();
+        deadline = awayDeadline.toISOString();
       } else {
         // After away deadline
         editable = false;
@@ -294,7 +351,8 @@ export async function isLineupEditable(
     console.log('🔒 Editability Result:', {
       editable,
       reason,
-      deadline
+      deadline,
+      currentPhase
     });
 
     return { 
@@ -302,8 +360,8 @@ export async function isLineupEditable(
       reason,
       deadline,
       roundStart: roundStart.toISOString(),
-      homeDeadline: homeDeadlineTime.toISOString(),
-      awayDeadline: awayDeadlineTime.toISOString()
+      homeDeadline: homeDeadline.toISOString(),
+      awayDeadline: awayDeadline.toISOString()
     };
   }
 
