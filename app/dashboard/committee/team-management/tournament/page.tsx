@@ -137,7 +137,7 @@ export default function TournamentDashboardPage() {
   const [isGeneratingKnockout, setIsGeneratingKnockout] = useState(false);
 
   // Round-wise knockout generation state
-  const [knockoutRoundType, setKnockoutRoundType] = useState<'quarter_finals' | 'semi_finals' | 'finals' | 'third_place'>('quarter_finals');
+  const [knockoutRoundType, setKnockoutRoundType] = useState<'playoff' | 'quarter_finals' | 'semi_finals' | 'finals' | 'third_place'>('quarter_finals');
   const [knockoutRoundNumber, setKnockoutRoundNumber] = useState<number>(12);
   const [knockoutNumTeams, setKnockoutNumTeams] = useState<number>(8);
   const [knockoutSelectedTeams, setKnockoutSelectedTeams] = useState<string[]>([]);
@@ -285,6 +285,7 @@ export default function TournamentDashboardPage() {
   // Auto-update number of teams when knockout round type changes
   useEffect(() => {
     const teamsByRoundType = {
+      'playoff': 4, // Typically 4 teams (3rd-6th place) competing for 2 spots
       'quarter_finals': 8,
       'semi_finals': 4,
       'finals': 2,
@@ -729,6 +730,7 @@ export default function TournamentDashboardPage() {
     }
 
     const roundNames = {
+      playoff: 'Playoff',
       quarter_finals: 'Quarter Finals',
       semi_finals: 'Semi Finals',
       finals: 'Finals',
@@ -808,101 +810,278 @@ export default function TournamentDashboardPage() {
   // Load available teams for knockout selection
   const loadAvailableTeamsForKnockout = async (tournamentId: string) => {
     try {
-      // Fetch teams with their standings
-      const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings`);
-      const data = await res.json();
+      // First, check if there are existing knockout rounds
+      const fixturesForTournament = tournamentFixtures.filter(f => f.tournament_id === tournamentId);
+      const knockoutFixtures = fixturesForTournament.filter(f => f.knockout_round);
       
-      console.log('Standings API response:', data);
+      let allTeams: any[] = [];
+      let sourceMessage = '';
       
-      if (data.success) {
-        let allTeams: any[] = [];
-        let isGroupStage = false;
+      if (knockoutFixtures.length > 0) {
+        // Get the last completed knockout round
+        const completedKnockoutFixtures = knockoutFixtures.filter(f => f.status === 'completed');
         
-        // Handle different response formats
-        if (data.format === 'group_stage' && data.groupStandings) {
-          // Group stage format - keep group structure for smart selection
-          isGroupStage = true;
-          const groups = data.groupStandings;
-          const groupNames = Object.keys(groups).sort();
+        if (completedKnockoutFixtures.length > 0) {
+          // Find the highest round number among completed knockout fixtures
+          const maxCompletedRound = Math.max(...completedKnockoutFixtures.map(f => f.round_number || 0));
+          const lastRoundFixtures = completedKnockoutFixtures.filter(f => f.round_number === maxCompletedRound);
           
-          // For group stage, select top N teams from each group
-          // Example: For 8 teams (QF), if 4 groups, take top 2 from each
-          const teamsPerGroup = Math.ceil(knockoutNumTeams / groupNames.length);
+          // Check if the last round was two-legged
+          const isTwoLegged = lastRoundFixtures.some(f => f.knockout_format === 'two_leg');
           
-          groupNames.forEach(groupName => {
-            const groupTeams = groups[groupName]
-              .sort((a: any, b: any) => {
-                if (a.position !== b.position) return a.position - b.position;
-                return (b.points || 0) - (a.points || 0);
-              })
-              .slice(0, teamsPerGroup); // Take top N from each group
+          // Get winners from the last round
+          const winners = new Map<string, any>();
+          
+          if (isTwoLegged) {
+            // For two-legged ties, group by match_number and determine aggregate winner
+            const matchGroups = new Map<number, any[]>();
             
-            allTeams = allTeams.concat(groupTeams);
-          });
+            lastRoundFixtures.forEach(fixture => {
+              const matchNum = fixture.match_number || 0;
+              if (!matchGroups.has(matchNum)) {
+                matchGroups.set(matchNum, []);
+              }
+              matchGroups.get(matchNum)!.push(fixture);
+            });
+            
+            // Process each match pair
+            matchGroups.forEach((fixtures, matchNum) => {
+              if (fixtures.length !== 2) {
+                console.warn(`Match ${matchNum} doesn't have exactly 2 legs, skipping`);
+                return;
+              }
+              
+              const firstLeg = fixtures.find(f => f.leg === 'first');
+              const secondLeg = fixtures.find(f => f.leg === 'second');
+              
+              if (!firstLeg || !secondLeg) {
+                console.warn(`Match ${matchNum} missing first or second leg, skipping`);
+                return;
+              }
+              
+              // Calculate aggregate scores
+              // First leg: home vs away
+              // Second leg: away vs home (teams swap)
+              const team1Id = firstLeg.home_team_id;
+              const team1Name = firstLeg.home_team_name;
+              const team2Id = firstLeg.away_team_id;
+              const team2Name = firstLeg.away_team_name;
+              
+              const team1Goals = (firstLeg.home_score || 0) + (secondLeg.away_score || 0);
+              const team2Goals = (firstLeg.away_score || 0) + (secondLeg.home_score || 0);
+              
+              let winnerId: string | null = null;
+              let winnerName: string | null = null;
+              
+              if (team1Goals > team2Goals) {
+                winnerId = team1Id;
+                winnerName = team1Name;
+              } else if (team2Goals > team1Goals) {
+                winnerId = team2Id;
+                winnerName = team2Name;
+              } else {
+                // Aggregate tie - check away goals or use result field
+                // For now, use the result field from second leg as tiebreaker
+                if (secondLeg.result === 'home_win') {
+                  winnerId = secondLeg.home_team_id;
+                  winnerName = secondLeg.home_team_name;
+                } else if (secondLeg.result === 'away_win') {
+                  winnerId = secondLeg.away_team_id;
+                  winnerName = secondLeg.away_team_name;
+                }
+              }
+              
+              if (winnerId && winnerName && !winners.has(winnerId)) {
+                winners.set(winnerId, {
+                  team_id: winnerId,
+                  team_name: winnerName,
+                  position: winners.size + 1,
+                  source: `Winner from Round ${maxCompletedRound} (Aggregate: ${team1Goals}-${team2Goals})`
+                });
+              }
+            });
+          } else {
+            // Single-leg knockout - use result directly
+            lastRoundFixtures.forEach(fixture => {
+              let winnerId: string | null = null;
+              let winnerName: string | null = null;
+              
+              // Determine winner based on result
+              if (fixture.result === 'home_win') {
+                winnerId = fixture.home_team_id;
+                winnerName = fixture.home_team_name;
+              } else if (fixture.result === 'away_win') {
+                winnerId = fixture.away_team_id;
+                winnerName = fixture.away_team_name;
+              }
+              
+              // Add winner if not already added
+              if (winnerId && winnerName && !winners.has(winnerId)) {
+                winners.set(winnerId, {
+                  team_id: winnerId,
+                  team_name: winnerName,
+                  position: winners.size + 1,
+                  source: `Winner from Round ${maxCompletedRound}`
+                });
+              }
+            });
+          }
           
-          // Sort by group position for display (1st place teams first, then 2nd place, etc.)
-          allTeams.sort((a: any, b: any) => {
-            if (a.position !== b.position) return a.position - b.position;
-            return a.group.localeCompare(b.group);
-          });
-          
-        } else if (data.format === 'league' && data.standings) {
-          // League format - take top N teams overall
-          allTeams = data.standings;
-        } else if (data.standings) {
-          // Fallback - direct standings array
-          allTeams = data.standings;
+          allTeams = Array.from(winners.values());
+          const formatType = isTwoLegged ? 'two-legged' : 'single-leg';
+          sourceMessage = `Loaded ${allTeams.length} winners from Round ${maxCompletedRound} (${lastRoundFixtures[0]?.knockout_round || 'knockout'}, ${formatType})`;
+        } else {
+          // No completed knockout rounds yet, fall back to standings
+          sourceMessage = 'No completed knockout rounds found. Loading from standings...';
         }
+      }
+      
+      // If no knockout winners found, load from standings
+      if (allTeams.length === 0) {
+        const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings`);
+        const data = await res.json();
         
-        if (allTeams.length === 0) {
+        console.log('Standings API response:', data);
+        
+        if (data.success) {
+          let isGroupStage = false;
+          
+          // Handle different response formats
+          if (data.format === 'group_stage' && data.groupStandings) {
+            // Group stage format - keep group structure for smart selection
+            isGroupStage = true;
+            const groups = data.groupStandings;
+            const groupNames = Object.keys(groups).sort();
+            
+            // For group stage, select top N teams from each group
+            // Example: For 8 teams (QF), if 4 groups, take top 2 from each
+            const teamsPerGroup = Math.ceil(knockoutNumTeams / groupNames.length);
+            
+            groupNames.forEach(groupName => {
+              const groupTeams = groups[groupName]
+                .sort((a: any, b: any) => {
+                  if (a.position !== b.position) return a.position - b.position;
+                  return (b.points || 0) - (a.points || 0);
+                })
+                .slice(0, teamsPerGroup); // Take top N from each group
+              
+              allTeams = allTeams.concat(groupTeams);
+            });
+            
+            // Sort by group position for display (1st place teams first, then 2nd place, etc.)
+            allTeams.sort((a: any, b: any) => {
+              if (a.position !== b.position) return a.position - b.position;
+              return a.group.localeCompare(b.group);
+            });
+            
+            sourceMessage = `Loaded ${allTeams.length} teams from groups. Top teams from each group auto-selected.`;
+            
+          } else if (data.format === 'league' && data.standings) {
+            // League format - take top N teams overall
+            allTeams = data.standings;
+          } else if (data.standings) {
+            // Fallback - direct standings array
+            allTeams = data.standings;
+          }
+          
+          // For non-group stage, sort by position/points
+          if (!isGroupStage && allTeams.length > 0) {
+            allTeams = allTeams.sort((a: any, b: any) => {
+              if (a.position && b.position && a.position !== b.position) {
+                return a.position - b.position;
+              }
+              return (b.points || 0) - (a.points || 0);
+            });
+            
+            // Assign positions if not already set
+            allTeams.forEach((team, index) => {
+              if (!team.position) {
+                team.position = index + 1;
+              }
+            });
+            
+            if (!sourceMessage) {
+              const numToSelect = Math.min(knockoutNumTeams, allTeams.length);
+              sourceMessage = `Loaded ${allTeams.length} teams. Top ${numToSelect} teams auto-selected based on standings.`;
+            }
+          }
+        } else {
           showAlert({
-            type: 'warning',
-            title: 'No Teams Found',
-            message: 'No teams with standings found. Make sure fixtures have been completed.'
+            type: 'error',
+            title: 'Load Failed',
+            message: data.error || 'Failed to load teams'
           });
           return;
         }
-        
-        // For non-group stage, sort by position/points
-        if (!isGroupStage) {
-          allTeams = allTeams.sort((a: any, b: any) => {
-            if (a.position && b.position && a.position !== b.position) {
-              return a.position - b.position;
-            }
-            return (b.points || 0) - (a.points || 0);
-          });
-          
-          // Assign positions if not already set
-          allTeams.forEach((team, index) => {
-            if (!team.position) {
-              team.position = index + 1;
-            }
-          });
-        }
-        
-        setAvailableTeamsForKnockout(allTeams);
-        
-        // Auto-select top teams based on round type
-        const numToSelect = Math.min(knockoutNumTeams, allTeams.length);
-        const topTeams = allTeams.slice(0, numToSelect).map((t: any) => t.team_id);
-        setKnockoutSelectedTeams(topTeams);
-        
-        const selectionMessage = isGroupStage 
-          ? `Loaded ${allTeams.length} teams from groups. Top teams from each group auto-selected.`
-          : `Loaded ${allTeams.length} teams. Top ${numToSelect} teams auto-selected based on standings.`;
-        
-        showAlert({
-          type: 'success',
-          title: 'Teams Loaded',
-          message: selectionMessage
-        });
-      } else {
-        showAlert({
-          type: 'error',
-          title: 'Load Failed',
-          message: data.error || 'Failed to load teams'
-        });
       }
+      
+      if (allTeams.length === 0) {
+        showAlert({
+          type: 'warning',
+          title: 'No Teams Found',
+          message: 'No teams with standings found. Make sure fixtures have been completed.'
+        });
+        return;
+      }
+      
+      setAvailableTeamsForKnockout(allTeams);
+      
+      // Smart auto-selection based on round type and source
+      let teamsToSelect: string[] = [];
+      
+      if (knockoutFixtures.length > 0 && allTeams.length > 0 && allTeams[0].source?.includes('Winner')) {
+        // If loading from previous knockout round, select all winners
+        teamsToSelect = allTeams.map((t: any) => t.team_id);
+        sourceMessage += ` All ${allTeams.length} winners auto-selected.`;
+      } else {
+        // Loading from league/group standings - smart selection based on round type
+        if (knockoutRoundType === 'playoff') {
+          // Playoff: Select teams 3-6 (positions 3, 4, 5, 6)
+          const playoffTeams = allTeams.filter((t: any) => t.position >= 3 && t.position <= 6);
+          teamsToSelect = playoffTeams.slice(0, 4).map((t: any) => t.team_id);
+          sourceMessage = `Loaded ${allTeams.length} teams. Teams ranked 3-6 auto-selected for playoff.`;
+        } else if (knockoutRoundType === 'semi_finals') {
+          // Check if there's a completed playoff round
+          const hasPlayoffRound = knockoutFixtures.some(f => f.knockout_round === 'playoff' && f.status === 'completed');
+          
+          if (hasPlayoffRound) {
+            // Semi-finals after playoff: Should load top 2 + playoff winners
+            // This case should be handled by the knockout winners logic above
+            teamsToSelect = allTeams.slice(0, Math.min(4, allTeams.length)).map((t: any) => t.team_id);
+            sourceMessage = `Loaded teams for semi-finals. Please verify selection includes top 2 + playoff winners.`;
+          } else {
+            // Semi-finals without playoff: Select top 4
+            teamsToSelect = allTeams.slice(0, Math.min(4, allTeams.length)).map((t: any) => t.team_id);
+            sourceMessage = `Loaded ${allTeams.length} teams. Top 4 teams auto-selected for semi-finals.`;
+          }
+        } else if (knockoutRoundType === 'quarter_finals') {
+          // Quarter Finals: Select top 8
+          teamsToSelect = allTeams.slice(0, Math.min(8, allTeams.length)).map((t: any) => t.team_id);
+          sourceMessage = `Loaded ${allTeams.length} teams. Top 8 teams auto-selected for quarter-finals.`;
+        } else if (knockoutRoundType === 'finals') {
+          // Finals: Select top 2 (or semi-final winners if available)
+          teamsToSelect = allTeams.slice(0, Math.min(2, allTeams.length)).map((t: any) => t.team_id);
+          sourceMessage = `Loaded ${allTeams.length} teams. Top 2 teams auto-selected for finals.`;
+        } else if (knockoutRoundType === 'third_place') {
+          // Third Place: Select teams 3-4 (or semi-final losers if available)
+          const thirdPlaceTeams = allTeams.filter((t: any) => t.position >= 3 && t.position <= 4);
+          teamsToSelect = thirdPlaceTeams.slice(0, 2).map((t: any) => t.team_id);
+          sourceMessage = `Loaded ${allTeams.length} teams. Teams ranked 3-4 auto-selected for third place playoff.`;
+        } else {
+          // Default: Select top N teams
+          const numToSelect = Math.min(knockoutNumTeams, allTeams.length);
+          teamsToSelect = allTeams.slice(0, numToSelect).map((t: any) => t.team_id);
+          sourceMessage = `Loaded ${allTeams.length} teams. Top ${numToSelect} teams auto-selected.`;
+        }
+      }
+      
+      setKnockoutSelectedTeams(teamsToSelect);
+      
+      showAlert({
+        type: 'success',
+        title: 'Teams Loaded',
+        message: sourceMessage || `Loaded ${allTeams.length} teams.`
+      });
     } catch (error) {
       console.error('Error loading teams:', error);
       showAlert({
@@ -1967,6 +2146,7 @@ export default function TournamentDashboardPage() {
                           onChange={(e) => setKnockoutRoundType(e.target.value as any)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                         >
+                          <option value="playoff">Playoff (4 teams → 2 winners)</option>
                           <option value="quarter_finals">Quarter Finals</option>
                           <option value="semi_finals">Semi Finals</option>
                           <option value="finals">Finals</option>

@@ -48,49 +48,149 @@ export async function POST(
             );
         }
 
-        // Get group standings to determine qualifiers
-        const groupStandings = await sql`
-      WITH group_standings AS (
-        SELECT 
-          ts.team_id,
-          ts.team_name,
-          ts.points,
-          ts.goal_difference,
-          ts.goals_for,
-          ttg.group_name,
-          ROW_NUMBER() OVER (
-            PARTITION BY ttg.group_name 
-            ORDER BY ts.points DESC, ts.goal_difference DESC, ts.goals_for DESC
-          ) as group_position
-        FROM teamstats ts
-        JOIN tournament_team_groups ttg ON ts.team_id = ttg.team_id AND ts.tournament_id = ttg.tournament_id
-        WHERE ts.tournament_id = ${tournamentId}
-          AND ttg.tournament_id = ${tournamentId}
-      )
-      SELECT *
-      FROM group_standings
-      WHERE group_position <= ${tournament.teams_advancing_per_group || 2}
-      ORDER BY group_name, group_position
+        // Check if there are existing knockout rounds
+        const existingKnockoutRounds = await sql`
+      SELECT DISTINCT knockout_round, round_number
+      FROM fixtures
+      WHERE tournament_id = ${tournamentId}
+        AND knockout_round IS NOT NULL
+      ORDER BY round_number DESC
+      LIMIT 1
     `;
 
-        if (groupStandings.length === 0) {
+        let qualifiedTeams: any[] = [];
+
+        if (existingKnockoutRounds.length > 0) {
+            // There are existing knockout rounds - get winners from the last knockout round
+            const lastKnockoutRound = existingKnockoutRounds[0].round_number;
+            
+            console.log(`Found existing knockout round: ${existingKnockoutRounds[0].knockout_round} (round ${lastKnockoutRound})`);
+            
+            // Get winners from the last knockout round
+            // For two-legged ties, we need to aggregate scores
+            const knockoutWinners = await sql`
+        WITH match_aggregates AS (
+          SELECT 
+            match_number,
+            home_team_id,
+            home_team_name,
+            away_team_id,
+            away_team_name,
+            SUM(COALESCE(home_score, 0)) as total_home_score,
+            SUM(COALESCE(away_score, 0)) as total_away_score,
+            MAX(knockout_format) as knockout_format
+          FROM fixtures
+          WHERE tournament_id = ${tournamentId}
+            AND round_number = ${lastKnockoutRound}
+            AND status = 'completed'
+          GROUP BY match_number, home_team_id, home_team_name, away_team_id, away_team_name
+        )
+        SELECT 
+          CASE 
+            WHEN total_home_score > total_away_score THEN home_team_id
+            WHEN total_away_score > total_home_score THEN away_team_id
+            ELSE home_team_id -- Default to home team if tied (should handle penalties separately)
+          END as team_id,
+          CASE 
+            WHEN total_home_score > total_away_score THEN home_team_name
+            WHEN total_away_score > total_home_score THEN away_team_name
+            ELSE home_team_name
+          END as team_name,
+          match_number,
+          total_home_score,
+          total_away_score
+        FROM match_aggregates
+        ORDER BY match_number
+      `;
+
+            if (knockoutWinners.length === 0) {
+                return NextResponse.json(
+                    { error: `No completed matches found in the last knockout round. Please complete round ${lastKnockoutRound} before creating the next round.` },
+                    { status: 400 }
+                );
+            }
+
+            qualifiedTeams = knockoutWinners.map((winner: any) => ({
+                team_id: winner.team_id,
+                team_name: winner.team_name,
+                match_number: winner.match_number
+            }));
+
+            console.log(`Found ${qualifiedTeams.length} winners from last knockout round`);
+        } else {
+            // No existing knockout rounds - get qualifiers from group stage
+            console.log('No existing knockout rounds found, getting qualifiers from group stage');
+            
+            const groupStandings = await sql`
+        WITH group_standings AS (
+          SELECT 
+            ts.team_id,
+            ts.team_name,
+            ts.points,
+            ts.goal_difference,
+            ts.goals_for,
+            ttg.group_name,
+            ROW_NUMBER() OVER (
+              PARTITION BY ttg.group_name 
+              ORDER BY ts.points DESC, ts.goal_difference DESC, ts.goals_for DESC
+            ) as group_position
+          FROM teamstats ts
+          JOIN tournament_team_groups ttg ON ts.team_id = ttg.team_id AND ts.tournament_id = ttg.tournament_id
+          WHERE ts.tournament_id = ${tournamentId}
+            AND ttg.tournament_id = ${tournamentId}
+        )
+        SELECT *
+        FROM group_standings
+        WHERE group_position <= ${tournament.teams_advancing_per_group || 2}
+        ORDER BY group_name, group_position
+      `;
+
+            if (groupStandings.length === 0) {
+                return NextResponse.json(
+                    { error: 'No qualified teams found. Ensure group stage is complete and teams are assigned to groups.' },
+                    { status: 400 }
+                );
+            }
+
+            qualifiedTeams = groupStandings;
+        }
+
+        // Organize teams for pairing
+        let pairings: Array<{ home: any; away: any }> = [];
+        
+        if (existingKnockoutRounds.length > 0) {
+            // Pair winners sequentially: Winner of Match 1 vs Winner of Match 2, etc.
+            for (let i = 0; i < qualifiedTeams.length; i += 2) {
+                if (qualifiedTeams[i + 1]) {
+                    pairings.push({
+                        home: qualifiedTeams[i],
+                        away: qualifiedTeams[i + 1]
+                    });
+                }
+            }
+        } else {
+            // First knockout round - use group stage pairing logic
+            // Organize teams by group and position
+            const groupedTeams: Record<string, any[]> = {};
+            qualifiedTeams.forEach((team: any) => {
+                if (!groupedTeams[team.group_name]) {
+                    groupedTeams[team.group_name] = [];
+                }
+                groupedTeams[team.group_name].push(team);
+            });
+
+            const groups = Object.keys(groupedTeams).sort();
+            pairings = generatePairings(groupedTeams, groups, pairing_method);
+        }
+
+        if (pairings.length === 0) {
             return NextResponse.json(
-                { error: 'No qualified teams found. Ensure group stage is complete and teams are assigned to groups.' },
+                { error: 'Could not generate pairings. Not enough qualified teams.' },
                 { status: 400 }
             );
         }
 
-        // Organize teams by group and position
-        const groupedTeams: Record<string, any[]> = {};
-        groupStandings.forEach((team: any) => {
-            if (!groupedTeams[team.group_name]) {
-                groupedTeams[team.group_name] = [];
-            }
-            groupedTeams[team.group_name].push(team);
-        });
-
-        const groups = Object.keys(groupedTeams).sort();
-        const totalQualifiers = groupStandings.length;
+        const totalQualifiers = qualifiedTeams.length;
 
         // Determine knockout structure
         let knockoutRounds: string[] = [];
@@ -109,17 +209,13 @@ export async function POST(
             );
         }
 
-        // Get last round number from group stage
+        // Get last round number
         const lastRound = await sql`
       SELECT COALESCE(MAX(round_number), 0) as max_round
       FROM fixtures
       WHERE tournament_id = ${tournamentId}
-        AND knockout_round IS NULL
     `;
         let currentRound = lastRound[0].max_round + 1;
-
-        // Generate pairings for first knockout round
-        const pairings = generatePairings(groupedTeams, groups, pairing_method);
 
         const createdFixtures: any[] = [];
         const baseDate = start_date ? new Date(start_date) : new Date();
