@@ -3122,13 +3122,12 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                             
                             if (bestPlayer === null) return;
                             
-                            const selectedPlayer = bestPlayrType;
-                            setMotmPlayr.id);
+                            setMotmPlayerId(bestPlayer.id);
                             showAlert({
                               type: 'info',
                               title: '✨ MOTM Suggested',
-                              m}L`
-                            });r.lossesctedPlaye}D-${sele.drawsectedPlayers}W-${seler.winctedPlayele{secord: $\nReded conced}.concedPlayerselected, ${oals} goalslayer.gelectedP\n${sPlayer.name}cted${seleessage: `
+                              message: `${bestPlayer.name} selected\n${bestPlayer.goals} goals, ${bestPlayer.conceded} conceded\nRecord: ${bestPlayer.wins}W-${bestPlayer.draws}D-${bestPlayer.losses}L`
+                            });
                           } else {
                             // Regular matchup - calculate best player from individual matches
                             type BestPlayerType = { id: string; name: string; goals: number; conceded: number; result: string };
