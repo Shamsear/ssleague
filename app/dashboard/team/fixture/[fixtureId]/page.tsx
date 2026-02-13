@@ -14,12 +14,6 @@ import ConfirmModal from '@/components/modals/ConfirmModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import LineupDeadlineMonitor from '@/components/LineupDeadlineMonitor';
 import BlindLineupSubmission from '@/components/BlindLineupSubmission';
-import { type } from 'os';
-import { type } from 'os';
-import { type } from 'os';
-import { type } from 'os';
-import { type } from 'os';
-import { type } from 'os';
 
 interface Matchup {
   home_player_id: string;
