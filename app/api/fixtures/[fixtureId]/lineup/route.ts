@@ -399,9 +399,13 @@ export async function POST(
       reason: isNewSubmission ? 'Initial lineup submission' : 'Lineup updated'
     });
 
+    // NOTE: Automatic round robin matchup generation has been disabled
+    // because lineups are now stored in the 'lineups' table, not in fixtures.home_lineup/away_lineup
+    // Use the admin button "Auto-Generate Round Robin" in the committee fixture page instead
+
     return NextResponse.json({
       success: true,
-      message: 'Lineup saved successfully',
+      message: 'Lineup saved successfully'
     });
   } catch (error: any) {
     console.error('Error saving lineup:', error);

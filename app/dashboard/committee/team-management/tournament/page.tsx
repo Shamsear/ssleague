@@ -143,6 +143,7 @@ export default function TournamentDashboardPage() {
   const [knockoutSelectedTeams, setKnockoutSelectedTeams] = useState<string[]>([]);
   const [knockoutPairingMethod, setKnockoutPairingMethod] = useState<'standard' | 'manual' | 'random'>('standard');
   const [availableTeamsForKnockout, setAvailableTeamsForKnockout] = useState<any[]>([]);
+  const [includeTop2ForSemiFinals, setIncludeTop2ForSemiFinals] = useState<boolean>(true); // Toggle for including top 2 in semi-finals
   const [isGeneratingKnockoutRound, setIsGeneratingKnockoutRound] = useState(false);
 
   // Standings State
@@ -810,39 +811,98 @@ export default function TournamentDashboardPage() {
   // Load available teams for knockout selection
   const loadAvailableTeamsForKnockout = async (tournamentId: string) => {
     try {
-      // First, check if there are existing knockout rounds
+      // Determine which round to load teams from based on the round type being generated
       const fixturesForTournament = tournamentFixtures.filter(f => f.tournament_id === tournamentId);
       const knockoutFixtures = fixturesForTournament.filter(f => f.knockout_round);
+      
+      console.log('🔍 Loading teams for knockout round:', knockoutRoundType);
+      console.log('📋 Available knockout fixtures:', knockoutFixtures.map(f => ({
+        round: f.knockout_round,
+        status: f.status,
+        round_number: f.round_number
+      })));
       
       let allTeams: any[] = [];
       let sourceMessage = '';
       
-      if (knockoutFixtures.length > 0) {
-        // Get the last completed knockout round
-        const completedKnockoutFixtures = knockoutFixtures.filter(f => f.status === 'completed');
+      // Determine the expected previous round based on current round type
+      let expectedPreviousRound: string | null = null;
+      
+      if (knockoutRoundType === 'semi_finals') {
+        // For Semi Finals, check if there was a Playoff round first
+        // Check for various playoff naming conventions
+        const playoffFixtures = knockoutFixtures.filter(f => {
+          const roundName = (f.knockout_round || '').toLowerCase();
+          return roundName === 'playoff' || 
+                 roundName === 'play-off' || 
+                 roundName === 'playoffs' ||
+                 roundName.includes('playoff');
+        });
         
-        if (completedKnockoutFixtures.length > 0) {
-          // Find the highest round number among completed knockout fixtures
-          const maxCompletedRound = Math.max(...completedKnockoutFixtures.map(f => f.round_number || 0));
-          const lastRoundFixtures = completedKnockoutFixtures.filter(f => f.round_number === maxCompletedRound);
+        console.log('🎯 Found playoff fixtures:', playoffFixtures.length);
+        console.log('✅ Completed playoff fixtures:', playoffFixtures.filter(f => f.status === 'completed').length);
+        
+        if (playoffFixtures.length > 0 && playoffFixtures.some(f => f.status === 'completed')) {
+          // Semi Finals needs BOTH playoff winners AND top 2 from standings
+          // So we'll load playoff winners first, then add top 2 from standings
+          expectedPreviousRound = playoffFixtures[0].knockout_round; // Use actual round name
+          console.log('✨ Will load playoff winners + top 2 from standings');
+        } else {
+          console.log('⚠️ No completed playoff found, will load top 4 from standings');
+        }
+        // If no playoff, will fall back to standings
+      } else if (knockoutRoundType === 'finals') {
+        // For Finals, load from Semi Finals
+        expectedPreviousRound = 'Semi Finals';
+      } else if (knockoutRoundType === 'third_place') {
+        // For Third Place Playoff, load LOSERS from Semi Finals
+        expectedPreviousRound = 'Semi Finals';
+      } else if (knockoutRoundType === 'quarter_finals') {
+        // For Quarter Finals, check for Round of 16
+        const r16Fixtures = knockoutFixtures.filter(f => {
+          const roundName = (f.knockout_round || '').toLowerCase();
+          return roundName === 'round of 16' || 
+                 roundName === 'round_of_16' ||
+                 roundName.includes('round of 16');
+        });
+        
+        if (r16Fixtures.length > 0 && r16Fixtures.some(f => f.status === 'completed')) {
+          expectedPreviousRound = r16Fixtures[0].knockout_round;
+        }
+      }
+      
+      // Try to load from expected previous round
+      if (expectedPreviousRound) {
+        console.log('🔎 Looking for fixtures from round:', expectedPreviousRound);
+        
+        const previousRoundFixtures = knockoutFixtures.filter(f => 
+          f.knockout_round === expectedPreviousRound && f.status === 'completed'
+        );
+        
+        console.log('📊 Found previous round fixtures:', previousRoundFixtures.length);
+        
+        if (previousRoundFixtures.length > 0) {
+          console.log('✅ Processing winners/losers from:', expectedPreviousRound);
           
-          // Check if the last round was two-legged
-          const isTwoLegged = lastRoundFixtures.some(f => f.knockout_format === 'two_leg');
+          const isTwoLegged = previousRoundFixtures.some(f => f.knockout_format === 'two_leg');
           
-          // Get winners from the last round
-          const winners = new Map<string, any>();
+          // For Third Place Playoff, we need LOSERS, not winners
+          const needLosers = knockoutRoundType === 'third_place';
+          const participants = new Map<string, any>();
           
           if (isTwoLegged) {
-            // For two-legged ties, group by match_number and determine aggregate winner
+            // For two-legged ties, group by match_number and determine aggregate winner/loser
             const matchGroups = new Map<number, any[]>();
             
-            lastRoundFixtures.forEach(fixture => {
+            previousRoundFixtures.forEach(fixture => {
               const matchNum = fixture.match_number || 0;
               if (!matchGroups.has(matchNum)) {
                 matchGroups.set(matchNum, []);
               }
               matchGroups.get(matchNum)!.push(fixture);
             });
+            
+            console.log('🔢 Processing', matchGroups.size, 'two-legged matches');
             
             // Process each match pair
             matchGroups.forEach((fixtures, matchNum) => {
@@ -860,8 +920,6 @@ export default function TournamentDashboardPage() {
               }
               
               // Calculate aggregate scores
-              // First leg: home vs away
-              // Second leg: away vs home (teams swap)
               const team1Id = firstLeg.home_team_id;
               const team1Name = firstLeg.home_team_name;
               const team2Id = firstLeg.away_team_id;
@@ -872,71 +930,140 @@ export default function TournamentDashboardPage() {
               
               let winnerId: string | null = null;
               let winnerName: string | null = null;
+              let loserId: string | null = null;
+              let loserName: string | null = null;
               
               if (team1Goals > team2Goals) {
                 winnerId = team1Id;
                 winnerName = team1Name;
+                loserId = team2Id;
+                loserName = team2Name;
               } else if (team2Goals > team1Goals) {
                 winnerId = team2Id;
                 winnerName = team2Name;
+                loserId = team1Id;
+                loserName = team1Name;
               } else {
-                // Aggregate tie - check away goals or use result field
-                // For now, use the result field from second leg as tiebreaker
+                // Aggregate tie - check result field from second leg as tiebreaker
                 if (secondLeg.result === 'home_win') {
                   winnerId = secondLeg.home_team_id;
                   winnerName = secondLeg.home_team_name;
+                  loserId = secondLeg.away_team_id;
+                  loserName = secondLeg.away_team_name;
                 } else if (secondLeg.result === 'away_win') {
                   winnerId = secondLeg.away_team_id;
                   winnerName = secondLeg.away_team_name;
+                  loserId = secondLeg.home_team_id;
+                  loserName = secondLeg.home_team_name;
                 }
               }
               
-              if (winnerId && winnerName && !winners.has(winnerId)) {
-                winners.set(winnerId, {
-                  team_id: winnerId,
-                  team_name: winnerName,
-                  position: winners.size + 1,
-                  source: `Winner from Round ${maxCompletedRound} (Aggregate: ${team1Goals}-${team2Goals})`
+              const targetId = needLosers ? loserId : winnerId;
+              const targetName = needLosers ? loserName : winnerName;
+              
+              if (targetId && targetName && !participants.has(targetId)) {
+                participants.set(targetId, {
+                  team_id: targetId,
+                  team_name: targetName,
+                  position: participants.size + 1,
+                  source: `${needLosers ? 'Loser' : 'Winner'} from ${expectedPreviousRound} (Aggregate: ${team1Goals}-${team2Goals})`
                 });
               }
             });
           } else {
             // Single-leg knockout - use result directly
-            lastRoundFixtures.forEach(fixture => {
+            previousRoundFixtures.forEach(fixture => {
               let winnerId: string | null = null;
               let winnerName: string | null = null;
+              let loserId: string | null = null;
+              let loserName: string | null = null;
               
-              // Determine winner based on result
+              // Determine winner and loser based on result
               if (fixture.result === 'home_win') {
                 winnerId = fixture.home_team_id;
                 winnerName = fixture.home_team_name;
+                loserId = fixture.away_team_id;
+                loserName = fixture.away_team_name;
               } else if (fixture.result === 'away_win') {
                 winnerId = fixture.away_team_id;
                 winnerName = fixture.away_team_name;
+                loserId = fixture.home_team_id;
+                loserName = fixture.home_team_name;
               }
               
-              // Add winner if not already added
-              if (winnerId && winnerName && !winners.has(winnerId)) {
-                winners.set(winnerId, {
-                  team_id: winnerId,
-                  team_name: winnerName,
-                  position: winners.size + 1,
-                  source: `Winner from Round ${maxCompletedRound}`
+              const targetId = needLosers ? loserId : winnerId;
+              const targetName = needLosers ? loserName : winnerName;
+              
+              // Add participant if not already added
+              if (targetId && targetName && !participants.has(targetId)) {
+                participants.set(targetId, {
+                  team_id: targetId,
+                  team_name: targetName,
+                  position: participants.size + 1,
+                  source: `${needLosers ? 'Loser' : 'Winner'} from ${expectedPreviousRound}`
                 });
               }
             });
           }
           
-          allTeams = Array.from(winners.values());
+          allTeams = Array.from(participants.values());
           const formatType = isTwoLegged ? 'two-legged' : 'single-leg';
-          sourceMessage = `Loaded ${allTeams.length} winners from Round ${maxCompletedRound} (${lastRoundFixtures[0]?.knockout_round || 'knockout'}, ${formatType})`;
-        } else {
-          // No completed knockout rounds yet, fall back to standings
-          sourceMessage = 'No completed knockout rounds found. Loading from standings...';
+          const participantType = needLosers ? 'losers' : 'winners';
+          sourceMessage = `Loaded ${allTeams.length} ${participantType} from ${expectedPreviousRound} (${formatType})`;
+          
+          // Special case: For Semi Finals after Playoff, optionally add top 2 from standings
+          if (knockoutRoundType === 'semi_finals' && !needLosers && allTeams.length > 0 && includeTop2ForSemiFinals) {
+            console.log('🔄 Semi Finals detected - also loading top 2 from standings (toggle enabled)');
+            
+            try {
+              const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings`);
+              const data = await res.json();
+              
+              if (data.success) {
+                let standingsTeams: any[] = [];
+                
+                if (data.format === 'league' && data.standings) {
+                  standingsTeams = data.standings;
+                } else if (data.standings) {
+                  standingsTeams = data.standings;
+                }
+                
+                // Sort by position
+                standingsTeams = standingsTeams.sort((a: any, b: any) => {
+                  if (a.position && b.position && a.position !== b.position) {
+                    return a.position - b.position;
+                  }
+                  return (b.points || 0) - (a.points || 0);
+                });
+                
+                // Get top 2 teams that are NOT already in playoff winners
+                const playoffWinnerIds = new Set(allTeams.map(t => t.team_id));
+                const top2FromStandings = standingsTeams
+                  .filter(t => !playoffWinnerIds.has(t.team_id))
+                  .slice(0, 2)
+                  .map(t => ({
+                    ...t,
+                    source: `Top ${t.position} from standings`
+                  }));
+                
+                console.log('➕ Adding top 2 from standings:', top2FromStandings.map(t => t.team_name));
+                
+                // Add top 2 to the teams array
+                allTeams = [...allTeams, ...top2FromStandings];
+                sourceMessage = `Loaded ${participants.size} playoff winners + top 2 from standings (total ${allTeams.length} teams)`;
+              }
+            } catch (standingsError) {
+              console.error('Failed to load top 2 from standings:', standingsError);
+              // Continue with just playoff winners
+            }
+          } else if (knockoutRoundType === 'semi_finals' && !needLosers && allTeams.length > 0 && !includeTop2ForSemiFinals) {
+            console.log('⚠️ Semi Finals - top 2 from standings NOT included (toggle disabled)');
+            sourceMessage = `Loaded ${allTeams.length} playoff winners only`;
+          }
         }
       }
       
-      // If no knockout winners found, load from standings
+      // If no teams found from previous round, fall back to standings
       if (allTeams.length === 0) {
         const res = await fetchWithTokenRefresh(`/api/tournaments/${tournamentId}/standings`);
         const data = await res.json();
@@ -2081,7 +2208,10 @@ export default function TournamentDashboardPage() {
                     {knockoutFormat === 'round_robin' && (
                       <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                         <p className="text-xs text-orange-700">
-                          <strong>Round Robin:</strong> Each of 5 players from home team plays against each of 5 players from away team (5×5 = 25 matchups). Winner determined by total wins.
+                          <strong>Round Robin:</strong> Each of 5 players from home team plays against each of 5 players from away team (5×5 = 25 matchups). 
+                          {scoringSystem === 'goals' 
+                            ? ' Winner determined by total goals scored (with matchup wins as tiebreaker).'
+                            : ' Winner determined by total matchup wins.'}
                         </p>
                       </div>
                     )}

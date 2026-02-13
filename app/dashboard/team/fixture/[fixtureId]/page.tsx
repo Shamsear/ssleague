@@ -14,6 +14,12 @@ import ConfirmModal from '@/components/modals/ConfirmModal';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import LineupDeadlineMonitor from '@/components/LineupDeadlineMonitor';
 import BlindLineupSubmission from '@/components/BlindLineupSubmission';
+import { type } from 'os';
+import { type } from 'os';
+import { type } from 'os';
+import { type } from 'os';
+import { type } from 'os';
+import { type } from 'os';
 
 interface Matchup {
   home_player_id: string;
@@ -58,6 +64,7 @@ interface Fixture {
   away_penalty_goals?: number;
   // Knockout fields
   knockout_round?: 'quarter_finals' | 'semi_finals' | 'finals' | 'third_place' | null;
+  knockout_format?: 'round_robin' | 'single_matchup' | null;
   scoring_system?: 'goals' | 'wins' | null;
   matchup_mode?: 'manual' | 'blind_lineup' | null;
 }
@@ -3016,54 +3023,157 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                       <button
                         type="button"
                         onClick={() => {
-                          // Calculate best player based on performance
-                          let bestPlayer: { id: string; name: string; goals: number; conceded: number; result: string } | null = null;
-                          let bestScore = -999;
+                          const isRoundRobin = fixture.knockout_format === 'round_robin';
+                          
+                          if (isRoundRobin) {
+                            // For round robin, calculate combined stats per player
+                            const playerScores = new Map<string, { 
+                              id: string; 
+                              name: string; 
+                              goals: number; 
+                              conceded: number; 
+                              wins: number;
+                              draws: number;
+                              losses: number;
+                              score: number;
+                            }>();
+                            
+                            matchups.forEach((m, idx) => {
+                              const homeGoals = matchResults[idx]?.home_goals ?? 0;
+                              const awayGoals = matchResults[idx]?.away_goals ?? 0;
+                              
+                              // Process home player
+                              const homeId = m.home_player_id;
+                              if (!playerScores.has(homeId)) {
+                                playerScores.set(homeId, {
+                                  id: homeId,
+                                  name: m.home_player_name,
+                                  goals: 0,
+                                  conceded: 0,
+                                  wins: 0,
+                                  draws: 0,
+                                  losses: 0,
+                                  score: 0
+                                });
+                              }
+                              const homePlayer = playerScores.get(homeId)!;
+                              homePlayer.goals += homeGoals;
+                              homePlayer.conceded += awayGoals;
+                              if (homeGoals > awayGoals) homePlayer.wins++;
+                              else if (homeGoals === awayGoals) homePlayer.draws++;
+                              else homePlayer.losses++;
+                              
+                              // Process away player
+                              const awayId = m.away_player_id;
+                              if (!playerScores.has(awayId)) {
+                                playerScores.set(awayId, {
+                                  id: awayId,
+                                  name: m.away_player_name,
+                                  goals: 0,
+                                  conceded: 0,
+                                  wins: 0,
+                                  draws: 0,
+                                  losses: 0,
+                                  score: 0
+                                });
+                              }
+                              const awayPlayer = playerScores.get(awayId)!;
+                              awayPlayer.goals += awayGoals;
+                              awayPlayer.conceded += homeGoals;
+                              if (awayGoals > homeGoals) awayPlayer.wins++;
+                              else if (awayGoals === homeGoals) awayPlayer.draws++;
+                              else awayPlayer.losses++;
+                            });
+                            
+                            // Calculate scores for each player
+                            type BestPlayerType = { 
+                              id: string; 
+                              name: string; 
+                              goals: number; 
+                              conceded: number; 
+                              wins: number;
+                              draws: number;
+                              losses: number;
+                              score: number;
+                            };
+                            let bestPlayer: BestPlayerType | null = null;
+                            let bestScore = -999;
+                            
+                            playerScores.forEach((player) => {
+                              player.score = (player.goals * 10) + // 10 points per goal
+                                (player.wins * 5) +    // 5 points per win
+                                (player.draws * 2) -   // 2 points per draw
+                                (player.conceded * 2); // -2 per goal conceded
+                              
+                              if (player.score > bestScore) {
+                                bestScore = player.score;
+                                bestPlayer = {
+                                  id: player.id,
+                                  name: player.name,
+                                  goals: player.goals,
+                                  conceded: player.conceded,
+                                  wins: player.wins,
+                                  draws: player.draws,
+                                  losses: player.losses,
+                                  score: player.score
+                                };
+                              }
+                            });
+                            
+                            if (bestPlayer === null) return;
+                            
+                            const selectedPlayer = bestPlayrType;
+                            setMotmPlayr.id);
+                            showAlert({
+                              type: 'info',
+                              title: '✨ MOTM Suggested',
+                              m}L`
+                            });r.lossesctedPlaye}D-${sele.drawsectedPlayers}W-${seler.winctedPlayele{secord: $\nReded conced}.concedPlayerselected, ${oals} goalslayer.gelectedP\n${sPlayer.name}cted${seleessage: `
+                          } else {
+                            // Regular matchup - calculate best player from individual matches
+                            type BestPlayerType = { id: string; name: string; goals: number; conceded: number; result: string };
+                            let bestPlayer: BestPlayerType | null = null;
+                            let bestScore = -999;
 
-                          matchups.forEach((m, idx) => {
-                            const homeGoals = matchResults[idx]?.home_goals ?? 0;
-                            const awayGoals = matchResults[idx]?.away_goals ?? 0;
+                            matchups.forEach((m, idx) => {
+                              const homeGoals = matchResults[idx]?.home_goals ?? 0;
+                              const awayGoals = matchResults[idx]?.away_goals ?? 0;
 
-                            // Score for home player
-                            const homeWon = homeGoals > awayGoals;
-                            const homeDraw = homeGoals === awayGoals;
-                            const homeScore = (homeGoals * 10) + // 10 points per goal
-                              (homeWon ? 5 : 0) +    // 5 points for win
-                              (homeDraw ? 2 : 0) -   // 2 points for draw
-                              (awayGoals * 2);       // -2 per goal conceded
+                              // Score for home player
+                              const homeWon = homeGoals > awayGoals;
+                              const homeDraw = homeGoals === awayGoals;
+                              const homeScore = (homeGoals * 10) + (homeWon ? 5 : 0) + (homeDraw ? 2 : 0) - (awayGoals * 2);
 
-                            // Score for away player
-                            const awayWon = awayGoals > homeGoals;
-                            const awayDraw = homeGoals === awayGoals;
-                            const awayScore = (awayGoals * 10) +
-                              (awayWon ? 5 : 0) +
-                              (awayDraw ? 2 : 0) -
-                              (homeGoals * 2);
+                              // Score for away player
+                              const awayWon = awayGoals > homeGoals;
+                              const awayDraw = homeGoals === awayGoals;
+                              const awayScore = (awayGoals * 10) + (awayWon ? 5 : 0) + (awayDraw ? 2 : 0) - (homeGoals * 2);
 
-                            if (homeScore > bestScore) {
-                              bestScore = homeScore;
-                              bestPlayer = {
-                                id: m.home_player_id,
-                                name: m.home_player_name,
-                                goals: homeGoals,
-                                conceded: awayGoals,
-                                result: homeWon ? 'W' : homeDraw ? 'D' : 'L'
-                              };
-                            }
+                              if (homeScore > bestScore) {
+                                bestScore = homeScore;
+                                bestPlayer = {
+                                  id: m.home_player_id,
+                                  name: m.home_player_name,
+                                  goals: homeGoals,
+                                  conceded: awayGoals,
+                                  result: homeWon ? 'W' : homeDraw ? 'D' : 'L'
+                                };
+                              }
 
-                            if (awayScore > bestScore) {
-                              bestScore = awayScore;
-                              bestPlayer = {
-                                id: m.away_player_id,
-                                name: m.away_player_name,
-                                goals: awayGoals,
-                                conceded: homeGoals,
-                                result: awayWon ? 'W' : awayDraw ? 'D' : 'L'
-                              };
-                            }
-                          });
+                              if (awayScore > bestScore) {
+                                bestScore = awayScore;
+                                bestPlayer = {
+                                  id: m.away_player_id,
+                                  name: m.away_player_name,
+                                  goals: awayGoals,
+                                  conceded: homeGoals,
+                                  result: awayWon ? 'W' : awayDraw ? 'D' : 'L'
+                                };
+                              }
+                            });
 
-                          if (bestPlayer !== null) {
+                            if (bestPlayer === null) return;
+                            
                             setMotmPlayerId(bestPlayer.id);
                             showAlert({
                               type: 'info',
@@ -3088,53 +3198,177 @@ _Powered by SS Super League S${seasonNumber} Committee_`;
                     >
                       <option value="">-- Select Player --</option>
                       <optgroup label="🏠 Home Team ({fixture.home_team_name})">
-                        {matchups.map((m, idx) => {
-                          const goals = matchResults[idx]?.home_goals ?? 0;
-                          const conceded = matchResults[idx]?.away_goals ?? 0;
-                          return (
-                            <option key={`home-${idx}-${m.home_player_id}`} value={m.home_player_id}>
-                              {m.home_player_name} ({goals}G, {conceded}C)
-                            </option>
-                          );
-                        })}
+                        {(() => {
+                          // For round robin, combine stats for each unique player
+                          const isRoundRobin = fixture.knockout_format === 'round_robin';
+                          
+                          if (isRoundRobin) {
+                            // Group by player_id and sum their stats
+                            const playerStats = new Map<string, { name: string; goals: number; conceded: number }>();
+                            
+                            matchups.forEach((m, idx) => {
+                              const playerId = m.home_player_id;
+                              const goals = matchResults[idx]?.home_goals ?? 0;
+                              const conceded = matchResults[idx]?.away_goals ?? 0;
+                              
+                              if (playerStats.has(playerId)) {
+                                const existing = playerStats.get(playerId)!;
+                                existing.goals += goals;
+                                existing.conceded += conceded;
+                              } else {
+                                playerStats.set(playerId, {
+                                  name: m.home_player_name,
+                                  goals,
+                                  conceded
+                                });
+                              }
+                            });
+                            
+                            return Array.from(playerStats.entries()).map(([playerId, stats]) => (
+                              <option key={`home-${playerId}`} value={playerId}>
+                                {stats.name} ({stats.goals}G, {stats.conceded}C)
+                              </option>
+                            ));
+                          } else {
+                            // Regular matchup - show each matchup separately
+                            return matchups.map((m, idx) => {
+                              const goals = matchResults[idx]?.home_goals ?? 0;
+                              const conceded = matchResults[idx]?.away_goals ?? 0;
+                              return (
+                                <option key={`home-${idx}-${m.home_player_id}`} value={m.home_player_id}>
+                                  {m.home_player_name} ({goals}G, {conceded}C)
+                                </option>
+                              );
+                            });
+                          }
+                        })()}
                       </optgroup>
                       <optgroup label="✈️ Away Team ({fixture.away_team_name})">
-                        {matchups.map((m, idx) => {
-                          const goals = matchResults[idx]?.away_goals ?? 0;
-                          const conceded = matchResults[idx]?.home_goals ?? 0;
-                          return (
-                            <option key={`away-${idx}-${m.away_player_id}`} value={m.away_player_id}>
-                              {m.away_player_name} ({goals}G, {conceded}C)
-                            </option>
-                          );
-                        })}
+                        {(() => {
+                          // For round robin, combine stats for each unique player
+                          const isRoundRobin = fixture.knockout_format === 'round_robin';
+                          
+                          if (isRoundRobin) {
+                            // Group by player_id and sum their stats
+                            const playerStats = new Map<string, { name: string; goals: number; conceded: number }>();
+                            
+                            matchups.forEach((m, idx) => {
+                              const playerId = m.away_player_id;
+                              const goals = matchResults[idx]?.away_goals ?? 0;
+                              const conceded = matchResults[idx]?.home_goals ?? 0;
+                              
+                              if (playerStats.has(playerId)) {
+                                const existing = playerStats.get(playerId)!;
+                                existing.goals += goals;
+                                existing.conceded += conceded;
+                              } else {
+                                playerStats.set(playerId, {
+                                  name: m.away_player_name,
+                                  goals,
+                                  conceded
+                                });
+                              }
+                            });
+                            
+                            return Array.from(playerStats.entries()).map(([playerId, stats]) => (
+                              <option key={`away-${playerId}`} value={playerId}>
+                                {stats.name} ({stats.goals}G, {stats.conceded}C)
+                              </option>
+                            ));
+                          } else {
+                            // Regular matchup - show each matchup separately
+                            return matchups.map((m, idx) => {
+                              const goals = matchResults[idx]?.away_goals ?? 0;
+                              const conceded = matchResults[idx]?.home_goals ?? 0;
+                              return (
+                                <option key={`away-${idx}-${m.away_player_id}`} value={m.away_player_id}>
+                                  {m.away_player_name} ({goals}G, {conceded}C)
+                                </option>
+                              );
+                            });
+                          }
+                        })()}
                       </optgroup>
                     </select>
 
                     {motmPlayerId && (() => {
-                      const selectedPlayer = matchups.find(m => m.home_player_id === motmPlayerId || m.away_player_id === motmPlayerId);
-                      const idx = matchups.indexOf(selectedPlayer!);
-                      const isHome = selectedPlayer?.home_player_id === motmPlayerId;
-                      const goals = isHome ? (matchResults[idx]?.home_goals ?? 0) : (matchResults[idx]?.away_goals ?? 0);
-                      const conceded = isHome ? (matchResults[idx]?.away_goals ?? 0) : (matchResults[idx]?.home_goals ?? 0);
-                      const won = goals > conceded;
-                      const draw = goals === conceded;
-
-                      return (
-                        <div className="mt-3 p-3 bg-yellow-100 border border-yellow-400 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-yellow-900">
-                                {isHome ? selectedPlayer?.home_player_name : selectedPlayer?.away_player_name}
-                              </p>
-                              <p className="text-xs text-yellow-700 mt-1">
-                                {goals} goals scored • {conceded} conceded • {won ? '✓ Won' : draw ? '◆ Draw' : '✗ Lost'}
-                              </p>
+                      const isRoundRobin = fixture.knockout_format === 'round_robin';
+                      
+                      if (isRoundRobin) {
+                        // For round robin, sum all stats for this player
+                        let totalGoals = 0;
+                        let totalConceded = 0;
+                        let wins = 0;
+                        let draws = 0;
+                        let losses = 0;
+                        let playerName = '';
+                        
+                        matchups.forEach((m, idx) => {
+                          const isHome = m.home_player_id === motmPlayerId;
+                          const isAway = m.away_player_id === motmPlayerId;
+                          
+                          if (isHome) {
+                            playerName = m.home_player_name;
+                            const goals = matchResults[idx]?.home_goals ?? 0;
+                            const conceded = matchResults[idx]?.away_goals ?? 0;
+                            totalGoals += goals;
+                            totalConceded += conceded;
+                            if (goals > conceded) wins++;
+                            else if (goals === conceded) draws++;
+                            else losses++;
+                          } else if (isAway) {
+                            playerName = m.away_player_name;
+                            const goals = matchResults[idx]?.away_goals ?? 0;
+                            const conceded = matchResults[idx]?.home_goals ?? 0;
+                            totalGoals += goals;
+                            totalConceded += conceded;
+                            if (goals > conceded) wins++;
+                            else if (goals === conceded) draws++;
+                            else losses++;
+                          }
+                        });
+                        
+                        return (
+                          <div className="mt-3 p-3 bg-yellow-100 border border-yellow-400 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-yellow-900">
+                                  {playerName}
+                                </p>
+                                <p className="text-xs text-yellow-700 mt-1">
+                                  {totalGoals} goals scored • {totalConceded} conceded • {wins}W-{draws}D-{losses}L
+                                </p>
+                              </div>
+                              <span className="text-2xl">⭐</span>
                             </div>
-                            <span className="text-2xl">⭐</span>
                           </div>
-                        </div>
-                      );
+                        );
+                      } else {
+                        // Regular matchup - single match stats
+                        const selectedPlayer = matchups.find(m => m.home_player_id === motmPlayerId || m.away_player_id === motmPlayerId);
+                        const idx = matchups.indexOf(selectedPlayer!);
+                        const isHome = selectedPlayer?.home_player_id === motmPlayerId;
+                        const goals = isHome ? (matchResults[idx]?.home_goals ?? 0) : (matchResults[idx]?.away_goals ?? 0);
+                        const conceded = isHome ? (matchResults[idx]?.away_goals ?? 0) : (matchResults[idx]?.home_goals ?? 0);
+                        const won = goals > conceded;
+                        const draw = goals === conceded;
+
+                        return (
+                          <div className="mt-3 p-3 bg-yellow-100 border border-yellow-400 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-yellow-900">
+                                  {isHome ? selectedPlayer?.home_player_name : selectedPlayer?.away_player_name}
+                                </p>
+                                <p className="text-xs text-yellow-700 mt-1">
+                                  {goals} goals scored • {conceded} conceded • {won ? '✓ Won' : draw ? '◆ Draw' : '✗ Lost'}
+                                </p>
+                              </div>
+                              <span className="text-2xl">⭐</span>
+                            </div>
+                          </div>
+                        );
+                      }
                     })()}
 
                     <p className="text-xs text-yellow-700 mt-2">Select or auto-suggest the best player from the entire fixture</p>

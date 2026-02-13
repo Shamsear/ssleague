@@ -26,6 +26,7 @@ interface TrophyPreview {
   position: number;
   trophy_name: string;
   trophy_type: string;
+  tournament_name: string;
   alreadyAwarded: boolean;
 }
 
@@ -124,34 +125,23 @@ export default function TrophyManagementPage() {
     if (!userSeasonId) return;
     
     try {
-      const res = await fetchWithTokenRefresh(`/api/tournaments/secondary?season_id=${userSeasonId}`);
+      // Fetch all tournaments for the season
+      const res = await fetchWithTokenRefresh(`/api/tournaments?season_id=${userSeasonId}`);
       const data = await res.json();
       if (data.success && data.tournaments) {
-        // Generate trophy options (just tournament names, not with positions)
+        // Generate trophy options from tournament names
         const options: string[] = data.tournaments.map((t: any) => t.tournament_name);
         // Add custom option at the end
         options.push('Other (Custom)');
         setTrophyOptions(options);
       } else {
         // Fallback to default options if API fails
-        setTrophyOptions([
-          'League',
-          'UCL', 'UEL', 'UECL',
-          'FA Cup', 'League Cup', 'DUO Cup',
-          'Super Cup', 'Community Shield',
-          'Other (Custom)'
-        ]);
+        setTrophyOptions(['Other (Custom)']);
       }
     } catch (err) {
-      console.error('Error fetching secondary tournaments:', err);
+      console.error('Error fetching tournaments:', err);
       // Fallback to default options
-      setTrophyOptions([
-        'League',
-        'UCL', 'UEL', 'UECL',
-        'FA Cup', 'League Cup', 'DUO Cup',
-        'Super Cup', 'Community Shield',
-        'Other (Custom)'
-      ]);
+      setTrophyOptions(['Other (Custom)']);
     }
   };
 
@@ -308,26 +298,40 @@ export default function TrophyManagementPage() {
               <span className="text-2xl sm:text-3xl">🤖</span>
               <div>
                 <h2 className="text-lg sm:text-xl font-bold text-gray-900">Auto-Award Trophies</h2>
-                <p className="text-xs sm:text-sm text-gray-600">Based on current league standings</p>
+                <p className="text-xs sm:text-sm text-gray-600">Based on tournament standings</p>
               </div>
             </div>
             
-            <div className="space-y-2 sm:space-y-3 mb-4">
-              {preview.map((p) => (
-                <div key={p.team_name} className="flex items-center justify-between bg-white p-3 sm:p-4 rounded-xl border border-gray-200">
-                  <div>
-                    <p className="text-sm sm:text-base font-bold text-gray-900">{p.team_name}</p>
-                    <p className="text-xs sm:text-sm text-gray-600">{p.trophy_name} • Position {p.position}</p>
-                  </div>
-                  {p.alreadyAwarded && <span className="text-green-600 text-xs sm:text-sm font-semibold">✅ Awarded</span>}
+            {/* Group preview by tournament */}
+            {Object.entries(
+              preview.reduce((acc, p) => {
+                if (!acc[p.tournament_name]) acc[p.tournament_name] = [];
+                acc[p.tournament_name].push(p);
+                return acc;
+              }, {} as Record<string, TrophyPreview[]>)
+            ).map(([tournamentName, trophies]) => (
+              <div key={tournamentName} className="mb-4">
+                <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-2 px-2">
+                  🏆 {tournamentName}
+                </h3>
+                <div className="space-y-2 sm:space-y-3">
+                  {trophies.map((p) => (
+                    <div key={`${p.team_name}-${p.trophy_name}`} className="flex items-center justify-between bg-white p-3 sm:p-4 rounded-xl border border-gray-200">
+                      <div>
+                        <p className="text-sm sm:text-base font-bold text-gray-900">{p.team_name}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">{p.trophy_name}</p>
+                      </div>
+                      {p.alreadyAwarded && <span className="text-green-600 text-xs sm:text-sm font-semibold">✅ Awarded</span>}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
             
             <button
               onClick={handleAutoAward}
               disabled={awarding}
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 mt-4"
             >
               {awarding ? 'Awarding...' : '⚡ Auto-Award Trophies'}
             </button>
@@ -459,41 +463,57 @@ export default function TrophyManagementPage() {
               <p className="text-sm mt-2">Use auto-award or add manually</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {trophies.map((trophy) => (
-                <div key={trophy.id} className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 hover:shadow-md transition-all">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-2xl">{getTrophyIcon(trophy.trophy_type)}</span>
-                        <div className={`px-3 py-1 rounded-lg text-white text-xs font-semibold bg-gradient-to-r ${getTrophyBadgeColor(trophy.trophy_type)}`}>
-                          {trophy.trophy_type.toUpperCase()}
+            <div className="space-y-6">
+              {/* Group trophies by tournament */}
+              {Object.entries(
+                trophies.reduce((acc, trophy) => {
+                  if (!acc[trophy.trophy_name]) acc[trophy.trophy_name] = [];
+                  acc[trophy.trophy_name].push(trophy);
+                  return acc;
+                }, {} as Record<string, Trophy[]>)
+              ).map(([tournamentName, tournamentTrophies]) => (
+                <div key={tournamentName} className="border-l-4 border-blue-500 pl-4">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3">
+                    🏆 {tournamentName}
+                  </h3>
+                  <div className="space-y-3">
+                    {tournamentTrophies.map((trophy) => (
+                      <div key={trophy.id} className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 hover:shadow-md transition-all">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-2xl">{getTrophyIcon(trophy.trophy_type)}</span>
+                              <div className={`px-3 py-1 rounded-lg text-white text-xs font-semibold bg-gradient-to-r ${getTrophyBadgeColor(trophy.trophy_type)}`}>
+                                {trophy.trophy_type.toUpperCase()}
+                              </div>
+                              <span className="font-bold text-gray-900 text-sm sm:text-base">
+                                {trophy.trophy_position || trophy.trophy_name}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs text-gray-600 ml-11">
+                              <span>Team: <strong className="text-gray-900">{trophy.team_name}</strong></span>
+                              <span>•</span>
+                              <span>By: {trophy.awarded_by}</span>
+                              {trophy.position && (
+                                <>
+                                  <span>•</span>
+                                  <span>Position: {trophy.position}</span>
+                                </>
+                              )}
+                            </div>
+                            {trophy.notes && (
+                              <p className="text-xs text-gray-500 mt-2 ml-11 italic">{trophy.notes}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleDeleteTrophy(trophy.id)}
+                            className="px-3 sm:px-4 py-2 bg-red-500 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-red-600 transition-all self-end sm:self-center"
+                          >
+                            🗑️ Delete
+                          </button>
                         </div>
-                        <span className="font-bold text-gray-900 text-sm sm:text-base">
-                          {trophy.trophy_name}{trophy.trophy_position ? ` ${trophy.trophy_position}` : ''}
-                        </span>
                       </div>
-                      <div className="flex flex-wrap gap-2 text-xs text-gray-600 ml-11">
-                        <span>Team: <strong className="text-gray-900">{trophy.team_name}</strong></span>
-                        <span>•</span>
-                        <span>By: {trophy.awarded_by}</span>
-                        {trophy.position && (
-                          <>
-                            <span>•</span>
-                            <span>Position: {trophy.position}</span>
-                          </>
-                        )}
-                      </div>
-                      {trophy.notes && (
-                        <p className="text-xs text-gray-500 mt-2 ml-11 italic">{trophy.notes}</p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleDeleteTrophy(trophy.id)}
-                      className="px-3 sm:px-4 py-2 bg-red-500 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-red-600 transition-all self-end sm:self-center"
-                    >
-                      🗑️ Delete
-                    </button>
+                    ))}
                   </div>
                 </div>
               ))}

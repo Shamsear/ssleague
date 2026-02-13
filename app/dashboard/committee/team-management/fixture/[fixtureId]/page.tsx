@@ -65,6 +65,8 @@ export default function CommitteeFixtureDetailPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedScores, setEditedScores] = useState<{ [key: number]: { home: number, away: number } }>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingRoundRobin, setIsGeneratingRoundRobin] = useState(false);
+  const [knockoutFormat, setKnockoutFormat] = useState<string | null>(null);
 
   // Modal system
   const {
@@ -105,6 +107,7 @@ export default function CommitteeFixtureDetailPage() {
 
       if (fixtureData.fixture) {
         setFixture(fixtureData.fixture);
+        setKnockoutFormat(fixtureData.fixture.knockout_format || null);
       }
 
       // Fetch matchups
@@ -233,6 +236,52 @@ export default function CommitteeFixtureDetailPage() {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGenerateRoundRobinMatchups = async () => {
+    const confirmed = await showConfirm({
+      type: 'info',
+      title: 'Generate Round Robin Matchups',
+      message: 'This will automatically generate all 25 matchups (5x5) based on the submitted lineups. Both lineups will be locked. Continue?',
+      confirmText: 'Generate Matchups',
+      cancelText: 'Cancel'
+    });
+
+    if (!confirmed) return;
+
+    setIsGeneratingRoundRobin(true);
+    try {
+      const response = await fetchWithTokenRefresh(`/api/fixtures/${fixtureId}/generate-round-robin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        showAlert({
+          type: 'success',
+          title: 'Matchups Generated',
+          message: `Successfully generated ${data.matchups_count} round robin matchups!`
+        });
+        fetchFixtureData();
+      } else {
+        showAlert({
+          type: 'error',
+          title: 'Generation Failed',
+          message: data.error || 'Failed to generate matchups'
+        });
+      }
+    } catch (error) {
+      console.error('Error generating round robin matchups:', error);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to generate round robin matchups'
+      });
+    } finally {
+      setIsGeneratingRoundRobin(false);
     }
   };
 
@@ -587,12 +636,33 @@ export default function CommitteeFixtureDetailPage() {
 
               {/* Create Matchups Button - Only show if matchups don't exist */}
               {matchups.length === 0 && fixture.status !== 'completed' && (
-                <button
-                  onClick={() => setShowMatchupCreator(true)}
-                  className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 font-medium flex items-center justify-center gap-2"
-                >
-                  ⚔️ Create Matchups
-                </button>
+                <>
+                  <button
+                    onClick={() => setShowMatchupCreator(true)}
+                    className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 font-medium flex items-center justify-center gap-2"
+                  >
+                    ⚔️ Create Matchups
+                  </button>
+                  
+                  {/* Round Robin Auto-Generate Button */}
+                  {knockoutFormat === 'round_robin' && (
+                    <button
+                      onClick={handleGenerateRoundRobinMatchups}
+                      disabled={isGeneratingRoundRobin}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-lg hover:from-orange-700 hover:to-red-700 font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isGeneratingRoundRobin ? (
+                        <>
+                          <span className="animate-spin">⚙️</span> Generating...
+                        </>
+                      ) : (
+                        <>
+                          🎯 Auto-Generate Round Robin (25 Matchups)
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
               )}
 
               {fixture.status !== 'completed' && (

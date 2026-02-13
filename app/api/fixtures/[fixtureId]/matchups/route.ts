@@ -624,9 +624,9 @@ export async function PATCH(
     }
 
     // Calculate total scores from all matchups
-    // Need to check tournament scoring type
+    // Need to check tournament scoring type and knockout format
     const tournamentInfo = await sql`
-      SELECT t.id as tournament_id, ts.scoring_type
+      SELECT t.id as tournament_id, ts.scoring_type, f.knockout_format
       FROM fixtures f
       JOIN tournaments t ON f.tournament_id = t.id
       LEFT JOIN tournament_settings ts ON t.id = ts.tournament_id
@@ -635,6 +635,7 @@ export async function PATCH(
     `;
     
     const scoringType = tournamentInfo[0]?.scoring_type || 'goals';
+    const knockoutFormat = tournamentInfo[0]?.knockout_format;
     
     // Get substitution penalties from matchups
     const matchupsWithPenalties = await sql`
@@ -659,7 +660,51 @@ export async function PATCH(
     let totalHomeScore = 0;
     let totalAwayScore = 0;
     
-    if (scoringType === 'wins') {
+    // For round_robin with goal-based scoring, use hybrid approach: goals + wins
+    if (knockoutFormat === 'round_robin' && scoringType === 'goals') {
+      // Round Robin Goal-Based: Count total goals AND wins
+      // Primary: Total goals scored
+      // Tiebreaker: Number of matchups won
+      let homeGoals = 0;
+      let awayGoals = 0;
+      let homeWins = 0;
+      let awayWins = 0;
+      
+      for (const result of results) {
+        const penalties = penaltiesMap.get(result.position) || { home_sub_penalty: 0, away_sub_penalty: 0 };
+        
+        // Count goals (for primary score)
+        homeGoals += result.home_goals;
+        awayGoals += result.away_goals;
+        
+        // Calculate matchup winner WITH substitution penalties (for tiebreaker)
+        const homeMatchupScore = result.home_goals + penalties.away_sub_penalty;
+        const awayMatchupScore = result.away_goals + penalties.home_sub_penalty;
+        
+        if (homeMatchupScore > awayMatchupScore) {
+          homeWins++;
+        } else if (awayMatchupScore > homeMatchupScore) {
+          awayWins++;
+        }
+      }
+      
+      // Add substitution penalties to goals
+      const totalHomeSubPenalty = Array.from(penaltiesMap.values()).reduce((sum: number, p: any) => sum + p.home_sub_penalty, 0);
+      const totalAwaySubPenalty = Array.from(penaltiesMap.values()).reduce((sum: number, p: any) => sum + p.away_sub_penalty, 0);
+      
+      homeGoals += totalAwaySubPenalty + (Number(home_penalty_goals) || 0);
+      awayGoals += totalHomeSubPenalty + (Number(away_penalty_goals) || 0);
+      
+      // Store both goals and wins for display
+      totalHomeScore = homeGoals;
+      totalAwayScore = awayGoals;
+      
+      console.log(`Round Robin Goal-Based: Home ${homeGoals} goals (${homeWins} wins) vs Away ${awayGoals} goals (${awayWins} wins)`);
+      
+      // Determine winner: First by goals, then by wins if tied
+      // This will be used for match result determination below
+      
+    } else if (scoringType === 'wins') {
       // Win-based scoring: 3 points for win, 1 for draw, 0 for loss
       // Substitution penalties are added to the MATCHUP score to determine winner
       // but NOT to player stats
@@ -690,7 +735,7 @@ export async function PATCH(
       
       console.log(`Win-based scoring - Total points: Home ${totalHomeScore}, Away ${totalAwayScore} (includes ${home_penalty_goals || 0} and ${away_penalty_goals || 0} fine penalties)`);
     } else {
-      // Goal-based scoring: sum of all goals INCLUDING substitution penalties
+      // Standard goal-based scoring: sum of all goals INCLUDING substitution penalties
       for (const result of results) {
         totalHomeScore += result.home_goals;
         totalAwayScore += result.away_goals;
