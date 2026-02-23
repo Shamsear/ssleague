@@ -82,20 +82,40 @@ export default function PlayerStatsByRoundPage() {
   // Load player stats
   useEffect(() => {
     const loadStats = async () => {
-      if (!selectedTournamentId || !userSeasonId) return;
+      if (!userSeasonId) return;
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewMode = urlParams.get('view');
 
       setIsLoading(true);
       try {
-        let url = `/api/committee/player-stats-by-round?tournament_id=${selectedTournamentId}&season_id=${userSeasonId}`;
-
-        if (activeTab === 'by-week') {
-          // For week view, use predefined week ranges
-          const weekRange = weekRanges.find(w => w.week === selectedWeek);
-          if (weekRange) {
-            url += `&start_round=${weekRange.start}&end_round=${weekRange.end}`;
+        let url;
+        
+        if (viewMode === 'full-season') {
+          // Full season view - aggregate all tournaments
+          url = `/api/committee/player-stats-by-round?season_id=${userSeasonId}&view=full-season`;
+          
+          if (activeTab === 'by-week') {
+            const weekRange = weekRanges.find(w => w.week === selectedWeek);
+            if (weekRange) {
+              url += `&start_round=${weekRange.start}&end_round=${weekRange.end}`;
+            }
+          } else {
+            url += `&round_number=${selectedRound}`;
           }
         } else {
-          url += `&round_number=${selectedRound}`;
+          // Tournament-specific view
+          if (!selectedTournamentId) return;
+          url = `/api/committee/player-stats-by-round?tournament_id=${selectedTournamentId}&season_id=${userSeasonId}`;
+
+          if (activeTab === 'by-week') {
+            const weekRange = weekRanges.find(w => w.week === selectedWeek);
+            if (weekRange) {
+              url += `&start_round=${weekRange.start}&end_round=${weekRange.end}`;
+            }
+          } else {
+            url += `&round_number=${selectedRound}`;
+          }
         }
 
         const response = await fetchWithTokenRefresh(url);
@@ -274,6 +294,46 @@ export default function PlayerStatsByRoundPage() {
         {/* Tournament Selector */}
         <div className="mb-6">
           <TournamentSelector />
+        </div>
+
+        {/* View Mode Selector */}
+        <div className="mb-6 bg-white rounded-xl shadow-lg p-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            View Mode
+          </label>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => {
+                // Switch to full season view - will aggregate all tournaments
+                window.location.href = '/dashboard/committee/team-management/player-stats-by-round?view=full-season';
+              }}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                new URLSearchParams(window.location.search).get('view') === 'full-season'
+                  ? 'bg-purple-600 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              📊 Full Season Stats
+            </button>
+            <button
+              onClick={() => {
+                // Switch to tournament view
+                window.location.href = '/dashboard/committee/team-management/player-stats-by-round';
+              }}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                new URLSearchParams(window.location.search).get('view') !== 'full-season'
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              🏆 By Tournament
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {new URLSearchParams(window.location.search).get('view') === 'full-season'
+              ? 'Showing combined stats from all tournaments in the season'
+              : 'Showing stats for the selected tournament only'}
+          </p>
         </div>
 
         {/* Round Selector (hidden for By Week tab) */}

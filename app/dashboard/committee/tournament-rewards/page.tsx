@@ -34,6 +34,7 @@ interface TeamStats {
   real_player_budget?: number;
   position_reward?: { ecoin: number; sscoin: number };
   completion_reward?: { ecoin: number; sscoin: number };
+  knockout_reward?: { ecoin: number; sscoin: number };
 }
 
 interface RewardStatus {
@@ -538,6 +539,7 @@ export default function TournamentRewardsPage() {
                             <th className="px-4 py-3 text-center text-xs font-semibold text-blue-600 uppercase">ECoin</th>
                             <th className="px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase">SSCoin</th>
                             <th className="px-4 py-3 text-center text-xs font-semibold text-purple-600 uppercase">Pos Reward</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-red-600 uppercase">KO Reward</th>
                             <th className="px-4 py-3 text-center text-xs font-semibold text-orange-600 uppercase">Comp Reward</th>
                           </tr>
                         </thead>
@@ -572,6 +574,20 @@ export default function TournamentRewardsPage() {
                                     )}
                                     {team.position_reward.sscoin > 0 && (
                                       <span className="text-green-600 font-semibold">+{team.position_reward.sscoin}</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                {team.knockout_reward && (team.knockout_reward.ecoin > 0 || team.knockout_reward.sscoin > 0) ? (
+                                  <div className="flex flex-col gap-1">
+                                    {team.knockout_reward.ecoin > 0 && (
+                                      <span className="text-blue-600 font-semibold">+{team.knockout_reward.ecoin}</span>
+                                    )}
+                                    {team.knockout_reward.sscoin > 0 && (
+                                      <span className="text-green-600 font-semibold">+{team.knockout_reward.sscoin}</span>
                                     )}
                                   </div>
                                 ) : (

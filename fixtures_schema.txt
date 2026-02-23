@@ -1,0 +1,40 @@
+id: character varying
+season_id: character varying
+round_number: integer
+leg: character varying
+match_day: integer
+home_team_id: character varying
+away_team_id: character varying
+home_team_name: character varying
+away_team_name: character varying
+home_score: integer
+away_score: integer
+status: character varying
+result: character varying
+scheduled_date: timestamp without time zone
+played_date: timestamp without time zone
+notes: text
+created_at: timestamp without time zone
+updated_at: timestamp without time zone
+match_number: integer
+tournament_id: text
+motm_player_id: text
+motm_player_name: text
+home_penalty_goals: integer
+away_penalty_goals: integer
+group_name: character varying
+knockout_round: character varying
+matchups_created_by: character varying
+matchups_created_at: timestamp without time zone
+lineup_last_edited_by: character varying
+lineup_last_edited_at: timestamp without time zone
+home_lineup_submitted_at: timestamp without time zone
+home_lineup_submitted_by: character varying
+away_lineup_submitted_at: timestamp without time zone
+away_lineup_submitted_by: character varying
+matchup_mode: character varying
+home_lineup_submitted: boolean
+away_lineup_submitted: boolean
+lineups_locked: boolean
+scoring_system: character varying
+knockout_format: character varying

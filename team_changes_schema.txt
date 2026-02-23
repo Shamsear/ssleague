@@ -1,0 +1,13 @@
+--- Columns in supported_team_changes ---
+id: integer
+change_id: character varying
+league_id: character varying
+team_id: character varying
+window_id: character varying
+old_supported_team_id: character varying
+old_supported_team_name: character varying
+new_supported_team_id: character varying
+new_supported_team_name: character varying
+changed_by: character varying
+changed_at: timestamp without time zone
+reason: text

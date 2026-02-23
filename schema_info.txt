@@ -1,0 +1,32 @@
+--- Columns in fantasy_squad ---
+id: integer
+squad_id: character varying
+team_id: character varying
+league_id: character varying
+real_player_id: character varying
+player_name: character varying
+position: character varying
+real_team_name: character varying
+purchase_price: numeric
+current_value: numeric
+total_points: integer
+is_captain: boolean
+is_vice_captain: boolean
+acquisition_type: character varying
+acquired_at: timestamp without time zone
+
+--- Leagues ---
+SSPSLFLS16 (SSPSLS16) - Active: true
+
+--- Columns in fantasy_team_bonus_points ---
+id: integer
+league_id: character varying
+team_id: character varying
+real_team_id: character varying
+real_team_name: character varying
+fixture_id: character varying
+round_number: integer
+bonus_breakdown: jsonb
+total_bonus: integer
+calculated_at: timestamp without time zone
+created_at: timestamp without time zone

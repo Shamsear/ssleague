@@ -1,0 +1,93 @@
+--- Columns in fantasy_transfers ---
+id: integer
+transfer_id: character varying
+league_id: character varying
+team_id: character varying
+window_id: character varying
+player_out_id: character varying
+player_out_name: character varying
+player_in_id: character varying
+player_in_name: character varying
+transfer_cost: integer
+points_deducted: integer
+is_free_transfer: boolean
+transferred_at: timestamp without time zone
+
+--- Recent Transfers ---
+[
+  {
+    "id": 2,
+    "transfer_id": "transfer_SSPSLT0013_1766424845770",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0013",
+    "window_id": "tw_SSPSLFLS16_1766410531769",
+    "player_out_id": "sspslpsl0052",
+    "player_out_name": "Nihal",
+    "player_in_id": "sspslpsl0063",
+    "player_in_name": "Adil Mubarak",
+    "transfer_cost": 60,
+    "points_deducted": 10,
+    "is_free_transfer": false,
+    "transferred_at": "2025-12-22T12:04:05.790Z"
+  },
+  {
+    "id": 1,
+    "transfer_id": "transfer_SSPSLT0010_1766424811950",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0010",
+    "window_id": "tw_SSPSLFLS16_1766410531769",
+    "player_out_id": "sspslpsl0081",
+    "player_out_name": "Amjad",
+    "player_in_id": "sspslpsl0002",
+    "player_in_name": "Rohith",
+    "transfer_cost": 60,
+    "points_deducted": 10,
+    "is_free_transfer": false,
+    "transferred_at": "2025-12-22T12:03:32.037Z"
+  },
+  {
+    "id": 3,
+    "transfer_id": "transfer_SSPSLT0013_1766426019823",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0013",
+    "window_id": "tw_SSPSLFLS16_1766410531769",
+    "player_out_id": "sspslpsl0010",
+    "player_out_name": "Karthik Mohan",
+    "player_in_id": "sspslpsl0054",
+    "player_in_name": "Muneer Ummer",
+    "transfer_cost": 40,
+    "points_deducted": 10,
+    "is_free_transfer": false,
+    "transferred_at": "2025-12-22T12:23:39.845Z"
+  },
+  {
+    "id": 6,
+    "transfer_id": "transfer_SSPSLT0004_1766427301419",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0004",
+    "window_id": "tw_SSPSLFLS16_1766410531769",
+    "player_out_id": "sspslpsl0003",
+    "player_out_name": "Shamil Mohd",
+    "player_in_id": "sspslpsl0075",
+    "player_in_name": "Anas Leo",
+    "transfer_cost": 60,
+    "points_deducted": 10,
+    "is_free_transfer": false,
+    "transferred_at": "2025-12-22T12:45:01.448Z"
+  },
+  {
+    "id": 11,
+    "transfer_id": "transfer_SSPSLT0006_1767435708203",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0006",
+    "window_id": "tw_SSPSLFLS16_1766410531769",
+    "player_out_id": "sspslpsl0064",
+    "player_out_name": "Ambady ",
+    "player_in_id": "sspslpsl0044",
+    "player_in_name": "Safvan",
+    "transfer_cost": 40,
+    "points_deducted": 10,
+    "is_free_transfer": false,
+    "transferred_at": "2026-01-03T04:51:48.244Z"
+  }
+]

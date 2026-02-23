@@ -193,7 +193,7 @@ export default function PlayerStarUpgradesPage() {
                 const currentStar = calculateStarRating(p.points);
                 const upgrade = currentStar - baseStar;
                 const pointsGained = p.points - p.base_points;
-                return `${index + 1}. *${p.player_name}*\n   ${baseStar}⭐ ➜ ${currentStar}⭐ (+${upgrade})\n   Points: ${p.base_points} ➜ ${p.points} (+${pointsGained})`;
+                return `${index + 1}. *${p.player_name}* (${p.team || 'No Team'})\n   ${baseStar}⭐ ➜ ${currentStar}⭐ (+${upgrade})\n   Points: ${p.base_points} ➜ ${p.points} (+${pointsGained})`;
             })
             .join('\n\n');
 
@@ -230,7 +230,7 @@ export default function PlayerStarUpgradesPage() {
                 const currentStar = calculateStarRating(p.points);
                 const upgrade = currentStar - baseStar;
                 const pointsLost = p.points - p.base_points;
-                return `${index + 1}. *${p.player_name}*\n   ${baseStar}⭐ ➜ ${currentStar}⭐ (${upgrade})\n   Points: ${p.base_points} ➜ ${p.points} (${pointsLost})`;
+                return `${index + 1}. *${p.player_name}* (${p.team || 'No Team'})\n   ${baseStar}⭐ ➜ ${currentStar}⭐ (${upgrade})\n   Points: ${p.base_points} ➜ ${p.points} (${pointsLost})`;
             })
             .join('\n\n');
 

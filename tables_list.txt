@@ -1,0 +1,15 @@
+fantasy_player_points
+bonus_points
+fantasy_squad
+fantasy_rounds
+fantasy_team_bonus_points
+fantasy_leaderboard
+transfer_windows
+fantasy_leagues
+supported_team_changes
+fantasy_teams
+fantasy_transfers
+fantasy_players
+fantasy_drafts
+fantasy_scoring_rules
+scoring_rules

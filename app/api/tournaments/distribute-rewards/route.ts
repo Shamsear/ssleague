@@ -174,18 +174,209 @@ export async function POST(request: NextRequest) {
         log.push(`⚠️ No position rewards configured`);
       }
     } else if (reward_type === 'knockout') {
-      // Distribute Knockout Stage Rewards
+      // Distribute Knockout Stage Rewards based on fixture results
       if (rewards.knockout_stages && Object.keys(rewards.knockout_stages).length > 0) {
         log.push(`\n--- Knockout Stage Rewards ---`);
-        log.push(`⚠️ Knockout rewards require manual mapping of teams to knockout positions`);
-        log.push(`This feature needs knockout results to be stored separately`);
-        log.push(`Please configure knockout results first, then distribute these rewards`);
 
-        return NextResponse.json({
-          success: false,
-          error: 'Knockout rewards distribution requires knockout results to be configured first',
-          log
-        }, { status: 400 });
+        // Get all knockout fixtures for this tournament
+        // Knockout fixtures have "_ko_" in their ID
+        const knockoutFixtures = await sql`
+          SELECT 
+            f.id,
+            f.knockout_round,
+            f.home_team_id,
+            f.away_team_id,
+            f.home_score,
+            f.away_score,
+            f.status
+          FROM fixtures f
+          WHERE f.tournament_id = ${tournament_id}
+            AND f.season_id = ${season_id}
+            AND f.id LIKE '%_ko_%'
+            AND f.status = 'completed'
+          ORDER BY f.scheduled_date DESC
+        `;
+
+        if (knockoutFixtures.length === 0) {
+          log.push(`⚠️ No completed knockout fixtures found`);
+          return NextResponse.json({
+            success: false,
+            error: 'No completed knockout fixtures found for this tournament',
+            log
+          }, { status: 400 });
+        }
+
+        // Calculate knockout achievements for each team
+        const teamAchievements = new Map<string, string>();
+
+        for (const fixture of knockoutFixtures) {
+          const homeWon = fixture.home_score > fixture.away_score;
+          const awayWon = fixture.away_score > fixture.home_score;
+          const round = fixture.knockout_round.toLowerCase();
+
+          // Determine achievement based on round and result
+          if (homeWon) {
+            // Home team won
+            if (round.includes('final') && !round.includes('semi')) {
+              teamAchievements.set(fixture.home_team_id, 'winner');
+            } else if (round.includes('semi')) {
+              if (!teamAchievements.has(fixture.home_team_id)) {
+                teamAchievements.set(fixture.home_team_id, 'runner_up');
+              }
+            } else if (round.includes('quarter')) {
+              if (!teamAchievements.has(fixture.home_team_id)) {
+                teamAchievements.set(fixture.home_team_id, 'semi_final_loser');
+              }
+            }
+
+            // Away team lost
+            if (round.includes('final') && !round.includes('semi')) {
+              teamAchievements.set(fixture.away_team_id, 'runner_up');
+            } else if (round.includes('semi')) {
+              if (!teamAchievements.has(fixture.away_team_id)) {
+                teamAchievements.set(fixture.away_team_id, 'semi_final_loser');
+              }
+            } else if (round.includes('quarter')) {
+              if (!teamAchievements.has(fixture.away_team_id)) {
+                teamAchievements.set(fixture.away_team_id, 'quarter_final_loser');
+              }
+            } else if (round.includes('16')) {
+              if (!teamAchievements.has(fixture.away_team_id)) {
+                teamAchievements.set(fixture.away_team_id, 'round_of_16_loser');
+              }
+            } else if (round.includes('32')) {
+              if (!teamAchievements.has(fixture.away_team_id)) {
+                teamAchievements.set(fixture.away_team_id, 'round_of_32_loser');
+              }
+            }
+          } else if (awayWon) {
+            // Away team won
+            if (round.includes('final') && !round.includes('semi')) {
+              teamAchievements.set(fixture.away_team_id, 'winner');
+            } else if (round.includes('semi')) {
+              if (!teamAchievements.has(fixture.away_team_id)) {
+                teamAchievements.set(fixture.away_team_id, 'runner_up');
+              }
+            } else if (round.includes('quarter')) {
+              if (!teamAchievements.has(fixture.away_team_id)) {
+                teamAchievements.set(fixture.away_team_id, 'semi_final_loser');
+              }
+            }
+
+            // Home team lost
+            if (round.includes('final') && !round.includes('semi')) {
+              teamAchievements.set(fixture.home_team_id, 'runner_up');
+            } else if (round.includes('semi')) {
+              if (!teamAchievements.has(fixture.home_team_id)) {
+                teamAchievements.set(fixture.home_team_id, 'semi_final_loser');
+              }
+            } else if (round.includes('quarter')) {
+              if (!teamAchievements.has(fixture.home_team_id)) {
+                teamAchievements.set(fixture.home_team_id, 'quarter_final_loser');
+              }
+            } else if (round.includes('16')) {
+              if (!teamAchievements.has(fixture.home_team_id)) {
+                teamAchievements.set(fixture.home_team_id, 'round_of_16_loser');
+              }
+            } else if (round.includes('32')) {
+              if (!teamAchievements.has(fixture.home_team_id)) {
+                teamAchievements.set(fixture.home_team_id, 'round_of_32_loser');
+              }
+            }
+          }
+        }
+
+        log.push(`Found ${teamAchievements.size} teams with knockout achievements`);
+
+        // Distribute rewards based on achievements
+        let distributedCount = 0;
+        let totalEcoin = 0;
+        let totalSscoin = 0;
+
+        for (const [teamId, achievement] of teamAchievements.entries()) {
+          const reward = rewards.knockout_stages[achievement];
+          
+          if (!reward || (reward.ecoin === 0 && reward.sscoin === 0)) {
+            log.push(`⚠️ No reward configured for ${achievement}`);
+            continue;
+          }
+
+          // Get team_season document from Firebase
+          const teamSeasonRef = adminDb.collection('team_seasons').doc(`${teamId}_${season_id}`);
+          const teamSeasonDoc = await teamSeasonRef.get();
+
+          if (!teamSeasonDoc.exists) {
+            log.push(`⚠️ Team season not found for team ${teamId}`);
+            continue;
+          }
+
+          const teamSeasonData = teamSeasonDoc.data();
+          const teamName = teamSeasonData?.team_name || 'Unknown Team';
+
+          // Update budgets in Firebase
+          await teamSeasonRef.update({
+            football_budget: FieldValue.increment(reward.ecoin || 0),
+            real_player_budget: FieldValue.increment(reward.sscoin || 0),
+            updated_at: FieldValue.serverTimestamp()
+          });
+
+          // Also update auction DB teams table with football_budget
+          if (reward.ecoin > 0) {
+            const auctionSql = getAuctionDb();
+            await auctionSql`
+              UPDATE teams
+              SET football_budget = COALESCE(football_budget, 0) + ${reward.ecoin},
+                  updated_at = NOW()
+              WHERE id = ${teamId}
+                AND season_id = ${season_id}
+            `;
+          }
+
+          // Record transaction in Firebase
+          await adminDb.collection('transactions').add({
+            team_id: teamId,
+            season_id: season_id,
+            transaction_type: 'knockout_reward',
+            amount_football: reward.ecoin || 0,
+            amount_real: reward.sscoin || 0,
+            description: `Knockout Reward (${achievement.replace(/_/g, ' ')}) - ${tournament.tournament_name}`,
+            created_at: FieldValue.serverTimestamp()
+          });
+
+          // Record in tracking table
+          await sql`
+            INSERT INTO tournament_rewards_distributed (
+              tournament_id,
+              team_id,
+              season_id,
+              reward_type,
+              reward_details,
+              ecoin_amount,
+              sscoin_amount,
+              distributed_by,
+              distributed_at
+            ) VALUES (
+              ${tournament_id},
+              ${teamId},
+              ${season_id},
+              'knockout',
+              ${JSON.stringify({ achievement })},
+              ${reward.ecoin || 0},
+              ${reward.sscoin || 0},
+              ${distributed_by},
+              NOW()
+            )
+          `;
+
+          distributedCount++;
+          totalEcoin += reward.ecoin || 0;
+          totalSscoin += reward.sscoin || 0;
+
+          log.push(`✓ ${achievement.replace(/_/g, ' ')} (${teamName}): +${reward.ecoin} eCoin, +${reward.sscoin} SSCoin`);
+        }
+
+        log.push(`\n✅ Distributed knockout rewards to ${distributedCount} teams`);
+        log.push(`Total: ${totalEcoin} eCoin, ${totalSscoin} SSCoin`);
       } else {
         log.push(`⚠️ No knockout rewards configured`);
       }

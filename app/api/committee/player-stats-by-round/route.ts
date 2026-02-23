@@ -13,17 +13,26 @@ export async function GET(request: NextRequest) {
     const roundNumber = searchParams.get('round_number'); // Optional: specific round or 'all'
     const startRound = searchParams.get('start_round'); // Optional: for range filtering
     const endRound = searchParams.get('end_round'); // Optional: for range filtering
+    const viewMode = searchParams.get('view'); // Optional: 'full-season' for all tournaments
 
-    if (!tournamentId || !seasonId) {
+    if (!seasonId) {
       return NextResponse.json(
-        { error: 'Missing required parameters: tournament_id and season_id' },
+        { error: 'Missing required parameter: season_id' },
+        { status: 400 }
+      );
+    }
+    
+    // For full season view, tournament_id is optional
+    if (viewMode !== 'full-season' && !tournamentId) {
+      return NextResponse.json(
+        { error: 'Missing required parameter: tournament_id (unless view=full-season)' },
         { status: 400 }
       );
     }
 
     const sql = getTournamentDb();
 
-    console.log(`[Player Stats By Round] Fetching stats for tournament=${tournamentId}, season=${seasonId}, round=${roundNumber}, range=${startRound}-${endRound}`);
+    console.log(`[Player Stats By Round] Fetching stats for ${viewMode === 'full-season' ? 'FULL SEASON' : `tournament=${tournamentId}`}, season=${seasonId}, round=${roundNumber}, range=${startRound}-${endRound}`);
 
     // Get all matchups with fixture information
     let matchups;
@@ -33,84 +42,165 @@ export async function GET(request: NextRequest) {
       const startNum = parseInt(startRound);
       const endNum = parseInt(endRound);
       console.log(`[Player Stats By Round] Filtering by rounds ${startNum} to ${endNum} (range)`);
-      matchups = await sql`
-        SELECT 
-          m.home_player_id,
-          m.home_player_name,
-          m.away_player_id,
-          m.away_player_name,
-          m.home_goals,
-          m.away_goals,
-          f.round_number,
-          f.home_team_id,
-          f.home_team_name,
-          f.away_team_id,
-          f.away_team_name,
-          f.motm_player_id,
-          f.status
-        FROM matchups m
-        JOIN fixtures f ON m.fixture_id = f.id
-        WHERE f.tournament_id = ${tournamentId}
-          AND f.season_id = ${seasonId}
-          AND f.round_number >= ${startNum}
-          AND f.round_number <= ${endNum}
-          AND f.status = 'completed'
-        ORDER BY f.round_number, m.home_player_name
-      `;
+      
+      if (viewMode === 'full-season') {
+        matchups = await sql`
+          SELECT 
+            m.home_player_id,
+            m.home_player_name,
+            m.away_player_id,
+            m.away_player_name,
+            m.home_goals,
+            m.away_goals,
+            f.round_number,
+            f.home_team_id,
+            f.home_team_name,
+            f.away_team_id,
+            f.away_team_name,
+            f.motm_player_id,
+            f.status,
+            f.tournament_id
+          FROM matchups m
+          JOIN fixtures f ON m.fixture_id = f.id
+          WHERE f.season_id = ${seasonId}
+            AND f.round_number >= ${startNum}
+            AND f.round_number <= ${endNum}
+            AND f.status = 'completed'
+          ORDER BY f.round_number, m.home_player_name
+        `;
+      } else {
+        matchups = await sql`
+          SELECT 
+            m.home_player_id,
+            m.home_player_name,
+            m.away_player_id,
+            m.away_player_name,
+            m.home_goals,
+            m.away_goals,
+            f.round_number,
+            f.home_team_id,
+            f.home_team_name,
+            f.away_team_id,
+            f.away_team_name,
+            f.motm_player_id,
+            f.status
+          FROM matchups m
+          JOIN fixtures f ON m.fixture_id = f.id
+          WHERE f.tournament_id = ${tournamentId}
+            AND f.season_id = ${seasonId}
+            AND f.round_number >= ${startNum}
+            AND f.round_number <= ${endNum}
+            AND f.status = 'completed'
+          ORDER BY f.round_number, m.home_player_name
+        `;
+      }
       console.log(`[Player Stats By Round] Found ${matchups.length} matchups for rounds ${startNum}-${endNum}`);
     } else if (roundNumber && roundNumber !== 'all') {
       // Filter by rounds up to and including the selected round (cumulative)
       const roundNum = parseInt(roundNumber);
       console.log(`[Player Stats By Round] Filtering by rounds 1 to ${roundNum} (cumulative)`);
-      matchups = await sql`
-        SELECT 
-          m.home_player_id,
-          m.home_player_name,
-          m.away_player_id,
-          m.away_player_name,
-          m.home_goals,
-          m.away_goals,
-          f.round_number,
-          f.home_team_id,
-          f.home_team_name,
-          f.away_team_id,
-          f.away_team_name,
-          f.motm_player_id,
-          f.status
-        FROM matchups m
-        JOIN fixtures f ON m.fixture_id = f.id
-        WHERE f.tournament_id = ${tournamentId}
-          AND f.season_id = ${seasonId}
-          AND f.round_number <= ${roundNum}
-          AND f.status = 'completed'
-        ORDER BY f.round_number, m.home_player_name
-      `;
+      
+      if (viewMode === 'full-season') {
+        matchups = await sql`
+          SELECT 
+            m.home_player_id,
+            m.home_player_name,
+            m.away_player_id,
+            m.away_player_name,
+            m.home_goals,
+            m.away_goals,
+            f.round_number,
+            f.home_team_id,
+            f.home_team_name,
+            f.away_team_id,
+            f.away_team_name,
+            f.motm_player_id,
+            f.status,
+            f.tournament_id
+          FROM matchups m
+          JOIN fixtures f ON m.fixture_id = f.id
+          WHERE f.season_id = ${seasonId}
+            AND f.round_number <= ${roundNum}
+            AND f.status = 'completed'
+          ORDER BY f.round_number, m.home_player_name
+        `;
+      } else {
+        matchups = await sql`
+          SELECT 
+            m.home_player_id,
+            m.home_player_name,
+            m.away_player_id,
+            m.away_player_name,
+            m.home_goals,
+            m.away_goals,
+            f.round_number,
+            f.home_team_id,
+            f.home_team_name,
+            f.away_team_id,
+            f.away_team_name,
+            f.motm_player_id,
+            f.status
+          FROM matchups m
+          JOIN fixtures f ON m.fixture_id = f.id
+          WHERE f.tournament_id = ${tournamentId}
+            AND f.season_id = ${seasonId}
+            AND f.round_number <= ${roundNum}
+            AND f.status = 'completed'
+          ORDER BY f.round_number, m.home_player_name
+        `;
+      }
       console.log(`[Player Stats By Round] Found ${matchups.length} matchups for rounds 1-${roundNum}`);
     } else {
       // Get all rounds
       console.log(`[Player Stats By Round] Fetching all rounds`);
-      matchups = await sql`
-        SELECT 
-          m.home_player_id,
-          m.home_player_name,
-          m.away_player_id,
-          m.away_player_name,
-          m.home_goals,
-          m.away_goals,
-          f.round_number,
-          f.home_team_id,
-          f.home_team_name,
-          f.away_team_id,
-          f.away_team_name,
-          f.motm_player_id,
-          f.status
-        FROM matchups m
-        JOIN fixtures f ON m.fixture_id = f.id
-        WHERE f.tournament_id = ${tournamentId}
-          AND f.season_id = ${seasonId}
-          AND f.status = 'completed'
-        ORDER BY f.round_number, m.home_player_name
-      `;
+      
+      if (viewMode === 'full-season') {
+        matchups = await sql`
+          SELECT 
+            m.home_player_id,
+            m.home_player_name,
+            m.away_player_id,
+            m.away_player_name,
+            m.home_goals,
+            m.away_goals,
+            f.round_number,
+            f.home_team_id,
+            f.home_team_name,
+            f.away_team_id,
+            f.away_team_name,
+            f.motm_player_id,
+            f.status,
+            f.tournament_id
+          FROM matchups m
+          JOIN fixtures f ON m.fixture_id = f.id
+          WHERE f.season_id = ${seasonId}
+            AND f.status = 'completed'
+          ORDER BY f.round_number, m.home_player_name
+        `;
+      } else {
+        matchups = await sql`
+          SELECT 
+            m.home_player_id,
+            m.home_player_name,
+            m.away_player_id,
+            m.away_player_name,
+            m.home_goals,
+            m.away_goals,
+            f.round_number,
+            f.home_team_id,
+            f.home_team_name,
+            f.away_team_id,
+            f.away_team_name,
+            f.motm_player_id,
+            f.status
+          FROM matchups m
+          JOIN fixtures f ON m.fixture_id = f.id
+          WHERE f.tournament_id = ${tournamentId}
+            AND f.season_id = ${seasonId}
+            AND f.status = 'completed'
+          ORDER BY f.round_number, m.home_player_name
+        `;
+      }
       console.log(`[Player Stats By Round] Found ${matchups.length} total matchups`);
     }
 

@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
       // Get all awards - from both tables
       const oldAwards = await sql`
         SELECT * FROM player_awards
-        ORDER BY created_at DESC
+        ORDER BY display_order DESC, created_at DESC
       `;
       const newAwards = await sql`
         SELECT 

@@ -1,0 +1,27 @@
+--- Columns in fantasy_player_points ---
+id: integer
+league_id: character varying
+team_id: character varying
+real_player_id: character varying
+player_name: character varying
+fixture_id: character varying
+round_number: integer
+goals_scored: integer
+goals_conceded: integer
+clean_sheet: boolean
+motm: boolean
+base_points: integer
+bonus_points: integer
+total_points: integer
+is_captain: boolean
+points_multiplier: integer
+recorded_at: timestamp without time zone
+result: character varying
+is_motm: boolean
+fine_goals: integer
+substitution_penalty: integer
+is_clean_sheet: boolean
+points_breakdown: jsonb
+calculated_at: timestamp without time zone
+fantasy_round_id: character varying
+is_vice_captain: boolean

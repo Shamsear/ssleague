@@ -1,0 +1,23 @@
+[
+  {
+    "tournament_id": "SSPSLS16CH",
+    "start_played": null,
+    "end_played": null,
+    "start_sched": "2026-01-30T18:30:00.000Z",
+    "end_sched": "2026-01-30T18:30:00.000Z"
+  },
+  {
+    "tournament_id": "SSPSLS16L",
+    "start_played": null,
+    "end_played": null,
+    "start_sched": "2026-01-31T18:30:00.000Z",
+    "end_sched": "2026-02-17T18:30:00.000Z"
+  },
+  {
+    "tournament_id": "SSPSLS16EL",
+    "start_played": null,
+    "end_played": null,
+    "start_sched": "2026-01-25T18:30:00.000Z",
+    "end_sched": "2026-01-31T18:30:00.000Z"
+  }
+]

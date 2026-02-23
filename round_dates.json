@@ -1,0 +1,152 @@
+[
+  {
+    "round_number": 1,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 2,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 3,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 4,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 5,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 6,
+    "start_date": "2026-01-25T18:30:00.000Z",
+    "end_date": "2026-01-30T18:30:00.000Z"
+  },
+  {
+    "round_number": 7,
+    "start_date": "2026-01-25T18:30:00.000Z",
+    "end_date": "2026-01-25T18:30:00.000Z"
+  },
+  {
+    "round_number": 8,
+    "start_date": "2026-01-31T18:30:00.000Z",
+    "end_date": "2026-01-31T18:30:00.000Z"
+  },
+  {
+    "round_number": 9,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 10,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 11,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 12,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 13,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 14,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 15,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 16,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 17,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 18,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 19,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 20,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 21,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 22,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 23,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 24,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 25,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 26,
+    "start_date": null,
+    "end_date": null
+  },
+  {
+    "round_number": 27,
+    "start_date": "2026-01-31T18:30:00.000Z",
+    "end_date": "2026-01-31T18:30:00.000Z"
+  },
+  {
+    "round_number": 28,
+    "start_date": "2026-01-31T18:30:00.000Z",
+    "end_date": "2026-01-31T18:30:00.000Z"
+  },
+  {
+    "round_number": 29,
+    "start_date": "2026-02-04T18:30:00.000Z",
+    "end_date": "2026-02-04T18:30:00.000Z"
+  },
+  {
+    "round_number": 30,
+    "start_date": "2026-02-17T18:30:00.000Z",
+    "end_date": "2026-02-17T18:30:00.000Z"
+  }
+]

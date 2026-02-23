@@ -53,11 +53,15 @@ export async function awardSeasonTrophies(
     // Process each tournament
     for (const tournament of tournaments) {
       console.log(`\n📋 Processing tournament: ${tournament.tournament_name}`);
+      console.log(`   Type: ${tournament.tournament_type}`);
+      console.log(`   is_pure_knockout: ${tournament.is_pure_knockout}`);
+      console.log(`   has_knockout_stage: ${tournament.has_knockout_stage}`);
+      console.log(`   has_group_stage: ${tournament.has_group_stage}`);
       
       // Get completed fixtures for this tournament
       const fixtures = await sql`
         SELECT 
-          home_team_id, home_team_name, away_team_id, away_team_name,
+          id, home_team_id, home_team_name, away_team_id, away_team_name,
           home_score, away_score, knockout_round, group_name
         FROM fixtures
         WHERE tournament_id = ${tournament.id}
@@ -71,28 +75,120 @@ export async function awardSeasonTrophies(
       }
       
       // Award based on tournament format
-      if (tournament.is_pure_knockout || tournament.has_knockout_stage) {
-        // Award knockout trophies (Winner and Runner-up from final)
+      if (tournament.is_pure_knockout) {
+        // Pure knockout - award knockout trophies only
+        console.log(`  🏆 Pure knockout tournament`);
+        const knockoutAwards = await awardKnockoutTrophies(
+          sql, seasonId, tournament, fixtures
+        );
+        awards.push(...knockoutAwards.awards);
+        trophiesAwarded += knockoutAwards.count;
+      } else if (tournament.has_group_stage && tournament.has_knockout_stage) {
+        // Group + Knockout - award knockout trophies only (not group winners)
+        console.log(`  🏆 Group stage + Knockout tournament - awarding knockout trophies only`);
+        const knockoutAwards = await awardKnockoutTrophies(
+          sql, seasonId, tournament, fixtures
+        );
+        awards.push(...knockoutAwards.awards);
+        trophiesAwarded += knockoutAwards.count;
+      } else if (tournament.has_knockout_stage) {
+        // League + Knockout - award shield winner + knockout winner & runner-up
+        console.log(`  🏆 League + Knockout tournament - awarding shield winner + knockout trophies`);
+        
+        // Award shield winner only (no runner-up)
+        const leagueFixtures = fixtures.filter((f: any) => f.id && !f.id.includes('_ko_'));
+        console.log(`  📊 Total fixtures: ${fixtures.length}, League fixtures: ${leagueFixtures.length}`);
+        const leagueAwards = await awardLeagueTrophies(
+          sql, seasonId, tournament, leagueFixtures, 1  // Only award top 1 (winner)
+        );
+        awards.push(...leagueAwards.awards);
+        trophiesAwarded += leagueAwards.count;
+        
+        // Award knockout trophies
         const knockoutAwards = await awardKnockoutTrophies(
           sql, seasonId, tournament, fixtures
         );
         awards.push(...knockoutAwards.awards);
         trophiesAwarded += knockoutAwards.count;
       } else if (tournament.has_group_stage) {
-        // Award group stage winners
+        // Pure group stage - award group winners
+        console.log(`  🏆 Group stage tournament`);
         const groupAwards = await awardGroupStageTrophies(
           sql, seasonId, tournament, fixtures
         );
         awards.push(...groupAwards.awards);
         trophiesAwarded += groupAwards.count;
       } else {
-        // Award league trophies
+        // Pure league - award shield winner only (no runner-up)
+        console.log(`  🏆 League tournament`);
+        const leagueFixtures = fixtures.filter((f: any) => f.id && !f.id.includes('_ko_'));
+        console.log(`  📊 Total fixtures: ${fixtures.length}, League fixtures (excluding knockout): ${leagueFixtures.length}`);
         const leagueAwards = await awardLeagueTrophies(
-          sql, seasonId, tournament, fixtures, awardTopN
+          sql, seasonId, tournament, leagueFixtures, 1  // Only award top 1 (winner)
         );
         awards.push(...leagueAwards.awards);
         trophiesAwarded += leagueAwards.count;
       }
+    }
+    
+    // Award Fantasy League Winner
+    console.log(`\n📋 Checking for Fantasy League winner...`);
+    try {
+      const { getFantasyDb } = await import('@/lib/neon/fantasy-config');
+      const fantasySql = getFantasyDb();
+      
+      // Get fantasy league for this season
+      const fantasyLeagues = await fantasySql`
+        SELECT league_id, league_name
+        FROM fantasy_leagues
+        WHERE season_id = ${seasonId}
+        LIMIT 1
+      `;
+      
+      if (fantasyLeagues.length > 0) {
+        const fantasyLeague = fantasyLeagues[0];
+        console.log(`  Found fantasy league: ${fantasyLeague.league_name}`);
+        
+        // Get top fantasy team
+        const topTeam = await fantasySql`
+          SELECT team_id, team_name, total_points, rank
+          FROM fantasy_teams
+          WHERE league_id = ${fantasyLeague.league_id}
+          ORDER BY rank ASC NULLS LAST, total_points DESC
+          LIMIT 1
+        `;
+        
+        if (topTeam.length > 0) {
+          console.log(`  🥇 Fantasy Winner: ${topTeam[0].team_name} (${topTeam[0].total_points} pts)`);
+          
+          // Award the trophy
+          const result = await sql`
+            INSERT INTO team_trophies (
+              team_id, team_name, season_id, trophy_type, trophy_name, trophy_position, position, awarded_by
+            )
+            VALUES (
+              ${topTeam[0].team_id}, ${topTeam[0].team_name}, ${seasonId}, 'special', 
+              ${fantasyLeague.league_name}, 'Winner', 1, 'system'
+            )
+            ON CONFLICT (team_id, season_id, trophy_name, trophy_position) DO NOTHING
+            RETURNING *
+          `;
+          
+          if (result.length > 0) {
+            awards.push({
+              team_name: topTeam[0].team_name,
+              trophy_name: `${fantasyLeague.league_name} Winner`,
+              position: 1
+            });
+            trophiesAwarded++;
+            console.log(`  ✅ Awarded fantasy trophy to ${topTeam[0].team_name}`);
+          } else {
+            console.log(`  ℹ️  Fantasy trophy already awarded`);
+          }
+        }
+      }
+    } catch (fantasyError) {
+      console.log(`  ⚠️  Could not award fantasy trophy:`, fantasyError);
     }
     
     console.log(`\n🏆 Trophy auto-award complete: ${trophiesAwarded} new trophies awarded`);
@@ -189,9 +285,21 @@ async function awardKnockoutTrophies(
 ) {
   const knockoutFixtures = fixtures.filter((f: any) => f.knockout_round);
   
-  // Find the final (last round)
+  console.log(`  🔍 Found ${knockoutFixtures.length} knockout fixtures`);
+  
+  // Find the final (last round) - Finals should be the last
   const rounds = [...new Set(knockoutFixtures.map((f: any) => f.knockout_round))];
-  const finalRound = rounds.sort().pop();
+  console.log(`  🔍 Knockout rounds found: ${rounds.join(', ')}`);
+  
+  // Find the final - look for "Final" or "final" in the round name
+  let finalRound = rounds.find((r: string) => r.toLowerCase().includes('final') && !r.toLowerCase().includes('semi'));
+  
+  if (!finalRound) {
+    // Fallback: use the last round alphabetically
+    finalRound = rounds.sort().pop();
+  }
+  
+  console.log(`  🏆 Final round identified: ${finalRound}`);
   
   if (!finalRound) {
     console.log(`  ⚠️  No final found`);
@@ -201,8 +309,11 @@ async function awardKnockoutTrophies(
   const finalFixture = knockoutFixtures.find((f: any) => f.knockout_round === finalRound);
   
   if (!finalFixture) {
+    console.log(`  ⚠️  No fixture found for final round`);
     return { awards: [], count: 0 };
   }
+  
+  console.log(`  📊 Final fixture: ${finalFixture.home_team_name} ${finalFixture.home_score} - ${finalFixture.away_score} ${finalFixture.away_team_name}`);
   
   const awards = [];
   let count = 0;
@@ -215,6 +326,9 @@ async function awardKnockoutTrophies(
   const runnerUp = finalFixture.home_score > finalFixture.away_score
     ? { id: finalFixture.away_team_id, name: finalFixture.away_team_name }
     : { id: finalFixture.home_team_id, name: finalFixture.home_team_name };
+  
+  console.log(`  🥇 Winner: ${winner.name}`);
+  console.log(`  🥈 Runner-up: ${runnerUp.name}`);
   
   // Award winner
   const winnerResult = await sql`
@@ -472,9 +586,16 @@ export async function previewSeasonTrophies(
     
     // Process each tournament
     for (const tournament of tournaments) {
+      console.log(`\n📋 [PREVIEW] Processing tournament: ${tournament.tournament_name}`);
+      console.log(`   Type: ${tournament.tournament_type}`);
+      console.log(`   is_pure_knockout: ${tournament.is_pure_knockout}`);
+      console.log(`   has_knockout_stage: ${tournament.has_knockout_stage}`);
+      console.log(`   has_group_stage: ${tournament.has_group_stage}`);
+      
+      // Get fixtures for this tournament
       const fixtures = await sql`
         SELECT 
-          home_team_id, home_team_name, away_team_id, away_team_name,
+          id, home_team_id, home_team_name, away_team_id, away_team_name,
           home_score, away_score, knockout_round, group_name
         FROM fixtures
         WHERE tournament_id = ${tournament.id}
@@ -482,17 +603,29 @@ export async function previewSeasonTrophies(
           AND result IS NOT NULL
       `;
       
+      console.log(`   Total fixtures: ${fixtures.length}`);
+      
       if (fixtures.length === 0) continue;
       
       // Generate preview based on tournament format
-      if (tournament.is_pure_knockout || tournament.has_knockout_stage) {
+      if (tournament.is_pure_knockout) {
+        console.log(`   🏆 Pure knockout tournament`);
+        // Pure knockout - show knockout trophies only
         const knockoutFixtures = fixtures.filter((f: any) => f.knockout_round);
+        console.log(`   🔍 Found ${knockoutFixtures.length} knockout fixtures`);
         const rounds = [...new Set(knockoutFixtures.map((f: any) => f.knockout_round))];
-        const finalRound = rounds.sort().pop();
+        console.log(`   🔍 Knockout rounds: ${rounds.join(', ')}`);
+        
+        // Find the final
+        let finalRound = rounds.find((r: string) => r.toLowerCase().includes('final') && !r.toLowerCase().includes('semi'));
+        if (!finalRound) finalRound = rounds.sort().pop();
+        console.log(`   🏆 Final round: ${finalRound}`);
         
         if (finalRound) {
           const finalFixture = knockoutFixtures.find((f: any) => f.knockout_round === finalRound);
           if (finalFixture) {
+            console.log(`   📊 Final: ${finalFixture.home_team_name} ${finalFixture.home_score} - ${finalFixture.away_score} ${finalFixture.away_team_name}`);
+            
             const winner = finalFixture.home_score > finalFixture.away_score
               ? { id: finalFixture.home_team_id, name: finalFixture.home_team_name }
               : { id: finalFixture.away_team_id, name: finalFixture.away_team_name };
@@ -500,6 +633,9 @@ export async function previewSeasonTrophies(
             const runnerUp = finalFixture.home_score > finalFixture.away_score
               ? { id: finalFixture.away_team_id, name: finalFixture.away_team_name }
               : { id: finalFixture.home_team_id, name: finalFixture.home_team_name };
+            
+            console.log(`   🥇 Winner: ${winner.name}`);
+            console.log(`   🥈 Runner-up: ${runnerUp.name}`);
             
             preview.push({
               team_id: winner.id,
@@ -522,28 +658,136 @@ export async function previewSeasonTrophies(
             });
           }
         }
+      } else if (tournament.has_group_stage && tournament.has_knockout_stage) {
+        console.log(`   🏆 Group + Knockout tournament - knockout trophies only`);
+        // Group + Knockout - show knockout trophies only (not group winners)
+        const knockoutFixtures = fixtures.filter((f: any) => f.knockout_round);
+        console.log(`   🔍 Found ${knockoutFixtures.length} knockout fixtures`);
+        const rounds = [...new Set(knockoutFixtures.map((f: any) => f.knockout_round))];
+        console.log(`   🔍 Knockout rounds: ${rounds.join(', ')}`);
+        
+        // Find the final
+        let finalRound = rounds.find((r: string) => r.toLowerCase().includes('final') && !r.toLowerCase().includes('semi'));
+        if (!finalRound) finalRound = rounds.sort().pop();
+        console.log(`   🏆 Final round: ${finalRound}`);
+        
+        if (finalRound) {
+          const finalFixture = knockoutFixtures.find((f: any) => f.knockout_round === finalRound);
+          if (finalFixture) {
+            console.log(`   📊 Final: ${finalFixture.home_team_name} ${finalFixture.home_score} - ${finalFixture.away_score} ${finalFixture.away_team_name}`);
+            
+            const winner = finalFixture.home_score > finalFixture.away_score
+              ? { id: finalFixture.home_team_id, name: finalFixture.home_team_name }
+              : { id: finalFixture.away_team_id, name: finalFixture.away_team_name };
+            
+            const runnerUp = finalFixture.home_score > finalFixture.away_score
+              ? { id: finalFixture.away_team_id, name: finalFixture.away_team_name }
+              : { id: finalFixture.home_team_id, name: finalFixture.home_team_name };
+            
+            console.log(`   🥇 Winner: ${winner.name}`);
+            console.log(`   🥈 Runner-up: ${runnerUp.name}`);
+            
+            preview.push({
+              team_id: winner.id,
+              team_name: winner.name,
+              position: 1,
+              trophy_name: `${tournament.tournament_name} Winner`,
+              trophy_type: 'cup',
+              tournament_name: tournament.tournament_name,
+              alreadyAwarded: existingMap.get(winner.id)?.has(`${tournament.tournament_name}|Winner`) || false
+            });
+            
+            preview.push({
+              team_id: runnerUp.id,
+              team_name: runnerUp.name,
+              position: 2,
+              trophy_name: `${tournament.tournament_name} Runner Up`,
+              trophy_type: 'runner_up',
+              tournament_name: tournament.tournament_name,
+              alreadyAwarded: existingMap.get(runnerUp.id)?.has(`${tournament.tournament_name}|Runner Up`) || false
+            });
+          }
+        }
+      } else if (tournament.has_knockout_stage) {
+        console.log(`   🏆 League + Knockout tournament`);
+        // League + Knockout - show shield winner + knockout winner & runner-up
+        
+        // Shield winner only (no runner-up)
+        const leagueFixtures = fixtures.filter((f: any) => f.id && !f.id.includes('_ko_'));
+        console.log(`   📊 League fixtures: ${leagueFixtures.length}`);
+        const standings = calculateStandings(leagueFixtures);
+        const topTeam = standings[0];  // Only top 1 (winner)
+        
+        if (topTeam) {
+          console.log(`   🥇 Shield Winner: ${topTeam.team_name}`);
+          preview.push({
+            team_id: topTeam.team_id,
+            team_name: topTeam.team_name,
+            position: 1,
+            trophy_name: `${tournament.tournament_name} Shield Winner`,
+            trophy_type: 'cup',
+            tournament_name: tournament.tournament_name,
+            alreadyAwarded: existingMap.get(topTeam.team_id)?.has(`${tournament.tournament_name}|Winner`) || false
+          });
+        }
+        
+        // Knockout trophies
+        const knockoutFixtures = fixtures.filter((f: any) => f.knockout_round);
+        console.log(`   🔍 Found ${knockoutFixtures.length} knockout fixtures`);
+        const rounds = [...new Set(knockoutFixtures.map((f: any) => f.knockout_round))];
+        console.log(`   🔍 Knockout rounds: ${rounds.join(', ')}`);
+        
+        // Find the final
+        let finalRound = rounds.find((r: string) => r.toLowerCase().includes('final') && !r.toLowerCase().includes('semi'));
+        if (!finalRound) finalRound = rounds.sort().pop();
+        console.log(`   🏆 Final round: ${finalRound}`);
+        
+        if (finalRound) {
+          const finalFixture = knockoutFixtures.find((f: any) => f.knockout_round === finalRound);
+          if (finalFixture) {
+            console.log(`   📊 Final: ${finalFixture.home_team_name} ${finalFixture.home_score} - ${finalFixture.away_score} ${finalFixture.away_team_name}`);
+            
+            const winner = finalFixture.home_score > finalFixture.away_score
+              ? { id: finalFixture.home_team_id, name: finalFixture.home_team_name }
+              : { id: finalFixture.away_team_id, name: finalFixture.away_team_name };
+            
+            const runnerUp = finalFixture.home_score > finalFixture.away_score
+              ? { id: finalFixture.away_team_id, name: finalFixture.away_team_name }
+              : { id: finalFixture.home_team_id, name: finalFixture.home_team_name };
+            
+            console.log(`   🥇 Knockout Winner: ${winner.name}`);
+            console.log(`   🥈 Knockout Runner-up: ${runnerUp.name}`);
+            
+            preview.push({
+              team_id: winner.id,
+              team_name: winner.name,
+              position: 1,
+              trophy_name: `${tournament.tournament_name} Knockout Winner`,
+              trophy_type: 'cup',
+              tournament_name: tournament.tournament_name,
+              alreadyAwarded: existingMap.get(winner.id)?.has(`${tournament.tournament_name}|Winner`) || false
+            });
+            
+            preview.push({
+              team_id: runnerUp.id,
+              team_name: runnerUp.name,
+              position: 2,
+              trophy_name: `${tournament.tournament_name} Knockout Runner Up`,
+              trophy_type: 'runner_up',
+              tournament_name: tournament.tournament_name,
+              alreadyAwarded: existingMap.get(runnerUp.id)?.has(`${tournament.tournament_name}|Runner Up`) || false
+            });
+          }
+        }
       } else {
-        // League format
-        const standings = calculateStandings(fixtures);
-        const topTeams = standings.slice(0, awardTopN);
+        // Pure league - show shield winner only (no runner-up)
+        const leagueFixtures = fixtures.filter((f: any) => f.id && !f.id.includes('_ko_'));
+        const standings = calculateStandings(leagueFixtures);
+        const topTeams = standings.slice(0, 1);  // Only top 1 (winner)
         
         for (const team of topTeams) {
-          let trophyType = '';
-          let trophyPosition = '';
-          
-          if (team.position === 1) {
-            trophyType = 'cup';
-            trophyPosition = 'Winner';
-          } else if (team.position === 2) {
-            trophyType = 'runner_up';
-            trophyPosition = 'Runner Up';
-          } else if (team.position === 3) {
-            trophyType = 'third_place';
-            trophyPosition = 'Third Place';
-          } else {
-            trophyType = 'special';
-            trophyPosition = `${team.position}${getOrdinalSuffix(team.position)} Place`;
-          }
+          let trophyType = 'cup';
+          let trophyPosition = 'Winner';
           
           preview.push({
             team_id: team.team_id,
@@ -556,6 +800,51 @@ export async function previewSeasonTrophies(
           });
         }
       }
+    }
+    
+    // Add Fantasy League Winner
+    console.log(`\n📋 [PREVIEW] Checking for Fantasy League winner...`);
+    try {
+      const { getFantasyDb } = await import('@/lib/neon/fantasy-config');
+      const fantasySql = getFantasyDb();
+      
+      // Get fantasy league for this season
+      const fantasyLeagues = await fantasySql`
+        SELECT league_id, league_name
+        FROM fantasy_leagues
+        WHERE season_id = ${seasonId}
+        LIMIT 1
+      `;
+      
+      if (fantasyLeagues.length > 0) {
+        const fantasyLeague = fantasyLeagues[0];
+        console.log(`   Found fantasy league: ${fantasyLeague.league_name}`);
+        
+        // Get top fantasy team
+        const topTeam = await fantasySql`
+          SELECT team_id, team_name, total_points, rank
+          FROM fantasy_teams
+          WHERE league_id = ${fantasyLeague.league_id}
+          ORDER BY rank ASC NULLS LAST, total_points DESC
+          LIMIT 1
+        `;
+        
+        if (topTeam.length > 0) {
+          console.log(`   🥇 Fantasy Winner: ${topTeam[0].team_name} (${topTeam[0].total_points} pts)`);
+          
+          preview.push({
+            team_id: topTeam[0].team_id,
+            team_name: topTeam[0].team_name,
+            position: 1,
+            trophy_name: `${fantasyLeague.league_name} Winner`,
+            trophy_type: 'special',
+            tournament_name: fantasyLeague.league_name,
+            alreadyAwarded: existingMap.get(topTeam[0].team_id)?.has(`${fantasyLeague.league_name}|Winner`) || false
+          });
+        }
+      }
+    } catch (fantasyError) {
+      console.log(`   ⚠️  Could not fetch fantasy winner:`, fantasyError);
     }
     
     return {

@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "change_id": "stc_SSPSLT0010_1767538976762",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0010",
+    "window_id": "stw_SSPSLFLS16_1767471253796",
+    "old_supported_team_id": "SSPSLT0010_SSPSLS16",
+    "old_supported_team_name": "Varsity Soccers",
+    "new_supported_team_id": "SSPSLT0015_SSPSLS16",
+    "new_supported_team_name": "Legends FC",
+    "changed_by": "kplwDci6lngs5Ew7CGuTn28qM8F3",
+    "changed_at": "2026-01-04T09:32:56.774Z",
+    "reason": "Ippo ulla team kond poyal edem ethoola"
+  },
+  {
+    "id": 2,
+    "change_id": "stc_SSPSLT0013_1767539013521",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0013",
+    "window_id": "stw_SSPSLFLS16_1767471253796",
+    "old_supported_team_id": "SSPSLT0013_SSPSLS16",
+    "old_supported_team_name": "Psychoz",
+    "new_supported_team_id": "SSPSLT0015_SSPSLS16",
+    "new_supported_team_name": "Legends FC",
+    "changed_by": "TpmVDhi4dDVTFRoZ6I9V4YRNVj12",
+    "changed_at": "2026-01-04T09:33:33.529Z",
+    "reason": "Rohu🔥"
+  },
+  {
+    "id": 3,
+    "change_id": "stc_SSPSLT0034_1767553902973",
+    "league_id": "SSPSLFLS16",
+    "team_id": "SSPSLT0034",
+    "window_id": "stw_SSPSLFLS16_1767471253796",
+    "old_supported_team_id": "SSPSLT0034_SSPSLS16",
+    "old_supported_team_name": "Los Blancos",
+    "new_supported_team_id": "SSPSLT0015_SSPSLS16",
+    "new_supported_team_name": "Legends FC",
+    "changed_by": "lEpuvFVcRKR16EIxapXR42dyMcZ2",
+    "changed_at": "2026-01-04T13:41:42.992Z",
+    "reason": "Team preference change"
+  }
+]

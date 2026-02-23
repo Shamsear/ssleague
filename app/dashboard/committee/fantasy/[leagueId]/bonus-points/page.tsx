@@ -534,9 +534,9 @@ export default function BonusPointsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {bonusHistory.map((record) => (
+              {bonusHistory.map((record, index) => (
                 <div
-                  key={record.id}
+                  key={`${record.id}-${index}`}
                   className="bg-white/70 rounded-lg p-4 flex items-center justify-between"
                 >
                   <div className="flex-1">

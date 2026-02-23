@@ -1,0 +1,14 @@
+--- Columns in fantasy_rounds ---
+id: integer
+fantasy_round_id: character varying
+league_id: character varying
+round_id: character varying
+round_number: integer
+round_name: character varying
+round_start_date: timestamp without time zone
+round_end_date: timestamp without time zone
+is_active: boolean
+is_completed: boolean
+points_calculated: boolean
+created_at: timestamp without time zone
+updated_at: timestamp without time zone

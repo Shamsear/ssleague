@@ -37,6 +37,7 @@ export default function TrophyManagementPage() {
   
   const [trophies, setTrophies] = useState<Trophy[]>([]);
   const [preview, setPreview] = useState<TrophyPreview[]>([]);
+  const [selectedTrophies, setSelectedTrophies] = useState<Set<string>>(new Set());
   const [teams, setTeams] = useState<string[]>([]);
   const [trophyOptions, setTrophyOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,6 +100,14 @@ export default function TrophyManagementPage() {
       const data = await res.json();
       if (data.success) {
         setPreview(data.preview || []);
+        // Auto-select trophies that haven't been awarded yet
+        const notAwarded = new Set<string>();
+        (data.preview || []).forEach((p: TrophyPreview, index: number) => {
+          if (!p.alreadyAwarded) {
+            notAwarded.add(`${index}`);
+          }
+        });
+        setSelectedTrophies(notAwarded);
       }
     } catch (err) {
       console.error('Error fetching preview:', err);
@@ -148,15 +157,26 @@ export default function TrophyManagementPage() {
   const handleAutoAward = async () => {
     if (!userSeasonId) return;
     
+    if (selectedTrophies.size === 0) {
+      setError('Please select at least one trophy to award');
+      return;
+    }
+    
     setAwarding(true);
     setError(null);
     setSuccess(null);
     
     try {
-      const res = await fetchWithTokenRefresh('/api/trophies/award', {
+      // Build list of selected trophies to award
+      const trophiesToAward = Array.from(selectedTrophies).map(index => preview[parseInt(index)]);
+      
+      const res = await fetchWithTokenRefresh('/api/trophies/award-selected', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ season_id: userSeasonId })
+        body: JSON.stringify({ 
+          season_id: userSeasonId,
+          trophies: trophiesToAward
+        })
       });
       
       const data = await res.json();
@@ -171,6 +191,25 @@ export default function TrophyManagementPage() {
       setError('Failed to award trophies');
     } finally {
       setAwarding(false);
+    }
+  };
+
+  const toggleTrophySelection = (index: number) => {
+    const newSelected = new Set(selectedTrophies);
+    const key = `${index}`;
+    if (newSelected.has(key)) {
+      newSelected.delete(key);
+    } else {
+      newSelected.add(key);
+    }
+    setSelectedTrophies(newSelected);
+  };
+
+  const toggleAllTrophies = () => {
+    if (selectedTrophies.size === preview.length) {
+      setSelectedTrophies(new Set());
+    } else {
+      setSelectedTrophies(new Set(preview.map((_, i) => `${i}`)));
     }
   };
 
@@ -315,25 +354,53 @@ export default function TrophyManagementPage() {
                   🏆 {tournamentName}
                 </h3>
                 <div className="space-y-2 sm:space-y-3">
-                  {trophies.map((p) => (
-                    <div key={`${p.team_name}-${p.trophy_name}`} className="flex items-center justify-between bg-white p-3 sm:p-4 rounded-xl border border-gray-200">
-                      <div>
-                        <p className="text-sm sm:text-base font-bold text-gray-900">{p.team_name}</p>
-                        <p className="text-xs sm:text-sm text-gray-600">{p.trophy_name}</p>
+                  {trophies.map((p, localIndex) => {
+                    const globalIndex = preview.findIndex(item => item === p);
+                    const isSelected = selectedTrophies.has(`${globalIndex}`);
+                    return (
+                      <div 
+                        key={`${p.team_name}-${p.trophy_name}`} 
+                        className={`flex items-center gap-3 bg-white p-3 sm:p-4 rounded-xl border-2 transition-all ${
+                          isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                        } ${p.alreadyAwarded ? 'opacity-60' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleTrophySelection(globalIndex)}
+                          disabled={p.alreadyAwarded}
+                          className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                        />
+                        <div className="flex-1">
+                          <p className="text-sm sm:text-base font-bold text-gray-900">{p.team_name}</p>
+                          <p className="text-xs sm:text-sm text-gray-600">{p.trophy_name}</p>
+                        </div>
+                        {p.alreadyAwarded && <span className="text-green-600 text-xs sm:text-sm font-semibold">✅ Awarded</span>}
                       </div>
-                      {p.alreadyAwarded && <span className="text-green-600 text-xs sm:text-sm font-semibold">✅ Awarded</span>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
             
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+              <button
+                onClick={toggleAllTrophies}
+                className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
+              >
+                {selectedTrophies.size === preview.length ? '☐ Deselect All' : '☑ Select All'}
+              </button>
+              <span className="text-sm text-gray-600">
+                {selectedTrophies.size} of {preview.length} selected
+              </span>
+            </div>
+            
             <button
               onClick={handleAutoAward}
-              disabled={awarding}
+              disabled={awarding || selectedTrophies.size === 0}
               className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 mt-4"
             >
-              {awarding ? 'Awarding...' : '⚡ Auto-Award Trophies'}
+              {awarding ? 'Awarding...' : `⚡ Award Selected Trophies (${selectedTrophies.size})`}
             </button>
           </div>
         )}

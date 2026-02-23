@@ -11,6 +11,7 @@ interface PlayerAward {
   player_id: string;
   player_name: string;
   season_id: string;
+  tournament_id?: string;
   award_category: string; // 'individual' or 'category'
   award_type: string;
   award_position: string | null;
@@ -26,6 +27,20 @@ interface Player {
   category: string;
 }
 
+interface Tournament {
+  id: string;
+  tournament_name: string;
+  tournament_type: string;
+  status: string;
+}
+
+interface AwardPreview {
+  award_type: string;
+  player_id: string;
+  player_name: string;
+  stats: any;
+}
+
 export default function PlayerAwardsManagementPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -33,12 +48,28 @@ export default function PlayerAwardsManagementPage() {
   
   const [awards, setAwards] = useState<PlayerAward[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [selectedTournament, setSelectedTournament] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [awarding, setAwarding] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<'all' | 'individual' | 'category'>('all');
+  const [preview, setPreview] = useState<AwardPreview[]>([]);
+  
+  // Selected award types
+  const [selectedAwards, setSelectedAwards] = useState({
+    'Golden Boot': true,
+    'Golden Glove': true,
+    'Golden Ball': true,
+    'Manager of Season': true,
+    'Best Attacker': true,
+    'Best Midfielder': true,
+    'Best Defender': true,
+    'Best Goalkeeper': true,
+  });
   
   // New award form
   const [newAward, setNewAward] = useState({
@@ -65,8 +96,27 @@ export default function PlayerAwardsManagementPage() {
     if (userSeasonId) {
       fetchAwards();
       fetchPlayers();
+      fetchTournaments();
     }
   }, [userSeasonId, filterCategory]);
+
+  const fetchTournaments = async () => {
+    if (!userSeasonId) return;
+    
+    try {
+      const res = await fetchWithTokenRefresh(`/api/tournaments?season_id=${userSeasonId}`);
+      const data = await res.json();
+      if (data.success) {
+        setTournaments(data.tournaments || []);
+        // Auto-select first tournament
+        if (data.tournaments && data.tournaments.length > 0) {
+          setSelectedTournament(data.tournaments[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching tournaments:', err);
+    }
+  };
 
   const fetchAwards = async () => {
     if (!userSeasonId) return;
@@ -104,10 +154,66 @@ export default function PlayerAwardsManagementPage() {
     }
   };
 
-  const handleAutoAward = async () => {
-    if (!userSeasonId) return;
+  const handlePreviewAwards = async () => {
+    if (!userSeasonId || !selectedTournament) {
+      setError('Please select a tournament');
+      return;
+    }
     
-    if (!confirm('This will auto-award all player awards based on statistics. Continue?')) return;
+    setPreviewing(true);
+    setError(null);
+    setPreview([]);
+    
+    try {
+      const selectedAwardTypes = Object.entries(selectedAwards)
+        .filter(([_, selected]) => selected)
+        .map(([type, _]) => type);
+      
+      if (selectedAwardTypes.length === 0) {
+        setError('Please select at least one award type');
+        setPreviewing(false);
+        return;
+      }
+      
+      const res = await fetchWithTokenRefresh('/api/player-awards/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          season_id: userSeasonId,
+          tournament_id: selectedTournament,
+          award_types: selectedAwardTypes
+        })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        setPreview(data.preview || []);
+      } else {
+        setError(data.error);
+      }
+    } catch (err) {
+      setError('Failed to preview awards');
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const handleAutoAward = async () => {
+    if (!userSeasonId || !selectedTournament) {
+      setError('Please select a tournament');
+      return;
+    }
+    
+    const selectedAwardTypes = Object.entries(selectedAwards)
+      .filter(([_, selected]) => selected)
+      .map(([type, _]) => type);
+    
+    if (selectedAwardTypes.length === 0) {
+      setError('Please select at least one award type');
+      return;
+    }
+    
+    if (!confirm(`This will award ${selectedAwardTypes.length} player awards for the selected tournament. Continue?`)) return;
     
     setAwarding(true);
     setError(null);
@@ -117,12 +223,17 @@ export default function PlayerAwardsManagementPage() {
       const res = await fetchWithTokenRefresh('/api/player-awards/auto-award', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ season_id: userSeasonId })
+        body: JSON.stringify({ 
+          season_id: userSeasonId,
+          tournament_id: selectedTournament,
+          award_types: selectedAwardTypes
+        })
       });
       
       const data = await res.json();
       if (data.success) {
         setSuccess(`✅ Awarded ${data.awardsGiven} player awards!`);
+        setPreview([]);
         fetchAwards();
       } else {
         setError(data.error);
@@ -274,40 +385,159 @@ export default function PlayerAwardsManagementPage() {
             <span className="text-2xl sm:text-3xl">🤖</span>
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-gray-900">Auto-Award Player Awards</h2>
-              <p className="text-xs sm:text-sm text-gray-600">Based on season statistics</p>
+              <p className="text-xs sm:text-sm text-gray-600">Based on tournament statistics</p>
             </div>
           </div>
           
+          {/* Tournament Selector */}
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Select Tournament *</label>
+            <select
+              value={selectedTournament}
+              onChange={(e) => setSelectedTournament(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">-- Select Tournament --</option>
+              {tournaments.map((tournament) => (
+                <option key={tournament.id} value={tournament.id}>
+                  {tournament.tournament_name} ({tournament.status})
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Award Type Selection */}
           <div className="bg-white p-4 rounded-xl mb-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Will award:</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
+            <h3 className="font-semibold text-gray-900 mb-3">Select Awards to Give:</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <p className="font-semibold text-purple-600">Individual Awards:</p>
-                <ul className="ml-4 space-y-1">
-                  <li>• Golden Boot (Top 3)</li>
-                  <li>• Most Assists (Top 3)</li>
-                  <li>• Most Clean Sheets (Top 3)</li>
-                </ul>
+                <p className="font-semibold text-purple-600 mb-2">Individual Awards:</p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Golden Boot']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Golden Boot': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">🥇 Golden Boot (Top Scorer)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Golden Glove']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Golden Glove': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">🧤 Golden Glove (Best Goalkeeper)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Golden Ball']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Golden Ball': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">⚽ Golden Ball (Best Player)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Manager of Season']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Manager of Season': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">👔 Manager of Season</span>
+                  </label>
+                </div>
               </div>
               <div>
-                <p className="font-semibold text-indigo-600">Category Awards:</p>
-                <ul className="ml-4 space-y-1">
-                  <li>• Best Attacker (Top 3)</li>
-                  <li>• Best Midfielder (Top 3)</li>
-                  <li>• Best Defender (Top 3)</li>
-                  <li>• Best Goalkeeper (Top 3)</li>
-                </ul>
+                <p className="font-semibold text-indigo-600 mb-2">Category Awards:</p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Best Attacker']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Best Attacker': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">⚡ Best Attacker</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Best Midfielder']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Best Midfielder': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">🎯 Best Midfielder</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Best Defender']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Best Defender': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">🛡️ Best Defender</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedAwards['Best Goalkeeper']}
+                      onChange={(e) => setSelectedAwards({...selectedAwards, 'Best Goalkeeper': e.target.checked})}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">🥅 Best Goalkeeper</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
           
-          <button
-            onClick={handleAutoAward}
-            disabled={awarding}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
-          >
-            {awarding ? 'Awarding...' : '⚡ Auto-Award All Player Awards'}
-          </button>
+          {/* Preview Section */}
+          {preview.length > 0 && (
+            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 p-4 rounded-xl mb-4 border-2 border-yellow-200">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <span>👀</span>
+                <span>Award Winners Preview:</span>
+              </h3>
+              <div className="space-y-2">
+                {preview.map((award, idx) => (
+                  <div key={idx} className="bg-white p-3 rounded-lg flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-gray-900">{award.award_type}</span>
+                      <span className="mx-2">→</span>
+                      <span className="text-blue-600 font-semibold">{award.player_name}</span>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {award.stats && Object.entries(award.stats).map(([key, value]) => (
+                        <span key={key} className="ml-2">{key}: {value as string}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Action Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              onClick={handlePreviewAwards}
+              disabled={previewing || !selectedTournament}
+              className="py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
+            >
+              {previewing ? 'Loading Preview...' : '👀 Preview Winners'}
+            </button>
+            <button
+              onClick={handleAutoAward}
+              disabled={awarding || !selectedTournament || preview.length === 0}
+              className="py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
+            >
+              {awarding ? 'Awarding...' : '⚡ Award Selected'}
+            </button>
+          </div>
         </div>
 
         {/* Awards List */}

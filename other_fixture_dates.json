@@ -1,0 +1,86 @@
+[
+  {
+    "round_number": 1,
+    "tournament_id": "SSPSLS16CH",
+    "first_updated": "2026-01-22T11:55:19.471Z",
+    "last_updated": "2026-01-23T11:56:20.468Z"
+  },
+  {
+    "round_number": 2,
+    "tournament_id": "SSPSLS16CH",
+    "first_updated": "2026-01-23T11:24:16.902Z",
+    "last_updated": "2026-01-23T12:37:26.508Z"
+  },
+  {
+    "round_number": 3,
+    "tournament_id": "SSPSLS16CH",
+    "first_updated": "2026-01-24T09:56:49.472Z",
+    "last_updated": "2026-01-25T21:50:23.448Z"
+  },
+  {
+    "round_number": 4,
+    "tournament_id": "SSPSLS16CH",
+    "first_updated": "2026-01-31T10:45:03.046Z",
+    "last_updated": "2026-01-31T10:51:39.131Z"
+  },
+  {
+    "round_number": 5,
+    "tournament_id": "SSPSLS16CH",
+    "first_updated": "2026-01-31T10:47:56.821Z",
+    "last_updated": "2026-01-31T10:53:43.323Z"
+  },
+  {
+    "round_number": 6,
+    "tournament_id": "SSPSLS16CH",
+    "first_updated": "2026-02-18T10:21:09.973Z",
+    "last_updated": "2026-02-18T10:21:09.973Z"
+  },
+  {
+    "round_number": 1,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-01-22T11:11:51.562Z",
+    "last_updated": "2026-01-23T12:18:06.681Z"
+  },
+  {
+    "round_number": 2,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-01-23T11:09:52.255Z",
+    "last_updated": "2026-01-23T13:02:13.646Z"
+  },
+  {
+    "round_number": 3,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-01-24T08:42:24.438Z",
+    "last_updated": "2026-01-26T12:55:03.382Z"
+  },
+  {
+    "round_number": 4,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-01-25T11:19:49.132Z",
+    "last_updated": "2026-01-25T13:21:33.673Z"
+  },
+  {
+    "round_number": 5,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-01-26T11:54:02.964Z",
+    "last_updated": "2026-01-26T13:47:45.999Z"
+  },
+  {
+    "round_number": 6,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-01-31T11:17:42.129Z",
+    "last_updated": "2026-02-01T03:11:27.019Z"
+  },
+  {
+    "round_number": 7,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-01-31T11:19:25.481Z",
+    "last_updated": "2026-02-01T03:09:31.585Z"
+  },
+  {
+    "round_number": 8,
+    "tournament_id": "SSPSLS16EL",
+    "first_updated": "2026-02-18T09:35:29.072Z",
+    "last_updated": "2026-02-18T09:35:29.072Z"
+  }
+]

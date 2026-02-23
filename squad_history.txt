@@ -1,0 +1,143 @@
+--- Fantasy Squad (Current) ---
+[
+  {
+    "real_player_id": "sspslpsl0069",
+    "player_name": "Shaan",
+    "team_id": "SSPSLT0016",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:53:07.820Z"
+  },
+  {
+    "real_player_id": "sspslpsl0045",
+    "player_name": "Firoz Ahammed",
+    "team_id": "SSPSLT0016",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:52:03.475Z"
+  },
+  {
+    "real_player_id": "sspslpsl0020",
+    "player_name": "Muhammed Fijas ",
+    "team_id": "SSPSLT0013",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:14:56.359Z"
+  },
+  {
+    "real_player_id": "sspslpsl0004",
+    "player_name": "Goku",
+    "team_id": "SSPSLT0006",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:07:50.871Z"
+  },
+  {
+    "real_player_id": "sspslpsl0004",
+    "player_name": "Goku",
+    "team_id": "SSPSLT0013",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:15:09.295Z"
+  },
+  {
+    "real_player_id": "sspslpsl0041",
+    "player_name": "Muhammed Alim",
+    "team_id": "SSPSLT0015",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T12:10:07.340Z"
+  },
+  {
+    "real_player_id": "sspslpsl0098",
+    "player_name": "Aju",
+    "team_id": "SSPSLT0034",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T13:41:11.860Z"
+  },
+  {
+    "real_player_id": "sspslpsl0008",
+    "player_name": "Ansil",
+    "team_id": "SSPSLT0004",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:16:07.988Z"
+  },
+  {
+    "real_player_id": "sspslpsl0020",
+    "player_name": "Muhammed Fijas ",
+    "team_id": "SSPSLT0004",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:15:51.489Z"
+  },
+  {
+    "real_player_id": "sspslpsl0078",
+    "player_name": "Umar",
+    "team_id": "SSPSLT0020",
+    "acquisition_type": "draft",
+    "acquired_at": "2026-01-27T12:16:53.301Z"
+  },
+  {
+    "real_player_id": "sspslpsl0042",
+    "player_name": "Anu Anshin",
+    "team_id": "SSPSLT0016",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:51:39.091Z"
+  },
+  {
+    "real_player_id": "sspslpsl0020",
+    "player_name": "Muhammed Fijas ",
+    "team_id": "SSPSLT0020",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:42:20.390Z"
+  },
+  {
+    "real_player_id": "sspslpsl0056",
+    "player_name": "Gokul GC",
+    "team_id": "SSPSLT0010",
+    "acquisition_type": "transfer",
+    "acquired_at": "2026-01-04T09:31:14.721Z"
+  },
+  {
+    "real_player_id": "sspslpsl0063",
+    "player_name": "Adil Mubarack",
+    "team_id": "SSPSLT0004",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:23:04.744Z"
+  },
+  {
+    "real_player_id": "sspslpsl0063",
+    "player_name": "Adil Mubarack",
+    "team_id": "SSPSLT0020",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:42:27.756Z"
+  },
+  {
+    "real_player_id": "sspslpsl0056",
+    "player_name": "Gokul Gc",
+    "team_id": "SSPSLT0006",
+    "acquisition_type": "transfer",
+    "acquired_at": "2025-12-28T08:59:31.528Z"
+  },
+  {
+    "real_player_id": "sspslpsl0030",
+    "player_name": "Rashil Basheer",
+    "team_id": "SSPSLT0016",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:51:49.556Z"
+  },
+  {
+    "real_player_id": "sspslpsl0020",
+    "player_name": "Muhammed Fijas ",
+    "team_id": "SSPSLT0015",
+    "acquisition_type": "draft",
+    "acquired_at": "2025-12-15T11:15:55.606Z"
+  },
+  {
+    "real_player_id": "sspslpsl0002",
+    "player_name": "Rohith",
+    "team_id": "SSPSLT0020",
+    "acquisition_type": "transfer",
+    "acquired_at": "2025-12-23T10:58:15.184Z"
+  },
+  {
+    "real_player_id": "sspslpsl0002",
+    "player_name": "Rohith",
+    "team_id": "SSPSLT0010",
+    "acquisition_type": "transfer",
+    "acquired_at": "2025-12-22T12:03:31.959Z"
+  }
+]

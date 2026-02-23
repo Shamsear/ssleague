@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     } else {
       awards = await sql`
         SELECT * FROM awards
-        ORDER BY created_at DESC
+        ORDER BY display_order DESC, created_at DESC
       `;
     }
 

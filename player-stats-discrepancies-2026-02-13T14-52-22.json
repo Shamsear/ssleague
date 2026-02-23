@@ -1,0 +1,108 @@
+{
+  "timestamp": "2026-02-13T14:52:22.287Z",
+  "summary": {
+    "totalPlayers": 80,
+    "playersWithDiscrepancies": 3,
+    "playersMatching": 77,
+    "playersWithNoMatchups": 0,
+    "totalDiscrepancyCount": 12
+  },
+  "discrepancies": [
+    {
+      "player_id": "sspslpsl0041",
+      "player_name": "Muhammed Alim",
+      "team_id": "SSPSLT0013",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 33,
+          "fromMatchups": 32,
+          "difference": -1
+        },
+        {
+          "stat": "losses",
+          "inDatabase": 16,
+          "fromMatchups": 15,
+          "difference": -1
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 53,
+          "fromMatchups": 52,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0020",
+      "player_name": "Muhammed Fijas ",
+      "team_id": "SSPSLT0013",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 37,
+          "fromMatchups": 36,
+          "difference": -1
+        },
+        {
+          "stat": "wins",
+          "inDatabase": 32,
+          "fromMatchups": 31,
+          "difference": -1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 152,
+          "fromMatchups": 148,
+          "difference": -4
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 39,
+          "fromMatchups": 37,
+          "difference": -2
+        },
+        {
+          "stat": "motm_awards",
+          "inDatabase": 14,
+          "fromMatchups": 13,
+          "difference": -1
+        }
+      ]
+    },
+    {
+      "player_id": "sspslpsl0021",
+      "player_name": "RAHUL KL",
+      "team_id": "SSPSLT0013",
+      "season_id": "SSPSLS16",
+      "discrepancies": [
+        {
+          "stat": "matches_played",
+          "inDatabase": 32,
+          "fromMatchups": 31,
+          "difference": -1
+        },
+        {
+          "stat": "wins",
+          "inDatabase": 14,
+          "fromMatchups": 13,
+          "difference": -1
+        },
+        {
+          "stat": "goals_scored",
+          "inDatabase": 68,
+          "fromMatchups": 62,
+          "difference": -6
+        },
+        {
+          "stat": "goals_conceded",
+          "inDatabase": 71,
+          "fromMatchups": 70,
+          "difference": -1
+        }
+      ]
+    }
+  ]
+}
