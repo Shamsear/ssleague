@@ -91,13 +91,13 @@ export async function GET(request: NextRequest) {
           awards = await sql`
             SELECT * FROM player_awards
             WHERE season_id = ${seasonId} AND award_category = ${awardCategory}
-            ORDER BY award_category, award_type, award_position, created_at DESC
+            ORDER BY display_order ASC, award_category, award_type, award_position, created_at DESC
           `;
         } else {
           awards = await sql`
             SELECT * FROM player_awards
             WHERE season_id = ${seasonId}
-            ORDER BY award_category, award_type, award_position, created_at DESC
+            ORDER BY display_order ASC, award_category, award_type, award_position, created_at DESC
           `;
         }
       }
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
       // Get all awards - from both tables
       const oldAwards = await sql`
         SELECT * FROM player_awards
-        ORDER BY display_order DESC, created_at DESC
+        ORDER BY display_order ASC, created_at DESC
       `;
       const newAwards = await sql`
         SELECT 

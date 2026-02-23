@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         SELECT * FROM awards
         WHERE tournament_id = ${tournamentId}
           AND season_id = ${seasonId}
-        ORDER BY created_at DESC
+        ORDER BY display_order ASC, created_at DESC
       `;
     } else if (tournamentId) {
       awards = await sql`
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     } else {
       awards = await sql`
         SELECT * FROM awards
-        ORDER BY display_order DESC, created_at DESC
+        ORDER BY display_order ASC, created_at DESC
       `;
     }
 

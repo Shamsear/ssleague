@@ -13,18 +13,18 @@ export async function GET(request: NextRequest) {
 
     // Fetch awards
     const awardsQuery = seasonId && seasonId !== 'all'
-      ? sql`SELECT id, award_type, player_name, season_id, selected_at, display_order, round_number, week_number, instagram_link FROM awards WHERE season_id = ${seasonId} ORDER BY display_order DESC, selected_at DESC`
-      : sql`SELECT id, award_type, player_name, season_id, selected_at, display_order, round_number, week_number, instagram_link FROM awards ORDER BY display_order DESC, selected_at DESC`;
+      ? sql`SELECT id, award_type, player_name, season_id, selected_at, display_order, round_number, week_number, instagram_link FROM awards WHERE season_id = ${seasonId} ORDER BY display_order ASC, selected_at DESC`
+      : sql`SELECT id, award_type, player_name, season_id, selected_at, display_order, round_number, week_number, instagram_link FROM awards ORDER BY display_order ASC, selected_at DESC`;
 
     // Fetch player awards
     const playerAwardsQuery = seasonId && seasonId !== 'all'
-      ? sql`SELECT id, award_type, player_name, season_id, created_at, display_order, award_position, instagram_link FROM player_awards WHERE season_id = ${seasonId} ORDER BY display_order DESC, created_at DESC`
-      : sql`SELECT id, award_type, player_name, season_id, created_at, display_order, award_position, instagram_link FROM player_awards ORDER BY display_order DESC, created_at DESC`;
+      ? sql`SELECT id, award_type, player_name, season_id, created_at, display_order, award_position, instagram_link FROM player_awards WHERE season_id = ${seasonId} ORDER BY display_order ASC, created_at DESC`
+      : sql`SELECT id, award_type, player_name, season_id, created_at, display_order, award_position, instagram_link FROM player_awards ORDER BY display_order ASC, created_at DESC`;
 
     // Fetch trophies
     const trophiesQuery = seasonId && seasonId !== 'all'
-      ? sql`SELECT id, trophy_name, team_name, season_id, created_at, display_order, trophy_position, instagram_link FROM team_trophies WHERE season_id = ${seasonId} ORDER BY display_order DESC, created_at DESC`
-      : sql`SELECT id, trophy_name, team_name, season_id, created_at, display_order, trophy_position, instagram_link FROM team_trophies ORDER BY display_order DESC, created_at DESC`;
+      ? sql`SELECT id, trophy_name, team_name, season_id, created_at, display_order, trophy_position, instagram_link FROM team_trophies WHERE season_id = ${seasonId} ORDER BY display_order ASC, created_at DESC`
+      : sql`SELECT id, trophy_name, team_name, season_id, created_at, display_order, trophy_position, instagram_link FROM team_trophies ORDER BY display_order ASC, created_at DESC`;
 
     const [awards, playerAwards, trophies] = await Promise.all([
       awardsQuery,
@@ -71,10 +71,10 @@ export async function GET(request: NextRequest) {
       }))
     ];
 
-    // Sort by display_order (desc) then by date (desc)
+    // Sort by display_order (asc) then by date (desc)
     items.sort((a, b) => {
-      if (b.display_order !== a.display_order) {
-        return b.display_order - a.display_order;
+      if (a.display_order !== b.display_order) {
+        return a.display_order - b.display_order;
       }
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });

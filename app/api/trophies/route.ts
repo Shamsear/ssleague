@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
         FROM team_trophies
         WHERE season_id = ${seasonId}
         ORDER BY 
+          display_order ASC,
           CASE trophy_type
             WHEN 'league' THEN 1
             WHEN 'runner_up' THEN 2
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
       trophies = await sql`
         SELECT *
         FROM team_trophies
-        ORDER BY display_order DESC, season_id DESC,
+        ORDER BY display_order ASC, season_id DESC,
           CASE trophy_type
             WHEN 'league' THEN 1
             WHEN 'runner_up' THEN 2

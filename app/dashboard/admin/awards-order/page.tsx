@@ -141,10 +141,11 @@ export default function AwardsOrderPage() {
     setSuccess(null);
     
     try {
+      // Save with ascending order: first item gets 1, second gets 2, etc.
       const updates = items.map((item, index) => ({
         id: item.id,
         type: item.type,
-        display_order: index
+        display_order: index + 1
       }));
 
       const res = await fetch('/api/admin/awards-order', {
@@ -392,21 +393,26 @@ export default function AwardsOrderPage() {
                                 </button>
                                 
                                 {/* Position Input */}
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={seasonItems.length}
-                                  value={relativeIndex + 1}
-                                  onChange={(e) => {
-                                    const newPos = parseInt(e.target.value);
-                                    if (!isNaN(newPos)) {
-                                      moveToPosition(absoluteIndex, newPos);
-                                    }
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-12 text-center text-xs font-bold text-gray-700 border-2 border-gray-300 rounded px-1 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
-                                  title={`Enter position (1-${seasonItems.length})`}
-                                />
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={seasonItems.length}
+                                    value={relativeIndex + 1}
+                                    onChange={(e) => {
+                                      const newPos = parseInt(e.target.value);
+                                      if (!isNaN(newPos)) {
+                                        moveToPosition(absoluteIndex, newPos);
+                                      }
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-12 text-center text-xs font-bold text-gray-700 border-2 border-gray-300 rounded px-1 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                                    title={`Position (1-${seasonItems.length})`}
+                                  />
+                                  <span className="text-[10px] text-gray-400" title="Display order value in database">
+                                    #{item.display_order || 0}
+                                  </span>
+                                </div>
                                 
                                 <button
                                   onClick={() => moveItem(absoluteIndex, 'down')}
@@ -422,23 +428,25 @@ export default function AwardsOrderPage() {
 
                               {/* Image Preview */}
                               {item.instagram_link ? (
-                                <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 border-2 border-gray-200">
+                                <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 border-2 border-gray-200 relative">
                                   <img 
                                     src={item.instagram_link}
                                     alt={item.title}
-                                    className="w-full h-full object-cover"
+                                    className="absolute inset-0 w-full h-full object-cover"
                                     loading="lazy"
+                                    style={{ display: 'block', minWidth: '100%', minHeight: '100%' }}
                                     onError={(e) => {
                                       const target = e.currentTarget;
                                       console.error('Image failed to load:', item.instagram_link);
                                       target.style.display = 'none';
                                       const parent = target.parentElement;
                                       if (parent) {
-                                        parent.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-100 to-red-200 text-xs text-red-600 font-semibold">Failed</div>';
+                                        parent.innerHTML = '<div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-red-100 to-red-200 text-xs text-red-600 font-semibold">Failed</div>';
                                       }
                                     }}
-                                    onLoad={() => {
-                                      console.log('Image loaded successfully:', item.instagram_link);
+                                    onLoad={(e) => {
+                                      const target = e.currentTarget;
+                                      console.log('Image loaded successfully:', item.instagram_link, 'Dimensions:', target.naturalWidth, 'x', target.naturalHeight);
                                     }}
                                   />
                                 </div>
