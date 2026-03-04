@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRouter } from 'next/navigation';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import Link from 'next/link';
 
 interface PlayerStats {
   id: string;
@@ -43,6 +45,7 @@ interface MatchdayStats {
 
 export default function PlayerStatsPage() {
   const { user, loading: authLoading } = useAuth();
+  const { userSeasonId } = usePermissions();
   const router = useRouter();
   const [players, setPlayers] = useState<PlayerStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,9 +77,14 @@ export default function PlayerStatsPage() {
   }, [user]);
 
   const loadPlayers = async () => {
+    if (!userSeasonId) {
+      console.warn('No season selected');
+      return;
+    }
+    
     setLoading(true);
     try {
-      const response = await fetchWithTokenRefresh('/api/committee/player-stats?season_id=SSPSLS16');
+      const response = await fetchWithTokenRefresh(`/api/committee/player-stats?season_id=${userSeasonId}`);
       if (response.ok) {
         const data = await response.json();
         console.log('[Player Stats Page] Loaded players:', data.players?.length);
@@ -101,7 +109,7 @@ export default function PlayerStatsPage() {
     // Load total points for each player in parallel
     const promises = playersList.map(async (player) => {
       try {
-        const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${player.id}&season_id=SSPSLS16`);
+        const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${player.id}&season_id=${userSeasonId}`);
         if (response.ok) {
           const data = await response.json();
           newPlayerTotalPoints.set(player.id, data.totalPoints || 0);
@@ -124,7 +132,7 @@ export default function PlayerStatsPage() {
 
     setLoadingMatchday(playerId);
     try {
-      const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${playerId}&season_id=SSPSLS16`);
+      const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${playerId}&season_id=${userSeasonId}`);
       if (response.ok) {
         const data = await response.json();
         const newMatchdayStats = new Map(matchdayStats);
@@ -317,6 +325,29 @@ export default function PlayerStatsPage() {
 
   if (!user || (user.role !== 'committee_admin' && user.role !== 'super_admin')) return null;
 
+  // Show message if no season is selected
+  if (!userSeasonId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="text-6xl mb-4">📊</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Season Not Assigned</h2>
+          <p className="text-gray-600 mb-6">
+            Your committee admin account doesn't have a season assigned. Please contact a super admin to assign a season to your account.
+          </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
+            <p className="text-sm text-gray-700 mb-2">
+              <strong>For Super Admins:</strong>
+            </p>
+            <p className="text-xs text-gray-600">
+              Set the <code className="bg-white px-1 py-0.5 rounded">seasonId</code> custom claim for this user in Firebase Authentication.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -328,7 +359,7 @@ export default function PlayerStatsPage() {
               </h1>
               <p className="text-gray-600 mt-2 flex items-center gap-2">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                  SSPSLS16
+                  {userSeasonId || 'No Season Selected'}
                 </span>
                 <span>Season player performance data</span>
               </p>

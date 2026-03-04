@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRouter } from 'next/navigation';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import Link from 'next/link';
@@ -28,6 +29,7 @@ interface PlayerEligibility {
 
 export default function PlayerEligibilityPage() {
     const { user, loading: authLoading } = useAuth();
+    const { userSeasonId } = usePermissions();
     const router = useRouter();
     const [players, setPlayers] = useState<PlayerEligibility[]>([]);
     const [loading, setLoading] = useState(true);
@@ -59,27 +61,32 @@ export default function PlayerEligibilityPage() {
 
     // Initial load
     useEffect(() => {
-        if (user && user.role === 'committee_admin' && initialLoad) {
+        if (user && user.role === 'committee_admin' && initialLoad && userSeasonId) {
             loadPlayers();
         }
-    }, [user]);
+    }, [user, userSeasonId]);
 
     // Debounced reload when parameters change
     useEffect(() => {
-        if (!user || initialLoad) return;
+        if (!user || initialLoad || !userSeasonId) return;
 
         const timer = setTimeout(() => {
             loadPlayers();
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [fromRound, toRound]);
+    }, [fromRound, toRound, userSeasonId]);
 
     const loadPlayers = async () => {
+        if (!userSeasonId) {
+            console.warn('No season selected');
+            return;
+        }
+        
         setLoading(true);
         try {
             const response = await fetchWithTokenRefresh(
-                `/api/committee/player-eligibility?season_id=SSPSLS16&from_round=${fromRound}&to_round=${toRound}`
+                `/api/committee/player-eligibility?season_id=${userSeasonId}&from_round=${fromRound}&to_round=${toRound}`
             );
             if (response.ok) {
                 const data = await response.json();
@@ -152,6 +159,27 @@ export default function PlayerEligibilityPage() {
     }
 
     if (!user || user.role !== 'committee_admin') return null;
+
+    // Show message if no season is selected
+    if (!userSeasonId) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+                <div className="text-center max-w-md mx-auto p-8">
+                    <div className="text-6xl mb-4">🏆</div>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">No Season Selected</h2>
+                    <p className="text-gray-600 mb-6">
+                        Please select a season from the tournament management page to view player eligibility data.
+                    </p>
+                    <Link
+                        href="/dashboard/committee/team-management/tournament"
+                        className="inline-flex items-center px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                        Go to Tournament Management
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 p-3 sm:p-4 md:p-6">

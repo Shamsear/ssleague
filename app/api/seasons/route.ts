@@ -43,7 +43,10 @@ export async function GET(request: NextRequest) {
       created_at: season.created_at,
     }));
 
-    return NextResponse.json(formattedSeasons);
+    return NextResponse.json({
+      success: true,
+      seasons: formattedSeasons
+    });
   } catch (error) {
     console.error('Error fetching seasons:', error);
     return NextResponse.json(
