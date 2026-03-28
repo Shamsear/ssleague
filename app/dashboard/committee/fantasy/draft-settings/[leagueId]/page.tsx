@@ -15,6 +15,13 @@ interface DraftSettings {
   max_squad_size: number;
   require_team_affiliation: boolean;
   draft_status: string;
+  // New tier-based draft settings
+  number_of_tiers: number;
+  // New lineup settings
+  starting_lineup_size: number;
+  bench_size: number;
+  lineup_lock_enabled: boolean;
+  lineup_lock_hours_before: number;
 }
 
 export default function DraftSettingsPage() {
@@ -27,10 +34,17 @@ export default function DraftSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<DraftSettings>({
     budget_per_team: 1000, // Default 1000 points
-    min_squad_size: 11,
-    max_squad_size: 15,
+    min_squad_size: 5,
+    max_squad_size: 7,
     require_team_affiliation: true,
     draft_status: 'pending',
+    // New tier-based draft settings
+    number_of_tiers: 7,
+    // New lineup settings
+    starting_lineup_size: 5,
+    bench_size: 2,
+    lineup_lock_enabled: true,
+    lineup_lock_hours_before: 2,
   });
 
   const { alertState, showAlert, closeAlert } = useModal();
@@ -57,10 +71,15 @@ export default function DraftSettingsPage() {
             // Map the API response to our settings state
             setSettings({
               budget_per_team: data.settings.budget_per_team || 1000,
-              min_squad_size: data.settings.min_squad_size || 11,
-              max_squad_size: data.settings.max_squad_size || 15,
+              min_squad_size: data.settings.min_squad_size || 5,
+              max_squad_size: data.settings.max_squad_size || 7,
               require_team_affiliation: true, // Not stored in DB yet
               draft_status: data.settings.draft_status || 'pending',
+              number_of_tiers: data.settings.number_of_tiers || 7,
+              starting_lineup_size: data.settings.starting_lineup_size || 5,
+              bench_size: data.settings.bench_size || 2,
+              lineup_lock_enabled: data.settings.lineup_lock_enabled !== false,
+              lineup_lock_hours_before: data.settings.lineup_lock_hours_before || 2,
             });
           }
         }
@@ -152,8 +171,8 @@ export default function DraftSettingsPage() {
               </svg>
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Draft Settings</h1>
-              <p className="text-gray-600 mt-1">Configure salary cap draft rules</p>
+              <h1 className="text-3xl font-bold text-gray-900">Draft & Lineup Settings</h1>
+              <p className="text-gray-600 mt-1">Configure tier-based draft and weekly lineup rules</p>
             </div>
           </div>
         </div>
@@ -203,6 +222,7 @@ export default function DraftSettingsPage() {
                   max={settings.max_squad_size}
                   required
                 />
+                <p className="mt-1 text-xs text-gray-500">Recommended: 5 players</p>
               </div>
 
               <div>
@@ -217,6 +237,112 @@ export default function DraftSettingsPage() {
                   min={settings.min_squad_size}
                   required
                 />
+                <p className="mt-1 text-xs text-gray-500">Recommended: 7 players</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tier Configuration */}
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">NEW</span>
+              <h2 className="text-xl font-bold text-gray-900">🎯 Tier-Based Draft</h2>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Number of Tiers
+              </label>
+              <select
+                value={settings.number_of_tiers}
+                onChange={(e) => setSettings({ ...settings, number_of_tiers: parseInt(e.target.value) })}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value={5}>5 Tiers</option>
+                <option value={6}>6 Tiers</option>
+                <option value={7}>7 Tiers (Recommended)</option>
+                <option value={8}>8 Tiers</option>
+                <option value={9}>9 Tiers</option>
+              </select>
+              <p className="mt-2 text-sm text-gray-500">
+                Players will be divided into tiers based on performance. Teams bid on players tier-by-tier.
+              </p>
+            </div>
+          </div>
+
+          {/* Lineup Configuration */}
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">NEW</span>
+              <h2 className="text-xl font-bold text-gray-900">📋 Weekly Lineup Settings</h2>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Starting Lineup Size
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.starting_lineup_size || ''}
+                    onChange={(e) => setSettings({ ...settings, starting_lineup_size: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    min="1"
+                    max={settings.max_squad_size - 1}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Players who earn points (Recommended: 5)</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Bench Size
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.bench_size || ''}
+                    onChange={(e) => setSettings({ ...settings, bench_size: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    min="0"
+                    max={settings.max_squad_size - settings.starting_lineup_size}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Bench players (0 points unless Bench Boost)</p>
+                </div>
+              </div>
+
+              <div className="border-t pt-6">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.lineup_lock_enabled}
+                    onChange={(e) => setSettings({ ...settings, lineup_lock_enabled: e.target.checked })}
+                    className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <div>
+                    <p className="font-semibold text-gray-900">Enable Lineup Lock</p>
+                    <p className="text-sm text-gray-600">Automatically lock lineups before round starts</p>
+                  </div>
+                </label>
+
+                {settings.lineup_lock_enabled && (
+                  <div className="mt-4 ml-8">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Lock Hours Before Round
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.lineup_lock_hours_before || ''}
+                      onChange={(e) => setSettings({ ...settings, lineup_lock_hours_before: parseInt(e.target.value) || 0 })}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      min="0"
+                      max="48"
+                      required
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Lineups lock X hours before round starts</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

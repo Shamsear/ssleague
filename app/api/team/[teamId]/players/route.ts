@@ -3,7 +3,8 @@ import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { neon } from '@neondatabase/serverless';
 import { adminDb } from '@/lib/firebase/admin';
 
-const auctionSql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
+// Use the correct auction database URL
+const auctionSql = neon(process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL!);
 
 // GET - Fetch players for a specific team and season (both realplayers and footballplayers)
 export async function GET(
@@ -81,12 +82,17 @@ export async function GET(
     }
 
     // 2. Fetch FOOTBALLPLAYERS (auction players) from team_players
+    // Filter by contract period: show if contract_start_season OR contract_end_season matches current season
+    console.log(`[API] Fetching football players for team ${teamId}, season ${seasonId}`);
+    console.log(`[API] Using database: ${process.env.NEON_AUCTION_DB_URL ? 'NEON_AUCTION_DB_URL' : 'NEON_DATABASE_URL'}`);
+    
     const footballPlayers = await auctionSql`
       SELECT 
         tp.player_id,
         tp.purchase_price,
         tp.acquired_at,
         tp.round_id,
+        tp.season_id,
         fp.name as player_name,
         fp.position,
         fp.position_group,
@@ -94,13 +100,28 @@ export async function GET(
         fp.overall_rating,
         fp.nationality,
         fp.age,
-        fp.playing_style
+        fp.playing_style,
+        fp.contract_start_season,
+        fp.contract_end_season
       FROM team_players tp
       INNER JOIN footballplayers fp ON tp.player_id = fp.id
       WHERE tp.team_id = ${teamId}
         AND tp.season_id = ${seasonId}
+        AND (
+          fp.contract_start_season = ${seasonId} 
+          OR fp.contract_end_season = ${seasonId}
+        )
       ORDER BY tp.acquired_at DESC
     `;
+    console.log(`[API] Found ${footballPlayers.length} football players with active contracts for season ${seasonId}`);
+    if (footballPlayers.length > 0) {
+      console.log(`[API] Sample player:`, {
+        name: footballPlayers[0].player_name,
+        contract_start: footballPlayers[0].contract_start_season,
+        contract_end: footballPlayers[0].contract_end_season,
+        current_season: seasonId
+      });
+    }
 
     const enrichedFootballPlayers = footballPlayers.map(fp => ({
       id: fp.player_id,
@@ -117,11 +138,16 @@ export async function GET(
       purchase_price: fp.purchase_price,
       acquired_at: fp.acquired_at,
       round_id: fp.round_id,
+      contract_start_season: fp.contract_start_season,
+      contract_end_season: fp.contract_end_season,
     }));
 
     // 3. Get current balance from Neon teams table (source of truth after finalization)
     const teamResult = await auctionSql`
-      SELECT football_budget, football_spent, football_players_count
+      SELECT 
+        football_budget, 
+        football_spent, 
+        football_players_count
       FROM teams
       WHERE id = ${teamId} AND season_id = ${seasonId}
       LIMIT 1

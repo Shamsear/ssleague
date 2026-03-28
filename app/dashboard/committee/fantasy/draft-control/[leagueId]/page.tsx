@@ -16,6 +16,18 @@ interface DraftSettings {
   max_squad_size: number;
   league_name: string;
   season_name: string;
+  current_active_tier: number | null;
+}
+
+interface TierInfo {
+  tier_id: string;
+  tier_number: number;
+  tier_name: string;
+  tier_status: 'pending' | 'active' | 'processing' | 'closed';
+  player_count: number;
+  opened_at: string | null;
+  closed_at: string | null;
+  total_bids: number;
 }
 
 export default function DraftControlPage() {
@@ -25,6 +37,7 @@ export default function DraftControlPage() {
   const leagueId = params.leagueId as string;
 
   const [settings, setSettings] = useState<DraftSettings | null>(null);
+  const [tiers, setTiers] = useState<TierInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -32,6 +45,7 @@ export default function DraftControlPage() {
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'warning'} | null>(null);
+  const [processingTier, setProcessingTier] = useState<number | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -73,6 +87,13 @@ export default function DraftControlPage() {
       setDraftStatus(data.settings.draft_status || 'pending');
       setOpensAt(formatForDatetimeLocal(data.settings.draft_opens_at));
       setClosesAt(formatForDatetimeLocal(data.settings.draft_closes_at));
+      
+      // Load tiers
+      const tiersResponse = await fetchWithTokenRefresh(`/api/fantasy/draft/tiers/status?league_id=${leagueId}`);
+      if (tiersResponse.ok) {
+        const tiersData = await tiersResponse.json();
+        setTiers(tiersData.tiers || []);
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
@@ -143,6 +164,66 @@ export default function DraftControlPage() {
       alert(error instanceof Error ? error.message : 'Failed to update draft status');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const openTier = async (tierNumber: number) => {
+    if (!confirm(`Open Tier ${tierNumber} for bidding?`)) return;
+    
+    setProcessingTier(tierNumber);
+    try {
+      const response = await fetchWithTokenRefresh('/api/fantasy/draft/tiers/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          league_id: leagueId,
+          tier_number: tierNumber,
+          action: 'open'
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to open tier');
+      }
+
+      setToast({ message: `Tier ${tierNumber} opened for bidding!`, type: 'success' });
+      loadSettings();
+    } catch (error) {
+      console.error('Error opening tier:', error);
+      alert(error instanceof Error ? error.message : 'Failed to open tier');
+    } finally {
+      setProcessingTier(null);
+    }
+  };
+
+  const closeTier = async (tierNumber: number) => {
+    if (!confirm(`Close Tier ${tierNumber}? Teams will no longer be able to bid on this tier.`)) return;
+    
+    setProcessingTier(tierNumber);
+    try {
+      const response = await fetchWithTokenRefresh('/api/fantasy/draft/tiers/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          league_id: leagueId,
+          tier_number: tierNumber,
+          action: 'close'
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to close tier');
+      }
+
+      setToast({ message: `Tier ${tierNumber} closed!`, type: 'info' });
+      loadSettings();
+    } catch (error) {
+      console.error('Error closing tier:', error);
+      alert(error instanceof Error ? error.message : 'Failed to close tier');
+    } finally {
+      setProcessingTier(null);
     }
   };
 
@@ -350,6 +431,123 @@ export default function DraftControlPage() {
                 </ul>
               </div>
             </div>
+
+            {/* Tier-by-Tier Control */}
+            {tiers.length > 0 && (
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">Tier-by-Tier Control</h2>
+                <p className="text-gray-600 mb-6">
+                  Open tiers one at a time. Teams can only bid on the currently active tier.
+                </p>
+                
+                <div className="space-y-3">
+                  {tiers.map((tier) => (
+                    <div 
+                      key={tier.tier_id}
+                      className={`border-2 rounded-xl p-4 transition-all ${
+                        tier.tier_status === 'active' ? 'border-green-500 bg-green-50' :
+                        tier.tier_status === 'closed' ? 'border-gray-300 bg-gray-50' :
+                        tier.tier_status === 'processing' ? 'border-blue-500 bg-blue-50' :
+                        'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-xl font-bold text-gray-900">
+                              Tier {tier.tier_number}
+                            </span>
+                            <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm font-semibold">
+                              {tier.tier_name}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                              tier.tier_status === 'active' ? 'bg-green-500 text-white' :
+                              tier.tier_status === 'closed' ? 'bg-gray-500 text-white' :
+                              tier.tier_status === 'processing' ? 'bg-blue-500 text-white' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {tier.tier_status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                            <span>{tier.player_count} players</span>
+                            <span>•</span>
+                            <span>{tier.total_bids} bids received</span>
+                            {tier.opened_at && (
+                              <>
+                                <span>•</span>
+                                <span>Opened: {new Date(tier.opened_at).toLocaleString('en-IN', {
+                                  timeZone: 'Asia/Kolkata',
+                                  dateStyle: 'short',
+                                  timeStyle: 'short'
+                                })}</span>
+                              </>
+                            )}
+                            {tier.closed_at && (
+                              <>
+                                <span>•</span>
+                                <span>Closed: {new Date(tier.closed_at).toLocaleString('en-IN', {
+                                  timeZone: 'Asia/Kolkata',
+                                  dateStyle: 'short',
+                                  timeStyle: 'short'
+                                })}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          {tier.tier_status === 'pending' && (
+                            <button
+                              onClick={() => openTier(tier.tier_number)}
+                              disabled={processingTier === tier.tier_number || settings?.current_active_tier !== null}
+                              className="px-4 py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                              {processingTier === tier.tier_number ? 'Opening...' : 'Open Tier'}
+                            </button>
+                          )}
+                          
+                          {tier.tier_status === 'active' && (
+                            <>
+                              <Link
+                                href={`/dashboard/committee/fantasy/${leagueId}/draft/process?tier=${tier.tier_number}`}
+                                className="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
+                              >
+                                Process Tier
+                              </Link>
+                              <button
+                                onClick={() => closeTier(tier.tier_number)}
+                                disabled={processingTier === tier.tier_number}
+                                className="px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {processingTier === tier.tier_number ? 'Closing...' : 'Close Tier'}
+                              </button>
+                            </>
+                          )}
+                          
+                          {tier.tier_status === 'closed' && (
+                            <span className="px-4 py-2 text-gray-500 font-semibold">
+                              ✓ Completed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-indigo-900 mb-2">📋 Tier-by-Tier Workflow:</h4>
+                  <ol className="text-sm text-indigo-800 space-y-1 ml-4 list-decimal">
+                    <li>Click "Open Tier" to allow teams to start bidding on that tier</li>
+                    <li>Teams submit their bids for players in the active tier</li>
+                    <li>Click "Process Tier" to assign players to winning bidders</li>
+                    <li>Click "Close Tier" to finalize and move to the next tier</li>
+                    <li>Repeat for each tier sequentially</li>
+                  </ol>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

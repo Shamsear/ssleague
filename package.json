@@ -8,6 +8,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run lib/**/*.test.ts",
+    "test:integration": "vitest run tests/integration/**/*.test.ts",
+    "test:e2e": "vitest run tests/e2e/**/*.test.ts",
+    "test:performance": "vitest run tests/performance/**/*.test.ts",
+    "test:coverage": "vitest run --coverage",
     "cleanup": "node scripts/clear-all-keep-superadmin.js",
     "db:clear": "npx tsx scripts/clear-database.ts"
   },

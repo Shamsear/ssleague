@@ -39,6 +39,11 @@ interface MatchdayStats {
     was_substitute: boolean;
 }
 
+interface Season {
+    id: string;
+    name: string;
+}
+
 export default function MyPlayerStatsPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
@@ -51,6 +56,8 @@ export default function MyPlayerStatsPage() {
     const [matchdayStats, setMatchdayStats] = useState<Map<string, MatchdayStats[]>>(new Map());
     const [loadingMatchday, setLoadingMatchday] = useState<string | null>(null);
     const [playerTotalPoints, setPlayerTotalPoints] = useState<Map<string, number>>(new Map());
+    const [seasons, setSeasons] = useState<Season[]>([]);
+    const [selectedSeason, setSelectedSeason] = useState<string>('');
 
     // Round range selection
     const [fromRound, setFromRound] = useState<number>(1);
@@ -66,29 +73,71 @@ export default function MyPlayerStatsPage() {
         }
     }, [user, authLoading, router]);
 
-    // Initial load only
+    // Load available seasons
     useEffect(() => {
-        if (user && initialLoad) {
-            loadPlayers();
+        const loadSeasons = async () => {
+            try {
+                const response = await fetchWithTokenRefresh('/api/seasons');
+                if (response.ok) {
+                    const data = await response.json();
+                    const allSeasons = data.seasons || [];
+                    
+                    // Filter to show only SSPSLS16 and later
+                    const filteredSeasons = allSeasons.filter((s: Season) => {
+                        const match = s.id.match(/\d+$/);
+                        if (match) {
+                            const seasonNumber = parseInt(match[0]);
+                            return seasonNumber >= 16;
+                        }
+                        return true;
+                    });
+                    
+                    setSeasons(filteredSeasons);
+                    
+                    // Set default season to SSPSLS16 or first available
+                    const defaultSeason = filteredSeasons.find((s: Season) => s.id === 'SSPSLS16') || filteredSeasons[0];
+                    if (defaultSeason) {
+                        setSelectedSeason(defaultSeason.id);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading seasons:', error);
+            }
+        };
+        
+        if (user) {
+            loadSeasons();
         }
     }, [user]);
 
-    // Debounced reload when round range changes
+    // Initial load only
     useEffect(() => {
-        if (!user || initialLoad) return;
+        if (user && initialLoad && selectedSeason) {
+            loadPlayers();
+        }
+    }, [user, selectedSeason]);
+
+    // Debounced reload when round range or season changes
+    useEffect(() => {
+        if (!user || initialLoad || !selectedSeason) return;
 
         const timer = setTimeout(() => {
             loadPlayers();
         }, 500); // Wait 500ms after user stops typing
 
         return () => clearTimeout(timer);
-    }, [fromRound, toRound]);
+    }, [fromRound, toRound, selectedSeason]);
 
     const loadPlayers = async () => {
+        if (!selectedSeason) {
+            console.warn('No season selected');
+            return;
+        }
+        
         setLoading(true);
         try {
             const response = await fetchWithTokenRefresh(
-                `/api/team/player-stats?season_id=SSPSLS16&from_round=${fromRound}&to_round=${toRound}`
+                `/api/team/player-stats?season_id=${selectedSeason}&from_round=${fromRound}&to_round=${toRound}`
             );
             if (response.ok) {
                 const data = await response.json();
@@ -114,7 +163,7 @@ export default function MyPlayerStatsPage() {
         const promises = playersList.map(async (player) => {
             try {
                 const response = await fetchWithTokenRefresh(
-                    `/api/team/player-matchday-stats?player_id=${player.id}&season_id=SSPSLS16&from_round=${fromRound}&to_round=${toRound}`
+                    `/api/team/player-matchday-stats?player_id=${player.id}&season_id=${selectedSeason}&from_round=${fromRound}&to_round=${toRound}`
                 );
                 if (response.ok) {
                     const data = await response.json();
@@ -138,7 +187,7 @@ export default function MyPlayerStatsPage() {
         setLoadingMatchday(playerId);
         try {
             const response = await fetchWithTokenRefresh(
-                `/api/team/player-matchday-stats?player_id=${playerId}&season_id=SSPSLS16&from_round=${fromRound}&to_round=${toRound}`
+                `/api/team/player-matchday-stats?player_id=${playerId}&season_id=${selectedSeason}&from_round=${fromRound}&to_round=${toRound}`
             );
             if (response.ok) {
                 const data = await response.json();
@@ -211,6 +260,45 @@ export default function MyPlayerStatsPage() {
                     <p className="text-gray-600 mt-2 text-sm">
                         Track your players' performance across rounds
                     </p>
+                </div>
+
+                {/* Season Filter - Pill Style */}
+                <div className="mb-6">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <h3 className="text-xs sm:text-sm font-bold text-gray-700 uppercase tracking-wide">Season</h3>
+                    </div>
+                    
+                    {seasons.length === 0 ? (
+                        <div className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-100 rounded-xl">
+                            <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-blue-600"></div>
+                            <span className="text-xs sm:text-sm text-gray-600">Loading seasons...</span>
+                        </div>
+                    ) : (
+                        <div className="flex flex-wrap gap-2">
+                            {seasons.map((season) => (
+                                <button
+                                    key={season.id}
+                                    onClick={() => {
+                                        setSelectedSeason(season.id);
+                                        setExpandedPlayer(null);
+                                        setMatchdayStats(new Map());
+                                    }}
+                                    className={`
+                                        px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all duration-200 transform hover:scale-105
+                                        ${selectedSeason === season.id
+                                            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/50'
+                                            : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-purple-300 hover:bg-purple-50'
+                                        }
+                                    `}
+                                >
+                                    {season.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Round Range Selection */}

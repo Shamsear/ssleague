@@ -43,6 +43,11 @@ interface MatchdayStats {
   was_substitute: boolean;
 }
 
+interface Season {
+  id: string;
+  name: string;
+}
+
 export default function PlayerStatsPage() {
   const { user, loading: authLoading } = useAuth();
   const { userSeasonId } = usePermissions();
@@ -59,6 +64,8 @@ export default function PlayerStatsPage() {
   const [matchdayStats, setMatchdayStats] = useState<Map<string, MatchdayStats[]>>(new Map());
   const [loadingMatchday, setLoadingMatchday] = useState<string | null>(null);
   const [playerTotalPoints, setPlayerTotalPoints] = useState<Map<string, number>>(new Map());
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [selectedSeason, setSelectedSeason] = useState<string>('');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -70,21 +77,59 @@ export default function PlayerStatsPage() {
     }
   }, [user, authLoading, router]);
 
+  // Load available seasons
   useEffect(() => {
+    const loadSeasons = async () => {
+      try {
+        const response = await fetchWithTokenRefresh('/api/seasons');
+        if (response.ok) {
+          const data = await response.json();
+          const allSeasons = data.seasons || [];
+          
+          // Filter to show only SSPSLS16 and later (hide historical seasons)
+          const filteredSeasons = allSeasons.filter((s: Season) => {
+            // Extract season number (e.g., "SSPSLS16" -> 16)
+            const match = s.id.match(/\d+$/);
+            if (match) {
+              const seasonNumber = parseInt(match[0]);
+              return seasonNumber >= 16; // Show only season 16 and onwards
+            }
+            return true; // Keep seasons without numbers
+          });
+          
+          setSeasons(filteredSeasons);
+          
+          // Set default season to SSPSLS16 or first available
+          const defaultSeason = filteredSeasons.find((s: Season) => s.id === 'SSPSLS16') || filteredSeasons[0];
+          if (defaultSeason) {
+            setSelectedSeason(defaultSeason.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading seasons:', error);
+      }
+    };
+    
     if (user && (user.role === 'committee_admin' || user.role === 'super_admin')) {
-      loadPlayers();
+      loadSeasons();
     }
   }, [user]);
 
+  useEffect(() => {
+    if (user && (user.role === 'committee_admin' || user.role === 'super_admin') && selectedSeason) {
+      loadPlayers();
+    }
+  }, [user, selectedSeason]);
+
   const loadPlayers = async () => {
-    if (!userSeasonId) {
+    if (!selectedSeason) {
       console.warn('No season selected');
       return;
     }
     
     setLoading(true);
     try {
-      const response = await fetchWithTokenRefresh(`/api/committee/player-stats?season_id=${userSeasonId}`);
+      const response = await fetchWithTokenRefresh(`/api/committee/player-stats?season_id=${selectedSeason}`);
       if (response.ok) {
         const data = await response.json();
         console.log('[Player Stats Page] Loaded players:', data.players?.length);
@@ -109,7 +154,7 @@ export default function PlayerStatsPage() {
     // Load total points for each player in parallel
     const promises = playersList.map(async (player) => {
       try {
-        const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${player.id}&season_id=${userSeasonId}`);
+        const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${player.id}&season_id=${selectedSeason}`);
         if (response.ok) {
           const data = await response.json();
           newPlayerTotalPoints.set(player.id, data.totalPoints || 0);
@@ -132,7 +177,7 @@ export default function PlayerStatsPage() {
 
     setLoadingMatchday(playerId);
     try {
-      const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${playerId}&season_id=${userSeasonId}`);
+      const response = await fetchWithTokenRefresh(`/api/committee/player-matchday-stats?player_id=${playerId}&season_id=${selectedSeason}`);
       if (response.ok) {
         const data = await response.json();
         const newMatchdayStats = new Map(matchdayStats);
@@ -325,29 +370,6 @@ export default function PlayerStatsPage() {
 
   if (!user || (user.role !== 'committee_admin' && user.role !== 'super_admin')) return null;
 
-  // Show message if no season is selected
-  if (!userSeasonId) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="text-center max-w-md mx-auto p-8">
-          <div className="text-6xl mb-4">📊</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Season Not Assigned</h2>
-          <p className="text-gray-600 mb-6">
-            Your committee admin account doesn't have a season assigned. Please contact a super admin to assign a season to your account.
-          </p>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
-            <p className="text-sm text-gray-700 mb-2">
-              <strong>For Super Admins:</strong>
-            </p>
-            <p className="text-xs text-gray-600">
-              Set the <code className="bg-white px-1 py-0.5 rounded">seasonId</code> custom claim for this user in Firebase Authentication.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -358,9 +380,6 @@ export default function PlayerStatsPage() {
                 Player Statistics
               </h1>
               <p className="text-gray-600 mt-2 flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                  {userSeasonId || 'No Season Selected'}
-                </span>
                 <span>Season player performance data</span>
               </p>
             </div>
@@ -408,6 +427,47 @@ export default function PlayerStatsPage() {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Season Filter - Pill Style */}
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Season</h3>
+            </div>
+            
+            {seasons.length === 0 ? (
+              <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-xl">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span className="text-sm text-gray-600">Loading seasons...</span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {seasons.map((season) => (
+                  <button
+                    key={season.id}
+                    onClick={() => {
+                      setSelectedSeason(season.id);
+                      setEditMode(false);
+                      setEditedPlayers(new Map());
+                      setExpandedPlayer(null);
+                      setMatchdayStats(new Map());
+                    }}
+                    className={`
+                      px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 transform hover:scale-105
+                      ${selectedSeason === season.id
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/50'
+                        : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-purple-300 hover:bg-purple-50'
+                      }
+                    `}
+                  >
+                    {season.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {editMode && (

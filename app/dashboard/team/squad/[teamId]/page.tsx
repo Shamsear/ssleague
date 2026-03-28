@@ -24,6 +24,12 @@ interface TeamProfile {
   isAutoRegistered?: boolean;
   skippedSeasons?: number;
   penaltyAmount?: number;
+  // Dual currency fields
+  currencySystem?: string;
+  footballBudget?: number;
+  realPlayerBudget?: number;
+  footballSpent?: number;
+  realPlayerSpent?: number;
 }
 
 interface PlayerData {
@@ -71,6 +77,7 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
   const [standings, setStandings] = useState<StandingsData | null>(null);
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [seasonName, setSeasonName] = useState('');
+  const [seasonType, setSeasonType] = useState<'single' | 'multi'>('single');
   const [activeTab, setActiveTab] = useState<'squad' | 'fixtures' | 'stats'>('squad');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -95,6 +102,7 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
         
         let targetSeasonId = null;
         let targetSeasonName = '';
+        let targetSeasonType: 'single' | 'multi' = 'single';
         
         // Find first non-completed season
         for (const docSnap of seasonsSnapshot.docs) {
@@ -102,6 +110,7 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
           if (data.status !== 'completed') {
             targetSeasonId = docSnap.id;
             targetSeasonName = data.name || `Season ${data.season_number || 'Unknown'}`;
+            targetSeasonType = data.type || 'single';
             break;
           }
         }
@@ -109,7 +118,9 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
         if (!targetSeasonId && seasonsSnapshot.size > 0) {
           const firstDoc = seasonsSnapshot.docs[0];
           targetSeasonId = firstDoc.id;
-          targetSeasonName = firstDoc.data().name || 'Season';
+          const data = firstDoc.data();
+          targetSeasonName = data.name || 'Season';
+          targetSeasonType = data.type || 'single';
         }
 
         if (!targetSeasonId) {
@@ -120,6 +131,7 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
 
         setSeasonId(targetSeasonId);
         setSeasonName(targetSeasonName);
+        setSeasonType(targetSeasonType);
       } catch (error) {
         console.error('Error fetching active season:', error);
         setError('Failed to load active season');
@@ -166,6 +178,12 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
           isAutoRegistered: teamSeasonData.is_auto_registered,
           skippedSeasons: teamSeasonData.skipped_seasons,
           penaltyAmount: teamSeasonData.penalty_amount,
+          // Dual currency fields
+          currencySystem: teamSeasonData.currency_system || 'single',
+          footballBudget: teamSeasonData.football_budget || 0,
+          realPlayerBudget: teamSeasonData.real_player_budget || 0,
+          footballSpent: teamSeasonData.football_spent || 0,
+          realPlayerSpent: teamSeasonData.real_player_spent || 0,
         });
 
         // Fetch players, fixtures, and standings from API
@@ -183,9 +201,14 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
           if (playersData.balance) {
             setTeamProfile(prev => prev ? {
               ...prev,
+              // Update football budget from Neon (source of truth)
+              footballBudget: playersData.balance.football_budget || prev.footballBudget,
+              footballSpent: playersData.balance.football_spent || prev.footballSpent,
+              // Keep legacy fields for backward compatibility
               budget: playersData.balance.football_budget || prev.budget,
               totalSpent: playersData.balance.football_spent || prev.totalSpent,
               playersCount: (playersData.footballplayers?.length || 0) + (playersData.realplayers?.length || 0),
+              // Real player budget comes from Firebase team_seasons, not Neon
             } : null);
           }
         }
@@ -315,12 +338,53 @@ export default function TeamSquadPage({ params }: { params: Promise<{ teamId: st
                     #{standings.position} in League
                   </span>
                 )}
-                <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
-                  ⚽ £{teamProfile.totalSpent.toLocaleString()} Spent (Football)
-                </span>
-                <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
-                  ⚽ £{teamProfile.budget.toLocaleString()} Left (Football)
-                </span>
+                
+                {/* Dual currency display (multi-season or dual currency system) */}
+                {seasonType === 'multi' || teamProfile.currencySystem === 'dual' ? (
+                  <>
+                    <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      eCoin Spent: {(teamProfile.footballSpent || 0).toLocaleString()}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      SSCoin Spent: {(teamProfile.realPlayerSpent || 0).toLocaleString()}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-indigo-100 px-3 py-1 text-sm font-medium text-indigo-800">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      eCoin Left: {(teamProfile.footballBudget || 0).toLocaleString()}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      SSCoin Left: {(teamProfile.realPlayerBudget || 0).toLocaleString()}
+                    </span>
+                  </>
+                ) : (
+                  /* Single currency display */
+                  <>
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Spent: {teamProfile.totalSpent.toLocaleString()}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      Left: {teamProfile.budget.toLocaleString()}
+                    </span>
+                  </>
+                )}
+                
                 <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
                   {players.filter((p: any) => p.type === 'footballplayer').length} eFootball + {players.filter((p: any) => p.type === 'realplayer').length} Tournament
                 </span>

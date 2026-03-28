@@ -1,24 +1,38 @@
 import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
 import path from 'path';
-import dotenv from 'dotenv';
-
-// Load environment variables from .env.local
-dotenv.config({ path: '.env.local' });
 
 export default defineConfig({
-  plugins: [react()],
   test: {
-    environment: 'node',
     globals: true,
-    env: {
-      DATABASE_URL: process.env.DATABASE_URL || '',
-      NEON_DATABASE_URL: process.env.NEON_DATABASE_URL || '',
+    environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'tests/',
+        '**/*.test.ts',
+        '**/*.config.ts',
+        '.next/',
+        'dist/'
+      ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80
+      }
     },
+    include: [
+      'lib/**/*.test.ts',
+      'tests/**/*.test.ts'
+    ],
+    testTimeout: 10000
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './'),
-    },
-  },
+      '@': path.resolve(__dirname, './')
+    }
+  }
 });

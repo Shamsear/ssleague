@@ -64,6 +64,7 @@ interface Round {
   created_at: string;
   updated_at: string;
   bids: Bid[];
+  round_type?: string; // 'bulk' or 'regular'
 }
 
 interface TeamBidCount {
@@ -569,33 +570,66 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
               Round Summary
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-              <div className="glass rounded-xl p-4 backdrop-blur-sm bg-white/30 hover:bg-white/40 transition-all shadow-sm">
-                <h4 className="font-medium mb-1.5 text-gray-600 text-sm">Position</h4>
-                <p className="text-lg font-semibold">{round.position}</p>
-              </div>
+            <div className={`grid grid-cols-1 ${round.round_type === 'bulk' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 sm:gap-4`}>
+              {round.round_type !== 'bulk' && (
+                <div className="glass rounded-xl p-4 backdrop-blur-sm bg-white/30 hover:bg-white/40 transition-all shadow-sm">
+                  <h4 className="font-medium mb-1.5 text-gray-600 text-sm">Position</h4>
+                  <p className="text-lg font-semibold">{round.position}</p>
+                </div>
+              )}
 
               <div className="glass rounded-xl p-4 backdrop-blur-sm bg-white/30 hover:bg-white/40 transition-all shadow-sm">
-                <h4 className="font-medium mb-1.5 text-gray-600 text-sm">Status</h4>
+                <h4 className="font-medium mb-1.5 text-gray-600 text-sm">
+                  {round.round_type === 'bulk' ? 'Type' : 'Status'}
+                </h4>
                 <p className="text-lg">
-                  <span
-                    className={`px-2 py-1 rounded-full text-sm font-medium ${
-                      round.status === 'active'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-blue-100 text-blue-800'
-                    }`}
-                  >
-                    {round.status === 'active' ? 'Active' : 'Completed'}
-                  </span>
+                  {round.round_type === 'bulk' ? (
+                    <span className="px-2 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                      Bulk Auction
+                    </span>
+                  ) : (
+                    <span
+                      className={`px-2 py-1 rounded-full text-sm font-medium ${
+                        round.status === 'active'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {round.status === 'active' ? 'Active' : 'Completed'}
+                    </span>
+                  )}
                 </p>
               </div>
 
               <div className="glass rounded-xl p-4 backdrop-blur-sm bg-white/30 hover:bg-white/40 transition-all shadow-sm">
-                <h4 className="font-medium mb-1.5 text-gray-600 text-sm">Date/Time</h4>
+                <h4 className="font-medium mb-1.5 text-gray-600 text-sm">
+                  {round.round_type === 'bulk' ? 'Status' : 'Date/Time'}
+                </h4>
                 <p className="text-lg">
-                  {round.created_at && new Date(round.created_at).toLocaleString()}
+                  {round.round_type === 'bulk' ? (
+                    <span
+                      className={`px-2 py-1 rounded-full text-sm font-medium ${
+                        round.status === 'active'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {round.status === 'active' ? 'Active' : 'Completed'}
+                    </span>
+                  ) : (
+                    round.created_at && new Date(round.created_at).toLocaleString()
+                  )}
                 </p>
               </div>
+
+              {round.round_type === 'bulk' && (
+                <div className="glass rounded-xl p-4 backdrop-blur-sm bg-white/30 hover:bg-white/40 transition-all shadow-sm">
+                  <h4 className="font-medium mb-1.5 text-gray-600 text-sm">Date/Time</h4>
+                  <p className="text-lg">
+                    {round.created_at && new Date(round.created_at).toLocaleString()}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -647,7 +681,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
                             {playerData.player.position}
                           </div>
                         </div>
-                        {isIncomplete && teamInfo && (
+                        {isIncomplete && teamInfo && round.round_type !== 'bulk' && (
                           <div className="bg-orange-50 border border-orange-200 rounded-lg p-2.5 text-xs">
                             <div className="flex items-start gap-1.5">
                               <svg className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -747,7 +781,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
                               </div>
                               <div>
                                 <div className="font-medium">{playerData.player.name}</div>
-                                {isIncomplete && teamInfo && (
+                                {isIncomplete && teamInfo && round.round_type !== 'bulk' && (
                                   <div className="text-xs text-orange-600 flex items-center gap-1 mt-0.5">
                                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -771,7 +805,12 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="font-semibold text-primary">
                               £{bid.amount.toLocaleString()}
-                              {isIncomplete && (
+                              {round.round_type === 'bulk' && (
+                                <span className="text-blue-600 text-xs block font-normal">
+                                  (Base price)
+                                </span>
+                              )}
+                              {isIncomplete && round.round_type !== 'bulk' && (
                                 <span className="text-orange-600 text-xs block font-normal">
                                   (Average price)
                                   {bid.actual_bid_amount && (

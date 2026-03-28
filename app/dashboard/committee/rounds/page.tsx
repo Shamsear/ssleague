@@ -6,8 +6,6 @@ import { useRouter } from 'next/navigation';
 import { adminDb } from '@/lib/firebase/admin-client';
 import { extractIdNumberAsInt } from '@/lib/id-utils';
 import Link from 'next/link';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import FinalizationProgress from '@/components/FinalizationProgress';
 import { useModal } from '@/hooks/useModal';
@@ -106,20 +104,16 @@ export default function RoundsManagementPage() {
     setIsLoading(true);
     
     try {
-      // Fetch active season first (needed for other requests)
-      const seasonsQuery = query(
-        collection(db, 'seasons'),
-        where('isActive', '==', true),
-        limit(1)
-      );
-      const seasonsSnapshot = await getDocs(seasonsQuery);
-
-      if (seasonsSnapshot.empty) {
+      // Use the committee admin's season ID instead of active season
+      // This allows admins to view their assigned season's data even if it's not active
+      const seasonId = user.seasonId;
+      
+      if (!seasonId) {
+        console.error('Committee admin has no seasonId assigned');
         setIsLoading(false);
         return;
       }
 
-      const seasonId = seasonsSnapshot.docs[0].id;
       setCurrentSeasonId(seasonId);
 
       // Fetch auction settings for this season
@@ -1125,6 +1119,13 @@ export default function RoundsManagementPage() {
   const finalizingRounds = rounds.filter(r => r.status === 'tiebreaker_pending');
   const expiredRounds = rounds.filter(r => r.status === 'expired' || r.status === 'expired_pending_finalization' || r.status === 'pending_finalization');
   const completedRounds = rounds.filter(r => r.status === 'completed');
+
+  // Debug logging
+  console.log('🔍 [Rounds Page] Total rounds:', rounds.length);
+  console.log('🔍 [Rounds Page] Active rounds:', activeRounds.length);
+  console.log('🔍 [Rounds Page] Completed rounds:', completedRounds.length);
+  console.log('🔍 [Rounds Page] Current season ID:', currentSeasonId);
+  console.log('🔍 [Rounds Page] All rounds:', rounds.map(r => ({ id: r.id, status: r.status, season_id: r.season_id })));
 
   if (loading || !user || user.role !== 'committee_admin' || isLoading) {
     return (

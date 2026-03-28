@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/auth-helper';
 import { fantasySql } from '@/lib/neon/fantasy-config';
 
 /**
@@ -7,41 +8,54 @@ import { fantasySql } from '@/lib/neon/fantasy-config';
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const league_id = searchParams.get('league_id');
+    const auth = await verifyAuth(['committee_admin'], request);
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Committee access required' },
+        { status: 401 }
+      );
+    }
 
-    if (!league_id) {
+    const { searchParams } = new URL(request.url);
+    const leagueId = searchParams.get('league_id');
+
+    if (!leagueId) {
       return NextResponse.json(
         { error: 'league_id is required' },
         { status: 400 }
       );
     }
 
+    // Get all transfer windows for the league
     const windows = await fantasySql`
-      SELECT * FROM transfer_windows
-      WHERE league_id = ${league_id}
+      SELECT 
+        window_id,
+        window_name,
+        opens_at,
+        closes_at,
+        is_active,
+        CASE
+          WHEN NOW() < opens_at THEN 'upcoming'
+          WHEN NOW() BETWEEN opens_at AND closes_at AND is_active THEN 'active'
+          ELSE 'closed'
+        END as status
+      FROM fantasy_transfer_windows
+      WHERE league_id = ${leagueId}
       ORDER BY opens_at DESC
     `;
 
-    // Add status based on current time
-    const now = new Date();
-    const windowsWithStatus = windows.map((window: any) => ({
-      ...window,
-      status: window.is_active 
-        ? 'active' 
-        : new Date(window.opens_at) > now 
-          ? 'upcoming' 
-          : 'closed'
-    }));
-
     return NextResponse.json({
       success: true,
-      windows: windowsWithStatus,
+      windows
     });
+
   } catch (error) {
     console.error('Error fetching transfer windows:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch transfer windows' },
+      { 
+        error: 'Failed to fetch transfer windows',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
@@ -49,41 +63,90 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/fantasy/transfer-windows
- * Create a new transfer window (committee only)
+ * Create a new transfer window
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await verifyAuth(['committee_admin'], request);
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Committee access required' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { league_id, window_name, opens_at, closes_at } = body;
 
+    // Validate required fields
     if (!league_id || !window_name || !opens_at || !closes_at) {
       return NextResponse.json(
-        { error: 'league_id, window_name, opens_at, and closes_at are required' },
+        { error: 'Missing required fields: league_id, window_name, opens_at, closes_at' },
         { status: 400 }
       );
     }
 
-    const window_id = `tw_${league_id}_${Date.now()}`;
+    // Validate dates
+    const opensDate = new Date(opens_at);
+    const closesDate = new Date(closes_at);
 
+    if (closesDate <= opensDate) {
+      return NextResponse.json(
+        { error: 'closes_at must be after opens_at' },
+        { status: 400 }
+      );
+    }
+
+    // Check for overlapping windows
+    const overlapping = await fantasySql`
+      SELECT window_id, window_name
+      FROM fantasy_transfer_windows
+      WHERE league_id = ${league_id}
+        AND (
+          (opens_at <= ${opens_at} AND closes_at >= ${opens_at})
+          OR (opens_at <= ${closes_at} AND closes_at >= ${closes_at})
+          OR (opens_at >= ${opens_at} AND closes_at <= ${closes_at})
+        )
+    `;
+
+    if (overlapping.length > 0) {
+      return NextResponse.json(
+        { 
+          error: `Transfer window overlaps with existing window: ${overlapping[0].window_name}`,
+          overlapping_window: overlapping[0]
+        },
+        { status: 400 }
+      );
+    }
+
+    // Create the transfer window
+    const windowId = `window_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     await fantasySql`
-      INSERT INTO transfer_windows (
-        window_id, league_id, window_name, opens_at, closes_at, is_active
+      INSERT INTO fantasy_transfer_windows (
+        window_id, league_id, window_name,
+        opens_at, closes_at, is_active
       ) VALUES (
-        ${window_id}, ${league_id}, ${window_name}, ${opens_at}, ${closes_at}, false
+        ${windowId}, ${league_id}, ${window_name},
+        ${opens_at}, ${closes_at}, false
       )
     `;
 
-    console.log(`✅ Transfer window created: ${window_name}`);
+    console.log(`✅ Created transfer window: ${window_name} for league ${league_id}`);
 
     return NextResponse.json({
       success: true,
       message: 'Transfer window created successfully',
-      window_id,
+      window_id: windowId
     });
+
   } catch (error) {
     console.error('Error creating transfer window:', error);
     return NextResponse.json(
-      { error: 'Failed to create transfer window' },
+      { 
+        error: 'Failed to create transfer window',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

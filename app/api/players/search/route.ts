@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/config';
 import { collection, query, where, getDocs, or, orderBy, limit as firestoreLimit, startAt, endAt } from 'firebase/firestore';
+import { getTournamentDb } from '@/lib/neon/tournament-config';
 
 // In-memory cache for all players (cached for 5 minutes)
 let playersCache: { data: any[], timestamp: number } | null = null;
@@ -72,41 +73,25 @@ export async function GET(request: NextRequest) {
     // Get player IDs for batch status check
     const playerIds = allPlayers.map(p => p.player_id);
 
-    // Check registration status in Firebase (check is_registered field for this season)
-    const realPlayersRef = collection(db, 'realplayers');
-    const registrationQuery = query(
-      realPlayersRef,
-      where('season_id', '==', seasonId),
-      where('player_id', 'in', playerIds.slice(0, 10)) // Firebase 'in' limited to 10
-    );
-
-    const registrationSnapshot = await getDocs(registrationQuery);
+    // Check registration status in Neon player_seasons table (source of truth)
+    const sql = getTournamentDb();
     const registeredPlayerIds = new Set<string>();
 
-    registrationSnapshot.forEach(doc => {
-      const data = doc.data();
-      if (data.is_registered === true) {
-        registeredPlayerIds.add(data.player_id);
-      }
-    });
+    try {
+      // Query player_seasons table to check which players are registered for this season
+      const registeredPlayers = await sql`
+        SELECT player_id 
+        FROM player_seasons 
+        WHERE season_id = ${seasonId} 
+        AND player_id = ANY(${playerIds})
+      `;
 
-    // If we have more than 10 players, check in batches
-    if (playerIds.length > 10) {
-      for (let i = 10; i < playerIds.length; i += 10) {
-        const batch = playerIds.slice(i, i + 10);
-        const batchQuery = query(
-          realPlayersRef,
-          where('season_id', '==', seasonId),
-          where('player_id', 'in', batch)
-        );
-        const batchSnapshot = await getDocs(batchQuery);
-        batchSnapshot.forEach(doc => {
-          const data = doc.data();
-          if (data.is_registered === true) {
-            registeredPlayerIds.add(data.player_id);
-          }
-        });
-      }
+      registeredPlayers.forEach((row: any) => {
+        registeredPlayerIds.add(row.player_id);
+      });
+    } catch (error) {
+      console.error('Error checking player registration status:', error);
+      // Continue with empty set if query fails
     }
 
     // Map players with status

@@ -151,6 +151,7 @@ export default function FantasyLeagueDashboard() {
   if (!user || !league) return null;
 
   const managementCards = [
+    // Core Setup
     {
       title: 'Enable Teams',
       description: 'Enable/disable teams for fantasy participation',
@@ -161,12 +162,11 @@ export default function FantasyLeagueDashboard() {
       ),
       href: `/dashboard/committee/fantasy/enable-teams`,
       color: 'from-teal-500 to-cyan-600',
-      bgColor: 'from-teal-50 to-cyan-50',
-      borderColor: 'border-teal-200',
+      badge: null,
     },
     {
-      title: 'Draft Settings',
-      description: 'Set budget per team and squad size limits',
+      title: 'League Settings',
+      description: 'Configure budget, squad size, and tier settings',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -175,48 +175,88 @@ export default function FantasyLeagueDashboard() {
       ),
       href: `/dashboard/committee/fantasy/draft-settings/${leagueId}`,
       color: 'from-indigo-500 to-purple-600',
-      bgColor: 'from-indigo-50 to-purple-50',
-      borderColor: 'border-indigo-200',
+      badge: null,
     },
+    
+    // Draft Management (NEW MODEL)
     {
-      title: 'Player Pricing',
-      description: 'Configure credit prices for 3-10 star ratings',
+      title: 'Generate Draft Tiers',
+      description: 'Create 7 tiers from player pool for blind bidding',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       ),
-      href: `/dashboard/committee/fantasy/pricing/${leagueId}`,
-      color: 'from-green-500 to-teal-600',
-      bgColor: 'from-green-50 to-teal-50',
-      borderColor: 'border-green-200',
+      href: `/dashboard/committee/fantasy/${leagueId}/draft/generate-tiers`,
+      color: 'from-violet-500 to-purple-600',
+      badge: 'NEW',
+    },
+    {
+      title: 'Process Draft',
+      description: 'Process all tier bids and assign players to teams',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/${leagueId}/draft/process`,
+      color: 'from-emerald-500 to-green-600',
+      badge: 'NEW',
     },
     {
       title: 'Draft Results',
-      description: 'View drafted players and team squads',
+      description: 'View tier-by-tier draft results and team squads',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
         </svg>
       ),
       href: `/dashboard/committee/fantasy/draft/${leagueId}`,
-      color: 'from-emerald-500 to-green-600',
-      bgColor: 'from-emerald-50 to-green-50',
-      borderColor: 'border-emerald-200',
+      color: 'from-blue-500 to-indigo-600',
+      badge: null,
+    },
+    
+    // Weekly Lineup Management (NEW MODEL)
+    {
+      title: 'Weekly Lineups',
+      description: 'View and manage team lineups for current round',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/${leagueId}/lineups`,
+      color: 'from-sky-500 to-blue-600',
+      badge: 'NEW',
     },
     {
-      title: 'Player Transfers',
-      description: 'Manage player trades and roster changes',
+      title: 'Calculate Points',
+      description: 'Calculate lineup points after round completes',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      ),
+      href: `/dashboard/committee/fantasy/${leagueId}/calculate-points`,
+      color: 'from-amber-500 to-orange-600',
+      badge: 'NEW',
+    },
+    
+    // Transfer Management (UPDATED)
+    {
+      title: 'Transfer Windows',
+      description: 'Manage release, draft, and trading phases',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
         </svg>
       ),
-      href: `/dashboard/committee/fantasy/manage-players/${leagueId}`,
-      color: 'from-orange-500 to-red-600',
-      bgColor: 'from-orange-50 to-red-50',
-      borderColor: 'border-orange-200',
+      href: `/dashboard/committee/fantasy/${leagueId}/transfer-windows`,
+      color: 'from-cyan-500 to-teal-600',
+      badge: 'UPDATED',
     },
+    
+    // Team & Scoring
     {
       title: 'View Teams',
       description: 'See all fantasy teams and their rosters',
@@ -226,13 +266,12 @@ export default function FantasyLeagueDashboard() {
         </svg>
       ),
       href: `/dashboard/committee/fantasy/teams/${leagueId}`,
-      color: 'from-blue-500 to-indigo-600',
-      bgColor: 'from-blue-50 to-indigo-50',
-      borderColor: 'border-blue-200',
+      color: 'from-indigo-500 to-purple-600',
+      badge: null,
     },
     {
       title: 'Scoring Rules',
-      description: 'Configure points for goals, assists, wins, etc.',
+      description: 'Configure points for goals, assists, captain multipliers',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -240,12 +279,11 @@ export default function FantasyLeagueDashboard() {
       ),
       href: `/dashboard/committee/fantasy/scoring/${leagueId}`,
       color: 'from-purple-500 to-pink-600',
-      bgColor: 'from-purple-50 to-pink-50',
-      borderColor: 'border-purple-200',
+      badge: 'UPDATED',
     },
     {
       title: 'Standings',
-      description: 'View fantasy league standings and rankings',
+      description: 'View overall points and H2H standings',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -253,35 +291,21 @@ export default function FantasyLeagueDashboard() {
       ),
       href: `/dashboard/committee/fantasy/standings/${leagueId}`,
       color: 'from-yellow-500 to-orange-600',
-      bgColor: 'from-yellow-50 to-orange-50',
-      borderColor: 'border-yellow-200',
+      badge: 'UPDATED',
     },
+    
+    // Engagement Features (NEW)
     {
-      title: 'Draft Control',
-      description: 'Open/close draft period and set deadlines',
+      title: 'H2H Fixtures',
+      description: 'Generate weekly head-to-head matchups',
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
       ),
-      href: `/dashboard/committee/fantasy/draft-control/${leagueId}`,
-      color: 'from-red-500 to-pink-600',
-      bgColor: 'from-red-50 to-pink-50',
-      borderColor: 'border-red-200',
-    },
-
-    {
-      title: 'Transfer Management',
-      description: 'Configure windows, settings & rules',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-        </svg>
-      ),
-      href: `/dashboard/committee/fantasy/transfers/${leagueId}`,
-      color: 'from-cyan-500 to-teal-600',
-      bgColor: 'from-cyan-50 to-teal-50',
-      borderColor: 'border-cyan-200',
+      href: `/dashboard/committee/fantasy/${leagueId}/h2h-fixtures`,
+      color: 'from-pink-500 to-rose-600',
+      badge: 'NEW',
     },
     {
       title: 'Bonus Points',
@@ -292,48 +316,8 @@ export default function FantasyLeagueDashboard() {
         </svg>
       ),
       href: `/dashboard/committee/fantasy/${leagueId}/bonus-points`,
-      color: 'from-pink-500 to-rose-600',
-      bgColor: 'from-pink-50 to-rose-50',
-      borderColor: 'border-pink-200',
-    },
-    {
-      title: 'Recalculate Passive Points',
-      description: 'Recalculate team passive points from fixtures',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-      ),
-      href: `/dashboard/committee/fantasy/recalculate-points`,
-      color: 'from-amber-500 to-yellow-600',
-      bgColor: 'from-amber-50 to-yellow-50',
-      borderColor: 'border-amber-200',
-    },
-    {
-      title: 'Points Breakdown',
-      description: 'Round-by-round player points analysis',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
-      ),
-      href: `/dashboard/committee/fantasy/points-breakdown`,
-      color: 'from-purple-500 to-indigo-600',
-      bgColor: 'from-purple-50 to-indigo-50',
-      borderColor: 'border-purple-200',
-    },
-    {
-      title: 'Supported Team Windows',
-      description: 'Allow teams to change their passive team once for free',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-        </svg>
-      ),
-      href: `/dashboard/committee/fantasy/supported-team-windows?league_id=${leagueId}`,
       color: 'from-rose-500 to-pink-600',
-      bgColor: 'from-rose-50 to-pink-50',
-      borderColor: 'border-rose-200',
+      badge: null,
     },
   ];
 
@@ -501,8 +485,17 @@ export default function FantasyLeagueDashboard() {
               <Link
                 key={index}
                 href={card.href}
-                className="group bg-white rounded-xl shadow-sm border border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all p-4"
+                className="group bg-white rounded-xl shadow-sm border border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all p-4 relative"
               >
+                {card.badge && (
+                  <div className={`absolute top-2 right-2 px-2 py-1 rounded-md text-xs font-bold ${
+                    card.badge === 'NEW' 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
+                      : 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white'
+                  }`}>
+                    {card.badge}
+                  </div>
+                )}
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 bg-gradient-to-br ${card.color} rounded-xl flex items-center justify-center text-white group-hover:scale-110 transition-transform flex-shrink-0`}>
                     {card.icon}

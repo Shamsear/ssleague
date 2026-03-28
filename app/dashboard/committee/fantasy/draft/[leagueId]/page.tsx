@@ -27,6 +27,42 @@ interface DraftedPlayer {
   matches_played: number;
 }
 
+interface TierResult {
+  tier_id: string;
+  tier_number: number;
+  tier_name: string;
+  player_count: number;
+  min_points: number;
+  max_points: number;
+  avg_points: number;
+  total_bids: number;
+  won_bids: number;
+  lost_bids: number;
+  skipped_bids: number;
+  results: Array<{
+    bid_id: string;
+    player_name: string;
+    real_player_id: string;
+    winning_team: string;
+    team_id: string;
+    owner_name: string;
+    bid_amount: number;
+    submitted_at: Date;
+    processed_at: Date;
+  }>;
+  lost_bids: Array<{
+    bid_id: string;
+    player_name: string;
+    team_name: string;
+    team_id: string;
+    bid_amount: number;
+  }>;
+  skipped_teams: Array<{
+    team_name: string;
+    team_id: string;
+  }>;
+}
+
 export default function DraftResultsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -41,6 +77,9 @@ export default function DraftResultsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [starPricing, setStarPricing] = useState<Record<number, number>>({});
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [viewMode, setViewMode] = useState<'by-team' | 'by-tier'>('by-tier');
+  const [tierResults, setTierResults] = useState<TierResult[]>([]);
+  const [selectedTier, setSelectedTier] = useState<number | null>(null);
 
   const { alertState, showAlert, closeAlert } = useModal();
 
@@ -82,6 +121,16 @@ export default function DraftResultsPage() {
         const leagueData = await leagueResponse.json();
         setLeague(leagueData.league);
         setFantasyTeams(leagueData.teams);
+
+        // Get tier-by-tier results
+        const tierResultsResponse = await fetchWithTokenRefresh(`/api/fantasy/draft/tier-results?league_id=${leagueId}`);
+        if (tierResultsResponse.ok) {
+          const tierData = await tierResultsResponse.json();
+          setTierResults(tierData.tiers || []);
+          if (tierData.tiers && tierData.tiers.length > 0 && selectedTier === null) {
+            setSelectedTier(tierData.tiers[0].tier_number);
+          }
+        }
 
         // Get star rating pricing
         const pricingResponse = await fetchWithTokenRefresh(`/api/fantasy/pricing/${leagueId}`);
@@ -143,7 +192,7 @@ export default function DraftResultsPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [leagueId, selectedTeam]);
+    }, [leagueId, selectedTeam, selectedTier]);
 
   useEffect(() => {
     if (user) {
@@ -201,6 +250,9 @@ export default function DraftResultsPage() {
             <div className="flex-1">
               <div className="flex items-center gap-3">
                 <h1 className="text-3xl font-bold text-gray-900">Draft Results</h1>
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-semibold rounded-full">
+                  NEW MODEL
+                </span>
                 {isConnected && (
                   <div className="flex items-center gap-2 px-3 py-1 bg-green-100 border border-green-300 rounded-full">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -208,7 +260,7 @@ export default function DraftResultsPage() {
                   </div>
                 )}
               </div>
-              <p className="text-gray-600 mt-1">{league.name} - View team squads</p>
+              <p className="text-gray-600 mt-1">{league.name} - Tier-by-tier blind bid results</p>
               {lastUpdated && (
                 <p className="text-xs text-gray-500 mt-1">
                   Last updated: {lastUpdated.toLocaleTimeString()}
@@ -216,9 +268,202 @@ export default function DraftResultsPage() {
               )}
             </div>
           </div>
+
+          {/* View Mode Toggle */}
+          <div className="mt-6 flex gap-2">
+            <button
+              onClick={() => setViewMode('by-tier')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                viewMode === 'by-tier'
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+              }`}
+            >
+              View by Tier
+            </button>
+            <button
+              onClick={() => setViewMode('by-team')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                viewMode === 'by-team'
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+              }`}
+            >
+              View by Team
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* By Tier View */}
+        {viewMode === 'by-tier' && (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Tier Selector */}
+            <div>
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sticky top-4">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Draft Tiers</h2>
+                
+                {tierResults.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <p className="text-sm">No tiers generated yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {tierResults.map((tier) => (
+                      <button
+                        key={tier.tier_id}
+                        onClick={() => setSelectedTier(tier.tier_number)}
+                        className={`w-full text-left p-4 rounded-xl transition-all ${
+                          selectedTier === tier.tier_number
+                            ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg'
+                            : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                        }`}
+                      >
+                        <div className="font-semibold">Tier {tier.tier_number}: {tier.tier_name}</div>
+                        <div className={`text-sm mt-1 ${
+                          selectedTier === tier.tier_number ? 'text-purple-100' : 'text-gray-600'
+                        }`}>
+                          {tier.won_bids} players drafted
+                        </div>
+                        <div className={`text-xs mt-1 ${
+                          selectedTier === tier.tier_number ? 'text-purple-200' : 'text-gray-500'
+                        }`}>
+                          {tier.min_points}-{tier.max_points} pts
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tier Results */}
+            <div className="lg:col-span-3">
+              {selectedTier !== null && tierResults.length > 0 && (
+                (() => {
+                  const tier = tierResults.find(t => t.tier_number === selectedTier);
+                  if (!tier) return null;
+
+                  return (
+                    <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+                      <div className="mb-6 pb-4 border-b border-gray-200">
+                        <h2 className="text-2xl font-bold text-gray-900">
+                          Tier {tier.tier_number}: {tier.tier_name}
+                        </h2>
+                        <div className="flex gap-6 mt-3">
+                          <div>
+                            <p className="text-sm text-gray-500">Players Drafted</p>
+                            <p className="text-2xl font-bold text-indigo-600">{tier.won_bids}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500">Total Bids</p>
+                            <p className="text-2xl font-bold text-purple-600">{tier.total_bids}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500">Points Range</p>
+                            <p className="text-2xl font-bold text-green-600">
+                              {tier.min_points}-{tier.max_points}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500">Avg Points</p>
+                            <p className="text-2xl font-bold text-amber-600">{tier.avg_points.toFixed(1)}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {tier.results.length === 0 ? (
+                        <div className="text-center py-12 text-gray-500">
+                          <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                          </svg>
+                          <p className="font-medium">No players drafted from this tier</p>
+                          <p className="text-sm">All teams skipped this tier</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-gray-50 border-b-2 border-gray-200">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Player</th>
+                                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Winning Team</th>
+                                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Owner</th>
+                                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Bid Amount</th>
+                                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {tier.results.map((result) => (
+                                <tr key={result.bid_id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3">
+                                    <p className="font-medium text-gray-900">{result.player_name}</p>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <p className="font-medium text-indigo-600">{result.winning_team}</p>
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-700">{result.owner_name}</td>
+                                  <td className="px-4 py-3">
+                                    <span className="font-medium text-green-600">₹{result.bid_amount.toFixed(1)}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                                      Won
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Lost Bids Section */}
+                      {tier.lost_bids.length > 0 && (
+                        <div className="mt-6 pt-6 border-t border-gray-200">
+                          <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                            Unsuccessful Bids ({tier.lost_bids.length})
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {tier.lost_bids.map((bid) => (
+                              <div key={bid.bid_id} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <p className="font-medium text-gray-900">{bid.player_name}</p>
+                                <p className="text-sm text-gray-600">
+                                  {bid.team_name} - ₹{bid.bid_amount.toFixed(1)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Skipped Teams Section */}
+                      {tier.skipped_teams.length > 0 && (
+                        <div className="mt-6 pt-6 border-t border-gray-200">
+                          <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                            Teams That Skipped ({tier.skipped_teams.length})
+                          </h3>
+                          <div className="flex flex-wrap gap-2">
+                            {tier.skipped_teams.map((team) => (
+                              <span
+                                key={team.team_id}
+                                className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full"
+                              >
+                                {team.team_name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* By Team View */}
+        {viewMode === 'by-team' && (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Team Selector */}
           <div>
             <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sticky top-4">
@@ -378,7 +623,7 @@ export default function DraftResultsPage() {
               )}
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

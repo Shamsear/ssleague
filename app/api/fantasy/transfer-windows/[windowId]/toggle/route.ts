@@ -1,23 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/auth-helper';
 import { fantasySql } from '@/lib/neon/fantasy-config';
-import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
 
 /**
  * POST /api/fantasy/transfer-windows/[windowId]/toggle
- * Toggle transfer window active status
+ * Toggle a transfer window open/closed
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ windowId: string }> }
+  { params }: { params: { windowId: string } }
 ) {
   try {
-    const { windowId } = await params;
+    const auth = await verifyAuth(['committee_admin'], request);
+    if (!auth.authenticated) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Committee access required' },
+        { status: 401 }
+      );
+    }
 
-    // Get current window
+    const { windowId } = params;
+
+    if (!windowId) {
+      return NextResponse.json(
+        { error: 'window_id is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get the window
     const windows = await fantasySql`
-      SELECT * FROM transfer_windows
+      SELECT window_id, league_id, window_name, is_active, opens_at, closes_at
+      FROM fantasy_transfer_windows
       WHERE window_id = ${windowId}
-      LIMIT 1
     `;
 
     if (windows.length === 0) {
@@ -30,67 +45,61 @@ export async function POST(
     const window = windows[0];
     const newStatus = !window.is_active;
 
-    // If activating, deactivate all other windows for this league
+    // If opening the window, close all other windows in the same league
     if (newStatus) {
+      // Check if window is within valid time range
+      const now = new Date();
+      const opensAt = new Date(window.opens_at);
+      const closesAt = new Date(window.closes_at);
+
+      if (now < opensAt) {
+        return NextResponse.json(
+          { error: 'Cannot open window before its start time' },
+          { status: 400 }
+        );
+      }
+
+      if (now > closesAt) {
+        return NextResponse.json(
+          { error: 'Cannot open window after its end time' },
+          { status: 400 }
+        );
+      }
+
+      // Close all other windows in the league
       await fantasySql`
-        UPDATE transfer_windows
+        UPDATE fantasy_transfer_windows
         SET is_active = false
-        WHERE league_id = ${window.league_id} AND window_id != ${windowId}
+        WHERE league_id = ${window.league_id}
+          AND window_id != ${windowId}
       `;
+
+      console.log(`🔒 Closed all other transfer windows for league ${window.league_id}`);
     }
 
     // Toggle the window
     await fantasySql`
-      UPDATE transfer_windows
+      UPDATE fantasy_transfer_windows
       SET is_active = ${newStatus}
       WHERE window_id = ${windowId}
     `;
 
-    console.log(`✅ Transfer window ${windowId} ${newStatus ? 'opened' : 'closed'}`);
-
-    // Send FCM notification if opening the window
-    if (newStatus) {
-      try {
-        // Get season_id from league
-        const leagues = await fantasySql`
-          SELECT fl.season_id, fl.league_name
-          FROM fantasy_leagues fl
-          WHERE fl.league_id = ${window.league_id}
-          LIMIT 1
-        `;
-        
-        if (leagues.length > 0) {
-          const league = leagues[0];
-          await sendNotificationToSeason(
-            {
-              title: '🔄 Fantasy Transfer Window Open!',
-              body: `Transfer window is now open for ${league.league_name}. Make your transfers now!`,
-              url: `/fantasy/transfers`,
-              icon: '/logo.png',
-              data: {
-                type: 'transfer_window_open',
-                window_id: windowId,
-                league_id: window.league_id,
-              }
-            },
-            league.season_id
-          );
-        }
-      } catch (notifError) {
-        console.error('Failed to send transfer window notification:', notifError);
-        // Don't fail the request
-      }
-    }
+    const action = newStatus ? 'opened' : 'closed';
+    console.log(`✅ Transfer window ${action}: ${window.window_name}`);
 
     return NextResponse.json({
       success: true,
-      is_active: newStatus,
-      message: `Transfer window ${newStatus ? 'opened' : 'closed'}`,
+      message: `Transfer window ${action} successfully`,
+      is_active: newStatus
     });
+
   } catch (error) {
     console.error('Error toggling transfer window:', error);
     return NextResponse.json(
-      { error: 'Failed to toggle transfer window' },
+      { 
+        error: 'Failed to toggle transfer window',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
