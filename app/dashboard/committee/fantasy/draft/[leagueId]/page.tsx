@@ -623,6 +623,7 @@ export default function DraftResultsPage() {
               )}
             </div>
           </div>
+        </div>
         )}
       </div>
     </div>

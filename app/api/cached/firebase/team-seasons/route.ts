@@ -34,6 +34,17 @@ export async function GET(request: Request) {
       ...doc.data(),
     }));
     
+    console.log('[API team-seasons] Query results:', {
+      seasonIdFilter: seasonId,
+      teamIdFilter: teamId,
+      totalResults: teamSeasons.length,
+      sampleSeasonIds: teamSeasons.slice(0, 5).map((ts: any) => ({
+        id: ts.id,
+        season_id: ts.season_id,
+        team_name: ts.team_name
+      }))
+    });
+    
     return NextResponse.json(
       {
         success: true,

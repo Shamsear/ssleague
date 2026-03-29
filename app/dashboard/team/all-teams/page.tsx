@@ -167,12 +167,30 @@ export default function AllTeamsPage() {
   useEffect(() => {
     if (!allTeamSeasons || allTeamsLoading || !seasonId) return;
 
+    console.log('[All Teams] Processing team seasons:', {
+      totalTeamSeasons: allTeamSeasons.length,
+      targetSeasonId: seasonId,
+      sampleSeasonIds: allTeamSeasons.slice(0, 3).map((ts: any) => ts.season_id)
+    });
+
     try {
       const teamsData: TeamStats[] = allTeamSeasons
-        .filter((ts: any) => 
-          ts.status === 'registered' && 
-          !ts.is_auto_registered // Exclude auto-registered teams (next season entries)
-        )
+        .filter((ts: any) => {
+          const isRegistered = ts.status === 'registered';
+          const isNotAutoRegistered = !ts.is_auto_registered;
+          const isCorrectSeason = ts.season_id === seasonId;
+          
+          console.log('[All Teams] Filtering team:', {
+            teamName: ts.team_name,
+            seasonId: ts.season_id,
+            targetSeasonId: seasonId,
+            status: ts.status,
+            isAutoRegistered: ts.is_auto_registered,
+            passes: isRegistered && isNotAutoRegistered && isCorrectSeason
+          });
+          
+          return isRegistered && isNotAutoRegistered && isCorrectSeason;
+        })
         .map((teamSeasonData: any) => {
           const teamId = teamSeasonData.team_id;
           // Get actual player counts from Neon databases
@@ -213,6 +231,11 @@ export default function AllTeamsPage() {
 
       // Sort teams by total value (descending)
       teamsData.sort((a, b) => b.totalValue - a.totalValue);
+
+      console.log('[All Teams] Final filtered teams:', {
+        count: teamsData.length,
+        teams: teamsData.map(t => ({ name: t.team.name, id: t.team.id }))
+      });
 
       setTeams(teamsData);
     } catch (err) {
