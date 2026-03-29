@@ -274,6 +274,20 @@ export default function SuperAdminDashboard() {
                   </button>
                   
                   <button 
+                    onClick={() => router.push('/dashboard/superadmin/realplayers')}
+                    className="glass group rounded-2xl p-5 border border-white/10 hover:border-[#0066FF]/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
+                    <div className="flex items-center">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-[#0066FF]/20 to-[#0066FF]/10 text-[#0066FF] group-hover:from-[#0066FF]/30 group-hover:to-[#0066FF]/20 transition-all">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                      <h3 className="ml-3 text-lg font-semibold text-gray-800 group-hover:text-[#0066FF] transition-colors">Real Players Database</h3>
+                    </div>
+                    <p className="text-sm text-gray-600">View all real players from Firebase with complete details</p>
+                  </button>
+                  
+                  <button 
                     onClick={() => router.push('/dashboard/superadmin/player-photos')}
                     className="glass group rounded-2xl p-5 border border-white/10 hover:border-[#9580FF]/30 transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col gap-3 hover:-translate-y-1">
                     <div className="flex items-center">

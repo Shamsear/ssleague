@@ -34,6 +34,8 @@ export default function TransactionsPage() {
   const [realPlayerData, setRealPlayerData] = useState<CurrencyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [seasonId, setSeasonId] = useState<string>('');
+  const [seasons, setSeasons] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedSeason, setSelectedSeason] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,16 +50,60 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     if (user) {
-      loadTransactions();
+      loadSeasons();
     }
   }, [user]);
 
-  const loadTransactions = async () => {
+  useEffect(() => {
+    if (selectedSeason) {
+      loadTransactions();
+    }
+  }, [selectedSeason]);
+
+  const loadSeasons = async () => {
     try {
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase/config');
+      
+      const seasonsQuery = query(collection(db, 'seasons'));
+      const seasonsSnapshot = await getDocs(seasonsQuery);
+      
+      const seasonsList = seasonsSnapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name || `Season ${data.season_number || 'Unknown'}`,
+            season_number: data.season_number || 0,
+          };
+        })
+        .filter((season: any) => {
+          // Only show SSPSLS16 and later
+          const seasonNum = parseInt(season.id.replace('SSPSLS', ''));
+          return !isNaN(seasonNum) && seasonNum >= 16;
+        })
+        .sort((a: any, b: any) => b.season_number - a.season_number);
+      
+      setSeasons(seasonsList);
+      
+      // Set default to first season (most recent)
+      if (seasonsList.length > 0) {
+        setSelectedSeason(seasonsList[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading seasons:', error);
+    }
+  };
+
+  const loadTransactions = async () => {
+    if (!selectedSeason) return;
+    
+    try {
+      setIsLoading(true);
       setErrorMessage(null);
       
-      // Try to fetch transactions - the API will determine which season the team is registered for
-      const response = await fetchWithTokenRefresh('/api/team/transactions');
+      // Fetch transactions for the selected season (API expects season_id with underscore)
+      const response = await fetchWithTokenRefresh(`/api/team/transactions?season_id=${selectedSeason}`);
       
       if (!response.ok) {
         let errorData;
@@ -390,6 +436,27 @@ export default function TransactionsPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Transaction History</h1>
           <p className="text-gray-600">View all your financial transactions and budget breakdown</p>
         </div>
+
+        {/* Season Filter */}
+        {seasons.length > 0 && (
+          <div className="mb-6">
+            <div className="flex flex-wrap gap-2">
+              {seasons.map((season) => (
+                <button
+                  key={season.id}
+                  onClick={() => setSelectedSeason(season.id)}
+                  className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${
+                    selectedSeason === season.id
+                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-lg transform scale-105'
+                      : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                  }`}
+                >
+                  {season.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Error Message */}
         {errorMessage && (

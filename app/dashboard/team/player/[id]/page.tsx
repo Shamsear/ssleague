@@ -107,6 +107,33 @@ interface PlayerAward {
   created_at: string;
 }
 
+interface AuctionBid {
+  id: number;
+  round_id: number;
+  player_id: string;
+  team_id: string;
+  team_name: string;
+  bid_amount: number;
+  bid_time: string;
+  is_winning: boolean;
+  season_id: string;
+  round_number: number;
+  round_type: string;
+  winning_team_id?: string;
+  winning_bid?: number;
+}
+
+interface WinningBid {
+  season_id: string;
+  round_id: number;
+  round_number: number;
+  round_type: string;
+  team_id: string;
+  team_name: string;
+  winning_bid: number;
+  bid_time: string;
+}
+
 export default function PlayerDetailPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -116,6 +143,18 @@ export default function PlayerDetailPage() {
   const [player, setPlayer] = useState<Player | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'stats' | 'auction'>('stats');
+  const [auctionTab, setAuctionTab] = useState<'overall' | string>('overall');
+  const [auctionHistory, setAuctionHistory] = useState<{
+    bidsBySeason: Record<string, AuctionBid[]>;
+    winningBids: WinningBid[];
+    totalBids: number;
+    totalSeasons: number;
+    highestBid: number;
+  } | null>(null);
+  const [loadingAuction, setLoadingAuction] = useState(false);
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
+  const [selectedRoundFilter, setSelectedRoundFilter] = useState<string>('all');
 
   useEffect(() => {
     if (!loading && !user) {
@@ -158,6 +197,35 @@ export default function PlayerDetailPage() {
     fetchPlayerData();
   }, [playerId]);
 
+  // Fetch auction history when auction tab is selected
+  useEffect(() => {
+    const fetchAuctionHistory = async () => {
+      if (!playerId || activeTab !== 'auction' || auctionHistory) return;
+
+      try {
+        setLoadingAuction(true);
+        const response = await fetchWithTokenRefresh(`/api/players/${playerId}/auction-history`, {
+          headers: { 'Cache-Control': 'no-cache' },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch auction history');
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          setAuctionHistory(data.data);
+        }
+      } catch (err) {
+        console.error('Error fetching auction history:', err);
+      } finally {
+        setLoadingAuction(false);
+      }
+    };
+
+    fetchAuctionHistory();
+  }, [playerId, activeTab, auctionHistory]);
+
   const getPositionColor = (position: string) => {
     switch (position) {
       case 'QB': return 'bg-red-100 text-red-800';
@@ -182,6 +250,41 @@ export default function PlayerDetailPage() {
     if (rating >= 75) return { text: 'Excellent', color: 'bg-blue-100 text-blue-800' };
     if (rating >= 65) return { text: 'Good', color: 'bg-yellow-100 text-yellow-800' };
     return { text: 'Unrated', color: 'bg-gray-100 text-gray-800' };
+  };
+
+  // Helper function to detect round type from round_id
+  const getRoundTypeFromId = (roundId: string): string => {
+    if (!roundId) return 'unknown';
+    const roundIdStr = String(roundId).toUpperCase();
+    if (roundIdStr.includes('FBR')) return 'bulk';
+    if (roundIdStr.includes('FR')) return 'normal';
+    return 'unknown';
+  };
+
+  // Get unique rounds from auction history for filter
+  const getUniqueRounds = () => {
+    if (!auctionHistory) return [];
+    const rounds = new Set<string>();
+    Object.values(auctionHistory.bidsBySeason).forEach(bids => {
+      bids.forEach(bid => {
+        if (bid.round_id) {
+          rounds.add(bid.round_id);
+        }
+      });
+    });
+    return Array.from(rounds).sort();
+  };
+
+  // Filter bids by selected round
+  const filterBidsByRound = (bids: AuctionBid[]) => {
+    if (selectedRoundFilter === 'all') return bids;
+    if (selectedRoundFilter === 'normal') {
+      return bids.filter(bid => getRoundTypeFromId(bid.round_id.toString()) === 'normal');
+    }
+    if (selectedRoundFilter === 'bulk') {
+      return bids.filter(bid => getRoundTypeFromId(bid.round_id.toString()) === 'bulk');
+    }
+    return bids.filter(bid => bid.round_id.toString() === selectedRoundFilter);
   };
 
   const renderKeyStats = () => {
@@ -337,7 +440,34 @@ export default function PlayerDetailPage() {
           </div>
         </div>
 
+        {/* Main Tabs */}
+        <div className="mb-6 bg-white rounded-xl p-2 shadow-sm border border-gray-200">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                activeTab === 'stats'
+                  ? 'bg-[#0066FF] text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Player Stats
+            </button>
+            <button
+              onClick={() => setActiveTab('auction')}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                activeTab === 'auction'
+                  ? 'bg-[#0066FF] text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Auction History
+            </button>
+          </div>
+        </div>
+
         {/* Two-column layout */}
+        {activeTab === 'stats' && (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Left Column - Player Info */}
           <div className="lg:col-span-1 space-y-6">
@@ -510,7 +640,308 @@ export default function PlayerDetailPage() {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Auction History Tab */}
+        {activeTab === 'auction' && (
+          <div className="space-y-6">
+            {loadingAuction ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading auction history...</p>
+                </div>
+              </div>
+            ) : !auctionHistory || auctionHistory.totalBids === 0 ? (
+              <div className="bg-white/60 rounded-2xl p-12 shadow-md border border-white/20 text-center">
+                <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h3 className="text-xl font-medium text-gray-600 mb-2">No Auction History</h3>
+                <p className="text-gray-500">This player has not been part of any auctions yet.</p>
+              </div>
+            ) : (
+              <>
+                {/* Auction Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Total Bids</p>
+                        <p className="text-3xl font-bold text-[#0066FF]">{auctionHistory.totalBids}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                        <svg className="w-6 h-6 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Seasons</p>
+                        <p className="text-3xl font-bold text-purple-600">{auctionHistory.totalSeasons}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                        <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Times Won</p>
+                        <p className="text-3xl font-bold text-green-600">{auctionHistory.winningBids.length}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                        <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Highest Bid</p>
+                        <p className="text-3xl font-bold text-orange-600">£{(auctionHistory.highestBid || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                        <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Winning Bids */}
+                {auctionHistory.winningBids.length > 0 && (
+                  <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                      <svg className="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      Successful Acquisitions
+                    </h3>
+                    <div className="space-y-3">
+                      {auctionHistory.winningBids.map((bid, index) => {
+                        const detectedRoundType = getRoundTypeFromId(bid.round_id.toString());
+                        return (
+                          <div key={index} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-semibold rounded">
+                                    {bid.season_id}
+                                  </span>
+                                  <span className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                                    detectedRoundType === 'bulk' 
+                                      ? 'bg-purple-100 text-purple-800' 
+                                      : 'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    {detectedRoundType === 'bulk' ? 'BULK' : 'NORMAL'}
+                                  </span>
+                                  <span className="text-sm text-gray-600">
+                                    Round #{bid.round_number}
+                                  </span>
+                                </div>
+                                <p className="font-semibold text-gray-900">{bid.team_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {new Date(bid.bid_time).toLocaleDateString('en-GB', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500 mb-1">Winning Bid</p>
+                                <p className="text-2xl font-bold text-green-600">
+                                  £{(bid.winning_bid || 0).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* All Bids by Season */}
+                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    All Bids by Season
+                  </h3>
+                  
+                  {Object.entries(auctionHistory.bidsBySeason).map(([seasonId, bids]) => {
+                    const isExpanded = expandedSeasons.has(seasonId);
+                    const filteredBids = filterBidsByRound(bids).sort((a, b) => (b.bid_amount || 0) - (a.bid_amount || 0));
+                    
+                    return (
+                      <div key={seasonId} className="mb-4 last:mb-0">
+                        <button
+                          onClick={() => {
+                            const newExpanded = new Set(expandedSeasons);
+                            if (isExpanded) {
+                              newExpanded.delete(seasonId);
+                            } else {
+                              newExpanded.add(seasonId);
+                            }
+                            setExpandedSeasons(newExpanded);
+                          }}
+                          className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                        >
+                          <div className="flex items-center gap-2">
+                            <svg
+                              className={`w-5 h-5 text-gray-600 transition-transform ${
+                                isExpanded ? 'rotate-90' : ''
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                            <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-lg">
+                              {seasonId}
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              {bids.length} {bids.length === 1 ? 'bid' : 'bids'}
+                            </span>
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {isExpanded ? 'Click to collapse' : 'Click to expand'}
+                          </span>
+                        </button>
+                        
+                        {isExpanded && (
+                          <div className="mt-2 pl-4">
+                            {/* Filter Buttons */}
+                            <div className="flex gap-2 mb-3 p-2 bg-white rounded-lg border border-gray-200">
+                              <button
+                                onClick={() => setSelectedRoundFilter('all')}
+                                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                  selectedRoundFilter === 'all'
+                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                              >
+                                All
+                              </button>
+                              <button
+                                onClick={() => setSelectedRoundFilter('normal')}
+                                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                  selectedRoundFilter === 'normal'
+                                    ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-sm'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                              >
+                                Normal
+                              </button>
+                              <button
+                                onClick={() => setSelectedRoundFilter('bulk')}
+                                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                  selectedRoundFilter === 'bulk'
+                                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                              >
+                                Bulk
+                              </button>
+                            </div>
+
+                            {/* Bids List */}
+                            {filteredBids.length > 0 ? (
+                              <div className="space-y-2">
+                                {filteredBids.map((bid) => {
+                                  const detectedRoundType = getRoundTypeFromId(bid.round_id.toString());
+                                  return (
+                                    <div
+                                      key={bid.id}
+                                      className={`rounded-lg p-3 border ${
+                                        bid.is_winning || bid.team_id === bid.winning_team_id
+                                          ? 'bg-green-50 border-green-200'
+                                          : 'bg-gray-50 border-gray-200'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-sm font-medium text-gray-900">
+                                              {bid.team_name}
+                                            </span>
+                                            {(bid.is_winning || bid.team_id === bid.winning_team_id) && (
+                                              <span className="px-2 py-0.5 bg-green-600 text-white text-xs font-semibold rounded">
+                                                WON
+                                              </span>
+                                            )}
+                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                                              detectedRoundType === 'bulk' 
+                                                ? 'bg-purple-100 text-purple-800' 
+                                                : 'bg-blue-100 text-blue-800'
+                                            }`}>
+                                              {detectedRoundType === 'bulk' ? 'BULK' : 'NORMAL'}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-3 text-xs text-gray-500">
+                                            <span>Round #{bid.round_number}</span>
+                                            <span>•</span>
+                                            <span>{bid.round_id}</span>
+                                            <span>•</span>
+                                            <span>
+                                              {new Date(bid.bid_time).toLocaleDateString('en-GB', {
+                                                day: '2-digit',
+                                                month: 'short',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                              })}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className={`text-lg font-bold ${
+                                            bid.is_winning || bid.team_id === bid.winning_team_id
+                                              ? 'text-green-600'
+                                              : 'text-gray-700'
+                                          }`}>
+                                            £{(bid.bid_amount || 0).toLocaleString()}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-center py-4 text-gray-500 text-sm">
+                                No {selectedRoundFilter === 'all' ? '' : selectedRoundFilter} bids found for this season
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

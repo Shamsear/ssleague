@@ -8,7 +8,7 @@ const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
  * Fetch all football players for a specific team
  * 
  * Query params:
- * - seasonId (optional): Filter by season
+ * - season_id (optional): Filter by season
  */
 export async function GET(
     request: NextRequest,
@@ -17,7 +17,7 @@ export async function GET(
     try {
         const { id: teamId } = await params;
         const { searchParams } = new URL(request.url);
-        const seasonId = searchParams.get('seasonId');
+        const seasonId = searchParams.get('season_id') || searchParams.get('seasonId'); // Support both for backward compatibility
 
         // First, verify team exists
         const teamCheck = await sql`
@@ -44,77 +44,9 @@ export async function GET(
         let players;
 
         if (seasonId) {
-            // Fetch players for specific season from team_players table
+            // Fetch players for specific season from footballplayers table
+            // Filter by contract dates: players whose contract includes this season
             players = await sql`
-        SELECT 
-          tp.id as team_player_id,
-          tp.player_id,
-          tp.purchase_price,
-          tp.acquired_at,
-          tp.round_id,
-          tp.season_id,
-          fp.name as player_name,
-          fp.position,
-          fp.position_group,
-          fp.team_name as club,
-          fp.overall_rating,
-          fp.nationality,
-          fp.age,
-          fp.playing_style,
-          fp.speed,
-          fp.acceleration,
-          fp.ball_control,
-          fp.dribbling,
-          fp.low_pass,
-          fp.lofted_pass,
-          fp.finishing,
-          fp.heading,
-          fp.physical_contact,
-          fp.stamina
-        FROM team_players tp
-        INNER JOIN footballplayers fp ON tp.player_id = fp.id
-        WHERE tp.team_id = ${teamId}
-          AND tp.season_id = ${seasonId}
-        ORDER BY tp.acquired_at DESC
-      `;
-        } else {
-            // Fetch all players for the team (current season from team record)
-            players = await sql`
-        SELECT 
-          tp.id as team_player_id,
-          tp.player_id,
-          tp.purchase_price,
-          tp.acquired_at,
-          tp.round_id,
-          tp.season_id,
-          fp.name as player_name,
-          fp.position,
-          fp.position_group,
-          fp.team_name as club,
-          fp.overall_rating,
-          fp.nationality,
-          fp.age,
-          fp.playing_style,
-          fp.speed,
-          fp.acceleration,
-          fp.ball_control,
-          fp.dribbling,
-          fp.low_pass,
-          fp.lofted_pass,
-          fp.finishing,
-          fp.heading,
-          fp.physical_contact,
-          fp.stamina
-        FROM team_players tp
-        INNER JOIN footballplayers fp ON tp.player_id = fp.id
-        WHERE tp.team_id = ${teamId}
-        ORDER BY tp.acquired_at DESC
-      `;
-        }
-
-        // If no players found in team_players, check footballplayers table directly (legacy)
-        if (players.length === 0) {
-            const directPlayers = await sql`
         SELECT 
           id,
           player_id,
@@ -139,32 +71,55 @@ export async function GET(
           heading,
           physical_contact,
           stamina,
-          season_id
+          season_id,
+          contract_start_season,
+          contract_end_season,
+          status
         FROM footballplayers
         WHERE team_id = ${teamId}
-        ${seasonId ? sql`AND season_id = ${seasonId}` : sql``}
-        ORDER BY name ASC
+          AND (
+            (contract_start_season <= ${seasonId} AND contract_end_season >= ${seasonId})
+            OR season_id = ${seasonId}
+          )
+          AND status != 'released'
+        ORDER BY overall_rating DESC, name ASC
       `;
-
-            if (directPlayers.length > 0) {
-                return NextResponse.json({
-                    success: true,
-                    data: {
-                        team: {
-                            id: team.id,
-                            name: team.name,
-                            season_id: team.season_id,
-                            football_budget: team.football_budget,
-                            football_spent: team.football_spent,
-                            football_players_count: team.football_players_count,
-                        },
-                        players: directPlayers,
-                        source: 'footballplayers_table',
-                        count: directPlayers.length,
-                    },
-                    message: 'Players fetched from footballplayers table (legacy method)'
-                });
-            }
+        } else {
+            // Fetch all current players for the team (latest season)
+            players = await sql`
+        SELECT 
+          id,
+          player_id,
+          name as player_name,
+          position,
+          position_group,
+          team_id,
+          team_name as club,
+          overall_rating,
+          nationality,
+          age,
+          playing_style,
+          is_sold,
+          acquisition_value as purchase_price,
+          speed,
+          acceleration,
+          ball_control,
+          dribbling,
+          low_pass,
+          lofted_pass,
+          finishing,
+          heading,
+          physical_contact,
+          stamina,
+          season_id,
+          contract_start_season,
+          contract_end_season,
+          status
+        FROM footballplayers
+        WHERE team_id = ${teamId}
+          AND status != 'released'
+        ORDER BY overall_rating DESC, name ASC
+      `;
         }
 
         // Calculate statistics
@@ -187,7 +142,7 @@ export async function GET(
                     football_players_count: team.football_players_count,
                 },
                 players,
-                source: 'team_players_table',
+                source: 'footballplayers_table',
                 count: players.length,
                 statistics: {
                     total_spent: totalSpent,

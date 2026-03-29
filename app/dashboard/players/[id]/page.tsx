@@ -20,6 +20,11 @@ interface PlayerData {
   display_name?: string;
   email?: string;
   phone?: string;
+  place?: string;
+  dob?: any;
+  date_of_birth?: any;
+  dateOfBirth?: any;
+  birth_date?: any;
   role?: string;
   psn_id?: string;
   xbox_id?: string;
@@ -85,6 +90,23 @@ interface MatchHistory {
   points: number;
   date?: Date;
 }
+
+interface AuctionBid {
+  id: number;
+  round_id: number;
+  player_id: string;
+  team_id: string;
+  team_name: string;
+  bid_amount: number;
+  bid_time: string;
+  is_winning: boolean;
+  season_id: string;
+  round_number: number;
+  round_type: string;
+  winning_team_id?: string;
+  winning_bid?: number;
+}
+
 
 export default function PlayerDetailPage() {
   const params = useParams();
@@ -645,6 +667,57 @@ export default function PlayerDetailPage() {
 
                 {/* Player Details */}
                 <div className="space-y-3 text-sm border-t border-gray-200 pt-4">
+                  {(firebasePlayer?.place || player.place) && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Place:
+                      </span>
+                      <span className="font-medium text-gray-700">{firebasePlayer?.place || player.place}</span>
+                    </div>
+                  )}
+                  {(() => {
+                    const dobValue = firebasePlayer?.dob || firebasePlayer?.date_of_birth || firebasePlayer?.dateOfBirth || firebasePlayer?.birth_date || 
+                                    player.dob || player.date_of_birth || player.dateOfBirth || player.birth_date;
+                    if (dobValue) {
+                      try {
+                        const dateObj = dobValue.toDate ? dobValue.toDate() : new Date(dobValue);
+                        const formattedDate = dateObj.toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        });
+                        return (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 flex items-center gap-1">
+                              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              Date of Birth:
+                            </span>
+                            <span className="font-medium text-gray-700">{formattedDate}</span>
+                          </div>
+                        );
+                      } catch {
+                        return null;
+                      }
+                    }
+                    return null;
+                  })()}
+                  {(firebasePlayer?.phone || player.phone) && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        Phone:
+                      </span>
+                      <span className="font-medium text-gray-700">{firebasePlayer?.phone || player.phone}</span>
+                    </div>
+                  )}
                   {player.nationality && (
                     <div className="flex justify-between items-center">
                       <span className="text-gray-500">Nationality:</span>

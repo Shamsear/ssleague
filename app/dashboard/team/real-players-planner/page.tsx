@@ -145,86 +145,123 @@ export default function RealPlayersPlannerPage() {
       if (!user) return;
 
       try {
-        // Fetch budget
-        const response = await fetchWithTokenRefresh('/api/team/dashboard');
-        const data = await response.json();
-
-        if (data.success && data.data) {
-          const team = data.data.team || {};
-          const seasonSettings = data.data.seasonSettings || {};
-
-          setTeamBudget(seasonSettings.dollar_budget || TOTAL_BUDGET);
-          setTeamSpent(team.real_player_spent || 0);
+        // Fetch active season first
+        const seasonResponse = await fetchWithTokenRefresh('/api/cached/firebase/seasons?isActive=true');
+        if (!seasonResponse.ok) {
+          console.error('Failed to fetch active season');
+          return;
         }
 
-        // Fetch active season
-        const seasonResponse = await fetchWithTokenRefresh('/api/cached/firebase/seasons?isActive=true');
-        if (seasonResponse.ok) {
-          const seasonData = await seasonResponse.json();
-          if (seasonData.success && seasonData.data.length > 0) {
-            const season = seasonData.data[0];
+        const seasonData = await seasonResponse.json();
+        if (!seasonData.success || seasonData.data.length === 0) {
+          console.error('No active season found');
+          return;
+        }
 
-            // Extract star rating config
-            if (season.star_rating_config && Array.isArray(season.star_rating_config)) {
-              const configMap: Record<number, number> = {};
-              season.star_rating_config.forEach((config: any) => {
-                if (config.star_rating && config.base_auction_value) {
-                  configMap[config.star_rating] = config.base_auction_value;
-                }
-              });
-              setStarRatingConfig(configMap);
-              console.log('⭐ Star rating config loaded:', configMap);
+        const season = seasonData.data[0];
+        const seasonId = season.id;
+
+        console.log('🎯 Active season:', seasonId);
+
+        // Fetch budget with season_id parameter
+        const response = await fetchWithTokenRefresh(`/api/team/dashboard?season_id=${seasonId}`);
+        
+        if (!response.ok) {
+          console.error('❌ Dashboard API error:', response.status, response.statusText);
+          const errorData = await response.json();
+          console.error('Error details:', errorData);
+          // Use default budget if API fails
+          setTeamBudget(TOTAL_BUDGET);
+          setTeamSpent(0);
+        } else {
+          const data = await response.json();
+          console.log('📊 Dashboard API response:', data);
+
+          if (data.success && data.data) {
+            const teamSeason = data.data.seasonParticipation || {};
+            const seasonSettings = data.data.seasonSettings || {};
+
+            console.log('💰 Budget data:', {
+              real_player_budget_from_teamSeason: teamSeason.real_player_budget,
+              dollar_budget_from_seasonSettings: seasonSettings.dollar_budget,
+              real_player_spent_from_teamSeason: teamSeason.real_player_spent,
+              TOTAL_BUDGET_constant: TOTAL_BUDGET
+            });
+
+            // Use real_player_budget from team_seasons (Firebase)
+            const budget = teamSeason.real_player_budget || seasonSettings.dollar_budget || TOTAL_BUDGET;
+            const spent = teamSeason.real_player_spent || 0;
+            
+            console.log('✅ Setting budget:', budget, 'spent:', spent);
+            
+            setTeamBudget(budget);
+            setTeamSpent(spent);
+          } else {
+            console.warn('⚠️ API returned success but no data, using defaults');
+            setTeamBudget(TOTAL_BUDGET);
+            setTeamSpent(0);
+          }
+        }
+
+        // Extract star rating config
+        if (season.star_rating_config && Array.isArray(season.star_rating_config)) {
+          const configMap: Record<number, number> = {};
+          season.star_rating_config.forEach((config: any) => {
+            if (config.star_rating && config.base_auction_value) {
+              configMap[config.star_rating] = config.base_auction_value;
             }
+          });
+          setStarRatingConfig(configMap);
+          console.log('⭐ Star rating config loaded:', configMap);
+        }
 
-            // Fetch real players
-            const playersResponse = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${season.id}&limit=1000`);
-            if (playersResponse.ok) {
-              const playersData = await playersResponse.json();
-              if (playersData.success) {
-                const realPlayers = playersData.data?.filter((p: any) => p.star_rating && p.star_rating > 0) || [];
+        // Fetch real players
+        const playersResponse = await fetchWithTokenRefresh(`/api/stats/players?seasonId=${seasonId}&limit=1000`);
+        if (playersResponse.ok) {
+          const playersData = await playersResponse.json();
+          if (playersData.success) {
+            const realPlayers = playersData.data?.filter((p: any) => p.star_rating && p.star_rating > 0) || [];
 
-                // Fetch photo URLs
-                const playerIds = realPlayers.map((p: any) => p.player_id).filter(Boolean);
-                if (playerIds.length > 0) {
-                  try {
-                    const photosResponse = await fetchWithTokenRefresh('/api/real-players?' + new URLSearchParams({
-                      playerIds: playerIds.join(',')
-                    }));
+            // Fetch photo URLs
+            const playerIds = realPlayers.map((p: any) => p.player_id).filter(Boolean);
+            if (playerIds.length > 0) {
+              try {
+                const photosResponse = await fetchWithTokenRefresh('/api/real-players?' + new URLSearchParams({
+                  playerIds: playerIds.join(',')
+                }));
 
-                    if (photosResponse.ok) {
-                      const photosData = await photosResponse.json();
-                      if (photosData.success && photosData.players) {
-                        const photoMap = new Map(
-                          photosData.players.map((p: any) => [
-                            p.player_id,
-                            {
-                              photo_url: p.photo_url,
-                              photo_position_x_circle: p.photo_position_x_circle,
-                              photo_position_y_circle: p.photo_position_y_circle,
-                              photo_scale_circle: p.photo_scale_circle
-                            }
-                          ])
-                        );
+                if (photosResponse.ok) {
+                  const photosData = await photosResponse.json();
+                  if (photosData.success && photosData.players) {
+                    const photoMap = new Map(
+                      photosData.players.map((p: any) => [
+                        p.player_id,
+                        {
+                          photo_url: p.photo_url,
+                          photo_position_x_circle: p.photo_position_x_circle,
+                          photo_position_y_circle: p.photo_position_y_circle,
+                          photo_scale_circle: p.photo_scale_circle
+                        }
+                      ])
+                    );
 
-                        realPlayers.forEach((player: any) => {
-                          const photoData = photoMap.get(player.player_id);
-                          if (photoData) {
-                            player.photo_url = photoData.photo_url;
-                            player.photo_position_x_circle = photoData.photo_position_x_circle;
-                            player.photo_position_y_circle = photoData.photo_position_y_circle;
-                            player.photo_scale_circle = photoData.photo_scale_circle;
-                          }
-                        });
+                    realPlayers.forEach((player: any) => {
+                      const photoData = photoMap.get(player.player_id);
+                      if (photoData) {
+                        player.photo_url = photoData.photo_url;
+                        player.photo_position_x_circle = photoData.photo_position_x_circle;
+                        player.photo_position_y_circle = photoData.photo_position_y_circle;
+                        player.photo_scale_circle = photoData.photo_scale_circle;
                       }
-                    }
-                  } catch (photoError) {
-                    console.warn('Could not fetch player photos:', photoError);
+                    });
                   }
                 }
-
-                setAvailableRealPlayers(realPlayers);
+              } catch (photoError) {
+                console.warn('Could not fetch player photos:', photoError);
               }
             }
+
+            setAvailableRealPlayers(realPlayers);
           }
         }
       } catch (error) {

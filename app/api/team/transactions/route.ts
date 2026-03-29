@@ -138,11 +138,16 @@ export async function GET(request: NextRequest) {
       };
 
       // Categorize by currency type or transaction type
+      // Also check description/reason for SSCoin/real player keywords
+      const reasonLower = (data.reason || data.description || '').toLowerCase();
       const isRealPlayerTransaction = 
         data.currency_type === 'real_player' || 
         data.transaction_type === 'real_player_fee' ||
         data.transaction_type === 'real_player' ||
-        (data.reason && data.reason.toLowerCase().includes('real player'));
+        reasonLower.includes('real player') ||
+        reasonLower.includes('sscoin') ||
+        reasonLower.includes('ss coin') ||
+        reasonLower.includes('tournament player');
       
       if (isRealPlayerTransaction) {
         realPlayerTransactions.push(formattedTransaction);

@@ -157,7 +157,7 @@ export default function TeamDetailPage() {
   const fetchFootballPlayers = async (seasonId: string) => {
     try {
       setLoadingFootballPlayers(true);
-      const response = await fetch(`/api/teams/${teamId}/football-players?seasonId=${seasonId}`);
+      const response = await fetch(`/api/teams/${teamId}/football-players?season_id=${seasonId}`);
       const data = await response.json();
 
       if (data.success && data.data && data.data.players) {
@@ -227,15 +227,15 @@ export default function TeamDetailPage() {
     return allSeasonData.reduce((acc, season) => {
       const s = season.stats;
       return {
-        matches_played: acc.matches_played + s.matches_played,
-        wins: acc.wins + s.wins,
-        draws: acc.draws + s.draws,
-        losses: acc.losses + s.losses,
-        goals_for: acc.goals_for + s.goals_for,
-        goals_against: acc.goals_against + s.goals_against,
-        goal_difference: acc.goal_difference + s.goal_difference,
-        points: acc.points + s.points,
-        clean_sheets: acc.clean_sheets + s.clean_sheets,
+        matches_played: acc.matches_played + Number(s.matches_played || 0),
+        wins: acc.wins + Number(s.wins || 0),
+        draws: acc.draws + Number(s.draws || 0),
+        losses: acc.losses + Number(s.losses || 0),
+        goals_for: acc.goals_for + Number(s.goals_for || 0),
+        goals_against: acc.goals_against + Number(s.goals_against || 0),
+        goal_difference: acc.goal_difference + Number(s.goal_difference || 0),
+        points: acc.points + Number(s.points || 0),
+        clean_sheets: acc.clean_sheets + Number(s.clean_sheets || 0),
       };
     }, {
       matches_played: 0,
@@ -598,39 +598,39 @@ export default function TeamDetailPage() {
 
                   {/* Main Stats Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                    <div className="rounded-xl bg-white/30 p-4 text-center border border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">Matches</p>
-                      <p className="text-2xl font-bold text-dark">{stats.matches_played}</p>
+                      <p className="text-2xl font-bold text-dark">{stats.matches_played || 0}</p>
                     </div>
-                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                    <div className="rounded-xl bg-white/30 p-4 text-center border border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">Goals For</p>
-                      <p className="text-2xl font-bold text-green-600">{stats.goals_for}</p>
+                      <p className="text-2xl font-bold text-green-600">{stats.goals_for || 0}</p>
                     </div>
-                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                    <div className="rounded-xl bg-white/30 p-4 text-center border border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">Clean Sheets</p>
-                      <p className="text-2xl font-bold text-blue-600">{stats.clean_sheets}</p>
+                      <p className="text-2xl font-bold text-blue-600">{stats.clean_sheets || 0}</p>
                     </div>
-                    <div className="glass-card rounded-xl bg-white/30 p-4 text-center">
+                    <div className="rounded-xl bg-white/30 p-4 text-center border border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">GD</p>
                       <p className={`text-2xl font-bold ${stats.goal_difference > 0 ? 'text-green-600' :
                         stats.goal_difference < 0 ? 'text-red-600' : 'text-gray-600'
                         }`}>
-                        {stats.goal_difference > 0 ? '+' : ''}{stats.goal_difference}
+                        {stats.goal_difference > 0 ? '+' : ''}{stats.goal_difference || 0}
                       </p>
                     </div>
                   </div>
 
                   {/* Secondary Stats */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
-                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                    <div className="bg-white/40 rounded-xl p-4 text-center border border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">Win Rate</p>
                       <p className="text-2xl font-bold text-green-600">{winRate}%</p>
                     </div>
-                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                    <div className="bg-white/40 rounded-xl p-4 text-center border border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">Goals/Game</p>
                       <p className="text-2xl font-bold text-orange-600">{goalsPerGame}</p>
                     </div>
-                    <div className="bg-white/40 rounded-xl p-4 text-center">
+                    <div className="bg-white/40 rounded-xl p-4 text-center border border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">Conceded/Game</p>
                       <p className="text-2xl font-bold text-red-600">{concededPerGame}</p>
                     </div>
@@ -721,7 +721,12 @@ export default function TeamDetailPage() {
                                             <span className="text-blue-500 font-bold text-sm">★</span>
                                           )}
                                           <div>
-                                            <div className="font-medium text-gray-900">{player.player_name}</div>
+                                            <Link 
+                                              href={`/dashboard/players/${player.player_id}`}
+                                              className="font-medium text-gray-900 hover:text-blue-600 hover:underline transition-colors"
+                                            >
+                                              {player.player_name}
+                                            </Link>
                                           </div>
                                         </div>
                                       </td>

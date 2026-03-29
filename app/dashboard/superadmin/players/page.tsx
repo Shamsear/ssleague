@@ -32,6 +32,7 @@ export default function PlayersManagement() {
   const [filteredPlayers, setFilteredPlayers] = useState<RealPlayerData[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'registered' | 'unregistered'>('all');
+  const [filterCompleteness, setFilterCompleteness] = useState<'all' | 'complete' | 'incomplete'>('complete'); // Default to complete
   const [error, setError] = useState<string | null>(null);
   
   // Form state for adding single player
@@ -126,6 +127,13 @@ export default function PlayersManagement() {
   useEffect(() => {
     let filtered = players;
 
+    // Apply completeness filter (team and season assigned)
+    if (filterCompleteness === 'complete') {
+      filtered = filtered.filter(p => p.team_name && p.season_name);
+    } else if (filterCompleteness === 'incomplete') {
+      filtered = filtered.filter(p => !p.team_name || !p.season_name);
+    }
+
     // Apply status filter
     if (filterStatus === 'registered') {
       filtered = filtered.filter(p => p.is_registered);
@@ -158,7 +166,7 @@ export default function PlayersManagement() {
     }
 
     setFilteredPlayers(filtered);
-  }, [players, searchTerm, filterStatus]);
+  }, [players, searchTerm, filterStatus, filterCompleteness]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -728,7 +736,8 @@ export default function PlayersManagement() {
           </div>
           
           {/* Search and Filter */}
-          <div className="mb-6 flex flex-col sm:flex-row gap-4">
+          <div className="mb-6 space-y-4">
+            {/* Search Bar */}
             <div className="flex-grow">
               <div className="relative">
                 <input
@@ -743,37 +752,76 @@ export default function PlayersManagement() {
                 </svg>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setFilterStatus('all')}
-                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  filterStatus === 'all'
-                    ? 'bg-[#0066FF] text-white'
-                    : 'bg-white/50 text-gray-700 hover:bg-white/80'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setFilterStatus('registered')}
-                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  filterStatus === 'registered'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-white/50 text-gray-700 hover:bg-white/80'
-                }`}
-              >
-                Registered
-              </button>
-              <button
-                onClick={() => setFilterStatus('unregistered')}
-                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  filterStatus === 'unregistered'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white/50 text-gray-700 hover:bg-white/80'
-                }`}
-              >
-                Unregistered
-              </button>
+            
+            {/* Filter Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Completeness Filter */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFilterCompleteness('all')}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    filterCompleteness === 'all'
+                      ? 'bg-[#0066FF] text-white'
+                      : 'bg-white/50 text-gray-700 hover:bg-white/80'
+                  }`}
+                >
+                  All Players
+                </button>
+                <button
+                  onClick={() => setFilterCompleteness('complete')}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    filterCompleteness === 'complete'
+                      ? 'bg-[#0066FF] text-white'
+                      : 'bg-white/50 text-gray-700 hover:bg-white/80'
+                  }`}
+                >
+                  Complete (Team + Season)
+                </button>
+                <button
+                  onClick={() => setFilterCompleteness('incomplete')}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    filterCompleteness === 'incomplete'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-white/50 text-gray-700 hover:bg-white/80'
+                  }`}
+                >
+                  Incomplete
+                </button>
+              </div>
+              
+              {/* Registration Status Filter */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFilterStatus('all')}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    filterStatus === 'all'
+                      ? 'bg-gray-700 text-white'
+                      : 'bg-white/50 text-gray-700 hover:bg-white/80'
+                  }`}
+                >
+                  All Status
+                </button>
+                <button
+                  onClick={() => setFilterStatus('registered')}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    filterStatus === 'registered'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-white/50 text-gray-700 hover:bg-white/80'
+                  }`}
+                >
+                  Registered
+                </button>
+                <button
+                  onClick={() => setFilterStatus('unregistered')}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    filterStatus === 'unregistered'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-white/50 text-gray-700 hover:bg-white/80'
+                  }`}
+                >
+                  Pending
+                </button>
+              </div>
             </div>
           </div>
           

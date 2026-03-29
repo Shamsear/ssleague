@@ -130,25 +130,48 @@ const initializeStats = (): RealPlayerStats => ({
 // Get all real players
 export const getAllRealPlayers = async (): Promise<RealPlayerData[]> => {
   try {
+    // First, get all players from Firebase realplayers collection (master list)
     const playersRef = collection(db, 'realplayers');
     const q = query(playersRef, orderBy('created_at', 'desc'));
     const querySnapshot = await getDocs(q);
     
-    // Collect all unique season and team IDs
-    const seasonIds = new Set<string>();
-    const teamIds = new Set<string>();
-    
+    // Create a map of player_id to Firebase data
+    const firebasePlayersMap = new Map<string, any>();
     querySnapshot.docs.forEach(docSnap => {
       const data = docSnap.data();
-      if (data.season_id) seasonIds.add(data.season_id);
-      if (data.team_id) teamIds.add(data.team_id);
+      firebasePlayersMap.set(data.player_id, data);
     });
     
-    // Batch fetch all seasons and teams
-    const seasonMap = new Map<string, { name: string }>();
-    const teamMap = new Map<string, { team_name: string; team_code: string }>();
+    // Fetch player_seasons data from tournament database (Neon)
+    const response = await fetch('/api/player-seasons/all');
+    let playerSeasonsMap = new Map<string, any>();
     
-    // Fetch all seasons in parallel
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.data) {
+        // Create map of player_id to their latest season data
+        result.data.forEach((ps: any) => {
+          // Keep only the latest season for each player
+          const existing = playerSeasonsMap.get(ps.player_id);
+          if (!existing || ps.season_id > existing.season_id) {
+            playerSeasonsMap.set(ps.player_id, ps);
+          }
+        });
+      }
+    }
+    
+    // Collect all unique season IDs and team IDs from player_seasons
+    const seasonIds = new Set<string>();
+    const teamSeasonIds = new Set<string>();
+    playerSeasonsMap.forEach(ps => {
+      if (ps.season_id) seasonIds.add(ps.season_id);
+      if (ps.team_id && ps.season_id) {
+        teamSeasonIds.add(`${ps.team_id}_${ps.season_id}`);
+      }
+    });
+    
+    // Batch fetch all seasons from Firebase
+    const seasonMap = new Map<string, { name: string }>();
     const seasonPromises = Array.from(seasonIds).map(async (seasonId) => {
       try {
         const season = await getSeasonById(seasonId);
@@ -160,62 +183,67 @@ export const getAllRealPlayers = async (): Promise<RealPlayerData[]> => {
       }
     });
     
-    // Fetch all teams in parallel
-    const teamPromises = Array.from(teamIds).map(async (teamId) => {
+    // Batch fetch team_seasons from Firebase for team names
+    const teamSeasonMap = new Map<string, { team_name: string; team_code: string }>();
+    const teamSeasonPromises = Array.from(teamSeasonIds).map(async (teamSeasonId) => {
       try {
-        const team = await getTeamById(teamId);
-        if (team) {
-          teamMap.set(teamId, { team_name: team.team_name, team_code: team.team_code });
+        const teamSeasonDoc = await getDoc(doc(db, 'team_seasons', teamSeasonId));
+        if (teamSeasonDoc.exists()) {
+          const data = teamSeasonDoc.data();
+          teamSeasonMap.set(teamSeasonId, {
+            team_name: data.team_name || '',
+            team_code: data.team_code || data.team_id || '',
+          });
         }
       } catch (error) {
-        console.error(`Error fetching team ${teamId}:`, error);
+        console.error(`Error fetching team_season ${teamSeasonId}:`, error);
       }
     });
     
-    // Wait for all fetches to complete
-    await Promise.all([...seasonPromises, ...teamPromises]);
+    await Promise.all([...seasonPromises, ...teamSeasonPromises]);
     
-    // Build players array using cached data
+    // Build players array combining Firebase and Neon data
     const players: RealPlayerData[] = [];
-    for (const docSnap of querySnapshot.docs) {
-      const data = docSnap.data();
+    for (const [playerId, firebaseData] of firebasePlayersMap.entries()) {
+      const playerSeasonData = playerSeasonsMap.get(playerId);
       
-      // Fetch season, team, and category names from cache
       let seasonName = '';
-      let categoryName = '';
       let teamName = '';
       let teamCode = '';
+      let categoryName = '';
+      let isRegistered = false;
       
-      if (data.season_id && seasonMap.has(data.season_id)) {
-        seasonName = seasonMap.get(data.season_id)!.name;
-      }
-      
-      if (data.category_id) {
-        try {
-          const category = await getCategoryById(data.category_id);
-          categoryName = category?.name || '';
-        } catch (error) {
-          console.error('Error fetching category:', error);
+      // Get data from player_seasons (tournament DB) if available
+      if (playerSeasonData) {
+        seasonName = seasonMap.get(playerSeasonData.season_id)?.name || '';
+        categoryName = playerSeasonData.category || '';
+        isRegistered = playerSeasonData.registration_status === 'active';
+        
+        // Get team name from Firebase team_seasons
+        if (playerSeasonData.team_id && playerSeasonData.season_id) {
+          const teamSeasonId = `${playerSeasonData.team_id}_${playerSeasonData.season_id}`;
+          const teamSeasonData = teamSeasonMap.get(teamSeasonId);
+          if (teamSeasonData) {
+            teamName = teamSeasonData.team_name;
+            teamCode = teamSeasonData.team_code;
+          }
         }
       }
       
-      if (data.team_id && teamMap.has(data.team_id)) {
-        const team = teamMap.get(data.team_id)!;
-        teamName = team.team_name;
-        teamCode = team.team_code;
-      }
-      
       players.push({
-        ...data,
-        id: data.player_id,
+        ...firebaseData,
+        id: playerId,
+        season_id: playerSeasonData?.season_id || firebaseData.season_id || '',
         season_name: seasonName,
-        category_name: categoryName,
+        team_id: playerSeasonData?.team_id || firebaseData.team_id || '',
         team_name: teamName,
         team_code: teamCode,
-        joined_date: data.joined_date ? convertTimestamp(data.joined_date) : undefined,
-        registered_at: data.registered_at ? convertTimestamp(data.registered_at) : null,
-        created_at: convertTimestamp(data.created_at),
-        updated_at: data.updated_at ? convertTimestamp(data.updated_at) : undefined,
+        category_name: categoryName,
+        is_registered: isRegistered,
+        joined_date: firebaseData.joined_date ? convertTimestamp(firebaseData.joined_date) : undefined,
+        registered_at: firebaseData.registered_at ? convertTimestamp(firebaseData.registered_at) : null,
+        created_at: convertTimestamp(firebaseData.created_at),
+        updated_at: firebaseData.updated_at ? convertTimestamp(firebaseData.updated_at) : undefined,
       } as RealPlayerData);
     }
     
