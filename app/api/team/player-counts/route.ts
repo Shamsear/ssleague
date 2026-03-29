@@ -45,13 +45,18 @@ export async function GET(request: NextRequest) {
     const tournamentDb = neon(tournamentDbUrl);
 
     // Fetch football players count from auction DB
+    // Use contract-based filtering: show players whose contract is active during this season
     const footballPlayerCounts = await auctionDb`
       SELECT 
-        team_id,
+        tp.team_id,
         COUNT(*) as count
-      FROM team_players
-      WHERE season_id = ${seasonId}
-      GROUP BY team_id
+      FROM team_players tp
+      INNER JOIN footballplayers fp ON tp.player_id = fp.id
+      WHERE (
+        fp.contract_start_season <= ${seasonId}
+        AND fp.contract_end_season >= ${seasonId}
+      )
+      GROUP BY tp.team_id
     `;
 
     // Fetch real players count from tournament DB

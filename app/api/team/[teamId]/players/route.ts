@@ -43,7 +43,7 @@ export async function GET(
     `;
 
     // Fetch full realplayer details from Firebase if any exist
-    let enrichedRealPlayers = [];
+    let enrichedRealPlayers: any[] = [];
     if (playerSeasons.length > 0) {
       const playerIds = playerSeasons.map(ps => ps.player_id);
       const playerDocs = await adminDb.collection('realplayers')
@@ -82,7 +82,7 @@ export async function GET(
     }
 
     // 2. Fetch FOOTBALLPLAYERS (auction players) from team_players
-    // Filter by contract period: show if contract_start_season OR contract_end_season matches current season
+    // Filter by contract period: show if current season is within contract range
     console.log(`[API] Fetching football players for team ${teamId}, season ${seasonId}`);
     console.log(`[API] Using database: ${process.env.NEON_AUCTION_DB_URL ? 'NEON_AUCTION_DB_URL' : 'NEON_DATABASE_URL'}`);
     
@@ -106,10 +106,9 @@ export async function GET(
       FROM team_players tp
       INNER JOIN footballplayers fp ON tp.player_id = fp.id
       WHERE tp.team_id = ${teamId}
-        AND tp.season_id = ${seasonId}
         AND (
-          fp.contract_start_season = ${seasonId} 
-          OR fp.contract_end_season = ${seasonId}
+          fp.contract_start_season <= ${seasonId} 
+          AND fp.contract_end_season >= ${seasonId}
         )
       ORDER BY tp.acquired_at DESC
     `;
@@ -121,6 +120,16 @@ export async function GET(
         contract_end: footballPlayers[0].contract_end_season,
         current_season: seasonId
       });
+    } else {
+      console.log(`[API] No football players found. Checking team_players table...`);
+      const allTeamPlayers = await auctionSql`
+        SELECT tp.player_id, tp.team_id, tp.season_id, fp.contract_start_season, fp.contract_end_season
+        FROM team_players tp
+        LEFT JOIN footballplayers fp ON tp.player_id = fp.id
+        WHERE tp.team_id = ${teamId}
+        LIMIT 5
+      `;
+      console.log(`[API] Sample team_players records:`, allTeamPlayers);
     }
 
     const enrichedFootballPlayers = footballPlayers.map(fp => ({
