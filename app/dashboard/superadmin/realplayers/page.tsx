@@ -29,7 +29,7 @@ export default function RealPlayersPage() {
   const [filteredPlayers, setFilteredPlayers] = useState<RealPlayer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlace, setFilterPlace] = useState<string>('all');
-  const [sortByDob, setSortByDob] = useState<'asc' | 'desc' | 'none'>('none');
+  const [sortByDob, setSortByDob] = useState<'none' | 'year' | 'birthday'>('none');
   const [availablePlaces, setAvailablePlaces] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,8 +102,9 @@ export default function RealPlayersPage() {
         filtered = filtered.filter(p => p.place === filterPlace);
       }
       
-      // Apply DOB sorting
-      if (sortByDob !== 'none') {
+      // Apply DOB sorting if selected, otherwise sort by name
+      if (sortByDob === 'year') {
+        // Sort by full date (year, month, day) - oldest first
         filtered = filtered.sort((a, b) => {
           const dobA = a.dob || a.date_of_birth;
           const dobB = b.dob || b.date_of_birth;
@@ -115,10 +116,31 @@ export default function RealPlayersPage() {
           const dateA = dobA.toDate ? dobA.toDate() : new Date(dobA);
           const dateB = dobB.toDate ? dobB.toDate() : new Date(dobB);
           
-          return sortByDob === 'asc' 
-            ? dateA.getTime() - dateB.getTime()
-            : dateB.getTime() - dateA.getTime();
+          return dateA.getTime() - dateB.getTime();
         });
+      } else if (sortByDob === 'birthday') {
+        // Sort by month and day only (ignoring year) - Jan 1 to Dec 31
+        filtered = filtered.sort((a, b) => {
+          const dobA = a.dob || a.date_of_birth;
+          const dobB = b.dob || b.date_of_birth;
+          
+          if (!dobA && !dobB) return 0;
+          if (!dobA) return 1;
+          if (!dobB) return -1;
+          
+          const dateA = dobA.toDate ? dobA.toDate() : new Date(dobA);
+          const dateB = dobB.toDate ? dobB.toDate() : new Date(dobB);
+          
+          // Compare month first, then day
+          const monthDiff = dateA.getMonth() - dateB.getMonth();
+          if (monthDiff !== 0) return monthDiff;
+          return dateA.getDate() - dateB.getDate();
+        });
+      } else {
+        // Default sort by name
+        filtered = filtered.sort((a, b) => 
+          (a.name || '').localeCompare(b.name || '')
+        );
       }
       
       setFilteredPlayers(filtered);
@@ -128,8 +150,9 @@ export default function RealPlayersPage() {
         ? players.filter(p => p.place === filterPlace)
         : [...players];
       
-      // Apply DOB sorting
-      if (sortByDob !== 'none') {
+      // Apply DOB sorting if selected, otherwise sort by name
+      if (sortByDob === 'year') {
+        // Sort by full date (year, month, day) - oldest first
         filtered = filtered.sort((a, b) => {
           const dobA = a.dob || a.date_of_birth;
           const dobB = b.dob || b.date_of_birth;
@@ -141,10 +164,31 @@ export default function RealPlayersPage() {
           const dateA = dobA.toDate ? dobA.toDate() : new Date(dobA);
           const dateB = dobB.toDate ? dobB.toDate() : new Date(dobB);
           
-          return sortByDob === 'asc' 
-            ? dateA.getTime() - dateB.getTime()
-            : dateB.getTime() - dateA.getTime();
+          return dateA.getTime() - dateB.getTime();
         });
+      } else if (sortByDob === 'birthday') {
+        // Sort by month and day only (ignoring year) - Jan 1 to Dec 31
+        filtered = filtered.sort((a, b) => {
+          const dobA = a.dob || a.date_of_birth;
+          const dobB = b.dob || b.date_of_birth;
+          
+          if (!dobA && !dobB) return 0;
+          if (!dobA) return 1;
+          if (!dobB) return -1;
+          
+          const dateA = dobA.toDate ? dobA.toDate() : new Date(dobA);
+          const dateB = dobB.toDate ? dobB.toDate() : new Date(dobB);
+          
+          // Compare month first, then day
+          const monthDiff = dateA.getMonth() - dateB.getMonth();
+          if (monthDiff !== 0) return monthDiff;
+          return dateA.getDate() - dateB.getDate();
+        });
+      } else {
+        // Default sort by name
+        filtered = filtered.sort((a, b) => 
+          (a.name || '').localeCompare(b.name || '')
+        );
       }
       
       setFilteredPlayers(filtered);
@@ -323,7 +367,46 @@ export default function RealPlayersPage() {
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Place</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">
+                    <button
+                      onClick={() => {
+                        if (sortByDob === 'none') setSortByDob('year');
+                        else if (sortByDob === 'year') setSortByDob('birthday');
+                        else setSortByDob('none');
+                      }}
+                      className="flex items-center gap-1 hover:text-[#0066FF] transition-colors"
+                      title={
+                        sortByDob === 'none' 
+                          ? 'Click to sort by year (oldest first)' 
+                          : sortByDob === 'year'
+                          ? 'Click to sort by birthday (Jan-Dec)'
+                          : 'Click to reset to name sort'
+                      }
+                    >
+                      Date of Birth
+                      {sortByDob === 'year' && (
+                        <span className="flex items-center gap-0.5 text-[#0066FF]">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-[10px] font-bold">Y</span>
+                        </span>
+                      )}
+                      {sortByDob === 'birthday' && (
+                        <span className="flex items-center gap-0.5 text-green-600">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                          </svg>
+                          <span className="text-[10px] font-bold">B</span>
+                        </span>
+                      )}
+                      {sortByDob === 'none' && (
+                        <svg className="w-4 h-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      )}
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Created</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Actions</th>
                 </tr>
@@ -368,15 +451,20 @@ export default function RealPlayersPage() {
                       {player.phone || <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {player.is_active !== false ? (
-                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-md bg-green-100 text-green-800">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-600">
-                          Inactive
-                        </span>
-                      )}
+                      {(() => {
+                        const dobValue = player.dob || player.date_of_birth;
+                        if (dobValue) {
+                          return (
+                            <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-md bg-blue-100 text-blue-800">
+                              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              {formatDOB(dobValue)}
+                            </span>
+                          );
+                        }
+                        return <span className="text-gray-400 text-sm">-</span>;
+                      })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
                       {formatDate(player.created_at)}
@@ -436,15 +524,21 @@ export default function RealPlayersPage() {
                       <span className="font-medium">{player.phone}</span>
                     </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-gray-600">Status:</span>
-                    <span className={player.is_active !== false ? 'text-green-600 font-medium' : 'text-gray-500'}>
-                      {player.is_active !== false ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
+                  {(() => {
+                    const dobValue = player.dob || player.date_of_birth;
+                    if (dobValue) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-gray-600">DOB:</span>
+                          <span className="font-medium">{formatDOB(dobValue)}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 <Link
