@@ -228,14 +228,22 @@ export default function PlayerDetailPage() {
         return seasonNum < 16; // Only auto-include pre-S16 seasons
       });
 
-      // Fetch photo_url from API (single read instead of query)
+      // Fetch photo_url and personal details from API (single read instead of query)
       let photoUrl: string | undefined;
+      let personalDetails: any = {};
       try {
         const response = await fetch(`/api/players/${playerId}/details`);
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.player) {
             photoUrl = data.player.photo_url;
+            // Store personal details
+            personalDetails = {
+              place: data.player.place,
+              phone: data.player.phone,
+              dob: data.player.dob,
+              date_of_birth: data.player.date_of_birth,
+            };
             // Store photo positioning data for later use
             (window as any).__playerPhotoSettings = {
               photo_position_circle: data.player.photo_position_circle,
@@ -250,7 +258,7 @@ export default function PlayerDetailPage() {
           }
         }
       } catch (error) {
-        console.error('Error fetching player photo:', error);
+        console.error('Error fetching player details:', error);
       }
 
       // Process all season data from Neon
@@ -274,6 +282,11 @@ export default function PlayerDetailPage() {
           category: statsData.category,
           star_rating: statsData.star_rating,
           photo_url: photoUrl,
+          // Add personal details from API
+          place: personalDetails.place,
+          phone: personalDetails.phone,
+          dob: personalDetails.dob,
+          date_of_birth: personalDetails.date_of_birth,
           // Add photo positioning from stored data
           ...((window as any).__playerPhotoSettings || {}),
           stats: {

@@ -1,21 +1,30 @@
-require('dotenv').config({ path: '.env.local' });
 const { neon } = require('@neondatabase/serverless');
+require('dotenv').config({ path: '.env.local' });
+
+const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
 
 async function listTables() {
-  const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
-  
-  const tables = await sql`
-    SELECT tablename 
-    FROM pg_tables 
-    WHERE schemaname = 'public'
-    ORDER BY tablename
-  `;
-  
-  console.log('Tables in tournament database:');
-  tables.forEach(t => console.log(`  - ${t.tablename}`));
+  try {
+    console.log('🔍 Listing all tables in tournament database...\n');
+
+    const tables = await sql`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      ORDER BY table_name
+    `;
+
+    console.log('📋 Available tables:');
+    tables.forEach((table, index) => {
+      console.log(`${index + 1}. ${table.table_name}`);
+    });
+
+    console.log(`\n✅ Total: ${tables.length} tables`);
+
+  } catch (error) {
+    console.error('❌ Error:', error);
+    throw error;
+  }
 }
 
-listTables().then(() => process.exit(0)).catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+listTables();

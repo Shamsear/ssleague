@@ -16,6 +16,8 @@ interface RealPlayer {
   email?: string;
   photo_url?: string;
   is_active?: boolean;
+  dob?: any;
+  date_of_birth?: any;
   created_at?: any;
   updated_at?: any;
 }
@@ -27,6 +29,7 @@ export default function RealPlayersPage() {
   const [filteredPlayers, setFilteredPlayers] = useState<RealPlayer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlace, setFilterPlace] = useState<string>('all');
+  const [sortByDob, setSortByDob] = useState<'asc' | 'desc' | 'none'>('none');
   const [availablePlaces, setAvailablePlaces] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,16 +102,54 @@ export default function RealPlayersPage() {
         filtered = filtered.filter(p => p.place === filterPlace);
       }
       
+      // Apply DOB sorting
+      if (sortByDob !== 'none') {
+        filtered = filtered.sort((a, b) => {
+          const dobA = a.dob || a.date_of_birth;
+          const dobB = b.dob || b.date_of_birth;
+          
+          if (!dobA && !dobB) return 0;
+          if (!dobA) return 1;
+          if (!dobB) return -1;
+          
+          const dateA = dobA.toDate ? dobA.toDate() : new Date(dobA);
+          const dateB = dobB.toDate ? dobB.toDate() : new Date(dobB);
+          
+          return sortByDob === 'asc' 
+            ? dateA.getTime() - dateB.getTime()
+            : dateB.getTime() - dateA.getTime();
+        });
+      }
+      
       setFilteredPlayers(filtered);
     } else {
       // Apply place filter even without search
-      if (filterPlace !== 'all') {
-        setFilteredPlayers(players.filter(p => p.place === filterPlace));
-      } else {
-        setFilteredPlayers(players);
+      let filtered = filterPlace !== 'all' 
+        ? players.filter(p => p.place === filterPlace)
+        : [...players];
+      
+      // Apply DOB sorting
+      if (sortByDob !== 'none') {
+        filtered = filtered.sort((a, b) => {
+          const dobA = a.dob || a.date_of_birth;
+          const dobB = b.dob || b.date_of_birth;
+          
+          if (!dobA && !dobB) return 0;
+          if (!dobA) return 1;
+          if (!dobB) return -1;
+          
+          const dateA = dobA.toDate ? dobA.toDate() : new Date(dobA);
+          const dateB = dobB.toDate ? dobB.toDate() : new Date(dobB);
+          
+          return sortByDob === 'asc' 
+            ? dateA.getTime() - dateB.getTime()
+            : dateB.getTime() - dateA.getTime();
+        });
       }
+      
+      setFilteredPlayers(filtered);
     }
-  }, [searchTerm, players, filterPlace]);
+  }, [searchTerm, players, filterPlace, sortByDob]);
 
   const formatDate = (date: any) => {
     if (!date) return 'N/A';
@@ -121,6 +162,20 @@ export default function RealPlayersPage() {
       });
     } catch {
       return 'N/A';
+    }
+  };
+
+  const formatDOB = (date: any) => {
+    if (!date) return '-';
+    try {
+      const dateObj = date.toDate ? date.toDate() : new Date(date);
+      return dateObj.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return '-';
     }
   };
 
