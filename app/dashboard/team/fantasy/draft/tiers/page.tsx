@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchWithTokenRefresh } from '@/lib/firebase/fetchWithTokenRefresh';
+import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import { ArrowLeft, Clock, DollarSign, AlertCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 // Custom scrollbar styles
