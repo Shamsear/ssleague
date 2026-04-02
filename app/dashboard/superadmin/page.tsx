@@ -447,6 +447,20 @@ export default function SuperAdminDashboard() {
                         <p className="text-xs text-gray-500">Manage awards page display order</p>
                       </div>
                     </button>
+                    
+                    <button 
+                      onClick={() => router.push('/dashboard/admin/team-seasons-editor')}
+                      className="glass group rounded-2xl p-4 border border-white/10 hover:border-[#9580FF]/30 transition-all duration-300 shadow-sm hover:shadow-lg flex items-center gap-3 hover:-translate-y-1">
+                      <div className="p-2 rounded-lg bg-gradient-to-br from-[#9580FF]/20 to-[#9580FF]/10 text-[#9580FF]">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-800 group-hover:text-[#9580FF] transition-colors">Team Seasons Editor</h4>
+                        <p className="text-xs text-gray-500">Edit team balances and season data</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
               </div>

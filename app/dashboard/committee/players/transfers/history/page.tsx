@@ -319,9 +319,7 @@ export default function TransferHistoryPage() {
                 className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
               >
                 <option value="">All Types</option>
-                <option value="transfer">Transfers</option>
-                <option value="swap">Swaps</option>
-                <option value="release">Releases</option>
+                <option value="release">Player Releases</option>
               </select>
             </div>
           </div>
@@ -355,6 +353,49 @@ export default function TransferHistoryPage() {
 
                 {/* Transaction Details */}
                 <div className="p-4 sm:p-6">
+                  {tx.transaction_type === 'release' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Player Released</p>
+                          <p className="text-lg font-bold text-gray-900">{tx.player_name}</p>
+                          <p className="text-xs text-gray-500">{tx.player_type === 'real' ? 'Real Player' : 'Football Player'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-600">Team</p>
+                          <p className="text-sm font-semibold text-gray-900">{tx.team_name}</p>
+                          <p className="text-xs text-gray-500">{tx.team_id}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t">
+                        <div>
+                          <p className="text-xs text-gray-600">Auction Value</p>
+                          <p className="text-sm font-bold text-gray-900">{tx.auction_value?.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-600">Refund Amount</p>
+                          <p className="text-sm font-bold text-green-600">{tx.refund_amount?.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-600">Refund %</p>
+                          <p className="text-sm font-bold text-blue-600">{tx.refund_percentage}%</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-600">Release Timing</p>
+                          <p className="text-sm font-bold text-purple-600 capitalize">{tx.release_timing}</p>
+                        </div>
+                      </div>
+                      {tx.release_season && (
+                        <div className="pt-2 border-t">
+                          <p className="text-xs text-gray-600">Release Season: <span className="font-semibold text-gray-900">{tx.release_season}</span></p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Contract: {tx.original_contract_start} - {tx.original_contract_end}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {tx.transaction_type === 'transfer' && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">

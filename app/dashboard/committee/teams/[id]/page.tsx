@@ -50,13 +50,49 @@ interface TeamData {
   categoryBreakdown?: { [key: string]: number };
 }
 
+interface TournamentStat {
+  tournament_id: string;
+  tournament_name: string;
+  tournament_type: string;
+  matches_played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goals_scored: number;
+  goals_conceded: number;
+  goal_difference: number;
+  points: number;
+  clean_sheets: number;
+  win_rate: string;
+  goals_per_game: string;
+  conceded_per_game: string;
+}
+
+interface OverallStat {
+  matches_played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goals_scored: number;
+  goals_conceded: number;
+  goal_difference: number;
+  points: number;
+  clean_sheets: number;
+  win_rate: string;
+  goals_per_game: string;
+  conceded_per_game: string;
+}
+
 export default function TeamDetailPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const { isCommitteeAdmin, userSeasonId } = usePermissions();
   const [teamData, setTeamData] = useState<TeamData | null>(null);
+  const [tournamentStats, setTournamentStats] = useState<TournamentStat[]>([]);
+  const [overallStats, setOverallStats] = useState<OverallStat | null>(null);
   const [loadingTeam, setLoadingTeam] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'players' | 'stats'>('players');
   const [playerFilter, setPlayerFilter] = useState<'all' | 'real' | 'football'>('all');
@@ -105,6 +141,75 @@ export default function TeamDetailPage() {
       fetchTeamDetails();
     }
   }, [isCommitteeAdmin, userSeasonId, teamId]);
+
+  // Fetch tournament stats when Statistics tab is opened
+  useEffect(() => {
+    const fetchTournamentStats = async () => {
+      if (!userSeasonId || !teamId || activeTab !== 'stats') {
+        return;
+      }
+
+      try {
+        setLoadingStats(true);
+        const response = await fetchWithTokenRefresh(
+          `/api/teams/${teamId}/statistics?seasonId=${userSeasonId}`
+        );
+        const data = await response.json();
+
+        if (data.success) {
+          // Map the new API response to the old format
+          const tournaments = data.tournaments || [];
+          const overall = data.overall || null;
+          
+          // Transform tournament data to match old format
+          const transformedTournaments = tournaments.map((t: any) => ({
+            tournament_id: t.tournament_id,
+            tournament_name: t.tournament_name,
+            tournament_type: t.format,
+            matches_played: t.matches_played,
+            wins: t.wins,
+            draws: t.draws,
+            losses: t.losses,
+            goals_scored: t.goals_for,
+            goals_conceded: t.goals_against,
+            goal_difference: t.goal_difference,
+            points: t.points,
+            clean_sheets: t.clean_sheets,
+            win_rate: t.matches_played > 0 ? ((t.wins / t.matches_played) * 100).toFixed(1) : '0.0',
+            goals_per_game: t.matches_played > 0 ? (t.goals_for / t.matches_played).toFixed(2) : '0.00',
+            conceded_per_game: t.matches_played > 0 ? (t.goals_against / t.matches_played).toFixed(2) : '0.00',
+          }));
+          
+          // Transform overall data to match old format
+          const transformedOverall = overall ? {
+            matches_played: overall.matches_played,
+            wins: overall.wins,
+            draws: overall.draws,
+            losses: overall.losses,
+            goals_scored: overall.goals_for,
+            goals_conceded: overall.goals_against,
+            goal_difference: overall.goal_difference,
+            points: overall.points,
+            clean_sheets: overall.clean_sheets,
+            win_rate: overall.win_percentage.toString(),
+            goals_per_game: overall.matches_played > 0 ? (overall.goals_for / overall.matches_played).toFixed(2) : '0.00',
+            conceded_per_game: overall.matches_played > 0 ? (overall.goals_against / overall.matches_played).toFixed(2) : '0.00',
+          } : null;
+          
+          setTournamentStats(transformedTournaments);
+          setOverallStats(transformedOverall);
+        }
+      } catch (err) {
+        console.error('Error fetching tournament stats:', err);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+
+    if (isCommitteeAdmin && userSeasonId && teamId && activeTab === 'stats') {
+      fetchTournamentStats();
+    }
+  }, [isCommitteeAdmin, userSeasonId, teamId, activeTab]);
 
   if (loading || loadingTeam) {
     return (
@@ -408,62 +513,162 @@ export default function TeamDetailPage() {
               </>
             ) : (
               <div className="space-y-6">
-                {/* Position Breakdown */}
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">Position Distribution</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(teamData.positionBreakdown)
-                      .filter(([_, count]) => count > 0)
-                      .map(([position, count]) => (
-                        <div key={position} className="glass rounded-xl p-4 text-center">
-                          <div className="text-3xl font-bold gradient-text mb-1">{count}</div>
-                          <div className="text-sm text-gray-600 font-medium">{position}</div>
-                        </div>
-                      ))}
+                {loadingStats ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading statistics...</p>
                   </div>
-                </div>
-
-                {/* Category Breakdown */}
-                {teamData.categoryBreakdown && Object.keys(teamData.categoryBreakdown).length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-800 mb-4">Category Distribution</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {Object.entries(teamData.categoryBreakdown)
-                        .filter(([_, count]) => count > 0)
-                        .map(([category, count]) => (
-                          <div key={category} className="glass rounded-xl p-4 text-center">
-                            <div className="text-3xl font-bold text-purple-600 mb-1">{count}</div>
-                            <div className="text-sm text-gray-600 font-medium">{category}</div>
+                ) : (
+                  <>
+                    {/* Overall Stats */}
+                    {overallStats && (
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                          <svg className="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                          Overall Season Statistics
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+                          <div className="glass rounded-xl p-4 text-center border-2 border-green-200">
+                            <div className="text-3xl font-bold text-green-600 mb-1">{overallStats.matches_played}</div>
+                            <div className="text-xs text-gray-600 font-medium">Matches</div>
                           </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
+                          <div className="glass rounded-xl p-4 text-center border-2 border-blue-200">
+                            <div className="text-3xl font-bold text-blue-600 mb-1">{overallStats.wins}</div>
+                            <div className="text-xs text-gray-600 font-medium">Wins</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center border-2 border-yellow-200">
+                            <div className="text-3xl font-bold text-yellow-600 mb-1">{overallStats.draws}</div>
+                            <div className="text-xs text-gray-600 font-medium">Draws</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center border-2 border-red-200">
+                            <div className="text-3xl font-bold text-red-600 mb-1">{overallStats.losses}</div>
+                            <div className="text-xs text-gray-600 font-medium">Losses</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center border-2 border-purple-200">
+                            <div className="text-3xl font-bold text-purple-600 mb-1">{overallStats.points}</div>
+                            <div className="text-xs text-gray-600 font-medium">Points</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center border-2 border-indigo-200">
+                            <div className="text-3xl font-bold text-indigo-600 mb-1">{overallStats.win_rate}%</div>
+                            <div className="text-xs text-gray-600 font-medium">Win Rate</div>
+                          </div>
+                        </div>
 
-                {/* Additional Stats */}
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">Team Overview</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="glass rounded-xl p-4">
-                      <div className="text-sm text-gray-600 mb-1">Total Value</div>
-                      <div className="text-2xl font-bold text-[#0066FF]">
-                        {teamData.totalValue ? `eCoin ${teamData.totalValue.toLocaleString()}` : 'N/A'}
+                        {/* Goals Stats */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                          <div className="glass rounded-xl p-4 text-center">
+                            <div className="text-2xl font-bold text-emerald-600 mb-1">{overallStats.goals_scored}</div>
+                            <div className="text-xs text-gray-600 font-medium">Goals Scored</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center">
+                            <div className="text-2xl font-bold text-rose-600 mb-1">{overallStats.goals_conceded}</div>
+                            <div className="text-xs text-gray-600 font-medium">Goals Conceded</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center">
+                            <div className={`text-2xl font-bold mb-1 ${overallStats.goal_difference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {overallStats.goal_difference >= 0 ? '+' : ''}{overallStats.goal_difference}
+                            </div>
+                            <div className="text-xs text-gray-600 font-medium">Goal Difference</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center">
+                            <div className="text-2xl font-bold text-teal-600 mb-1">{overallStats.goals_per_game}</div>
+                            <div className="text-xs text-gray-600 font-medium">Goals/Game</div>
+                          </div>
+                          <div className="glass rounded-xl p-4 text-center">
+                            <div className="text-2xl font-bold text-cyan-600 mb-1">{overallStats.clean_sheets}</div>
+                            <div className="text-xs text-gray-600 font-medium">Clean Sheets</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="glass rounded-xl p-4">
-                      <div className="text-sm text-gray-600 mb-1">Average Rating</div>
-                      <div className="text-2xl font-bold text-amber-600">
-                        ⭐ {teamData.avgRating.toFixed(2)}
+                    )}
+
+                    {/* Tournament Breakdown */}
+                    {tournamentStats.length > 0 ? (
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                          <svg className="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                          </svg>
+                          Tournament Statistics
+                        </h3>
+                        <div className="space-y-4">
+                          {tournamentStats.map((stat) => (
+                            <div key={stat.tournament_id} className="glass rounded-xl p-5 border border-white/30 hover:border-[#0066FF]/30 transition-all">
+                              <div className="flex items-center justify-between mb-4">
+                                <div>
+                                  <h4 className="text-lg font-bold text-gray-900">{stat.tournament_name}</h4>
+                                  <span className="inline-block px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full mt-1 capitalize">
+                                    {stat.tournament_type}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-2xl font-bold text-[#0066FF]">{stat.points}</div>
+                                  <div className="text-xs text-gray-500">Points</div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                                <div className="text-center">
+                                  <div className="text-lg font-bold text-gray-900">{stat.matches_played}</div>
+                                  <div className="text-xs text-gray-600">Played</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-lg font-bold text-green-600">{stat.wins}</div>
+                                  <div className="text-xs text-gray-600">Wins</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-lg font-bold text-yellow-600">{stat.draws}</div>
+                                  <div className="text-xs text-gray-600">Draws</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-lg font-bold text-red-600">{stat.losses}</div>
+                                  <div className="text-xs text-gray-600">Losses</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-lg font-bold text-emerald-600">{stat.goals_scored}</div>
+                                  <div className="text-xs text-gray-600">GF</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-lg font-bold text-rose-600">{stat.goals_conceded}</div>
+                                  <div className="text-xs text-gray-600">GA</div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-200">
+                                <div className="text-center">
+                                  <div className={`text-sm font-bold ${stat.goal_difference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {stat.goal_difference >= 0 ? '+' : ''}{stat.goal_difference}
+                                  </div>
+                                  <div className="text-xs text-gray-600">GD</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-sm font-bold text-indigo-600">{stat.win_rate}%</div>
+                                  <div className="text-xs text-gray-600">Win Rate</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-sm font-bold text-cyan-600">{stat.clean_sheets}</div>
+                                  <div className="text-xs text-gray-600">Clean Sheets</div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <div className="glass rounded-xl p-4">
-                      <div className="text-sm text-gray-600 mb-1">Squad Size</div>
-                      <div className="text-2xl font-bold text-purple-600">
-                        {teamData.totalPlayers} Players
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                    ) : (
+                      !overallStats && (
+                        <div className="text-center py-12">
+                          <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                          <h3 className="text-xl font-medium text-gray-600 mb-2">No Statistics Available</h3>
+                          <p className="text-gray-500">This team hasn't played any matches yet this season</p>
+                        </div>
+                      )
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
