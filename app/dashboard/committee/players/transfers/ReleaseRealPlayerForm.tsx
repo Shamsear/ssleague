@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import SearchablePlayerSelect from '@/components/ui/SearchablePlayerSelect';
 
 interface Player {
     id: string;
@@ -31,6 +32,7 @@ export default function ReleaseRealPlayerForm() {
 
     const [players, setPlayers] = useState<Player[]>([]);
     const [selectedPlayerId, setSelectedPlayerId] = useState('');
+    const [searchPlayer, setSearchPlayer] = useState('');
     const [releaseTiming, setReleaseTiming] = useState<'start' | 'mid'>('start');
     const [refundPercentage, setRefundPercentage] = useState<number>(75); // Manual percentage
     const [preview, setPreview] = useState<ReleasePreview | null>(null);
@@ -108,19 +110,19 @@ export default function ReleaseRealPlayerForm() {
                 : userSeasonId.toUpperCase();
 
             // Extract season numbers for display
-            const startSeasonNum = parseFloat(
-                player.contract_start_season.replace(/\D/g, '').replace(/(\d+)\.(\d+)/, '$1.$2')
-            );
-            const endSeasonNum = parseFloat(
-                player.contract_end_season.replace(/\D/g, '').replace(/(\d+)\.(\d+)/, '$1.$2')
-            );
-            const releaseSeasonNum = parseFloat(
-                releaseSeasonNumber + (releaseTiming === 'mid' ? '.5' : '.0')
-            );
+            // Handle both "SSPSLS16" and "SSPSLS16.5" formats
+            const parseSeasonNumber = (seasonStr: string): number => {
+                const cleaned = seasonStr.replace(/[^\d.]/g, ''); // Remove non-digits except decimal
+                return parseFloat(cleaned) || 0;
+            };
+
+            const startSeasonNum = parseSeasonNumber(player.contract_start_season);
+            const endSeasonNum = parseSeasonNumber(player.contract_end_season);
+            const releaseSeasonNum = parseFloat(releaseSeasonNumber) + (releaseTiming === 'mid' ? 0.5 : 0);
 
             // Calculate half-seasons for display only
-            const totalHalfSeasons = (endSeasonNum - startSeasonNum) * 2;
-            const elapsedHalfSeasons = (releaseSeasonNum - startSeasonNum) * 2;
+            const totalHalfSeasons = Math.round((endSeasonNum - startSeasonNum) * 2);
+            const elapsedHalfSeasons = Math.round((releaseSeasonNum - startSeasonNum) * 2);
             const remainingHalfSeasons = totalHalfSeasons - elapsedHalfSeasons;
 
             // Use manual refund percentage
@@ -222,6 +224,16 @@ export default function ReleaseRealPlayerForm() {
         }
     };
 
+    // Get filtered players based on search
+    const filteredPlayers = useMemo(() => {
+        if (!searchPlayer) return players;
+        const searchLower = searchPlayer.toLowerCase();
+        return players.filter(p => 
+            p.player_name.toLowerCase().includes(searchLower) ||
+            p.team?.toLowerCase().includes(searchLower)
+        );
+    }, [players, searchPlayer]);
+
     const selectedPlayer = players.find(p => p.player_id === selectedPlayerId);
 
     return (
@@ -250,31 +262,37 @@ export default function ReleaseRealPlayerForm() {
             )}
 
             {/* Player Selection */}
-            <div className="space-y-4">
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Select Player to Release
-                    </label>
-                    <select
-                        value={selectedPlayerId}
-                        onChange={(e) => setSelectedPlayerId(e.target.value)}
-                        disabled={loading || processing}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    >
-                        <option value="">-- Select a player --</option>
-                        {players.map((player) => (
-                            <option key={player.player_id} value={player.player_id}>
-                                {player.player_name} ({player.team}) - ${player.auction_value} - Contract: {player.contract_start_season} to {player.contract_end_season}
-                            </option>
-                        ))}
-                    </select>
-                    {loading && (
-                        <p className="text-sm text-gray-500 mt-2">Loading players...</p>
-                    )}
-                    {!loading && players.length === 0 && (
-                        <p className="text-sm text-gray-500 mt-2">No players with active contracts found</p>
-                    )}
-                </div>
+            <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Select Player to Release
+                </label>
+                <SearchablePlayerSelect
+                    players={players.map(p => ({
+                        id: p.player_id,
+                        player_id: p.player_id,
+                        player_name: p.player_name,
+                        team_id: p.team_id || '',
+                        team_name: p.team || 'Unknown Team',
+                        auction_value: p.auction_value,
+                        star_rating: p.star_rating || 5,
+                        points: p.points || 0,
+                        season_id: userSeasonId || '',
+                        type: 'real' as const
+                    }))}
+                    value={selectedPlayerId}
+                    onChange={setSelectedPlayerId}
+                    disabled={loading || processing}
+                    placeholder="Search by player name or team..."
+                    label=""
+                    color="blue"
+                />
+                {loading && (
+                    <p className="text-sm text-gray-500 mt-2">Loading players...</p>
+                )}
+                {!loading && players.length === 0 && (
+                    <p className="text-sm text-gray-500 mt-2">No players with active contracts found</p>
+                )}
+            </div>
 
                 {/* Release Timing */}
                 {selectedPlayerId && (
@@ -357,7 +375,6 @@ export default function ReleaseRealPlayerForm() {
                         </div>
                     </div>
                 )}
-            </div>
 
             {/* Preview Card */}
             {preview && selectedPlayer && (
