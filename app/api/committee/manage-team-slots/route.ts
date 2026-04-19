@@ -154,6 +154,8 @@ export async function POST(request: NextRequest) {
 
     if (deduct_payment) {
       firebaseUpdate.football_budget = newBudget;
+      // Update football_spent: increase when adding slots, decrease when removing
+      firebaseUpdate.football_spent = FieldValue.increment(totalCost);
     }
 
     console.log('[Committee Manage Slots] Firebase update:', firebaseUpdate);
@@ -207,17 +209,18 @@ export async function POST(request: NextRequest) {
         budgetDeduction: totalCost
       });
       
-      // Also update budget in Neon
+      // Also update budget and spent in Neon
       await sql`
         UPDATE teams 
         SET 
           football_purchased_slots = ${newPurchased},
           football_total_slots = ${newTotalSlots},
-          football_budget = football_budget - ${totalCost}
+          football_budget = football_budget - ${totalCost},
+          football_spent = football_spent + ${totalCost}
         WHERE id = ${team_id} AND season_id = ${season_id}
       `;
       
-      console.log('[Committee Manage Slots] ✅ Neon teams table updated (with budget)');
+      console.log('[Committee Manage Slots] ✅ Neon teams table updated (with budget and spent)');
     } else {
       console.log('[Committee Manage Slots] Updating Neon without budget deduction...');
       console.log('[Committee Manage Slots] Neon update (no budget):', {

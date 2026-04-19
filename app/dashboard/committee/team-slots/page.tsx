@@ -16,6 +16,17 @@ interface Team {
   purchased_slots: number
   total_slots: number
   available_slots: number
+  purchase_history?: SlotPurchase[]
+}
+
+interface SlotPurchase {
+  id: number
+  slots_purchased: number
+  price_per_slot: number
+  total_cost: number
+  purchased_by: string
+  notes: string
+  purchased_at: string
 }
 
 export default function TeamSlotsManagementPage() {
@@ -31,6 +42,7 @@ export default function TeamSlotsManagementPage() {
     slot_price: 10
   })
   const [searchTerm, setSearchTerm] = useState('')
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   useEffect(() => {
@@ -93,6 +105,25 @@ export default function TeamSlotsManagementPage() {
         const neonData = response.ok ? await response.json() : { teams: [] }
         const neonTeamsMap = new Map(neonData.teams?.map((t: any) => [t.id, t.football_players_count]) || [])
 
+        // Fetch slot purchase history
+        const historyResponse = await fetchWithTokenRefresh('/api/committee/slot-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ season_id: seasonId })
+        })
+        
+        const historyData = historyResponse.ok ? await historyResponse.json() : { history: [] }
+        const historyMap = new Map<string, SlotPurchase[]>()
+        
+        if (historyData.history) {
+          historyData.history.forEach((record: any) => {
+            if (!historyMap.has(record.team_id)) {
+              historyMap.set(record.team_id, [])
+            }
+            historyMap.get(record.team_id)!.push(record)
+          })
+        }
+
         const teamsData: Team[] = []
         
         for (const tsDoc of teamSeasonsSnapshot.docs) {
@@ -116,7 +147,8 @@ export default function TeamSlotsManagementPage() {
             base_slots: baseSlots,
             purchased_slots: purchasedSlots,
             total_slots: totalSlots,
-            available_slots: totalSlots - currentPlayers
+            available_slots: totalSlots - currentPlayers,
+            purchase_history: historyMap.get(teamId) || []
           })
         }
 
@@ -132,6 +164,16 @@ export default function TeamSlotsManagementPage() {
 
     fetchData()
   }, [user])
+
+  const toggleTeamExpansion = (teamId: string) => {
+    const newExpanded = new Set(expandedTeams)
+    if (newExpanded.has(teamId)) {
+      newExpanded.delete(teamId)
+    } else {
+      newExpanded.add(teamId)
+    }
+    setExpandedTeams(newExpanded)
+  }
 
   const handleAddSlots = async (teamId: string, slotsToAdd: number) => {
     if (!currentSeasonId) return
@@ -344,10 +386,28 @@ export default function TeamSlotsManagementPage() {
                   </td>
                 </tr>
               ) : (
-                filteredTeams.map((team) => (
-                  <tr key={team.id} className="hover:bg-gray-50 transition-colors">
+                filteredTeams.map((team) => [
+                  <tr key={`team-${team.id}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{team.name}</div>
+                      <div className="flex items-center gap-2">
+                        {team.purchase_history && team.purchase_history.length > 0 && (
+                          <button
+                            onClick={() => toggleTeamExpansion(team.id)}
+                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            {expandedTeams.has(team.id) ? (
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
+                        <div className="text-sm font-medium text-gray-900">{team.name}</div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className="text-sm font-semibold text-gray-900">{team.current_players}</span>
@@ -392,8 +452,48 @@ export default function TeamSlotsManagementPage() {
                         </button>
                       </div>
                     </td>
-                  </tr>
-                ))
+                  </tr>,
+                  
+                  // Expanded History Row
+                  expandedTeams.has(team.id) && team.purchase_history && team.purchase_history.length > 0 && (
+                    <tr key={`history-${team.id}`} className="bg-gray-50">
+                      <td colSpan={7} className="px-6 py-4">
+                        <div className="ml-8">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-3">📜 Slot Purchase History</h4>
+                          <div className="space-y-2">
+                            {team.purchase_history.map((purchase) => (
+                              <div key={purchase.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
+                                <div className="flex items-center gap-4">
+                                  <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                    purchase.slots_purchased > 0 
+                                      ? 'bg-green-100 text-green-700' 
+                                      : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {purchase.slots_purchased > 0 ? '+' : ''}{purchase.slots_purchased} slot{Math.abs(purchase.slots_purchased) !== 1 ? 's' : ''}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    <span className="font-medium text-gray-800">By:</span> {purchase.purchased_by}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    <span className="font-medium text-gray-800">Cost:</span> ₡{Math.abs(purchase.total_cost)}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    <span className="font-medium text-gray-800">Date:</span> {new Date(purchase.purchased_at).toLocaleDateString()}
+                                  </div>
+                                </div>
+                                {purchase.notes && (
+                                  <div className="text-xs text-gray-500 italic">
+                                    {purchase.notes}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                ])
               )}
             </tbody>
           </table>

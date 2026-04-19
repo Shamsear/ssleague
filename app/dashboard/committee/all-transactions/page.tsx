@@ -58,8 +58,8 @@ export default function AllTransactionsPage() {
   const [totalTransactions, setTotalTransactions] = useState(0);
 
   // Transaction type categories
-  const INCOME_TYPES = ['match_reward', 'position_reward', 'completion_bonus', 'knockout_reward', 'bonus', 'transfer_compensation', 'swap_fee_received', 'release_refund', 'player_release_refund', 'release', 'initial_balance'];
-  const EXPENSE_TYPES = ['salary_payment', 'salary', 'real_player_fee', 'auction_win', 'fine', 'transfer_payment', 'swap_fee_paid'];
+  const INCOME_TYPES = ['match_reward', 'position_reward', 'completion_bonus', 'knockout_reward', 'bonus', 'transfer_compensation', 'swap_fee_received', 'release_refund', 'player_release_refund', 'release', 'initial_balance', 'refund', 'football_refund', 'real_player_refund', 'slot_refund'];
+  const EXPENSE_TYPES = ['salary_payment', 'salary', 'real_player_fee', 'auction_win', 'fine', 'transfer_payment', 'swap_fee_paid', 'slot_purchase'];
 
   useEffect(() => {
     if (!loading && !user) {
@@ -779,6 +779,8 @@ export default function AllTransactionsPage() {
   };
 
   const formatTransactionType = (type: string) => {
+    if (!type) return 'Unknown';
+    
     const typeMap: Record<string, string> = {
       'match_reward': 'Match Reward',
       'position_reward': 'Position Reward',
@@ -795,6 +797,9 @@ export default function AllTransactionsPage() {
       'player_release_refund': 'Release',
       'release_refund': 'Release',
       'release': 'Release',
+      'refund': 'Refund',
+      'football_refund': 'Football Refund',
+      'real_player_refund': 'Real Player Refund',
     };
     
     return typeMap[type] || type.split('_').map(word => 
