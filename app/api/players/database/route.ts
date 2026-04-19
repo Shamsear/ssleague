@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { sql } from '@/lib/neon/config';
 import { cookies } from 'next/headers';
 import { getFirebaseUidFromToken } from '@/lib/jwt-decode';
-import { adminDb } from '@/lib/firebase/admin';
 
 // Simple in-memory cache for team_id lookups (expires after 5 minutes)
 const teamIdCache = new Map<string, { teamId: string; expiresAt: number }>();
@@ -54,9 +53,10 @@ export async function GET(request: Request) {
                 SELECT id FROM teams WHERE firebase_uid = ${firebaseUid} LIMIT 1
               `;
 
-              if (teamResult.length > 0) {
-                teamId = teamResult[0].id;
-                setCachedTeamId(firebaseUid, teamId);
+              if (teamResult.length > 0 && teamResult[0].id) {
+                const fetchedTeamId = teamResult[0].id as string;
+                teamId = fetchedTeamId;
+                setCachedTeamId(firebaseUid, fetchedTeamId);
               }
             }
           }
@@ -116,9 +116,9 @@ export async function GET(request: Request) {
 
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
 
-    // Add teamId for the JOIN
+    // Add teamId for the JOIN (handle null case)
     const teamIdParam = paramIndex++;
-    queryParams.push(teamId);
+    queryParams.push(teamId || null);
 
     // Add limit and offset
     const limitParam = paramIndex++;
@@ -131,6 +131,7 @@ export async function GET(request: Request) {
         fp.id, fp.player_id, fp.name, fp.position, fp.position_group, fp.playing_style,
         fp.overall_rating, fp.speed, fp.acceleration, fp.ball_control, fp.dribbling,
         fp.low_pass, fp.lofted_pass, fp.finishing, fp.team_id, fp.acquisition_value,
+        fp.contract_start_season, fp.contract_end_season,
         CASE WHEN sp.id IS NOT NULL THEN true ELSE false END as is_starred
       FROM footballplayers fp
       LEFT JOIN starred_players sp ON fp.id = sp.player_id AND sp.team_id = $${teamIdParam}

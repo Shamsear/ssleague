@@ -86,7 +86,7 @@ export default function AllTeamsPage() {
           const data = doc.data() as Season;
           seasonsMap.set(doc.id, {
             name: data.name || `Season ${data.season_number || 'Unknown'}`,
-            maxPlayers: data.max_football_players || 25
+            maxPlayers: data.football_base_slots || data.max_football_players || 25
           });
           
           // Include seasons that are NOT completed

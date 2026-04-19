@@ -7,8 +7,12 @@ interface Player {
   player_id: string;
   player_name: string;
   team_name?: string;
-  auction_value: number;
+  auction_value?: number; // For real players
+  acquisition_value?: number; // For football players
   star_rating: number;
+  position?: string;
+  contract_start_season?: string;
+  contract_end_season?: string;
   type?: 'real' | 'football';
 }
 
@@ -21,6 +25,7 @@ interface SearchablePlayerSelectProps {
   disabled?: boolean;
   color?: 'blue' | 'purple' | 'orange';
   showValueAs?: 'currency' | 'rating';
+  playerType?: 'real' | 'football';
 }
 
 export default function SearchablePlayerSelect({
@@ -30,7 +35,8 @@ export default function SearchablePlayerSelect({
   placeholder = 'Search player...',
   label,
   disabled = false,
-  color = 'blue'
+  color = 'blue',
+  playerType = 'real'
 }: SearchablePlayerSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -38,6 +44,11 @@ export default function SearchablePlayerSelect({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedPlayer = players.find(p => p.id === value);
+
+  // Get the value to display (auction_value for real players, acquisition_value for football players)
+  const getPlayerValue = (player: Player) => {
+    return playerType === 'football' ? (player.acquisition_value || 0) : (player.auction_value || 0);
+  };
 
   const filteredPlayers = players.filter(p => 
     p.player_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -124,10 +135,13 @@ export default function SearchablePlayerSelect({
       >
         {selectedPlayer ? (
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1">
               <div className="font-semibold text-gray-900">{selectedPlayer.player_name}</div>
               <div className="text-xs text-gray-500">
-                {selectedPlayer.team_name} • ${selectedPlayer.auction_value} • {selectedPlayer.star_rating > 20 ? `OVR: ${selectedPlayer.star_rating}` : `${selectedPlayer.star_rating}⭐`}
+                {selectedPlayer.team_name} • {playerType === 'football' ? `${getPlayerValue(selectedPlayer)} eCoin` : `$${getPlayerValue(selectedPlayer)}`} • {playerType === 'football' && selectedPlayer.position ? selectedPlayer.position : (selectedPlayer.star_rating > 20 ? `OVR: ${selectedPlayer.star_rating}` : `${selectedPlayer.star_rating}⭐`)}
+                {selectedPlayer.contract_start_season && selectedPlayer.contract_end_season && (
+                  <> • Contract: {selectedPlayer.contract_start_season} → {selectedPlayer.contract_end_season}</>
+                )}
               </div>
             </div>
             <button
@@ -200,14 +214,17 @@ export default function SearchablePlayerSelect({
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         {player.team_name}
+                        {player.contract_start_season && player.contract_end_season && (
+                          <> • {player.contract_start_season} → {player.contract_end_season}</>
+                        )}
                       </div>
                     </div>
                     <div className="text-right ml-3">
                       <div className="text-sm font-semibold text-gray-700">
-                        ${player.auction_value}
+                        {playerType === 'football' ? `${getPlayerValue(player)} eCoin` : `$${getPlayerValue(player)}`}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {player.star_rating > 20 ? `OVR: ${player.star_rating}` : `${player.star_rating}⭐`}
+                        {playerType === 'football' && player.position ? player.position : (player.star_rating > 20 ? `OVR: ${player.star_rating}` : `${player.star_rating}⭐`)}
                       </div>
                     </div>
                   </div>

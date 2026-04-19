@@ -8,9 +8,11 @@ import TransferFormV2 from './TransferFormV2';
 import SwapFormV2 from './SwapFormV2';
 import FootballPlayerForm from './FootballPlayerForm';
 import ReleaseRealPlayerForm from './ReleaseRealPlayerForm';
+import ReleaseFootballPlayerForm from './ReleaseFootballPlayerForm';
+import BulkReleaseFootballPlayerForm from './BulkReleaseFootballPlayerForm';
 import Link from 'next/link';
 
-type TabType = 'transfer' | 'swap' | 'release';
+type TabType = 'transfer' | 'swap' | 'release' | 'bulk_release';
 
 export default function PlayerTransfersPage() {
   const { user, loading } = useAuth();
@@ -149,9 +151,91 @@ export default function PlayerTransfersPage() {
           )}
 
           <div className="p-6">
-            {/* FOOTBALL PLAYERS - Simple Swap/Release */}
+            {/* FOOTBALL PLAYERS - Swap and Release with Refund */}
             {playerType === 'football' ? (
-              <FootballPlayerForm key={playerType} />
+              <>
+                {/* Tabs for Football Players */}
+                <div className="border-b border-gray-200 mb-6">
+                  <div className="flex">
+                    <button
+                      onClick={() => setActiveTab('swap')}
+                      className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'swap'
+                        ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                    >
+                      🔄 Swap Players
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('release')}
+                      className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'release'
+                        ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                    >
+                      🔓 Release Player
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('bulk_release')}
+                      className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'bulk_release'
+                        ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                    >
+                      🗑️ Bulk Release
+                    </button>
+                  </div>
+                </div>
+
+                {/* Football Player Swap */}
+                {activeTab === 'swap' && (
+                  <div>
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-900 mb-2">How Football Player Swaps Work</h3>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        <li>• Exchange team assignments between two players</li>
+                        <li>• First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
+                        <li>• No value changes, no stat upgrades</li>
+                      </ul>
+                    </div>
+                    <FootballPlayerForm key={playerType} />
+                  </div>
+                )}
+
+                {/* Football Player Release */}
+                {activeTab === 'release' && (
+                  <div>
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-900 mb-2">How Football Player Release Works</h3>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        <li>• Release players at season start or mid-season (X.5)</li>
+                        <li>• <strong>Manually select refund percentage</strong> (0-100%)</li>
+                        <li>• Refund added to team's football budget</li>
+                        <li>• Player becomes a free agent immediately</li>
+                        <li>• Example: 1000 eCoin player with 75% refund = 750 eCoin back to team</li>
+                      </ul>
+                    </div>
+                    <ReleaseFootballPlayerForm />
+                  </div>
+                )}
+
+                {/* Football Player Bulk Release */}
+                {activeTab === 'bulk_release' && (
+                  <div>
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-900 mb-2">How Bulk Release Works</h3>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        <li>• Release multiple players at once with individual refund percentages</li>
+                        <li>• Set a default refund percentage for all players</li>
+                        <li>• Customize refund percentage for each player individually</li>
+                        <li>• See total refund amount before confirming</li>
+                        <li>• All refunds added to respective team's football budget</li>
+                      </ul>
+                    </div>
+                    <BulkReleaseFootballPlayerForm />
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 {/* REAL PLAYERS - Complex Transfer System */}

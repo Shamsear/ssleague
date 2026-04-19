@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { History, Download, Filter, ArrowUpDown } from 'lucide-react';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import { usePermissions } from '@/hooks/usePermissions';
+import { db } from '@/lib/firebase/config';
+import { collection, query, where, getDocs, orderBy, limit as fbLimit } from 'firebase/firestore';
 
 interface TransferTransaction {
   id: string;
@@ -15,6 +17,18 @@ interface TransferTransaction {
   processed_by: string;
   processed_by_name: string;
   created_at: string;
+  // Release specific fields
+  player_name?: string;
+  player_type?: 'real' | 'football';
+  team_id?: string;
+  team_name?: string;
+  auction_value?: number;
+  refund_amount?: number;
+  refund_percentage?: number;
+  release_timing?: string;
+  release_season?: string;
+  original_contract_start?: string;
+  original_contract_end?: string;
   // Transfer specific
   player?: {
     id: string;
@@ -82,11 +96,14 @@ export default function TransferHistoryPage() {
   
   const [transactions, setTransactions] = useState<TransferTransaction[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
+  const [availableSeasons, setAvailableSeasons] = useState<string[]>([]); // New: seasons with transactions
   const [isLoading, setIsLoading] = useState(true);
   
   // Filters
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('');
+  const [selectedPlayerType, setSelectedPlayerType] = useState<string>(''); // New: player type filter
+  const [selectedSeason, setSelectedSeason] = useState<string>(''); // New: season filter
   const [currentPage, setCurrentPage] = useState(0);
   const [limit] = useState(20);
   const [totalCount, setTotalCount] = useState(0);
@@ -112,7 +129,7 @@ export default function TransferHistoryPage() {
     if (userSeasonId) {
       loadTransactions();
     }
-  }, [userSeasonId, selectedTeamId, selectedType, currentPage]);
+  }, [userSeasonId, selectedTeamId, selectedType, selectedPlayerType, selectedSeason, currentPage]);
 
   const loadInitialData = async () => {
     if (!userSeasonId) return;
@@ -137,33 +154,115 @@ export default function TransferHistoryPage() {
     try {
       setIsLoading(true);
       
-      const params = new URLSearchParams({
-        season_id: userSeasonId,
-        limit: limit.toString(),
-        offset: (currentPage * limit).toString(),
-        order_by: 'created_at',
-        order_direction: 'desc'
+      // Query ALL transfer transactions to get available seasons
+      // Then filter by selected season if one is chosen
+      const q = query(
+        collection(db, 'transactions')
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      const allTxns: TransferTransaction[] = [];
+      const seasonsSet = new Set<string>();
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        
+        // Only include transfer-related transactions: release, transfer, swap
+        const transferTypes = ['release', 'transfer', 'swap', 'player_transfer', 'player_swap'];
+        if (!transferTypes.includes(data.transaction_type)) {
+          return; // Skip non-transfer transactions
+        }
+        
+        // Collect unique seasons from transactions
+        if (data.season_id) {
+          seasonsSet.add(data.season_id);
+        }
+        
+        // Apply season filter if selected (otherwise show current season by default)
+        const seasonToFilter = selectedSeason || userSeasonId;
+        if (data.season_id !== seasonToFilter) {
+          return;
+        }
+        
+        // Apply type filter if selected
+        if (selectedType && data.transaction_type !== selectedType) {
+          return;
+        }
+        
+        // Apply player type filter if selected (real/football)
+        if (selectedPlayerType) {
+          const txPlayerType = data.player_type || data.player?.type || data.player_a?.type;
+          if (txPlayerType !== selectedPlayerType) {
+            return;
+          }
+        }
+        
+        // Apply team filter if selected - use team_id for accurate matching
+        if (selectedTeamId) {
+          const matchesTeam = 
+            data.team_id === selectedTeamId ||
+            data.old_team_id === selectedTeamId ||
+            data.new_team_id === selectedTeamId ||
+            data.teams?.team_a_id === selectedTeamId ||
+            data.teams?.team_b_id === selectedTeamId;
+          
+          if (!matchesTeam) {
+            return;
+          }
+        }
+        
+        allTxns.push({
+          id: doc.id,
+          transaction_type: data.transaction_type,
+          season_id: data.season_id,
+          processed_by: data.processed_by || '',
+          processed_by_name: data.processed_by_name || 'Unknown',
+          created_at: data.created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+          // Release fields
+          player_name: data.player_name,
+          player_type: data.player_type,
+          team_id: data.team_id,
+          team_name: data.team_name,
+          auction_value: data.auction_value,
+          refund_amount: data.refund_amount,
+          refund_percentage: data.refund_percentage,
+          release_timing: data.release_timing,
+          release_season: data.release_season,
+          original_contract_start: data.original_contract_start,
+          original_contract_end: data.original_contract_end,
+          // Transfer fields
+          player: data.player,
+          old_team_id: data.old_team_id,
+          new_team_id: data.new_team_id,
+          values: data.values,
+          star_rating: data.star_rating,
+          financial: data.financial,
+          new_salary: data.new_salary,
+          // Swap fields
+          player_a: data.player_a,
+          player_b: data.player_b,
+          teams: data.teams,
+        });
       });
       
-      if (selectedTeamId) {
-        params.append('team_id', selectedTeamId);
-      }
+      // Update available seasons (sorted in descending order)
+      const sortedSeasons = Array.from(seasonsSet).sort().reverse();
+      setAvailableSeasons(sortedSeasons);
       
-      if (selectedType) {
-        params.append('transaction_type', selectedType);
-      }
+      // Sort by date (newest first)
+      allTxns.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
-      const url = `/api/players/transfer-history?${params.toString()}`;
-      const res = await fetchWithTokenRefresh(url);
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setTransactions(data.transactions || []);
-          setTotalCount(data.pagination?.total || 0);
-          setHasMore(data.pagination?.has_more || false);
-        }
-      }
+      setTotalCount(allTxns.length);
+      
+      // Apply pagination
+      const startIndex = currentPage * limit;
+      const endIndex = startIndex + limit;
+      const paginatedTxns = allTxns.slice(startIndex, endIndex);
+      
+      setTransactions(paginatedTxns);
+      setHasMore(endIndex < allTxns.length);
+      
     } catch (error) {
       console.error('Error loading transactions:', error);
     } finally {
@@ -289,7 +388,25 @@ export default function TransferHistoryPage() {
             <Filter className="w-5 h-5 text-purple-600" />
             <h2 className="text-lg font-bold text-gray-900">Filters</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Season</label>
+              <select
+                value={selectedSeason}
+                onChange={(e) => {
+                  setSelectedSeason(e.target.value);
+                  setCurrentPage(0);
+                }}
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
+              >
+                <option value="">Current Season ({userSeasonId})</option>
+                {availableSeasons.map((season) => (
+                  <option key={season} value={season}>
+                    {season}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
               <select
@@ -320,6 +437,25 @@ export default function TransferHistoryPage() {
               >
                 <option value="">All Types</option>
                 <option value="release">Player Releases</option>
+                <option value="transfer">Player Transfers</option>
+                <option value="player_transfer">Player Transfers (Old)</option>
+                <option value="swap">Player Swaps</option>
+                <option value="player_swap">Player Swaps (Old)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Player Type</label>
+              <select
+                value={selectedPlayerType}
+                onChange={(e) => {
+                  setSelectedPlayerType(e.target.value);
+                  setCurrentPage(0);
+                }}
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
+              >
+                <option value="">All Player Types</option>
+                <option value="real">👤 Real Players</option>
+                <option value="football">⚽ eFootball Players</option>
               </select>
             </div>
           </div>

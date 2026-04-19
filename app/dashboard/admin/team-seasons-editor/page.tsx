@@ -61,14 +61,29 @@ export default function TeamSeasonsEditorPage() {
 
   const loadSeasons = async () => {
     try {
+      // Get all team_seasons to find which seasons have data
+      const teamSeasonsSnapshot = await getDocs(collection(db, 'team_seasons'));
+      const seasonIdsSet = new Set<string>();
+      
+      teamSeasonsSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.season_id) {
+          seasonIdsSet.add(data.season_id);
+        }
+      });
+
+      // Only fetch seasons that have team_seasons entries
       const seasonsSnapshot = await getDocs(collection(db, 'seasons'));
       const seasonsList: any[] = [];
       
       seasonsSnapshot.forEach(doc => {
-        seasonsList.push({
-          id: doc.id,
-          ...doc.data()
-        });
+        // Only include seasons that exist in team_seasons
+        if (seasonIdsSet.has(doc.id)) {
+          seasonsList.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        }
       });
 
       seasonsList.sort((a, b) => {

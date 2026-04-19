@@ -20,6 +20,7 @@ interface SalaryTransaction {
   opponent_team_id?: string;
   result?: string;
   players: {
+    transaction_id: string; // Unique transaction ID from Firestore
     player_id: string;
     player_name: string;
     salary_per_match: number;
@@ -43,6 +44,8 @@ export default function CommitteeSalaryTransactionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingTransactions, setIsFetchingTransactions] = useState(false);
   const [allTeamsSummary, setAllTeamsSummary] = useState<{ teamId: string; teamName: string; totalSalary: number; matchCount: number }[]>([]);
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
+  const [selectedPlayers, setSelectedPlayers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!loading && !user) {
@@ -62,8 +65,12 @@ export default function CommitteeSalaryTransactionsPage() {
 
   useEffect(() => {
     if (selectedTeamId && selectedTeamId !== 'ALL' && userSeasonId) {
+      setSelectedTransactions(new Set()); // Clear selections when team changes
+      setSelectedPlayers(new Set()); // Clear player selections when team changes
       loadTransactions();
     } else if (selectedTeamId === 'ALL' && userSeasonId) {
+      setSelectedTransactions(new Set()); // Clear selections when viewing all teams
+      setSelectedPlayers(new Set()); // Clear player selections when viewing all teams
       loadAllTeamsSummary();
     }
   }, [selectedTeamId, userSeasonId]);
@@ -273,9 +280,9 @@ export default function CommitteeSalaryTransactionsPage() {
     }
   };
 
-  const handleDeletePlayerTransaction = async (fixtureId?: string, teamId?: string, playerId?: string) => {
-    if (!fixtureId || !teamId || !playerId) {
-      alert('Cannot delete: missing required IDs');
+  const handleDeletePlayerTransaction = async (transactionId: string) => {
+    if (!transactionId) {
+      alert('Cannot delete: missing transaction ID');
       return;
     }
 
@@ -284,7 +291,7 @@ export default function CommitteeSalaryTransactionsPage() {
     }
 
     try {
-      const res = await fetchWithTokenRefresh(`/api/committee/salary-transactions?fixtureId=${fixtureId}&teamId=${teamId}&playerId=${playerId}`, {
+      const res = await fetchWithTokenRefresh(`/api/committee/salary-transactions?transactionId=${transactionId}`, {
         method: 'DELETE',
       });
 
@@ -298,6 +305,126 @@ export default function CommitteeSalaryTransactionsPage() {
     } catch (error) {
       console.error('Error deleting player transaction:', error);
       alert('Failed to delete player transaction');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedTransactions.size === 0) {
+      alert('Please select at least one transaction to delete');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${selectedTransactions.size} selected transaction(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const deletePromises = Array.from(selectedTransactions).map(key => {
+        const [fixtureId, teamId] = key.split('|');
+        return fetchWithTokenRefresh(`/api/committee/salary-transactions?fixtureId=${fixtureId}&teamId=${teamId}`, {
+          method: 'DELETE',
+        });
+      });
+
+      const results = await Promise.all(deletePromises);
+      const successCount = results.filter(res => res.ok).length;
+      const failCount = results.length - successCount;
+
+      if (failCount === 0) {
+        alert(`Successfully deleted ${successCount} transaction(s)`);
+      } else {
+        alert(`Deleted ${successCount} transaction(s), ${failCount} failed`);
+      }
+
+      setSelectedTransactions(new Set());
+      loadTransactions();
+    } catch (error) {
+      console.error('Error bulk deleting transactions:', error);
+      alert('Failed to delete transactions');
+    }
+  };
+
+  const toggleTransactionSelection = (fixtureId?: string, teamId?: string) => {
+    if (!fixtureId || !teamId) return;
+
+    const key = `${fixtureId}|${teamId}`;
+    const newSelected = new Set(selectedTransactions);
+
+    if (newSelected.has(key)) {
+      newSelected.delete(key);
+    } else {
+      newSelected.add(key);
+    }
+
+    setSelectedTransactions(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTransactions.size === transactions.length) {
+      // Deselect all
+      setSelectedTransactions(new Set());
+    } else {
+      // Select all
+      const allKeys = transactions
+        .filter(txn => txn.fixture_id && txn.team_id)
+        .map(txn => `${txn.fixture_id}|${txn.team_id}`);
+      setSelectedTransactions(new Set(allKeys));
+    }
+  };
+
+  const isTransactionSelected = (fixtureId?: string, teamId?: string) => {
+    if (!fixtureId || !teamId) return false;
+    return selectedTransactions.has(`${fixtureId}|${teamId}`);
+  };
+
+  const togglePlayerSelection = (transactionId: string) => {
+    const newSelected = new Set(selectedPlayers);
+
+    if (newSelected.has(transactionId)) {
+      newSelected.delete(transactionId);
+    } else {
+      newSelected.add(transactionId);
+    }
+
+    setSelectedPlayers(newSelected);
+  };
+
+  const isPlayerSelected = (transactionId: string) => {
+    return selectedPlayers.has(transactionId);
+  };
+
+  const handleBulkDeletePlayers = async () => {
+    if (selectedPlayers.size === 0) {
+      alert('Please select at least one player salary to delete');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${selectedPlayers.size} selected player salary transaction(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const deletePromises = Array.from(selectedPlayers).map(transactionId => {
+        return fetchWithTokenRefresh(`/api/committee/salary-transactions?transactionId=${transactionId}`, {
+          method: 'DELETE',
+        });
+      });
+
+      const results = await Promise.all(deletePromises);
+      const successCount = results.filter(res => res.ok).length;
+      const failCount = results.length - successCount;
+
+      if (failCount === 0) {
+        alert(`Successfully deleted ${successCount} player salary transaction(s)`);
+      } else {
+        alert(`Deleted ${successCount} player salary transaction(s), ${failCount} failed`);
+      }
+
+      setSelectedPlayers(new Set());
+      loadTransactions();
+    } catch (error) {
+      console.error('Error bulk deleting player transactions:', error);
+      alert('Failed to delete player transactions');
     }
   };
 
@@ -386,55 +513,118 @@ export default function CommitteeSalaryTransactionsPage() {
 
         {/* Total Salary Summary Card */}
         {!isFetchingTransactions && selectedTeamId && selectedTeamId !== 'ALL' && transactions.length > 0 && (
-          <div className="glass rounded-2xl sm:rounded-3xl border border-purple-200/50 shadow-xl p-4 sm:p-6 mb-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-xl bg-gradient-to-br from-red-500 to-red-600 shadow-lg">
-                  <DollarSign className="w-6 h-6 text-white" />
+          <>
+            <div className="glass rounded-2xl sm:rounded-3xl border border-purple-200/50 shadow-xl p-4 sm:p-6 mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-red-500 to-red-600 shadow-lg">
+                    <DollarSign className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Salary Deducted</p>
+                    <p className="text-3xl font-bold text-red-600">
+                      €{transactions.reduce((sum, txn) => sum + txn.total_salary, 0).toFixed(2)}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Salary Deducted</p>
-                  <p className="text-3xl font-bold text-red-600">
-                    €{transactions.reduce((sum, txn) => sum + txn.total_salary, 0).toFixed(2)}
-                  </p>
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">Total Matches</p>
+                  <p className="text-2xl font-bold text-gray-900">{transactions.length}</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Total Matches</p>
-                <p className="text-2xl font-bold text-gray-900">{transactions.length}</p>
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">Avg per Match</p>
+                    <p className="text-lg font-bold text-purple-600">
+                      €{transactions.length > 0
+                        ? (transactions.reduce((sum, txn) => sum + txn.total_salary, 0) / transactions.length).toFixed(2)
+                        : '0.00'}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">Total Players Paid</p>
+                    <p className="text-lg font-bold text-indigo-600">
+                      {transactions.reduce((sum, txn) => sum + txn.players.length, 0)}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">Highest Payment</p>
+                    <p className="text-lg font-bold text-orange-600">
+                      €{Math.max(...transactions.map(txn => txn.total_salary)).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">Lowest Payment</p>
+                    <p className="text-lg font-bold text-green-600">
+                      €{Math.min(...transactions.map(txn => txn.total_salary)).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="text-center">
-                  <p className="text-xs text-gray-500">Avg per Match</p>
-                  <p className="text-lg font-bold text-purple-600">
-                    €{transactions.length > 0
-                      ? (transactions.reduce((sum, txn) => sum + txn.total_salary, 0) / transactions.length).toFixed(2)
-                      : '0.00'}
-                  </p>
+
+            {/* Bulk Actions Bar */}
+            <div className="glass rounded-2xl sm:rounded-3xl border border-white/30 shadow-xl p-4 sm:p-6 mb-6">
+              <div className="flex flex-col gap-4">
+                {/* Transaction Selection */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={selectedTransactions.size === transactions.length && transactions.length > 0}
+                        onChange={toggleSelectAll}
+                        className="w-5 h-5 rounded border-2 border-gray-300 text-purple-600 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                      />
+                      <span className="text-sm font-semibold text-gray-700 group-hover:text-purple-600 transition-colors">
+                        Select All Matches ({transactions.length})
+                      </span>
+                    </label>
+                    {selectedTransactions.size > 0 && (
+                      <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-bold">
+                        {selectedTransactions.size} match(es) selected
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={selectedTransactions.size === 0}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
+                      selectedTransactions.size === 0
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl'
+                    }`}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete Selected Matches
+                  </button>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500">Total Players Paid</p>
-                  <p className="text-lg font-bold text-indigo-600">
-                    {transactions.reduce((sum, txn) => sum + txn.players.length, 0)}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500">Highest Payment</p>
-                  <p className="text-lg font-bold text-orange-600">
-                    €{Math.max(...transactions.map(txn => txn.total_salary)).toFixed(2)}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500">Lowest Payment</p>
-                  <p className="text-lg font-bold text-green-600">
-                    €{Math.min(...transactions.map(txn => txn.total_salary)).toFixed(2)}
-                  </p>
-                </div>
+
+                {/* Player Selection */}
+                {selectedPlayers.size > 0 && (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center gap-4">
+                      <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-bold">
+                        {selectedPlayers.size} player salary(ies) selected
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleBulkDeletePlayers}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all bg-orange-500 hover:bg-orange-600 text-white shadow-lg hover:shadow-xl"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete Selected Players
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* Loading State */}
@@ -570,18 +760,26 @@ export default function CommitteeSalaryTransactionsPage() {
                 {/* Match Header */}
                 <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 sm:px-6 py-4 sm:py-5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-1 bg-white/20 rounded-lg text-xs font-bold">
-                          R{txn.round_number || '?'}
-                        </span>
-                        <h3 className="text-base sm:text-lg font-bold">
-                          {formatDate(txn.match_date)}
-                        </h3>
+                    <div className="flex items-center gap-3 flex-1">
+                      <input
+                        type="checkbox"
+                        checked={isTransactionSelected(txn.fixture_id, txn.team_id)}
+                        onChange={() => toggleTransactionSelection(txn.fixture_id, txn.team_id)}
+                        className="w-5 h-5 rounded border-2 border-white/30 text-purple-600 focus:ring-2 focus:ring-white cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-base sm:text-lg font-bold">
+                            {formatDate(txn.match_date)}
+                          </h3>
+                        </div>
+                        <p className="text-purple-100 text-xs sm:text-sm font-mono">
+                          {txn.fixture_id || 'No fixture ID'}
+                        </p>
+                        <p className="text-purple-100 text-xs sm:text-sm mt-1">
+                          {txn.result || 'Match result'}
+                        </p>
                       </div>
-                      <p className="text-purple-100 text-xs sm:text-sm">
-                        {txn.result || 'Match result'}
-                      </p>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-3 sm:text-right">
@@ -613,15 +811,23 @@ export default function CommitteeSalaryTransactionsPage() {
                     {txn.players.map((player, pidx) => (
                       <div key={pidx} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
                         <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <p className="font-bold text-gray-900 mb-1">{player.player_name}</p>
-                            <div className="text-xs text-gray-600 space-y-0.5 mt-2">
-                              {player.created_at && (
-                                <div>Created: {new Date(player.created_at).toLocaleString()}</div>
-                              )}
-                              {player.updated_at && player.updated_at !== player.created_at && (
-                                <div className="text-orange-600 font-semibold">Updated: {new Date(player.updated_at).toLocaleString()}</div>
-                              )}
+                          <div className="flex items-start gap-3 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isPlayerSelected(player.transaction_id)}
+                              onChange={() => togglePlayerSelection(player.transaction_id)}
+                              className="w-5 h-5 mt-1 rounded border-2 border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <div className="flex-1">
+                              <p className="font-bold text-gray-900 mb-1">{player.player_name}</p>
+                              <div className="text-xs text-gray-600 space-y-0.5 mt-2">
+                                {player.created_at && (
+                                  <div>Created: {new Date(player.created_at).toLocaleString()}</div>
+                                )}
+                                {player.updated_at && player.updated_at !== player.created_at && (
+                                  <div className="text-orange-600 font-semibold">Updated: {new Date(player.updated_at).toLocaleString()}</div>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
@@ -630,7 +836,7 @@ export default function CommitteeSalaryTransactionsPage() {
                               <p className="text-lg font-bold text-red-600">{player.amount.toFixed(2)}</p>
                             </div>
                             <button
-                              onClick={() => handleDeletePlayerTransaction(txn.fixture_id, txn.team_id, player.player_id)}
+                              onClick={() => handleDeletePlayerTransaction(player.transaction_id)}
                               className="p-2 rounded-lg bg-red-50 hover:bg-red-500 text-red-600 hover:text-white transition-colors"
                               title="Delete"
                             >
@@ -658,6 +864,26 @@ export default function CommitteeSalaryTransactionsPage() {
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b-2 border-gray-200">
                         <tr>
+                          <th className="px-4 lg:px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider w-12">
+                            <input
+                              type="checkbox"
+                              checked={txn.players.every(p => isPlayerSelected(p.transaction_id))}
+                              onChange={() => {
+                                const allSelected = txn.players.every(p => isPlayerSelected(p.transaction_id));
+                                const newSelected = new Set(selectedPlayers);
+                                txn.players.forEach(p => {
+                                  if (allSelected) {
+                                    newSelected.delete(p.transaction_id);
+                                  } else {
+                                    newSelected.add(p.transaction_id);
+                                  }
+                                });
+                                setSelectedPlayers(newSelected);
+                              }}
+                              className="w-4 h-4 rounded border-2 border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                              title="Select all players in this match"
+                            />
+                          </th>
                           <th className="px-4 lg:px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Player</th>
                           <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Salary</th>
                           <th className="px-4 lg:px-6 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Paid</th>
@@ -668,6 +894,14 @@ export default function CommitteeSalaryTransactionsPage() {
                       <tbody className="divide-y divide-gray-200 bg-white">
                         {txn.players.map((player, pidx) => (
                           <tr key={pidx} className="hover:bg-purple-50/50 transition-colors">
+                            <td className="px-4 lg:px-6 py-4 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isPlayerSelected(player.transaction_id)}
+                                onChange={() => togglePlayerSelection(player.transaction_id)}
+                                className="w-4 h-4 rounded border-2 border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                              />
+                            </td>
                             <td className="px-4 lg:px-6 py-4">
                               <span className="font-semibold text-gray-900 text-sm">{player.player_name}</span>
                             </td>
@@ -689,7 +923,7 @@ export default function CommitteeSalaryTransactionsPage() {
                             </td>
                             <td className="px-4 lg:px-6 py-4 text-center">
                               <button
-                                onClick={() => handleDeletePlayerTransaction(txn.fixture_id, txn.team_id, player.player_id)}
+                                onClick={() => handleDeletePlayerTransaction(player.transaction_id)}
                                 className="p-2 rounded-lg bg-red-50 hover:bg-red-500 text-red-600 hover:text-white transition-colors"
                                 title="Delete this player's transaction"
                               >
@@ -703,7 +937,7 @@ export default function CommitteeSalaryTransactionsPage() {
                       </tbody>
                       <tfoot className="bg-gradient-to-r from-purple-50 to-indigo-50 border-t-2 border-purple-200">
                         <tr>
-                          <td colSpan={2} className="px-4 lg:px-6 py-4 text-right font-bold text-gray-900">
+                          <td colSpan={3} className="px-4 lg:px-6 py-4 text-right font-bold text-gray-900">
                             Total Salary Paid:
                           </td>
                           <td className="px-4 lg:px-6 py-4 text-right font-bold text-red-600 text-lg">

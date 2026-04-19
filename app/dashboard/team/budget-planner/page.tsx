@@ -51,6 +51,7 @@ export default function BudgetPlannerPage() {
     minRealPlayers: 5,
     maxRealPlayers: 7,
     maxFootballPlayers: 25,
+    footballTotalSlots: 25,
   });
 
   const [footballPlayers, setFootballPlayers] = useState<PlayerEstimate[]>([]);
@@ -90,6 +91,7 @@ export default function BudgetPlannerPage() {
             minRealPlayers: seasonSettings.min_real_players || 5,
             maxRealPlayers: seasonSettings.max_real_players || 7,
             maxFootballPlayers: seasonSettings.max_football_players || 25,
+            footballTotalSlots: teamSeasonData.football_total_slots || seasonSettings.max_football_players || 25,
           });
         }
       } catch (error) {
@@ -309,7 +311,7 @@ export default function BudgetPlannerPage() {
               }`}>
                 {(budgetData.footballBudget - currentTotals.total).toLocaleString()} eCoin
               </p>
-              <div className="mt-3 text-xs text-gray-500">For {budgetData.maxFootballPlayers} player slots max</div>
+              <div className="mt-3 text-xs text-gray-500">For {budgetData.footballTotalSlots} player slots max</div>
             </div>
           </>
         ) : (

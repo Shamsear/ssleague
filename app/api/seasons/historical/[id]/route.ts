@@ -201,6 +201,7 @@ export async function GET(
         season_id: statsData.season_id,
         category: statsData.category,
         team: statsData.team,
+        team_id: statsData.team_id, // Add team_id for accurate filtering
         is_active: statsData.is_active,
         is_available: statsData.is_available,
         // Statistics - prefer flattened fields, fallback to nested stats object

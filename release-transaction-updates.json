@@ -1,0 +1,191 @@
+[
+  {
+    "docId": "MIkLqfeK8IhxkxqfoW4l",
+    "playerName": "Jackson Tchatchoua",
+    "teamName": "La Masia FC",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 23,
+    "newRefund": 17
+  },
+  {
+    "docId": "4HbJqu33fjLX4DzmyJ32",
+    "playerName": "Nicola Zalewski",
+    "teamName": "La Masia FC",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 30,
+    "newRefund": 22
+  },
+  {
+    "docId": "QdbT5SxNfbo4LAZ8R8dL",
+    "playerName": "Andrej Kramarić",
+    "teamName": "La Masia FC",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 55,
+    "newRefund": 41
+  },
+  {
+    "docId": "Ww4sL7Z231nc9pK8a11x",
+    "playerName": "Jacob Ramsey",
+    "teamName": "Skill 555",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 14,
+    "newRefund": 10
+  },
+  {
+    "docId": "6G9agkHxhzvWNGFNeXNd",
+    "playerName": "Leon Bailey",
+    "teamName": "Skill 555",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 40,
+    "newRefund": 30
+  },
+  {
+    "docId": "UPP49foxKCVwzpU9BV31",
+    "playerName": "Paulinho",
+    "teamName": "Skill 555",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 13,
+    "newRefund": 9
+  },
+  {
+    "docId": "FAQfkh9SVqSaJkXQkjRO",
+    "playerName": "Ander Barrenetxea",
+    "teamName": "Kopites",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 32,
+    "newRefund": 24
+  },
+  {
+    "docId": "pOybADX0M0hdKRoHevyW",
+    "playerName": "Julio Enciso",
+    "teamName": "Kopites",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 14,
+    "newRefund": 10
+  },
+  {
+    "docId": "n5vZsODQE7BWwJ8GStBX",
+    "playerName": "Iliman Ndiaye",
+    "teamName": "Legends fc",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 18,
+    "newRefund": 13
+  },
+  {
+    "docId": "EGsoBoWqJZoZY8E4xNMm",
+    "playerName": "Simon Adingra",
+    "teamName": "Legends fc",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 19,
+    "newRefund": 14
+  },
+  {
+    "docId": "29DoZcfLohPHTWgtVBDY",
+    "playerName": "Pedro Porro",
+    "teamName": "Los Galacticos",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 14,
+    "newRefund": 10
+  },
+  {
+    "docId": "6PtFq5x6no5Xi4QtvKE4",
+    "playerName": "Giacomo Raspadori",
+    "teamName": "Los Galacticos",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 216,
+    "newRefund": 162
+  },
+  {
+    "docId": "xAMcJA17GD8DPOpqtbar",
+    "playerName": "Kevin Danso",
+    "teamName": "Varsity Soccers",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 30,
+    "newRefund": 22
+  },
+  {
+    "docId": "0LQtn4tEuMsBOYAiZixR",
+    "playerName": "Dwight McNeil",
+    "teamName": "Varsity Soccers",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 54,
+    "newRefund": 40
+  },
+  {
+    "docId": "nuRBtXK47WGlTXc9zFIr",
+    "playerName": "Francisco Conceição",
+    "teamName": "Portland Timbers",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 50,
+    "newRefund": 37
+  },
+  {
+    "docId": "TK2osyhkY3lXdsvR1yJN",
+    "playerName": "Kim Min-Jae",
+    "teamName": "Portland Timbers",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 320,
+    "newRefund": 240
+  },
+  {
+    "docId": "JfuS6nfwWFNUJJk4hBeB",
+    "playerName": "Pablo Barrios",
+    "teamName": "Manchester United",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 15,
+    "newRefund": 11
+  },
+  {
+    "docId": "obwkhtussOcJgWLEHUFD",
+    "playerName": "Noussair Mazraoui",
+    "teamName": "Manchester United",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 11,
+    "newRefund": 8
+  },
+  {
+    "docId": "EeC1RzMEIbU7iyYjsmqg",
+    "playerName": "Nico González",
+    "teamName": "FC Barcelona",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 17,
+    "newRefund": 12
+  },
+  {
+    "docId": "6GVegw6wSzNXbjpRHwWf",
+    "playerName": "Álex Zendejas",
+    "teamName": "Qatar Gladiators",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 14,
+    "newRefund": 10
+  },
+  {
+    "docId": "uSrOSOzyY0yK1Nt14tyD",
+    "playerName": "Jarrad Branthwaite",
+    "teamName": "FC Barcelona",
+    "currentAuction": 0,
+    "currentRefund": 0,
+    "newAuction": 10,
+    "newRefund": 7
+  }
+]

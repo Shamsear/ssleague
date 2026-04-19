@@ -1,22 +1,26 @@
 require('dotenv').config({ path: '.env.local' });
 const { neon } = require('@neondatabase/serverless');
-
-const sql = neon(process.env.NEON_TOURNAMENT_DB_URL);
+const sql = neon(process.env.NEON_DATABASE_URL);
 
 async function checkSchema() {
-  try {
-    const columns = await sql`
-      SELECT column_name, data_type, is_nullable
-      FROM information_schema.columns
-      WHERE table_name = 'realplayerstats'
-      ORDER BY ordinal_position
-    `;
-    
-    console.log('realplayerstats table columns:');
-    console.log(JSON.stringify(columns, null, 2));
-  } catch (error) {
-    console.error('Error:', error);
-  }
+  const tables = await sql`
+    SELECT table_schema, table_name 
+    FROM information_schema.tables 
+    WHERE table_name='player_history'
+  `;
+  
+  console.log('player_history table location:', JSON.stringify(tables, null, 2));
+  
+  // Get all columns
+  const allCols = await sql`
+    SELECT column_name, data_type
+    FROM information_schema.columns 
+    WHERE table_name='player_history'
+    ORDER BY ordinal_position
+  `;
+  
+  console.log('\nAll columns (' + allCols.length + '):');
+  allCols.forEach(c => console.log(`  - ${c.column_name} (${c.data_type})`));
 }
 
-checkSchema();
+checkSchema().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });

@@ -501,8 +501,9 @@ service cloud.firestore {
       // Only admins can update transactions
       allow update: if isAdmin();
       
-      // Only super admins can delete transactions
-      allow delete: if isSuperAdmin();
+      // Allow both super admins and committee admins to delete transactions
+      // This is needed for fixing duplicate/incorrect match rewards
+      allow delete: if isAdmin();
     }
   }
 }

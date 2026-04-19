@@ -46,6 +46,9 @@ interface TeamData {
   contract_start_season?: string;
   contract_end_season?: string;
   is_auto_registered?: boolean;
+  football_base_slots?: number;
+  football_purchased_slots?: number;
+  football_total_slots?: number;
 }
 
 interface RoundTiebreaker {
@@ -715,7 +718,14 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 </div>
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
                   <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">Squad</div>
-                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-purple-600">{stats.playerCount}/{MAX_PLAYERS_PER_TEAM}</div>
+                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-purple-600">
+                    {stats.playerCount}/{team.football_total_slots || MAX_PLAYERS_PER_TEAM}
+                  </div>
+                  {team.football_purchased_slots && team.football_purchased_slots > 0 && (
+                    <div className="text-[9px] sm:text-[10px] text-green-600 font-medium mt-0.5">
+                      +{team.football_purchased_slots} extra
+                    </div>
+                  )}
                 </div>
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
                   <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">Avg</div>
@@ -730,7 +740,14 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
                 </div>
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
                   <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">Squad</div>
-                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-blue-600">{stats.playerCount}/{MAX_PLAYERS_PER_TEAM}</div>
+                  <div className="text-sm sm:text-lg lg:text-2xl font-bold text-blue-600">
+                    {stats.playerCount}/{team.football_total_slots || MAX_PLAYERS_PER_TEAM}
+                  </div>
+                  {team.football_purchased_slots && team.football_purchased_slots > 0 && (
+                    <div className="text-[9px] sm:text-[10px] text-green-600 font-medium mt-0.5">
+                      +{team.football_purchased_slots} extra
+                    </div>
+                  )}
                 </div>
                 <div className="glass rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 text-center border border-white/20">
                   <div className="text-[10px] sm:text-xs lg:text-sm text-gray-600 mb-0.5 sm:mb-1">Avg</div>
@@ -961,7 +978,7 @@ export default function RegisteredTeamDashboard({ seasonStatus, user }: Props) {
             </div>
             <div className="space-y-2">
               <button onClick={() => setActiveTab('squad')} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-green-100 text-green-700 hover:bg-green-200 transition-all text-xs sm:text-sm font-medium text-center">
-                ⚽ My Squad ({stats.playerCount})
+                ⚽ My Squad ({stats.playerCount}/{team.football_total_slots || MAX_PLAYERS_PER_TEAM})
               </button>
               <Link href="/dashboard/team/real-players" className="block w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all text-xs sm:text-sm font-medium text-center">
                 👥 Real Players

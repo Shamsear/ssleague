@@ -94,10 +94,14 @@ export async function POST(
 
     const MAX_SQUAD_SIZE = auctionSettings.max_squad_size;
 
-    // VALIDATION 1: Get team's current squad count from teams table
+    // VALIDATION 1: Get team's current squad count and slot info from teams table
     console.time('⚡ Check squad count');
     const teamData = await sql`
-      SELECT football_players_count
+      SELECT 
+        football_players_count,
+        football_total_slots,
+        football_base_slots,
+        football_purchased_slots
       FROM teams
       WHERE id = ${teamId}
       AND season_id = ${round.season_id}
@@ -113,6 +117,8 @@ export async function POST(
     }
 
     const currentSquadSize = parseInt(teamData[0].football_players_count) || 0;
+    // Use dynamic slots: football_total_slots if available, otherwise fall back to MAX_SQUAD_SIZE
+    const teamMaxSlots = parseInt(teamData[0].football_total_slots) || MAX_SQUAD_SIZE;
     
     // Count existing bids
     const existingBidsCount = await sql`
@@ -123,15 +129,15 @@ export async function POST(
     `;
     
     const currentBidsCount = parseInt(existingBidsCount[0].count) || 0;
-    const availableSlots = MAX_SQUAD_SIZE - currentSquadSize - currentBidsCount;
+    const availableSlots = teamMaxSlots - currentSquadSize - currentBidsCount;
 
-    console.log(`📊 Current squad: ${currentSquadSize}/${MAX_SQUAD_SIZE}, Current bids: ${currentBidsCount}, Available slots: ${availableSlots}`);
+    console.log(`📊 Current squad: ${currentSquadSize}/${teamMaxSlots}, Current bids: ${currentBidsCount}, Available slots: ${availableSlots}`);
 
     if (availableSlots <= 0) {
       return NextResponse.json(
         { 
           success: false, 
-          error: `No available squad slots. Current squad: ${currentSquadSize}/${MAX_SQUAD_SIZE}, Pending bids: ${currentBidsCount}` 
+          error: `No available squad slots. Current squad: ${currentSquadSize}/${teamMaxSlots}, Pending bids: ${currentBidsCount}` 
         },
         { status: 400 }
       );

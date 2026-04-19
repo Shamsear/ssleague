@@ -1,4 +1,4 @@
-import { sql } from './config';
+import { auctionSql as sql } from './auction-config';
 
 export interface FootballPlayer {
   id: string;
@@ -89,7 +89,7 @@ export async function getAllPlayers(filters?: {
 
     // For filtered queries, we need to use Pool for parameterized queries
     const { Pool } = await import('@neondatabase/serverless');
-    const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+    const pool = new Pool({ connectionString: process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL });
 
     try {
       // Build WHERE conditions dynamically
@@ -268,7 +268,7 @@ export async function updatePlayer(id: string, updates: Partial<FootballPlayer>)
   `;
 
   const { Pool } = await import('@neondatabase/serverless');
-  const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+  const pool = new Pool({ connectionString: process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL });
   try {
     const result = await pool.query(query, params);
     return result.rows.length > 0 ? result.rows[0] as FootballPlayer : null;
@@ -297,7 +297,7 @@ export async function bulkUpdateEligibility(playerIds: string[], isEligible: boo
   if (playerIds.length === 0) return 0;
 
   const { Pool } = await import('@neondatabase/serverless');
-  const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+  const pool = new Pool({ connectionString: process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL });
 
   try {
     const query = `
@@ -379,7 +379,7 @@ export async function getTotalPlayerCountWithFilters(filters?: {
 
     // For filtered queries, we need to use Pool for parameterized queries
     const { Pool } = await import('@neondatabase/serverless');
-    const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+    const pool = new Pool({ connectionString: process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL });
 
     try {
       // Build WHERE conditions dynamically
@@ -452,7 +452,8 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
 
   const { Pool } = await import('@neondatabase/serverless');
   const { randomUUID } = await import('crypto');
-  const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+  // Use AUCTION database URL for footballplayers table
+  const pool = new Pool({ connectionString: process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL });
 
   try {
     let updatedCount = 0;
@@ -463,10 +464,21 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
       const p = players[i];
       const playerNum = i + 1;
 
+      // Debug first player to see what fields are available
+      if (i === 0) {
+        console.log('🔍 DEBUG - First player data:', {
+          player_id: p.player_id,
+          name: p.name,
+          team_name: p.team_name,
+          club: p.club,
+          availableKeys: Object.keys(p).filter(k => k.toLowerCase().includes('team') || k.toLowerCase().includes('club'))
+        });
+      }
+
       try {
-        // Look up existing player by player_id to get their database id
+        // Look up existing player by player_id to get their current data
         const existingPlayerResult = await pool.query(
-          'SELECT id FROM footballplayers WHERE player_id = $1',
+          'SELECT * FROM footballplayers WHERE player_id = $1',
           [p.player_id]
         );
 
@@ -474,6 +486,9 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
         const playerId = existingPlayerResult.rows.length > 0
           ? existingPlayerResult.rows[0].id
           : randomUUID();
+        
+        const exists = existingPlayerResult.rows.length > 0;
+        const oldPlayer = exists ? existingPlayerResult.rows[0] : null;
 
         // This query will:
         // - INSERT new players with all provided data
@@ -489,14 +504,14 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
             defensive_awareness, tackling, aggression, defensive_engagement,
             gk_awareness, gk_catching, gk_parrying, gk_reflexes, gk_reach
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
-          ON CONFLICT (id) DO UPDATE SET
+          ON CONFLICT (player_id) DO UPDATE SET
             name = EXCLUDED.name,
             position = EXCLUDED.position,
             position_group = EXCLUDED.position_group,
             overall_rating = EXCLUDED.overall_rating,
             nationality = EXCLUDED.nationality,
             age = EXCLUDED.age,
-            club = EXCLUDED.club,
+            team_name = EXCLUDED.team_name,
             playing_style = EXCLUDED.playing_style,
             offensive_awareness = EXCLUDED.offensive_awareness,
             ball_control = EXCLUDED.ball_control,
@@ -523,8 +538,9 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
             gk_catching = EXCLUDED.gk_catching,
             gk_parrying = EXCLUDED.gk_parrying,
             gk_reflexes = EXCLUDED.gk_reflexes,
-            gk_reach = EXCLUDED.gk_reach
-            -- NOTE: team_id, team_name, is_sold, acquisition_value, season_id, round_id are NOT updated
+            gk_reach = EXCLUDED.gk_reach,
+            updated_at = NOW()
+            -- NOTE: team_id, is_sold, acquisition_value, season_id, round_id, club are NOT updated
             -- This preserves ownership data for existing players
         `;
 
@@ -578,20 +594,51 @@ export async function bulkUpdatePlayerStats(players: Omit<FootballPlayer, 'creat
           p.gk_reach || null
         ];
 
-        // Track if this is an update or insert based on earlier lookup
-        const exists = existingPlayerResult.rows.length > 0;
-
+        // Execute the query
         await pool.query(query, values);
 
-        if (exists) {
+        // Log what was updated/inserted
+        if (exists && oldPlayer) {
           updatedCount++;
+          const changes: string[] = [];
+          
+          // Check all important fields for changes
+          // IMPORTANT: team_name = real-world team (FC Barcelona, Girona, etc.)
+          if (oldPlayer.team_name !== p.team_name && p.team_name) 
+            changes.push(`Team:${oldPlayer.team_name || 'null'}→${p.team_name}`);
+          if (oldPlayer.overall_rating !== p.overall_rating && p.overall_rating) 
+            changes.push(`OVR:${oldPlayer.overall_rating}→${p.overall_rating}`);
+          if (oldPlayer.position !== p.position && p.position) 
+            changes.push(`Pos:${oldPlayer.position}→${p.position}`);
+          if (oldPlayer.speed !== p.speed && p.speed) 
+            changes.push(`SPD:${oldPlayer.speed}→${p.speed}`);
+          if (oldPlayer.acceleration !== p.acceleration && p.acceleration) 
+            changes.push(`ACC:${oldPlayer.acceleration}→${p.acceleration}`);
+          if (oldPlayer.finishing !== p.finishing && p.finishing) 
+            changes.push(`FIN:${oldPlayer.finishing}→${p.finishing}`);
+          if (oldPlayer.low_pass !== p.low_pass && p.low_pass) 
+            changes.push(`PAS:${oldPlayer.low_pass}→${p.low_pass}`);
+          if (oldPlayer.dribbling !== p.dribbling && p.dribbling) 
+            changes.push(`DRI:${oldPlayer.dribbling}→${p.dribbling}`);
+          if (oldPlayer.ball_control !== p.ball_control && p.ball_control) 
+            changes.push(`BC:${oldPlayer.ball_control}→${p.ball_control}`);
+          if (oldPlayer.defensive_awareness !== p.defensive_awareness && p.defensive_awareness) 
+            changes.push(`DEF:${oldPlayer.defensive_awareness}→${p.defensive_awareness}`);
+          if (oldPlayer.tackling !== p.tackling && p.tackling) 
+            changes.push(`TAC:${oldPlayer.tackling}→${p.tackling}`);
+          if (oldPlayer.physical_contact !== p.physical_contact && p.physical_contact) 
+            changes.push(`PHY:${oldPlayer.physical_contact}→${p.physical_contact}`);
+          if (oldPlayer.stamina !== p.stamina && p.stamina) 
+            changes.push(`STA:${oldPlayer.stamina}→${p.stamina}`);
+          
+          if (changes.length > 0) {
+            console.log(`✓ ${playerNum}/${players.length}: ${p.name} - ${changes.join(', ')}`);
+          } else {
+            console.log(`✓ ${playerNum}/${players.length}: ${p.name} - No changes`);
+          }
         } else {
           insertedCount++;
-        }
-
-        // Log every 10 players
-        if (playerNum % 10 === 0 || playerNum === players.length) {
-          console.log(`   ✅ Processed ${playerNum}/${players.length}: ${p.name} (${exists ? 'updated' : 'inserted'})`);
+          console.log(`➕ ${playerNum}/${players.length}: ${p.name} (NEW - OVR:${p.overall_rating}, Pos:${p.position}, Team:${p.team_name || 'None'})`);
         }
       } catch (error: any) {
         errorCount++;
@@ -616,7 +663,7 @@ export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_a
 
   const { Pool } = await import('@neondatabase/serverless');
   const { randomUUID } = await import('crypto');
-  const pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL });
+  const pool = new Pool({ connectionString: process.env.NEON_AUCTION_DB_URL || process.env.NEON_DATABASE_URL });
 
   try {
     let insertedCount = 0;
@@ -748,3 +795,4 @@ export async function bulkImportPlayers(players: Omit<FootballPlayer, 'created_a
     await pool.end();
   }
 }
+

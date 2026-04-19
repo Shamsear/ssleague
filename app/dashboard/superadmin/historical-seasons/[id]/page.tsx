@@ -41,6 +41,7 @@ interface Player {
   name: string;
   category?: string;
   team?: string;
+  team_id?: string; // Add team_id for accurate filtering
   season_id?: string;
   display_name?: string;
   email?: string;
@@ -349,7 +350,8 @@ export default function HistoricalSeasonDetailPage() {
 
   // Team statistics - use season_stats from teamstats collection
   const teamStats = teams.map(team => {
-    const teamPlayers = players.filter(p => p.team === team.team_name);
+    // Filter players by team_id instead of team name for accuracy
+    const teamPlayers = players.filter(p => p.team_id === team.id);
     
     // Use season_stats from the new teamstats collection structure
     const seasonStats = (team as any).season_stats;

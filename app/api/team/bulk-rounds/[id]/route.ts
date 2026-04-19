@@ -137,7 +137,10 @@ export async function GET(
       const teamData = await sql`
         SELECT 
           football_budget,
-          football_players_count
+          football_players_count,
+          football_total_slots,
+          football_base_slots,
+          football_purchased_slots
         FROM teams
         WHERE firebase_uid = ${userId}
         AND season_id = ${round.season_id}
@@ -149,6 +152,8 @@ export async function GET(
       if (teamData.length > 0) {
         balance = parseInt(teamData[0].football_budget) || 1000;
         currentSquadSize = parseInt(teamData[0].football_players_count) || 0;
+        // Use dynamic slots: football_total_slots if available, otherwise fall back to max_squad_size
+        maxSquadSize = parseInt(teamData[0].football_total_slots) || maxSquadSize;
       } else {
         // Team doesn't exist in Neon yet - create it from Firebase team_seasons
         console.log(`⚠️ Team not found in Neon for user ${userId}, creating from Firebase...`);

@@ -143,7 +143,7 @@ export default function PlayerDetailPage() {
   const [player, setPlayer] = useState<Player | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'auction'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'auction' | 'history'>('stats');
   const [auctionTab, setAuctionTab] = useState<'overall' | string>('overall');
   const [auctionHistory, setAuctionHistory] = useState<{
     bidsBySeason: Record<string, AuctionBid[]>;
@@ -155,6 +155,13 @@ export default function PlayerDetailPage() {
   const [loadingAuction, setLoadingAuction] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
   const [selectedRoundFilter, setSelectedRoundFilter] = useState<string>('all');
+  const [playerHistory, setPlayerHistory] = useState<{
+    transactions: any[];
+    releases: any[];
+    roadmap: any[];
+    winningBids: any[];
+  } | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -183,6 +190,18 @@ export default function PlayerDetailPage() {
 
         if (playerData.success && playerData.data.player) {
           setPlayer(playerData.data.player);
+          
+          // Fetch player history
+          const historyResponse = await fetchWithTokenRefresh(`/api/players/${playerId}/history`, {
+            headers: { 'Cache-Control': 'no-cache' },
+          });
+          
+          if (historyResponse.ok) {
+            const historyData = await historyResponse.json();
+            if (historyData.success) {
+              setPlayerHistory(historyData.data);
+            }
+          }
         } else {
           setError('Player not found');
         }
@@ -268,7 +287,7 @@ export default function PlayerDetailPage() {
     Object.values(auctionHistory.bidsBySeason).forEach(bids => {
       bids.forEach(bid => {
         if (bid.round_id) {
-          rounds.add(bid.round_id);
+          rounds.add(bid.round_id.toString());
         }
       });
     });
@@ -463,6 +482,16 @@ export default function PlayerDetailPage() {
             >
               Auction History
             </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                activeTab === 'history'
+                  ? 'bg-[#0066FF] text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Contract History
+            </button>
           </div>
         </div>
 
@@ -596,6 +625,8 @@ export default function PlayerDetailPage() {
               </div>
             </div>
 
+            {/* Contract History moved to separate tab */}
+
           </div>
 
           {/* Right Column - Stats */}
@@ -663,57 +694,57 @@ export default function PlayerDetailPage() {
             ) : (
               <>
                 {/* Auction Summary */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Total Bids</p>
-                        <p className="text-3xl font-bold text-[#0066FF]">{auctionHistory.totalBids}</p>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <div className="mb-2 sm:mb-0">
+                        <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Bids</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-[#0066FF]">{auctionHistory.totalBids}</p>
                       </div>
-                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center self-end sm:self-auto">
+                        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
                       </div>
                     </div>
                   </div>
 
-                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Seasons</p>
-                        <p className="text-3xl font-bold text-purple-600">{auctionHistory.totalSeasons}</p>
+                  <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <div className="mb-2 sm:mb-0">
+                        <p className="text-xs sm:text-sm text-gray-600 mb-1">Seasons</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-purple-600">{auctionHistory.totalSeasons}</p>
                       </div>
-                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-full flex items-center justify-center self-end sm:self-auto">
+                        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       </div>
                     </div>
                   </div>
 
-                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Times Won</p>
-                        <p className="text-3xl font-bold text-green-600">{auctionHistory.winningBids.length}</p>
+                  <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <div className="mb-2 sm:mb-0">
+                        <p className="text-xs sm:text-sm text-gray-600 mb-1">Times Won</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-green-600">{auctionHistory.winningBids.length}</p>
                       </div>
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-full flex items-center justify-center self-end sm:self-auto">
+                        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                         </svg>
                       </div>
                     </div>
                   </div>
 
-                  <div className="glass rounded-2xl p-6 bg-white/60 shadow-md border border-white/20">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Highest Bid</p>
-                        <p className="text-3xl font-bold text-orange-600">£{(auctionHistory.highestBid || 0).toLocaleString()}</p>
+                  <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 bg-white/60 shadow-md border border-white/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <div className="mb-2 sm:mb-0">
+                        <p className="text-xs sm:text-sm text-gray-600 mb-1">Highest Bid</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-orange-600">£{(auctionHistory.highestBid || 0).toLocaleString()}</p>
                       </div>
-                      <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-full flex items-center justify-center self-end sm:self-auto">
+                        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                         </svg>
                       </div>
@@ -723,21 +754,21 @@ export default function PlayerDetailPage() {
 
                 {/* Winning Bids */}
                 {auctionHistory.winningBids.length > 0 && (
-                  <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                      <svg className="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <div className="bg-white/60 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-md border border-white/20">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4 flex items-center">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                       </svg>
                       Successful Acquisitions
                     </h3>
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       {auctionHistory.winningBids.map((bid, index) => {
                         const detectedRoundType = getRoundTypeFromId(bid.round_id.toString());
                         return (
-                          <div key={index} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
-                            <div className="flex items-center justify-between">
+                          <div key={index} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border-2 border-green-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
+                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-1">
                                   <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-semibold rounded">
                                     {bid.season_id}
                                   </span>
@@ -748,11 +779,11 @@ export default function PlayerDetailPage() {
                                   }`}>
                                     {detectedRoundType === 'bulk' ? 'BULK' : 'NORMAL'}
                                   </span>
-                                  <span className="text-sm text-gray-600">
+                                  <span className="text-xs sm:text-sm text-gray-600">
                                     Round #{bid.round_number}
                                   </span>
                                 </div>
-                                <p className="font-semibold text-gray-900">{bid.team_name}</p>
+                                <p className="font-semibold text-sm sm:text-base text-gray-900 mb-1">{bid.team_name}</p>
                                 <p className="text-xs text-gray-500">
                                   {new Date(bid.bid_time).toLocaleDateString('en-GB', {
                                     day: '2-digit',
@@ -763,9 +794,9 @@ export default function PlayerDetailPage() {
                                   })}
                                 </p>
                               </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500 mb-1">Winning Bid</p>
-                                <p className="text-2xl font-bold text-green-600">
+                              <div className="text-left sm:text-right">
+                                <p className="text-xs text-gray-500 mb-0.5 sm:mb-1">Winning Bid</p>
+                                <p className="text-xl sm:text-2xl font-bold text-green-600">
                                   £{(bid.winning_bid || 0).toLocaleString()}
                                 </p>
                               </div>
@@ -778,9 +809,9 @@ export default function PlayerDetailPage() {
                 )}
 
                 {/* All Bids by Season */}
-                <div className="bg-white/60 rounded-2xl p-6 shadow-md border border-white/20">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                    <svg className="w-5 h-5 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white/60 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-md border border-white/20">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4 flex items-center">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-[#0066FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     All Bids by Season
@@ -791,7 +822,7 @@ export default function PlayerDetailPage() {
                     const filteredBids = filterBidsByRound(bids).sort((a, b) => (b.bid_amount || 0) - (a.bid_amount || 0));
                     
                     return (
-                      <div key={seasonId} className="mb-4 last:mb-0">
+                      <div key={seasonId} className="mb-3 sm:mb-4 last:mb-0">
                         <button
                           onClick={() => {
                             const newExpanded = new Set(expandedSeasons);
@@ -802,11 +833,11 @@ export default function PlayerDetailPage() {
                             }
                             setExpandedSeasons(newExpanded);
                           }}
-                          className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                          className="w-full flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors border border-gray-200"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 sm:gap-2">
                             <svg
-                              className={`w-5 h-5 text-gray-600 transition-transform ${
+                              className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-600 transition-transform ${
                                 isExpanded ? 'rotate-90' : ''
                               }`}
                               fill="none"
@@ -815,48 +846,48 @@ export default function PlayerDetailPage() {
                             >
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                             </svg>
-                            <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-lg">
+                            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 text-xs sm:text-sm font-semibold rounded-lg">
                               {seasonId}
                             </span>
-                            <span className="text-sm text-gray-600">
+                            <span className="text-xs sm:text-sm text-gray-600">
                               {bids.length} {bids.length === 1 ? 'bid' : 'bids'}
                             </span>
                           </div>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-gray-500 hidden sm:inline">
                             {isExpanded ? 'Click to collapse' : 'Click to expand'}
                           </span>
                         </button>
                         
                         {isExpanded && (
-                          <div className="mt-2 pl-4">
+                          <div className="mt-2 pl-2 sm:pl-4">
                             {/* Filter Buttons */}
-                            <div className="flex gap-2 mb-3 p-2 bg-white rounded-lg border border-gray-200">
+                            <div className="flex gap-1.5 sm:gap-2 mb-2 sm:mb-3 p-1.5 sm:p-2 bg-white rounded-lg border border-gray-200">
                               <button
                                 onClick={() => setSelectedRoundFilter('all')}
-                                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                className={`flex-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md text-xs font-semibold transition-all touch-manipulation ${
                                   selectedRoundFilter === 'all'
                                     ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
                                 }`}
                               >
                                 All
                               </button>
                               <button
                                 onClick={() => setSelectedRoundFilter('normal')}
-                                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                className={`flex-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md text-xs font-semibold transition-all touch-manipulation ${
                                   selectedRoundFilter === 'normal'
                                     ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-sm'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
                                 }`}
                               >
                                 Normal
                               </button>
                               <button
                                 onClick={() => setSelectedRoundFilter('bulk')}
-                                className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                className={`flex-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md text-xs font-semibold transition-all touch-manipulation ${
                                   selectedRoundFilter === 'bulk'
                                     ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
                                 }`}
                               >
                                 Bulk
@@ -871,24 +902,24 @@ export default function PlayerDetailPage() {
                                   return (
                                     <div
                                       key={bid.id}
-                                      className={`rounded-lg p-3 border ${
+                                      className={`rounded-lg p-2.5 sm:p-3 border ${
                                         bid.is_winning || bid.team_id === bid.winning_team_id
                                           ? 'bg-green-50 border-green-200'
                                           : 'bg-gray-50 border-gray-200'
                                       }`}
                                     >
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex-1">
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-sm font-medium text-gray-900">
+                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                                            <span className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[150px] sm:max-w-none">
                                               {bid.team_name}
                                             </span>
                                             {(bid.is_winning || bid.team_id === bid.winning_team_id) && (
-                                              <span className="px-2 py-0.5 bg-green-600 text-white text-xs font-semibold rounded">
+                                              <span className="px-1.5 sm:px-2 py-0.5 bg-green-600 text-white text-xs font-semibold rounded">
                                                 WON
                                               </span>
                                             )}
-                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                                            <span className={`px-1.5 sm:px-2 py-0.5 text-xs font-semibold rounded ${
                                               detectedRoundType === 'bulk' 
                                                 ? 'bg-purple-100 text-purple-800' 
                                                 : 'bg-blue-100 text-blue-800'
@@ -896,12 +927,14 @@ export default function PlayerDetailPage() {
                                               {detectedRoundType === 'bulk' ? 'BULK' : 'NORMAL'}
                                             </span>
                                           </div>
-                                          <div className="flex items-center gap-3 text-xs text-gray-500">
-                                            <span>Round #{bid.round_number}</span>
-                                            <span>•</span>
-                                            <span>{bid.round_id}</span>
-                                            <span>•</span>
-                                            <span>
+                                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs text-gray-500">
+                                            <div className="flex items-center gap-2">
+                                              <span>Round #{bid.round_number}</span>
+                                              <span className="hidden sm:inline">•</span>
+                                              <span className="font-mono text-[10px] sm:text-xs">{bid.round_id}</span>
+                                            </div>
+                                            <span className="hidden sm:inline">•</span>
+                                            <span className="text-[10px] sm:text-xs">
                                               {new Date(bid.bid_time).toLocaleDateString('en-GB', {
                                                 day: '2-digit',
                                                 month: 'short',
@@ -911,8 +944,8 @@ export default function PlayerDetailPage() {
                                             </span>
                                           </div>
                                         </div>
-                                        <div className="text-right">
-                                          <p className={`text-lg font-bold ${
+                                        <div className="text-left sm:text-right">
+                                          <p className={`text-base sm:text-lg font-bold ${
                                             bid.is_winning || bid.team_id === bid.winning_team_id
                                               ? 'text-green-600'
                                               : 'text-gray-700'
@@ -926,7 +959,7 @@ export default function PlayerDetailPage() {
                                 })}
                               </div>
                             ) : (
-                              <div className="text-center py-4 text-gray-500 text-sm">
+                              <div className="text-center py-3 sm:py-4 text-gray-500 text-xs sm:text-sm">
                                 No {selectedRoundFilter === 'all' ? '' : selectedRoundFilter} bids found for this season
                               </div>
                             )}
@@ -937,6 +970,200 @@ export default function PlayerDetailPage() {
                   })}
                 </div>
               </>
+            )}
+          </div>
+        )}
+
+        {/* Contract History Tab */}
+        {activeTab === 'history' && (
+          <div className="space-y-6">
+            {loadingHistory ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0066FF] mx-auto"></div>
+                <p className="mt-4 text-gray-600">Loading contract history...</p>
+              </div>
+            ) : playerHistory && playerHistory.roadmap.length > 0 ? (
+              <>
+                {/* Header */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-blue-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1 sm:mb-2">Contract Timeline</h2>
+                      <p className="text-sm sm:text-base text-gray-600">Complete history of {player.name}'s contracts</p>
+                    </div>
+                    <div className="flex sm:block">
+                      <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 shadow-sm flex-1 sm:flex-none">
+                        <p className="text-xs sm:text-sm text-gray-500 mb-1">Total Contracts</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-[#0066FF]">{playerHistory.roadmap.length}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timeline */}
+                <div className="relative">
+                  {/* Timeline line - desktop only */}
+                  <div className="absolute left-4 sm:left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue-200 via-purple-200 to-pink-200 hidden md:block"></div>
+
+                  {/* Contract cards */}
+                  <div className="space-y-4 sm:space-y-6">
+                    {playerHistory.roadmap.map((contract: any, index: number) => (
+                      <div key={index} className="relative">
+                        {/* Timeline dot - desktop only */}
+                        <div className="absolute left-2.5 sm:left-6 top-4 sm:top-6 w-3 h-3 sm:w-5 sm:h-5 rounded-full bg-white border-2 sm:border-4 border-[#0066FF] shadow-lg hidden md:block z-10"></div>
+
+                        {/* Contract card */}
+                        <div className="md:ml-16 lg:ml-20 bg-white rounded-xl sm:rounded-2xl shadow-md sm:shadow-lg border border-gray-200 sm:border-2 sm:border-gray-100 overflow-hidden">
+                          {/* Card header */}
+                          <div className={`p-4 sm:p-6 ${
+                            contract.status === 'released'
+                              ? 'bg-gradient-to-r from-red-50 to-orange-50'
+                              : 'bg-gradient-to-r from-green-50 to-emerald-50'
+                          }`}>
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 sm:mb-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                  </svg>
+                                  <h3 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{contract.team_name}</h3>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
+                                  <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  <span className="font-medium">{contract.acquisition_season_name || contract.acquisition_season}</span>
+                                  {contract.release_season && (
+                                    <>
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                      </svg>
+                                      <span className="font-medium">{contract.release_season}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <span className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-bold shadow-sm whitespace-nowrap ${
+                                contract.status === 'released'
+                                  ? 'bg-red-500 text-white'
+                                  : 'bg-green-500 text-white'
+                              }`}>
+                                {contract.status === 'released' ? '🔴 Released' : '🟢 Active'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Card body */}
+                          <div className="p-4 sm:p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                              {/* Acquisition details */}
+                              <div className="space-y-3 sm:space-y-4">
+                                <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                  </svg>
+                                  <h4 className="text-base sm:text-lg font-semibold text-gray-900">Acquisition</h4>
+                                </div>
+                                
+                                <div className="bg-green-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-green-200">
+                                  <p className="text-xs sm:text-sm text-gray-600 mb-1">Transfer Fee</p>
+                                  <p className="text-2xl sm:text-3xl font-bold text-green-700">
+                                    £{contract.acquisition_amount?.toLocaleString() || 0}
+                                  </p>
+                                </div>
+
+                                {contract.acquisition_date && (
+                                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                                    <span className="text-xs sm:text-sm text-gray-600">Date</span>
+                                    <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                      {new Date(contract.acquisition_date).toLocaleDateString('en-GB', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric'
+                                      })}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {contract.acquisition_round && (
+                                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                                    <span className="text-xs sm:text-sm text-gray-600">Round</span>
+                                    <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                      {contract.acquisition_round}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Release details */}
+                              {contract.status === 'released' && (
+                                <div className="space-y-3 sm:space-y-4">
+                                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                    <h4 className="text-base sm:text-lg font-semibold text-gray-900">Release</h4>
+                                  </div>
+                                  
+                                  <div className="bg-red-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-red-200">
+                                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Refund Amount</p>
+                                    <p className="text-2xl sm:text-3xl font-bold text-red-700">
+                                      £{contract.release_amount?.toLocaleString() || 0}
+                                    </p>
+                                  </div>
+
+                                  {contract.release_date && (
+                                    <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                                      <span className="text-xs sm:text-sm text-gray-600">Release Date</span>
+                                      <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                        {new Date(contract.release_date).toLocaleDateString('en-GB', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: 'numeric'
+                                        })}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {contract.release_timing && (
+                                    <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                                      <span className="text-xs sm:text-sm text-gray-600">Timing</span>
+                                      <span className="text-xs sm:text-sm font-semibold text-gray-900 capitalize">
+                                        {contract.release_timing === 'mid' ? 'Mid-Season' : 'Start of Season'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Active contract placeholder */}
+                              {contract.status === 'active' && (
+                                <div className="flex items-center justify-center p-6 sm:p-8 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg sm:rounded-xl border-2 border-dashed border-green-300">
+                                  <div className="text-center">
+                                    <svg className="w-12 h-12 sm:w-16 sm:h-16 text-green-500 mx-auto mb-2 sm:mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <p className="text-base sm:text-lg font-semibold text-green-700">Currently Active</p>
+                                    <p className="text-xs sm:text-sm text-gray-600 mt-1">Player is with this team</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-16 bg-gray-50 rounded-2xl">
+                <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Contract History</h3>
+                <p className="text-gray-500">This player has no recorded contract history yet.</p>
+              </div>
             )}
           </div>
         )}

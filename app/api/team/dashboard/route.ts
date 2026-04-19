@@ -791,6 +791,11 @@ export async function GET(request: NextRequest) {
           avgRating: Math.round(avgRating * 10) / 10,
           activeBidsCount: activeBids.length,
           positionBreakdown: teamSeasonData?.position_counts || {},
+          // Dynamic slot information
+          football_base_slots: teamSeasonData?.football_base_slots || seasonData?.football_base_slots || seasonData?.max_football_players || 25,
+          football_purchased_slots: teamSeasonData?.football_purchased_slots || 0,
+          football_total_slots: teamSeasonData?.football_total_slots || teamSeasonData?.football_base_slots || seasonData?.max_football_players || 25,
+          football_available_slots: (teamSeasonData?.football_total_slots || seasonData?.max_football_players || 25) - players.length,
         },
       },
     }, { headers });

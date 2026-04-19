@@ -58,7 +58,7 @@ export default function AllTransactionsPage() {
   const [totalTransactions, setTotalTransactions] = useState(0);
 
   // Transaction type categories
-  const INCOME_TYPES = ['match_reward', 'position_reward', 'completion_bonus', 'knockout_reward', 'bonus', 'transfer_compensation', 'swap_fee_received', 'release_refund', 'player_release_refund', 'initial_balance'];
+  const INCOME_TYPES = ['match_reward', 'position_reward', 'completion_bonus', 'knockout_reward', 'bonus', 'transfer_compensation', 'swap_fee_received', 'release_refund', 'player_release_refund', 'release', 'initial_balance'];
   const EXPENSE_TYPES = ['salary_payment', 'salary', 'real_player_fee', 'auction_win', 'fine', 'transfer_payment', 'swap_fee_paid'];
 
   useEffect(() => {
@@ -203,30 +203,243 @@ export default function AllTransactionsPage() {
     }
   };
 
+  const exportToExcel = () => {
+    // Validate that single team and single currency are selected
+    if (selectedTeamId === 'all') {
+      alert('⚠️ Please select a specific team to export.\n\nExport works for one team at a time.');
+      return;
+    }
+    
+    if (selectedCurrency === 'all') {
+      alert('⚠️ Please select a specific currency (eCoin or SSCoin) to export.\n\nExport works for one currency at a time.');
+      return;
+    }
+    
+    try {
+      // Get team name
+      const teamName = teams.find(t => t.team?.id === selectedTeamId)?.team?.name || selectedTeamId;
+      const currencyName = selectedCurrency === 'football' ? 'eCoin' : 'SSCoin';
+      
+      // Create CSV content with UTF-8 BOM for proper character encoding
+      const BOM = '\uFEFF';
+      let csv = BOM + 'Date,Type,Description,Debit,Credit,Balance\n';
+      
+      // Sort transactions by date (oldest first for running balance)
+      const sortedTransactions = [...transactions].sort((a, b) => {
+        const aTime = a.created_at?.toDate?.() || new Date(a.created_at);
+        const bTime = b.created_at?.toDate?.() || new Date(b.created_at);
+        return aTime.getTime() - bTime.getTime();
+      });
+      
+      let runningBalance = 0;
+      
+      sortedTransactions.forEach(txn => {
+        const date = new Date(txn.created_at?.toDate?.() || txn.created_at);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        const amount = txn.amount || 0;
+        const isIncome = isIncomeTransaction(txn.transaction_type, amount);
+        
+        // Update running balance
+        runningBalance += amount;
+        
+        // Format type
+        const type = formatTransactionType(txn.transaction_type);
+        
+        // Format description - include player name if available
+        let description = txn.description;
+        if (txn.metadata?.player_name) {
+          description = `${txn.metadata.player_name} - ${description}`;
+        }
+        
+        // Escape quotes in description for CSV
+        description = description.replace(/"/g, '""');
+        
+        // Debit (negative) or Credit (positive)
+        const debit = amount < 0 ? Math.abs(amount) : '';
+        const credit = amount > 0 ? amount : '';
+        
+        csv += `"${dateStr}","${type}","${description}",${debit},${credit},${runningBalance}\n`;
+      });
+      
+      // Create blob with UTF-8 encoding
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      const seasonName = selectedSeasonId === 'current' ? userSeasonId : selectedSeasonId;
+      const filename = `${teamName}_${currencyName}_${seasonName}_Transactions.csv`;
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      alert(`✅ Exported ${transactions.length} transactions to ${filename}\n\nNote: The file will open correctly in Excel and Google Sheets with proper character encoding.`);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert('❌ Error exporting data. Check console for details.');
+    }
+  };
+
+  const copyToWhatsApp = () => {
+    try {
+      let message = '*📊 Transaction Summary*\n\n';
+      
+      // Add filters info
+      const seasonName = selectedSeasonId === 'current' ? userSeasonId : selectedSeasonId === 'all' ? 'All Seasons' : selectedSeasonId;
+      const teamName = selectedTeamId === 'all' ? 'All Teams' : teams.find(t => t.team?.id === selectedTeamId)?.team?.name || selectedTeamId;
+      const currencyName = selectedCurrency === 'all' ? 'Both' : selectedCurrency === 'football' ? 'eCoin' : 'SSCoin';
+      
+      message += `Season: ${seasonName}\n`;
+      message += `Team: ${teamName}\n`;
+      message += `Currency: ${currencyName}\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+      
+      if (showSummary && teamSummary.length > 0) {
+        // Team Summary View
+        message += '*Overall Stats*\n\n';
+        
+        teamSummary.forEach((team, index) => {
+          message += `*${index + 1}. ${team.teamName}*\n`;
+          message += `Income: ${team.totalIncome} | Expense: ${team.totalExpense}\n`;
+          message += `Net: ${team.netBalance >= 0 ? '+' : ''}${team.netBalance}\n`;
+          
+          // Only show currencies with non-zero values
+          if (selectedCurrency === 'all') {
+            const eCoinNet = team.eCoinIncome - team.eCoinExpense;
+            const sSCoinNet = team.sSCoinIncome - team.sSCoinExpense;
+            
+            if (eCoinNet !== 0) {
+              message += `eCoin: ${eCoinNet >= 0 ? '+' : ''}${eCoinNet}\n`;
+            }
+            if (sSCoinNet !== 0) {
+              message += `SSCoin: ${sSCoinNet >= 0 ? '+' : ''}${sSCoinNet}\n`;
+            }
+          }
+          message += `\n`;
+        });
+      } else {
+        // Overall Stats
+        message += '*Overall Stats*\n';
+        message += `Income: ${overallStats.totalIncome} | Expense: ${overallStats.totalExpense}\n`;
+        message += `Net: ${overallStats.netBalance >= 0 ? '+' : ''}${overallStats.netBalance}\n`;
+        
+        // Only show currencies with non-zero values
+        if (selectedCurrency === 'all') {
+          if (overallStats.totalECoin !== 0) {
+            message += `eCoin: ${overallStats.totalECoin >= 0 ? '+' : ''}${overallStats.totalECoin}\n`;
+          }
+          if (overallStats.totalSSCoin !== 0) {
+            message += `SSCoin: ${overallStats.totalSSCoin >= 0 ? '+' : ''}${overallStats.totalSSCoin}\n`;
+          }
+        }
+        message += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+        
+        // All transactions
+        if (transactions.length > 0) {
+          message += '*Recent Transactions*\n\n';
+          
+          transactions.forEach((txn, index) => {
+            const amount = txn.amount || txn.amount_football || txn.amount_real || 0;
+            const currency = txn.currency_type === 'football' ? 'eCoin' : 'SSCoin';
+            const sign = amount >= 0 ? '+' : '';
+            const date = new Date(txn.created_at?.toDate?.() || txn.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            
+            message += `${index + 1}. ${txn.team_name || 'Unknown'}\n`;
+            
+            // Check for auction value and refund details
+            const auctionValue = txn.metadata?.auction_value || (txn as any).auction_value;
+            const refundPercentage = txn.metadata?.refund_percentage ?? (txn as any).refund_percentage;
+            const playerName = txn.metadata?.player_name || (txn as any).player_name;
+            
+            // Currency and amount
+            message += `${currency}: ${sign}${amount}\n`;
+            
+            // Description with player name and refund details
+            let desc = txn.description;
+            if (playerName) {
+              // If player name is in description, remove it to avoid duplication
+              desc = desc.replace(playerName, '').trim();
+              desc = desc.replace(/^[-:]\s*/, '').trim(); // Remove leading dash or colon
+            }
+            // Remove common prefixes
+            desc = desc.replace(/^Player release refund:\s*/i, '');
+            desc = desc.replace(/\s*\(\d+%\s*refund\)\s*$/i, '');
+            
+            // Build description line
+            if (playerName) {
+              if (auctionValue && refundPercentage !== undefined) {
+                message += `Player release refund: ${playerName} (${refundPercentage}% refund)\n`;
+              } else if (desc) {
+                message += `${desc}: ${playerName}\n`;
+              } else {
+                message += `${playerName}\n`;
+              }
+            } else if (desc) {
+              message += `${desc}\n`;
+            }
+            
+            // Show value and refund details if available
+            if (auctionValue && refundPercentage !== undefined) {
+              message += `Value: ${auctionValue} | Refund: ${refundPercentage}%\n`;
+            }
+            
+            message += `${date}\n\n`;
+          });
+        }
+      }
+      
+      message += `━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `📊 ${totalTransactions} total\n`;
+      message += `🕐 ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}\n`;
+      
+      // Copy to clipboard
+      navigator.clipboard.writeText(message).then(() => {
+        alert('✅ Copied to clipboard!\nPaste in WhatsApp.');
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('❌ Failed to copy. Please try again.');
+      });
+    } catch (error) {
+      console.error('Error generating WhatsApp message:', error);
+      alert('❌ Error generating summary.');
+    }
+  };
+
   const loadTransactions = async () => {
     if (!userSeasonId) return;
 
     try {
       setIsFetchingTransactions(true);
 
-      // Fetch all transactions
-      let q = query(collection(db, 'transactions'));
+      // HYBRID APPROACH: Use Firestore query for season filter to reduce reads
+      // Determine which season to filter by
+      const filterSeasonId = selectedSeasonId === 'current' ? userSeasonId : selectedSeasonId;
+      
+      let q;
+      if (selectedSeasonId === 'all') {
+        // Fetch all transactions (no season filter)
+        q = query(collection(db, 'transactions'));
+      } else {
+        // Query with season filter - SIGNIFICANTLY reduces reads
+        // Example: Instead of reading 3913 docs, only read ~100-200 for current season
+        q = query(
+          collection(db, 'transactions'),
+          where('season_id', '==', filterSeasonId)
+        );
+      }
 
       const snapshot = await getDocs(q);
       const allTransactions: Transaction[] = [];
 
-      // Determine which season to filter by
-      const filterSeasonId = selectedSeasonId === 'current' ? userSeasonId : selectedSeasonId;
-
       snapshot.forEach(doc => {
         const data = doc.data();
 
-        // Apply season filter
-        if (selectedSeasonId === 'all') {
-          // Show all seasons
-        } else if (data.season_id !== filterSeasonId) {
-          return;
-        }
+        // Season filter already applied in query (unless 'all' selected)
+        // No need to filter again here
 
         // Apply team filter
         if (selectedTeamId !== 'all' && data.team_id !== selectedTeamId) {
@@ -234,8 +447,16 @@ export default function AllTransactionsPage() {
         }
 
         // Apply transaction type filter
-        if (selectedTransactionType !== 'all' && data.transaction_type !== selectedTransactionType) {
-          return;
+        if (selectedTransactionType !== 'all') {
+          // Handle release-related transaction types (they should all be grouped together)
+          if (selectedTransactionType === 'player_release_refund') {
+            const releaseTypes = ['player_release_refund', 'release_refund', 'release'];
+            if (!releaseTypes.includes(data.transaction_type)) {
+              return;
+            }
+          } else if (data.transaction_type !== selectedTransactionType) {
+            return;
+          }
         }
 
         const teamName = teams.find(t => t.team.id === data.team_id)?.team.name || 
@@ -250,6 +471,16 @@ export default function AllTransactionsPage() {
 
         if (hasFootball || hasReal) {
           // New format with separate amounts
+          // Build metadata from document fields
+          const metadata: any = data.metadata || {};
+          
+          // Add release transaction fields to metadata if they exist
+          if (data.auction_value) metadata.auction_value = data.auction_value;
+          if (data.refund_amount) metadata.refund_amount = data.refund_amount;
+          if (data.refund_percentage !== undefined) metadata.refund_percentage = data.refund_percentage;
+          if (data.player_name) metadata.player_name = data.player_name;
+          if (data.player_type) metadata.player_type = data.player_type;
+          
           if (hasFootball && data.amount_football !== 0 && (selectedCurrency === 'all' || selectedCurrency === 'football')) {
             allTransactions.push({
               id: `${doc.id}_football`,
@@ -261,7 +492,7 @@ export default function AllTransactionsPage() {
               amount: data.amount_football,
               description: data.description || '',
               created_at: data.created_at,
-              metadata: data.metadata || {}
+              metadata
             });
           }
 
@@ -276,7 +507,7 @@ export default function AllTransactionsPage() {
               amount: data.amount_real,
               description: data.description || '',
               created_at: data.created_at,
-              metadata: data.metadata || {}
+              metadata
             });
           }
         } else if (data.amount !== undefined && data.amount !== null && data.amount !== 0) {
@@ -298,6 +529,16 @@ export default function AllTransactionsPage() {
             (selectedCurrency === 'football' && isECoin);
           
           if (shouldInclude) {
+            // Build metadata from document fields
+            const metadata: any = data.metadata || {};
+            
+            // Add release transaction fields to metadata if they exist
+            if (data.auction_value) metadata.auction_value = data.auction_value;
+            if (data.refund_amount) metadata.refund_amount = data.refund_amount;
+            if (data.refund_percentage !== undefined) metadata.refund_percentage = data.refund_percentage;
+            if (data.player_name) metadata.player_name = data.player_name;
+            if (data.player_type) metadata.player_type = data.player_type;
+            
             allTransactions.push({
               id: doc.id,
               team_id: data.team_id,
@@ -308,7 +549,7 @@ export default function AllTransactionsPage() {
               amount: data.amount,
               description: data.description || '',
               created_at: data.created_at,
-              metadata: data.metadata || {}
+              metadata
             });
           }
         } else if (hasRefundAmount && data.refund_amount !== 0) {
@@ -323,6 +564,16 @@ export default function AllTransactionsPage() {
             (selectedCurrency === 'football' && isECoin);
           
           if (shouldInclude) {
+            // Build metadata from document fields
+            const metadata: any = data.metadata || {};
+            
+            // Add release transaction fields to metadata
+            if (data.auction_value) metadata.auction_value = data.auction_value;
+            if (data.refund_amount) metadata.refund_amount = data.refund_amount;
+            if (data.refund_percentage !== undefined) metadata.refund_percentage = data.refund_percentage;
+            if (data.player_name) metadata.player_name = data.player_name;
+            if (data.player_type) metadata.player_type = data.player_type;
+            
             allTransactions.push({
               id: doc.id,
               team_id: data.team_id,
@@ -333,7 +584,7 @@ export default function AllTransactionsPage() {
               amount: data.refund_amount, // Use refund_amount as the amount
               description: data.description || `Player release refund: ${data.player_name || 'Unknown'} (${data.refund_percentage || 0}% refund)`,
               created_at: data.created_at,
-              metadata: data.metadata || {}
+              metadata
             });
           }
         }
@@ -520,6 +771,7 @@ export default function AllTransactionsPage() {
       'swap_fee_received': '🔁',
       'release_refund': '↩️',
       'player_release_refund': '↩️',
+      'release': '↩️',
       'initial_balance': '🏬',
       'adjustment': '🔧',
     };
@@ -540,8 +792,9 @@ export default function AllTransactionsPage() {
       'transfer_compensation': 'Transfer Compensation',
       'swap_fee_paid': 'Swap Fee Paid',
       'swap_fee_received': 'Swap Fee Received',
-      'player_release_refund': 'Player Release Refund',
-      'release_refund': 'Release Refund',
+      'player_release_refund': 'Release',
+      'release_refund': 'Release',
+      'release': 'Release',
     };
     
     return typeMap[type] || type.split('_').map(word => 
@@ -603,6 +856,9 @@ export default function AllTransactionsPage() {
   const overallStats = {
     totalIncome: transactions.filter(t => isIncomeTransaction(t.transaction_type, t.amount)).reduce((sum, t) => sum + Math.abs(t.amount), 0),
     totalExpense: transactions.filter(t => !isIncomeTransaction(t.transaction_type, t.amount)).reduce((sum, t) => sum + Math.abs(t.amount), 0),
+    get netBalance() {
+      return this.totalIncome - this.totalExpense;
+    },
     totalECoin: transactions.filter(t => t.currency_type === 'football').reduce((sum, t) => {
       const isIncome = isIncomeTransaction(t.transaction_type, t.amount);
       return sum + (isIncome ? Math.abs(t.amount) : -Math.abs(t.amount));
@@ -642,13 +898,38 @@ export default function AllTransactionsPage() {
             Back to Dashboard
           </Link>
           <div className="glass rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/30 shadow-xl">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 sm:p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
-                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 sm:p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+                  <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold gradient-text">All Transactions</h1>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">Complete financial transaction history</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold gradient-text">All Transactions</h1>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">Complete financial transaction history</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={exportToExcel}
+                  disabled={selectedTeamId === 'all' || selectedCurrency === 'all'}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl"
+                  title={selectedTeamId === 'all' || selectedCurrency === 'all' ? 'Select a specific team and currency to export' : 'Export to Excel/Sheets'}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span className="hidden sm:inline">Export to Excel</span>
+                </button>
+                <button
+                  onClick={copyToWhatsApp}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl"
+                  title="Copy summary to WhatsApp"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                  </svg>
+                  <span className="hidden sm:inline">Copy to WhatsApp</span>
+                </button>
               </div>
             </div>
           </div>
@@ -799,7 +1080,7 @@ export default function AllTransactionsPage() {
                     <option value="swap_fee_received">� Swap Fee Received</option>
                   </optgroup>
                   <optgroup label="Other">
-                    <option value="player_release_refund">↩️ Release Refunds</option>
+                    <option value="player_release_refund">↩️ Release</option>
                     <option value="initial_balance">🏬 Initial Balance</option>
                   </optgroup>
                 </select>
@@ -1012,7 +1293,16 @@ export default function AllTransactionsPage() {
                                   <tr key={txn.id} className="hover:bg-green-50/30 transition-colors">
                                     <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(txn.created_at)}</td>
                                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{txn.team_name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">{txn.description}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">
+                                      {txn.metadata?.player_name ? (
+                                        <div>
+                                          <span className="font-semibold text-indigo-600">{txn.metadata.player_name}</span>
+                                          <span className="text-gray-500"> - {txn.description}</span>
+                                        </div>
+                                      ) : (
+                                        txn.description
+                                      )}
+                                    </td>
                                     <td className="px-4 py-3 text-right text-sm font-bold text-green-600">+{Math.abs(txn.amount).toLocaleString()}</td>
                                   </tr>
                                 ))}
@@ -1094,7 +1384,16 @@ export default function AllTransactionsPage() {
                                   <tr key={txn.id} className="hover:bg-red-50/30 transition-colors">
                                     <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{formatDate(txn.created_at)}</td>
                                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{txn.team_name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">{txn.description}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">
+                                      {txn.metadata?.player_name ? (
+                                        <div>
+                                          <span className="font-semibold text-indigo-600">{txn.metadata.player_name}</span>
+                                          <span className="text-gray-500"> - {txn.description}</span>
+                                        </div>
+                                      ) : (
+                                        txn.description
+                                      )}
+                                    </td>
                                     <td className="px-4 py-3 text-right text-sm font-bold text-red-600">-{Math.abs(txn.amount).toLocaleString()}</td>
                                   </tr>
                                 ))}
@@ -1169,7 +1468,7 @@ export default function AllTransactionsPage() {
                 <li>• Match Rewards (Win/Draw/Loss)</li>
                 <li>• Tournament Rewards (Position/Completion/Knockout)</li>
                 <li>• Transfer Compensation</li>
-                <li>• Release Refunds</li>
+                <li>• Release</li>
               </ul>
             </div>
             <div>

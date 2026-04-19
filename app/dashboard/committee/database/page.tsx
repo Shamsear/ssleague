@@ -254,50 +254,14 @@ export default function DatabaseManagementPage() {
     }
   }
 
-  const handleUpdateStats = async () => {
+  const handleUpdateStats = () => {
     const parsedData = sessionStorage.getItem('parsedPlayers')
     if (!parsedData) {
       setImportStatus('No parsed data found. Please upload a SQL file first.')
       return
     }
 
-    if (!confirm('This will update existing player stats and add new players. Team assignments will be preserved. Continue?')) {
-      return
-    }
-
-    setLoading(true)
-    setImportStatus('Updating player stats...')
-
-    try {
-      const players = JSON.parse(parsedData)
-      
-      // Use bulk update API endpoint that preserves ownership
-      const updateResponse = await fetchWithTokenRefresh('/api/players/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'updateStats',
-          players: players.map((player: any) => ({
-            ...player,
-            is_auction_eligible: player.is_auction_eligible || false
-          }))
-        })
-      })
-
-      const result = await updateResponse.json()
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to update players')
-      }
-      
-      setImportStatus(`Successfully updated ${result.updated} players and added ${result.inserted} new players!`)
-      sessionStorage.removeItem('parsedPlayers')
-      fetchPlayerCount()
-    } catch (err: any) {
-      setImportStatus(`Error: ${err.message}`)
-    } finally {
-      setLoading(false)
-    }
+    router.push('/dashboard/committee/database/update-preview')
   }
 
   const handlePreviewImport = () => {
@@ -606,14 +570,14 @@ export default function DatabaseManagementPage() {
                 Update Stats
               </h4>
               <p className="text-sm text-gray-600 mb-3">
-                Update player stats, add new players. Preserves team ownership.
+                Preview and update player stats, add new players. Preserves team ownership.
               </p>
               <button
                 onClick={handleUpdateStats}
                 disabled={loading}
                 className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors w-full disabled:bg-gray-400 text-sm"
               >
-                Update Stats
+                Preview Update
               </button>
             </div>
 

@@ -803,15 +803,15 @@ export default function PlayerSelectionPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Eligibility Status</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               >
-                <option value="all">All Players</option>
-                <option value="eligible">Eligible Only</option>
-                <option value="not_eligible">Not Eligible Only</option>
+                <option value="all">🔵 All Players ({stats.total})</option>
+                <option value="eligible">✅ Eligible Only ({stats.eligible})</option>
+                <option value="not_eligible">❌ Not Eligible Only ({stats.notEligible})</option>
               </select>
             </div>
             <div className="flex items-end">

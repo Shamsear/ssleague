@@ -142,6 +142,7 @@ export async function GET(request: NextRequest) {
         }
         
         acc[key].players.push({
+          transaction_id: txn.id, // Add unique transaction ID (from Firestore doc.id)
           player_id: txn.player_id,
           player_name: txn.player_name,
           salary_per_match: txn.salary_per_match,
@@ -189,20 +190,54 @@ export async function GET(request: NextRequest) {
  * 
  * Delete salary transactions
  * Query params:
- *   - fixtureId: Fixture ID (required)
- *   - teamId: Team ID (required)
+ *   - transactionId: Transaction ID (optional - if provided, deletes by ID directly)
+ *   - fixtureId: Fixture ID (required if transactionId not provided)
+ *   - teamId: Team ID (required if transactionId not provided)
  *   - playerId: Player ID (optional - if provided, deletes only that player's transaction)
  */
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const transactionId = searchParams.get('transactionId');
     const fixtureId = searchParams.get('fixtureId');
     const teamId = searchParams.get('teamId');
     const playerId = searchParams.get('playerId');
 
+    // If transaction ID provided, delete directly
+    if (transactionId) {
+      console.log(`🗑️  Deleting transaction by ID: ${transactionId}`);
+      
+      const docRef = adminDb.collection('transactions').doc(transactionId);
+      const doc = await docRef.get();
+      
+      if (!doc.exists) {
+        return NextResponse.json(
+          { error: 'Transaction not found' },
+          { status: 404 }
+        );
+      }
+      
+      const deletedData = {
+        id: doc.id,
+        data: doc.data(),
+      };
+      
+      await docRef.delete();
+      
+      console.log('✅ Deleted transaction:', deletedData);
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Transaction deleted successfully',
+        count: 1,
+        deleted: [deletedData],
+      });
+    }
+
+    // Otherwise use legacy method
     if (!fixtureId || !teamId) {
       return NextResponse.json(
-        { error: 'fixtureId and teamId are required' },
+        { error: 'Either transactionId or both fixtureId and teamId are required' },
         { status: 400 }
       );
     }

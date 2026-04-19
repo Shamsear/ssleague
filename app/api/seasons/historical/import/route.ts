@@ -1017,7 +1017,7 @@ async function importTeams(
             ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
             NOW(), NOW()
           )
-          ON CONFLICT (team_id, season_id) DO UPDATE
+          ON CONFLICT (team_id, season_id, tournament_id) DO UPDATE
           SET
             team_name = EXCLUDED.team_name,
             points = EXCLUDED.points,
@@ -1122,7 +1122,7 @@ async function importTeams(
             ${team.f || 0}, ${team.a || 0}, ${team.gd || 0}, ${team.rank || team.position || null},
             NOW(), NOW()
           )
-          ON CONFLICT (team_id, season_id) DO UPDATE
+          ON CONFLICT (team_id, season_id, tournament_id) DO UPDATE
           SET
             team_name = EXCLUDED.team_name,
             points = EXCLUDED.points,
