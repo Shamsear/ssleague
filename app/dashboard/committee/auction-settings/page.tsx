@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 interface AuctionSettings {
   id: number;
@@ -33,6 +35,7 @@ export default function AuctionSettingsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [settings, setSettings] = useState<AuctionSettings | null>(null);
+  const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null);
   const [stats, setStats] = useState<AuctionStats>({
     total_rounds: 0,
     completed_rounds: 0,
@@ -81,31 +84,6 @@ export default function AuctionSettingsPage() {
     setHasUnsavedChanges(true);
   };
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-    if (!authLoading && user && user.role !== 'committee_admin') {
-      router.push('/dashboard');
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (user?.role === 'committee_admin') {
-      fetchSettings();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (autoRefresh && user?.role === 'committee_admin') {
-      interval = setInterval(fetchSettings, 15000); // Refresh every 15 seconds
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [autoRefresh, user, hasUnsavedChanges]);
-
   const fetchSettings = async () => {
     try {
       const response = await fetchWithTokenRefresh('/api/auction-settings');
@@ -115,6 +93,11 @@ export default function AuctionSettingsPage() {
         // Always update settings and stats (for display purposes)
         setSettings(data.settings);
         setStats(data.stats);
+        
+        // Store the season_id from the settings
+        if (data.settings?.season_id) {
+          setCurrentSeasonId(data.settings.season_id);
+        }
         
         // Only update form data if there are no unsaved changes and settings exist
         if (!hasUnsavedChanges && data.settings) {
@@ -139,6 +122,57 @@ export default function AuctionSettingsPage() {
     }
   };
 
+  const fetchActiveSeason = async () => {
+    try {
+      // Get active season from Firebase
+      const seasonsQuery = query(
+        collection(db, 'seasons'),
+        where('isActive', '==', true)
+      );
+      const seasonsSnapshot = await getDocs(seasonsQuery);
+
+      if (!seasonsSnapshot.empty) {
+        const seasonDoc = seasonsSnapshot.docs[0];
+        const seasonId = seasonDoc.id;
+        setCurrentSeasonId(seasonId);
+        
+        // Now fetch settings for this season
+        fetchSettings();
+      } else {
+        console.error('No active season found');
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error fetching active season:', error);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+    if (!authLoading && user && user.role !== 'committee_admin') {
+      router.push('/dashboard');
+    }
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (user?.role === 'committee_admin') {
+      fetchActiveSeason();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (autoRefresh && user?.role === 'committee_admin' && currentSeasonId) {
+      interval = setInterval(fetchSettings, 15000); // Refresh every 15 seconds
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [autoRefresh, user, hasUnsavedChanges, currentSeasonId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -161,10 +195,17 @@ export default function AuctionSettingsPage() {
     setSaving(true);
 
     try {
+      // Use the current season_id from settings, or error if not available
+      if (!currentSeasonId) {
+        alert('Error: No active season found. Please ensure a season is active.');
+        setSaving(false);
+        return;
+      }
+
       const response = await fetchWithTokenRefresh('/api/auction-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, season_id: 'SSPSLS16' }),
+        body: JSON.stringify({ ...formData, season_id: currentSeasonId }),
       });
 
       const result = await response.json();

@@ -100,6 +100,39 @@ export async function finalizeBulkTiebreaker(
     const contractEndSeason = `${seasonPrefix}${seasonNum + contractDuration - 1}`;
     const contractId = `contract_${tiebreaker.player_id}_${seasonId}_${Date.now()}`;
 
+    // ✅ SLOT VALIDATION: Check if winner has available slots
+    const winnerSlotCheck = await sql`
+      SELECT 
+        football_total_slots,
+        football_players_count
+      FROM teams
+      WHERE id = ${tiebreaker.current_highest_team_id}
+      AND season_id = ${seasonId}
+    `;
+
+    if (winnerSlotCheck.length === 0) {
+      return {
+        success: false,
+        error: `Winner team ${tiebreaker.current_highest_team_id} not found in teams table`,
+      };
+    }
+
+    const winner = winnerSlotCheck[0];
+    const totalSlots = parseInt(winner.football_total_slots) || 25;
+    const currentCount = parseInt(winner.football_players_count) || 0;
+    const availableSlots = totalSlots - currentCount;
+
+    console.log(`🔍 Slot check for winner ${tiebreaker.current_highest_team_id}: ${currentCount}/${totalSlots} (${availableSlots} available)`);
+
+    if (availableSlots <= 0) {
+      return {
+        success: false,
+        error: `Winner team has no available slots (${currentCount}/${totalSlots}). Cannot assign player.`,
+      };
+    }
+
+    console.log(`✅ Winner has ${availableSlots} available slots - proceeding with assignment`);
+
     // Update round_players
     await sql`
       UPDATE round_players

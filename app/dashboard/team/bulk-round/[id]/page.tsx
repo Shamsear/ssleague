@@ -58,6 +58,9 @@ export default function TeamBulkRoundPage() {
   const [filterPosition, setFilterPosition] = useState<string>('all');
   const [squadInfo, setSquadInfo] = useState({ current: 0, max: 25, available: 25 });
   const [bidsCount, setBidsCount] = useState(0);
+  const [slotSettings, setSlotSettings] = useState({ maxPurchasable: 3, slotPrice: 10 });
+  const [purchasedSlots, setPurchasedSlots] = useState(0);
+  const [showSlotPurchase, setShowSlotPurchase] = useState(false);
 
   // ✅ Enable WebSocket for real-time bid updates and round updates
   const { isConnected, lastMessage } = useAuctionWebSocket(roundId, true);
@@ -116,6 +119,12 @@ export default function TeamBulkRoundPage() {
         setTeamBalance(data.balance || 1000);
         if (data.squad) {
           setSquadInfo(data.squad);
+        }
+        if (data.slot_settings) {
+          setSlotSettings(data.slot_settings);
+        }
+        if (data.purchased_slots !== undefined) {
+          setPurchasedSlots(data.purchased_slots);
         }
 
         // Fetch team's existing bids
@@ -314,6 +323,81 @@ export default function TeamBulkRoundPage() {
     }
   };
 
+  const handlePurchaseSlot = async () => {
+    if (!bulkRound) return;
+
+    // Check if can purchase more
+    if (purchasedSlots >= slotSettings.maxPurchasable) {
+      setShowSlotPurchase(false);
+      showAlert({
+        type: 'error',
+        title: 'Maximum Reached',
+        message: `You have already purchased the maximum of ${slotSettings.maxPurchasable} slots.`
+      });
+      return;
+    }
+
+    // Check balance
+    if (teamBalance < slotSettings.slotPrice) {
+      setShowSlotPurchase(false);
+      showAlert({
+        type: 'error',
+        title: 'Insufficient Balance',
+        message: `You need £${slotSettings.slotPrice} to purchase a slot. Current balance: £${teamBalance}`
+      });
+      return;
+    }
+
+    try {
+      console.log('Purchasing slot...', { season_id: bulkRound.season_id });
+      
+      const response = await fetchWithTokenRetry('/api/team/manage-slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slots_to_add: 1,
+          season_id: bulkRound.season_id || 'SSPSLS17'
+        })
+      });
+
+      const result = await response.json();
+      console.log('Purchase result:', result);
+
+      if (result.success) {
+        // Update local state
+        setPurchasedSlots(result.data.new_purchased_slots);
+        setSquadInfo(prev => ({
+          ...prev,
+          max: result.data.new_total_slots,
+          available: result.data.new_total_slots - prev.current
+        }));
+        setTeamBalance(result.data.new_budget);
+        setShowSlotPurchase(false);
+
+        showAlert({
+          type: 'success',
+          title: 'Slot Purchased',
+          message: result.message
+        });
+      } else {
+        setShowSlotPurchase(false);
+        showAlert({
+          type: 'error',
+          title: 'Purchase Failed',
+          message: result.error || 'Failed to purchase slot'
+        });
+      }
+    } catch (err: any) {
+      console.error('Error purchasing slot:', err);
+      setShowSlotPurchase(false);
+      showAlert({
+        type: 'error',
+        title: 'Error',
+        message: err.message || 'Failed to purchase slot'
+      });
+    }
+  };
+
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -431,7 +515,18 @@ export default function TeamBulkRoundPage() {
             }`}>
               {squadInfo.current}/{squadInfo.max}
             </div>
-            <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5">current</div>
+            <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 flex items-center justify-between">
+              <span>current</span>
+              {purchasedSlots < slotSettings.maxPurchasable && (
+                <button
+                  onClick={() => setShowSlotPurchase(true)}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                  title="Purchase additional slot"
+                >
+                  +Buy
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 border border-white/20 shadow-sm hover:shadow-md transition-shadow col-span-2 sm:col-span-1">
@@ -691,6 +786,107 @@ export default function TeamBulkRoundPage() {
           )}
         </div>
       </div>
+
+      {/* Slot Purchase Modal */}
+      {showSlotPurchase && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="glass rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-100">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Purchase Squad Slot</h3>
+              </div>
+              <button
+                onClick={() => setShowSlotPurchase(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Current Status */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-600">Current Slots:</span>
+                    <div className="font-bold text-gray-900">{squadInfo.max}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Purchased:</span>
+                    <div className="font-bold text-blue-600">{purchasedSlots}/{slotSettings.maxPurchasable}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Players:</span>
+                    <div className="font-bold text-gray-900">{squadInfo.current}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Available:</span>
+                    <div className="font-bold text-green-600">{squadInfo.available}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Purchase Details */}
+              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-blue-900">Slot Price:</span>
+                  <span className="text-lg font-bold text-blue-900">£{slotSettings.slotPrice}</span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-blue-900">Your Balance:</span>
+                  <span className="text-lg font-bold text-green-600">£{teamBalance}</span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-blue-200">
+                  <span className="text-sm font-medium text-blue-900">After Purchase:</span>
+                  <span className="text-lg font-bold text-gray-900">£{teamBalance - slotSettings.slotPrice}</span>
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                <div className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-semibold mb-1">Important:</p>
+                    <ul className="space-y-1 text-xs">
+                      <li>• Purchased slots are permanent for this season</li>
+                      <li>• You cannot remove slots once purchased</li>
+                      <li>• Only admins can remove slots</li>
+                      <li>• Transaction will be recorded</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowSlotPurchase(false)}
+                  className="flex-1 px-4 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePurchaseSlot}
+                  disabled={teamBalance < slotSettings.slotPrice || purchasedSlots >= slotSettings.maxPurchasable}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Purchase £{slotSettings.slotPrice}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Components */}
       <AlertModal

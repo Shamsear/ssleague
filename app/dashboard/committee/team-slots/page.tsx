@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
-import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
 import { fetchWithTokenRefresh } from '@/lib/token-refresh'
 
@@ -148,24 +148,33 @@ export default function TeamSlotsManagementPage() {
     }
 
     try {
-      const teamSeasonRef = doc(db, 'team_seasons', `${teamId}_${currentSeasonId}`)
-      const newPurchased = team.purchased_slots + slotsToAdd
-      const newTotal = team.base_slots + newPurchased
-
-      await updateDoc(teamSeasonRef, {
-        football_purchased_slots: newPurchased,
-        football_total_slots: newTotal
+      const response = await fetchWithTokenRefresh('/api/committee/manage-team-slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_id: teamId,
+          season_id: currentSeasonId,
+          slots_change: slotsToAdd,
+          deduct_payment: true, // Deduct payment when adding slots
+          notes: `Committee added ${slotsToAdd} slot(s) to ${team.name}`
+        })
       })
 
-      // Update local state
-      setTeams(teams.map(t => t.id === teamId ? {
-        ...t,
-        purchased_slots: newPurchased,
-        total_slots: newTotal,
-        available_slots: newTotal - t.current_players
-      } : t))
+      const result = await response.json()
 
-      setMessage({ type: 'success', text: `Added ${slotsToAdd} slot(s) to ${team.name}` })
+      if (result.success) {
+        // Update local state
+        setTeams(teams.map(t => t.id === teamId ? {
+          ...t,
+          purchased_slots: result.data.new_purchased_slots,
+          total_slots: result.data.new_total_slots,
+          available_slots: result.data.new_total_slots - t.current_players
+        } : t))
+
+        setMessage({ type: 'success', text: result.message })
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Failed to add slots' })
+      }
     } catch (error: any) {
       console.error('Error adding slots:', error)
       setMessage({ type: 'error', text: 'Failed to add slots' })
@@ -193,23 +202,33 @@ export default function TeamSlotsManagementPage() {
     }
 
     try {
-      const teamSeasonRef = doc(db, 'team_seasons', `${teamId}_${currentSeasonId}`)
-      const newPurchased = team.purchased_slots - slotsToRemove
-
-      await updateDoc(teamSeasonRef, {
-        football_purchased_slots: newPurchased,
-        football_total_slots: newTotal
+      const response = await fetchWithTokenRefresh('/api/committee/manage-team-slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_id: teamId,
+          season_id: currentSeasonId,
+          slots_change: -slotsToRemove, // Negative for removal
+          deduct_payment: true, // Refund when removing slots
+          notes: `Committee removed ${slotsToRemove} slot(s) from ${team.name}`
+        })
       })
 
-      // Update local state
-      setTeams(teams.map(t => t.id === teamId ? {
-        ...t,
-        purchased_slots: newPurchased,
-        total_slots: newTotal,
-        available_slots: newTotal - t.current_players
-      } : t))
+      const result = await response.json()
 
-      setMessage({ type: 'success', text: `Removed ${slotsToRemove} slot(s) from ${team.name}` })
+      if (result.success) {
+        // Update local state
+        setTeams(teams.map(t => t.id === teamId ? {
+          ...t,
+          purchased_slots: result.data.new_purchased_slots,
+          total_slots: result.data.new_total_slots,
+          available_slots: result.data.new_total_slots - t.current_players
+        } : t))
+
+        setMessage({ type: 'success', text: result.message })
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Failed to remove slots' })
+      }
     } catch (error: any) {
       console.error('Error removing slots:', error)
       setMessage({ type: 'error', text: 'Failed to remove slots' })

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { adminDb } from '@/lib/firebase/admin';
 
 /**
  * GET /api/bulk-rounds/:id/team-summary
@@ -37,67 +36,42 @@ export async function GET(
     const round = roundResult[0];
     const seasonId = round.season_id;
 
-    // Get auction settings for max squad size
-    const settingsResult = await sql`
-      SELECT max_squad_size
-      FROM auction_settings
-      WHERE season_id = ${seasonId}
-      LIMIT 1
-    `;
-
-    const maxSquadSize = settingsResult.length > 0 ? settingsResult[0].max_squad_size : 25;
-
-    // Get all teams for the season from Firebase
+    // Get all teams for the season from Neon database with dynamic slot information
     console.log('[Team Summary] Fetching teams for season:', seasonId);
-    let teamsResult: Array<{ id: string; name: string }> = [];
+    let teamsResult: Array<{ 
+      id: string; 
+      name: string; 
+      football_total_slots: number;
+      football_base_slots: number;
+      football_purchased_slots: number;
+    }> = [];
     
     try {
-      const teamsSnapshot = await adminDb
-        .collection('teams')
-        .where('seasons', 'array-contains', seasonId)
-        .get();
+      const neonTeams = await sql`
+        SELECT 
+          id, 
+          name,
+          football_total_slots,
+          football_base_slots,
+          football_purchased_slots
+        FROM teams
+        WHERE season_id = ${seasonId}
+        ORDER BY name
+      `;
       
-      console.log('[Team Summary] Found teams in Firebase:', teamsSnapshot.size);
+      console.log('[Team Summary] Found teams in Neon:', neonTeams.length);
       
-      teamsResult = teamsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        const teamName = data.name || data.teamName || data.team_name || doc.id;
-        
-        // Log if we're using fallback
-        if (!data.name && !data.teamName && !data.team_name) {
-          console.log(`[Team Summary] Warning: Team ${doc.id} has no name field`);
-          console.log(`[Team Summary] Available fields:`, Object.keys(data));
-        }
-        
-        return {
-          id: doc.id,
-          name: teamName,
-        };
-      });
-    } catch (firebaseError: any) {
-      console.error('[Team Summary] Firebase error:', firebaseError);
-      console.log('[Team Summary] Falling back to Neon database for teams');
-      
-      // Fallback: Try to get teams from Neon database
-      try {
-        const neonTeams = await sql`
-          SELECT DISTINCT id, name
-          FROM teams
-          WHERE season_id = ${seasonId}
-          ORDER BY name
-        `;
-        
-        console.log('[Team Summary] Found teams in Neon:', neonTeams.length);
-        
-        teamsResult = neonTeams.map((team: any) => ({
-          id: team.id,
-          name: team.name || team.id,
-        }));
-      } catch (neonError: any) {
-        console.error('[Team Summary] Neon fallback error:', neonError);
-        // Return empty array if both fail
-        teamsResult = [];
-      }
+      teamsResult = neonTeams.map((team: any) => ({
+        id: team.id,
+        name: team.name || team.id,
+        football_total_slots: team.football_total_slots || 25,
+        football_base_slots: team.football_base_slots || 25,
+        football_purchased_slots: team.football_purchased_slots || 0,
+      }));
+    } catch (neonError: any) {
+      console.error('[Team Summary] Neon error:', neonError);
+      // Return empty array if query fails
+      teamsResult = [];
     }
 
     // Get bid counts per team for this round
@@ -115,7 +89,7 @@ export async function GET(
       bidsResult.map((row: any) => [row.team_id, parseInt(row.players_selected)])
     );
 
-    // Get current squad sizes for all teams
+    // Get current squad sizes for all teams (no season filter needed - teams are already season-specific)
     const teamIds = teamsResult.map((t: any) => t.id);
     let squadSizeMap = new Map<string, number>();
     
@@ -126,7 +100,6 @@ export async function GET(
           COUNT(*) as squad_size
         FROM footballplayers
         WHERE team_id = ANY(${teamIds})
-        AND season_id = ${seasonId}
         GROUP BY team_id
       `;
       
@@ -137,9 +110,10 @@ export async function GET(
       );
     }
 
-    // Build team summary with remaining slots calculation
+    // Build team summary with remaining slots calculation using dynamic slots
     const teams = teamsResult.map((team: any) => {
       const currentSquadSize = squadSizeMap.get(team.id) || 0;
+      const maxSquadSize = team.football_total_slots || 25; // Use team-specific slots
       const remainingSlots = Math.max(0, maxSquadSize - currentSquadSize);
       
       return {
@@ -148,6 +122,9 @@ export async function GET(
         slots_needed: remainingSlots,
         current_squad_size: currentSquadSize,
         max_squad_size: maxSquadSize,
+        football_base_slots: team.football_base_slots || 25,
+        football_purchased_slots: team.football_purchased_slots || 0,
+        football_total_slots: maxSquadSize,
         players_selected: bidCountMap.get(team.id) || 0,
         bids_submitted: bidCountMap.get(team.id) || 0,
       };
@@ -164,7 +141,6 @@ export async function GET(
         debug: {
           teams_found: teamsResult.length,
           bids_found: bidsResult.length,
-          max_squad_size: maxSquadSize,
         },
       },
     });

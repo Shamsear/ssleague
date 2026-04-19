@@ -307,14 +307,34 @@ export async function calculateReserve(
       : (teamData?.budget || 0);
     const teamSquadSize = teamData?.players_count || 0;
     
-    // Use auction settings from round
+    // ✅ Get team-specific slot limit from Neon teams table
+    let maxSquadSize = round.max_squad_size; // Fallback to auction settings
+    try {
+      const teamSlotResult = await sql`
+        SELECT football_total_slots
+        FROM teams
+        WHERE id = ${teamId}
+        AND season_id = ${round.season_id || seasonId}
+      `;
+      
+      if (teamSlotResult.length > 0 && teamSlotResult[0].football_total_slots) {
+        maxSquadSize = parseInt(teamSlotResult[0].football_total_slots);
+        console.log(`✅ [Reserve Calculator] Using team-specific slot limit: ${maxSquadSize} (team ${teamId})`);
+      } else {
+        console.log(`⚠️ [Reserve Calculator] Team slot info not found, using auction settings: ${maxSquadSize}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ [Reserve Calculator] Failed to fetch team slots, using auction settings: ${maxSquadSize}`, error);
+    }
+    
+    // Use auction settings from round with team-specific max_squad_size
     const settings = {
       phase_1_end_round: round.phase_1_end_round,
       phase_1_min_balance: round.phase_1_min_balance,
       phase_2_end_round: round.phase_2_end_round,
       phase_2_min_balance: round.phase_2_min_balance,
       phase_3_min_balance: round.phase_3_min_balance,
-      max_squad_size: round.max_squad_size,
+      max_squad_size: maxSquadSize, // ✅ Now uses team-specific value
     };
     
     // Calculate reserve using core function

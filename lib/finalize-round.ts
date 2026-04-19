@@ -61,7 +61,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
     // Fetch auction settings to determine current phase
     const settingsResult = await sql`
       SELECT phase_1_end_round, phase_1_min_balance, phase_2_end_round, 
-             phase_2_min_balance, phase_3_min_balance, max_squad_size
+             phase_2_min_balance, phase_3_min_balance
       FROM auction_settings WHERE season_id = ${round.season_id}
     `;
     const settings = settingsResult[0];
@@ -285,6 +285,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
         
         // Check team balance and reserve requirements, adjust price if needed
         let canAfford = false;
+        let teamMaxSquadSize = 25; // Default fallback
         try {
           const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
           if (tsDoc.exists) {
@@ -293,6 +294,23 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
             const teamBalance = curr === 'dual' ? (tsd?.football_budget || 0) : (tsd?.budget || 0);
             const teamSquadSize = tsd?.players_count || 0;
             
+            // ✅ Fetch team-specific slot limit from Neon
+            try {
+              const teamSlotResult = await sql`
+                SELECT football_total_slots
+                FROM teams
+                WHERE id = ${teamId}
+                AND season_id = ${round.season_id}
+              `;
+              
+              if (teamSlotResult.length > 0 && teamSlotResult[0].football_total_slots) {
+                teamMaxSquadSize = parseInt(teamSlotResult[0].football_total_slots);
+                console.log(`✅ Using team-specific slot limit for ${teamName}: ${teamMaxSquadSize}`);
+              }
+            } catch (slotError) {
+              console.warn(`⚠️ Failed to fetch team slots for ${teamId}, using default: ${teamMaxSquadSize}`);
+            }
+            
             // Calculate reserve requirements
             const reserveConfig: ReserveConfig = {
               phase_1_end_round: settings.phase_1_end_round,
@@ -300,7 +318,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
               phase_2_end_round: settings.phase_2_end_round,
               phase_2_min_balance: settings.phase_2_min_balance,
               phase_3_min_balance: settings.phase_3_min_balance,
-              max_squad_size: settings.max_squad_size,
+              max_squad_size: teamMaxSquadSize, // ✅ Now uses team-specific value
             };
             
             const reserveInfo = calculateReserveCore(
@@ -396,6 +414,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
           
           // Check team balance and reserve requirements, adjust price if needed
           let canParticipate = false;
+          let teamMaxSquadSize = 25; // Default fallback
           try {
             const tsDoc = await adminDb.collection('team_seasons').doc(`${teamId}_${round.season_id}`).get();
             if (tsDoc.exists) {
@@ -404,6 +423,23 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
               const teamBalance = curr === 'dual' ? (tsd?.football_budget || 0) : (tsd?.budget || 0);
               const teamSquadSize = tsd?.players_count || 0;
               
+              // ✅ Fetch team-specific slot limit from Neon
+              try {
+                const teamSlotResult = await sql`
+                  SELECT football_total_slots
+                  FROM teams
+                  WHERE id = ${teamId}
+                  AND season_id = ${round.season_id}
+                `;
+                
+                if (teamSlotResult.length > 0 && teamSlotResult[0].football_total_slots) {
+                  teamMaxSquadSize = parseInt(teamSlotResult[0].football_total_slots);
+                  console.log(`✅ Using team-specific slot limit for ${teamName}: ${teamMaxSquadSize}`);
+                }
+              } catch (slotError) {
+                console.warn(`⚠️ Failed to fetch team slots for ${teamId}, using default: ${teamMaxSquadSize}`);
+              }
+              
               // Calculate reserve requirements
               const reserveConfig: ReserveConfig = {
                 phase_1_end_round: settings.phase_1_end_round,
@@ -411,7 +447,7 @@ export async function finalizeRound(roundId: string): Promise<FinalizationResult
                 phase_2_end_round: settings.phase_2_end_round,
                 phase_2_min_balance: settings.phase_2_min_balance,
                 phase_3_min_balance: settings.phase_3_min_balance,
-                max_squad_size: settings.max_squad_size,
+                max_squad_size: teamMaxSquadSize, // ✅ Now uses team-specific value
               };
               
               const reserveInfo = calculateReserveCore(

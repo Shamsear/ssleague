@@ -127,6 +127,7 @@ export async function GET(
     let currentSquadSize = 0;
     let maxSquadSize = 25; // Default
     let availableSlots = maxSquadSize;
+    let teamData: any[] = []; // Store team data for later use
 
     try {
       // Get auction settings
@@ -134,7 +135,7 @@ export async function GET(
       maxSquadSize = auctionSettings.max_squad_size;
 
       // Get team's budget and squad count from Neon teams table
-      const teamData = await sql`
+      teamData = await sql`
         SELECT 
           football_budget,
           football_players_count,
@@ -224,6 +225,27 @@ export async function GET(
       console.error('Error fetching team data:', error);
     }
 
+    // Get slot settings from season
+    let slotSettings = { maxPurchasable: 3, slotPrice: 10 };
+    let purchasedSlots = 0;
+    try {
+      const seasonDoc = await adminDb.collection('seasons').doc(round.season_id).get();
+      if (seasonDoc.exists) {
+        const seasonData = seasonDoc.data();
+        slotSettings = {
+          maxPurchasable: seasonData?.football_max_purchasable_slots || 3,
+          slotPrice: seasonData?.football_slot_price || 10
+        };
+      }
+
+      // Get purchased slots from team data
+      if (teamData && teamData.length > 0) {
+        purchasedSlots = parseInt(teamData[0].football_purchased_slots) || 0;
+      }
+    } catch (error) {
+      console.error('Error fetching slot settings:', error);
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -236,6 +258,7 @@ export async function GET(
           end_time: round.end_time,
           duration_seconds: round.duration_seconds,
           player_count: parseInt(round.player_count),
+          season_id: round.season_id,
         },
         players: players.map(p => ({
           id: p.id,
@@ -253,6 +276,8 @@ export async function GET(
           max: maxSquadSize,
           available: availableSlots,
         },
+        slot_settings: slotSettings,
+        purchased_slots: purchasedSlots,
       },
     });
 

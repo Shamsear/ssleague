@@ -182,6 +182,31 @@ export async function POST(
     if (singleBidders.length > 0) {
       console.log(`\n🎯 Assigning ${singleBidders.length} players with single bidders...`);
 
+      // Get team slot information for all teams with bids
+      const teamIds = Array.from(new Set(singleBidders.map(playerId => bidsByPlayer.get(playerId)![0].team_id)));
+      const teamSlotsMap = new Map();
+      
+      if (teamIds.length > 0) {
+        const teamSlots = await sql`
+          SELECT 
+            id,
+            football_total_slots,
+            football_players_count
+          FROM teams
+          WHERE id = ANY(${teamIds})
+          AND season_id = ${round.season_id}
+        `;
+        
+        for (const team of teamSlots) {
+          teamSlotsMap.set(team.id, {
+            total_slots: parseInt(team.football_total_slots) || 25,
+            current_count: parseInt(team.football_players_count) || 0
+          });
+        }
+        
+        console.log(`📊 Loaded slot info for ${teamSlots.length} teams`);
+      }
+
       for (const playerId of singleBidders) {
         const bid = bidsByPlayer.get(playerId)![0];
 
@@ -189,6 +214,36 @@ export async function POST(
         if (playersAlreadyAllocated.has(playerId)) {
           console.log(`⏭️ Skipping player ${playerId} - already allocated in this round`);
           continue;
+        }
+
+        // Check if team has available slots
+        const teamSlotInfo = teamSlotsMap.get(bid.team_id);
+        if (teamSlotInfo) {
+          const availableSlots = teamSlotInfo.total_slots - teamSlotInfo.current_count;
+          
+          if (availableSlots <= 0) {
+            console.warn(`⚠️ Team ${bid.team_id} (${bid.team_name}) has no available slots (${teamSlotInfo.current_count}/${teamSlotInfo.total_slots})`);
+            console.warn(`⚠️ Skipping player ${playerId} assignment`);
+            
+            // Mark player as unsold due to capacity
+            await sql`
+              UPDATE round_players
+              SET 
+                status = 'unsold',
+                bid_count = 1
+              WHERE round_id = ${roundId}
+              AND player_id = ${playerId}
+            `;
+            
+            continue; // Skip this assignment
+          }
+          
+          console.log(`✅ Team ${bid.team_id} has ${availableSlots} available slots (${teamSlotInfo.current_count}/${teamSlotInfo.total_slots})`);
+          
+          // Update local count for this team
+          teamSlotInfo.current_count += 1;
+        } else {
+          console.warn(`⚠️ No slot info found for team ${bid.team_id}, proceeding with assignment`);
         }
 
         const playerInfo = singlePlayerDetailsMap.get(playerId);
