@@ -56,6 +56,7 @@ export default function TeamBulkRoundPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [teamBalance, setTeamBalance] = useState(1000);
   const [filterPosition, setFilterPosition] = useState<string>('all');
+  const [filterStarred, setFilterStarred] = useState(false);
   const [squadInfo, setSquadInfo] = useState({ current: 0, max: 25, available: 25 });
   const [bidsCount, setBidsCount] = useState(0);
   const [slotSettings, setSlotSettings] = useState({ maxPurchasable: 3, slotPrice: 10 });
@@ -416,7 +417,8 @@ export default function TeamBulkRoundPage() {
   const filteredPlayers = players.filter(player => {
     const matchesSearch = player.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPosition = filterPosition === 'all' || player.position === filterPosition;
-    return matchesSearch && matchesPosition;
+    const matchesStarred = !filterStarred || player.is_starred;
+    return matchesSearch && matchesPosition && matchesStarred;
   });
 
   const sortedPlayers = [...filteredPlayers].sort((a, b) => {
@@ -607,12 +609,34 @@ export default function TeamBulkRoundPage() {
                 </button>
               )}
             </div>
+
+            {/* Starred Filter Toggle */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFilterStarred(!filterStarred)}
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  filterStarred
+                    ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400'
+                    : 'bg-white/70 text-gray-700 border border-gray-300 hover:bg-white'
+                }`}
+              >
+                <svg className={`w-4 h-4 ${filterStarred ? 'fill-yellow-500' : 'fill-gray-400'}`} viewBox="0 0 24 24">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                <span>Starred Only</span>
+                {filterStarred && (
+                  <span className="ml-1 px-2 py-0.5 bg-yellow-200 text-yellow-900 rounded-full text-xs font-bold">
+                    {players.filter(p => p.is_starred).length}
+                  </span>
+                )}
+              </button>
+            </div>
             
             {/* Position Tabs - Mobile Optimized with horizontal scroll */}
             <div className="-mx-3 sm:-mx-4 px-3 sm:px-4">
               <div className="overflow-x-auto scrollbar-hide">
                 <div className="flex gap-1.5 sm:gap-2 min-w-max pb-1">
-                  {['all', 'GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'SS', 'CF'].map((pos) => (
+                  {['all', 'GK', 'CB', 'LB', 'RB', 'LWF', 'RWF', 'DMF', 'CMF', 'AMF', 'LMF', 'RMF', 'SS', 'CF'].map((pos) => (
                     <button
                       key={pos}
                       onClick={() => setFilterPosition(pos)}

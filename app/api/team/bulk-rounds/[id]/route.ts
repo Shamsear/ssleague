@@ -101,10 +101,14 @@ export async function GET(
     `;
     if (teamIdResult.length > 0) {
       teamId = teamIdResult[0].id;
+      console.log(`✅ Found team_id: ${teamId} for user ${userId}`);
+    } else {
+      console.log(`⚠️ No team_id found for user ${userId} in season ${round.season_id}`);
     }
 
     // Get all players in this round (only for active rounds)
-    const players = await sql`
+    // Note: starred_players uses team_id (Neon ID like SSPSLT0001), not firebase_uid
+    const players = teamId ? await sql`
       SELECT 
         rp.player_id as id,
         rp.player_name as name,
@@ -120,7 +124,24 @@ export async function GET(
       WHERE rp.round_id = ${roundId}
       AND rp.status IN ('pending', 'available')
       ORDER BY fp.overall_rating DESC, rp.player_name ASC
+    ` : await sql`
+      SELECT 
+        rp.player_id as id,
+        rp.player_name as name,
+        rp.position,
+        fp.overall_rating,
+        fp.team_name,
+        rp.status,
+        fp.playing_style,
+        false as is_starred
+      FROM round_players rp
+      LEFT JOIN footballplayers fp ON rp.player_id = fp.id
+      WHERE rp.round_id = ${roundId}
+      AND rp.status IN ('pending', 'available')
+      ORDER BY fp.overall_rating DESC, rp.player_name ASC
     `;
+
+    console.log(`📊 Fetched ${players.length} players, starred count: ${players.filter(p => p.is_starred).length}`);
 
     // Get team data from Neon (budget and squad info)
     let balance = 1000; // Default balance
