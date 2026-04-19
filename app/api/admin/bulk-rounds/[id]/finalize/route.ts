@@ -323,33 +323,45 @@ export async function POST(
         }
 
         // Update Neon teams table - bid.team_id contains readable team ID (SSPSLT0001)
-        // Check if player already assigned to this team to avoid double-deducting budget
-        const existingAssignment = await sql`
-          SELECT team_id FROM team_players
-          WHERE player_id = ${playerId}
-          AND season_id = ${round.season_id}
-        `;
+        // Check current state to determine if update is needed (idempotent)
+        try {
+          const currentTeamState = await sql`
+            SELECT football_budget, football_spent, football_players_count
+            FROM teams
+            WHERE id = ${bid.team_id}
+            AND season_id = ${round.season_id}
+          `;
 
-        const isNewAssignment = existingAssignment.length === 0 || existingAssignment[0].team_id !== bid.team_id;
-
-        if (isNewAssignment) {
-          try {
-            await sql`
-              UPDATE teams 
-              SET 
-                football_spent = football_spent + ${round.base_price},
-                football_budget = football_budget - ${round.base_price},
-                football_players_count = football_players_count + 1,
-                updated_at = NOW()
-              WHERE id = ${bid.team_id}
+          if (currentTeamState.length > 0) {
+            // Check if this specific player purchase is already reflected in the budget
+            // by checking if the player is in team_players and if budget was deducted
+            const playerInTeam = await sql`
+              SELECT id FROM team_players
+              WHERE player_id = ${playerId}
+              AND team_id = ${bid.team_id}
               AND season_id = ${round.season_id}
             `;
-            console.log(`✅ Updated Neon teams table for ${bid.team_id}`);
-          } catch (error) {
-            console.error(`❌ Error updating Neon teams for ${bid.team_id}:`, error);
+
+            // Only update if player is NOT already in team_players
+            // This prevents double-deduction on re-finalization
+            if (playerInTeam.length === 0) {
+              await sql`
+                UPDATE teams 
+                SET 
+                  football_spent = football_spent + ${round.base_price},
+                  football_budget = football_budget - ${round.base_price},
+                  football_players_count = football_players_count + 1,
+                  updated_at = NOW()
+                WHERE id = ${bid.team_id}
+                AND season_id = ${round.season_id}
+              `;
+              console.log(`✅ Updated Neon teams table for ${bid.team_id} (new assignment)`);
+            } else {
+              console.log(`⏭️  Skipped Neon update for ${bid.team_id} (player already in team_players)`);
+            }
           }
-        } else {
-          console.log(`🔄 Skipped team budget update (player already assigned to ${bid.team_id})`);
+        } catch (error) {
+          console.error(`❌ Error updating Neon teams for ${bid.team_id}:`, error);
         }
 
         // Update Firebase team_seasons using team_id (not firebase_uid)
@@ -377,61 +389,80 @@ export async function POST(
             ? (teamSeasonData?.football_budget || 0)
             : (teamSeasonData?.budget || 0);
 
-          // Get player position for position counts
-          const playerPosition = playerInfo?.position;
-          const positionCounts = teamSeasonData?.position_counts || {};
-          if (playerPosition && playerPosition in positionCounts) {
-            positionCounts[playerPosition] = (positionCounts[playerPosition] || 0) + 1;
-          }
+          // Check if this player purchase is already reflected in Firebase
+          // by checking if player is in team_players (Neon check above)
+          const playerInTeam = await sql`
+            SELECT id FROM team_players
+            WHERE player_id = ${playerId}
+            AND team_id = ${bid.team_id}
+            AND season_id = ${round.season_id}
+          `;
 
-          // Prepare update object
-          const updateData: any = {
-            total_spent: (teamSeasonData?.total_spent || 0) + round.base_price,
-            players_count: (teamSeasonData?.players_count || 0) + 1,
-            position_counts: positionCounts,
-            updated_at: new Date()
-          };
+          const isNewPurchase = playerInTeam.length === 0;
 
-          // Update budget based on currency system
-          if (isDualCurrency) {
-            updateData.football_budget = currentBudget - round.base_price;
-            updateData.football_spent = (teamSeasonData?.football_spent || 0) + round.base_price;
+          if (isNewPurchase) {
+            // Get player position for position counts
+            const playerPosition = playerInfo?.position;
+            const positionCounts = teamSeasonData?.position_counts || {};
+            if (playerPosition && playerPosition in positionCounts) {
+              positionCounts[playerPosition] = (positionCounts[playerPosition] || 0) + 1;
+            }
+
+            // Prepare update object
+            const updateData: any = {
+              total_spent: (teamSeasonData?.total_spent || 0) + round.base_price,
+              players_count: (teamSeasonData?.players_count || 0) + 1,
+              position_counts: positionCounts,
+              updated_at: new Date()
+            };
+
+            // Update budget based on currency system
+            if (isDualCurrency) {
+              updateData.football_budget = currentBudget - round.base_price;
+              updateData.football_spent = (teamSeasonData?.football_spent || 0) + round.base_price;
+            } else {
+              updateData.budget = currentBudget - round.base_price;
+            }
+
+            // Update balance
+            await teamSeasonRef.update(updateData);
+
+            // ALWAYS log transaction (even if budget was already deducted)
+            // This ensures transaction history is complete
+            if (firebaseUid) {
+              await logAuctionWin(
+                firebaseUid,
+                round.season_id,
+                playerInfo?.player_name || 'Unknown Player',
+                playerId,
+                'football',
+                round.base_price,
+                currentBudget,
+                roundId
+              );
+              console.log(`📝 Created transaction for ${playerInfo?.player_name || playerId}`);
+            } else {
+              console.warn(`⚠️  No firebase_uid found for ${bid.team_id} - transaction not logged`);
+            }
+
+            console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${bid.team_id}`);
+
+            // Broadcast squad and wallet updates to team
+            await broadcastSquadUpdate(round.season_id, bid.team_id, {
+              player_id: playerId,
+              player_name: playerInfo?.player_name || 'Unknown Player',
+              action: 'acquired',
+              price: round.base_price,
+            });
+
+            await broadcastWalletUpdate(round.season_id, bid.team_id, {
+              new_balance: isDualCurrency ? updateData.football_budget : updateData.budget,
+              amount_spent: round.base_price,
+              currency_type: isDualCurrency ? 'football' : 'single',
+            });
           } else {
-            updateData.budget = currentBudget - round.base_price;
+            console.log(`⏭️  Skipped Firebase update for ${bid.team_id} (player already purchased)`);
           }
-
-          // Update balance
-          await teamSeasonRef.update(updateData);
-
-          // Log transaction using firebase_uid (if available)
-          if (firebaseUid) {
-            await logAuctionWin(
-              firebaseUid,
-              round.season_id,
-              playerInfo?.player_name || 'Unknown Player',
-              playerId,
-              'football',
-              round.base_price,
-              currentBudget,
-              roundId
-            );
-          }
-
-          console.log(`💰 Updated Firebase: Deducted £${round.base_price} from team ${bid.team_id}`);
-
-          // Broadcast squad and wallet updates to team
-          await broadcastSquadUpdate(round.season_id, bid.team_id, {
-            player_id: playerId,
-            player_name: playerInfo?.player_name || 'Unknown Player',
-            action: 'acquired',
-            price: round.base_price,
-          });
-
-          await broadcastWalletUpdate(round.season_id, bid.team_id, {
-            new_balance: isDualCurrency ? updateData.football_budget : updateData.budget,
-            amount_spent: round.base_price,
-            currency_type: isDualCurrency ? 'football' : 'single',
-          });
         } else {
           console.warn(`⚠️ Team season ${teamSeasonId} not found in Firebase`);
         }

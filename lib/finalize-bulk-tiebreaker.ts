@@ -6,6 +6,8 @@ import { neon } from '@neondatabase/serverless';
 import { logAuctionWin } from './transaction-logger';
 import { getFirestore } from 'firebase-admin/firestore';
 import { triggerNews } from './news/trigger';
+import { broadcastSquadUpdate, broadcastWalletUpdate } from './realtime/broadcast';
+import { sendNotificationToSeason } from './notifications/send-notification';
 
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL!);
 
@@ -223,6 +225,15 @@ export async function finalizeBulkTiebreaker(
       WHERE id = ${tiebreakerId}
     `;
 
+    // Mark the winning bid in round_bids table
+    await sql`
+      UPDATE round_bids
+      SET is_winning = true
+      WHERE round_id = ${tiebreaker.round_id}
+      AND player_id = ${tiebreaker.player_id}
+      AND team_id = ${tiebreaker.current_highest_team_id}
+    `;
+
     console.log(`✅ Bulk tiebreaker ${tiebreakerId} finalized. Winner: Team ${tiebreaker.current_highest_team_id}, Amount: £${winningAmount}`);
     console.log(`✅ Updated both bulk_tiebreakers and tiebreakers tables`);
     
@@ -262,7 +273,40 @@ export async function finalizeBulkTiebreaker(
     
     const isNewAssignment = existingAssignment.length === 0 || existingAssignment[0].team_id !== tiebreaker.current_highest_team_id;
     
-    if (isNewAssignment) {
+    // Get firebase_uid for transaction check
+    const teamFirebaseResult = await sql`
+      SELECT firebase_uid FROM teams
+      WHERE id = ${tiebreaker.current_highest_team_id}
+      AND season_id = ${seasonId}
+      LIMIT 1
+    `;
+    
+    const firebaseUid = teamFirebaseResult[0]?.firebase_uid;
+    
+    // Check if transaction already exists in Firebase
+    let transactionExists = false;
+    if (firebaseUid) {
+      const adminDb = getFirestore();
+      const existingTxns = await adminDb.collection('transactions')
+        .where('userId', '==', firebaseUid)
+        .where('seasonId', '==', seasonId)
+        .where('type', '==', 'auction_win')
+        .get();
+      
+      transactionExists = existingTxns.docs.some(doc => {
+        const metadata = doc.data().metadata || {};
+        return metadata.playerId === tiebreaker.player_id;
+      });
+      
+      if (transactionExists) {
+        console.log(`✅ Transaction already exists for player ${tiebreaker.player_id}`);
+      }
+    }
+    
+    // Only update if it's a new assignment AND transaction doesn't exist
+    const shouldUpdate = isNewAssignment && !transactionExists;
+    
+    if (shouldUpdate) {
       try {
         await sql`
           UPDATE teams
@@ -279,7 +323,12 @@ export async function finalizeBulkTiebreaker(
         console.error(`❌ Error updating Neon teams table:`, error);
       }
     } else {
-      console.log(`🔄 Skipped team budget update (player already assigned to ${tiebreaker.current_highest_team_id})`);
+      if (!isNewAssignment) {
+        console.log(`🔄 Skipped Neon update (player already assigned to ${tiebreaker.current_highest_team_id})`);
+      }
+      if (transactionExists) {
+        console.log(`🔄 Skipped Neon update (transaction already exists)`);
+      }
     }
     
     // Update team balance and log transaction in Firebase
@@ -291,13 +340,20 @@ export async function finalizeBulkTiebreaker(
     if (teamSeasonSnap.exists) {
       const teamSeasonData = teamSeasonSnap.data();
       
-      // Only update if this is a new assignment (prevent duplicate deductions)
-      if (isNewAssignment) {
-        // Get current balances and spent amounts
-        const currentFootballBudget = teamSeasonData?.football_budget || 0;
-        const currentFootballSpent = teamSeasonData?.football_spent || 0;
-        const newFootballBudget = currentFootballBudget - winningAmount;
-        const newFootballSpent = currentFootballSpent + winningAmount;
+      // Only update if this is a new assignment AND transaction doesn't exist (prevent duplicate deductions)
+      if (shouldUpdate) {
+        // Detect currency system
+        const currencySystem = teamSeasonData?.currency_system || 'single';
+        const isDualCurrency = currencySystem === 'dual';
+
+        // Get current budget based on currency system
+        const currentBudget = isDualCurrency
+          ? (teamSeasonData?.football_budget || 0)
+          : (teamSeasonData?.budget || 0);
+        
+        const currentSpent = isDualCurrency
+          ? (teamSeasonData?.football_spent || 0)
+          : (teamSeasonData?.total_spent || 0);
         
         // Get current position counts
         const positionCounts = teamSeasonData?.position_counts || {};
@@ -311,24 +367,24 @@ export async function finalizeBulkTiebreaker(
         const currentPlayersCount = teamSeasonData?.players_count || 0;
         const newPlayersCount = currentPlayersCount + 1;
         
-        // Update budget, spent, position counts, and players count
-        await teamSeasonRef.update({
-          football_budget: newFootballBudget,
-          football_spent: newFootballSpent,
+        // Prepare update object based on currency system
+        const updateData: any = {
           position_counts: newPositionCounts,
           players_count: newPlayersCount,
           updated_at: new Date()
-        });
+        };
+
+        // Update budget and spent based on currency system
+        if (isDualCurrency) {
+          updateData.football_budget = currentBudget - winningAmount;
+          updateData.football_spent = currentSpent + winningAmount;
+        } else {
+          updateData.budget = currentBudget - winningAmount;
+          updateData.total_spent = currentSpent + winningAmount;
+        }
         
-        // Get firebase_uid for transaction logging
-        const teamFirebaseResult = await sql`
-          SELECT firebase_uid FROM teams
-          WHERE id = ${tiebreaker.current_highest_team_id}
-          AND season_id = ${seasonId}
-          LIMIT 1
-        `;
-        
-        const firebaseUid = teamFirebaseResult[0]?.firebase_uid;
+        // Update Firebase
+        await teamSeasonRef.update(updateData);
         
         // Log auction win transaction using firebase_uid
         if (firebaseUid) {
@@ -339,18 +395,36 @@ export async function finalizeBulkTiebreaker(
             tiebreaker.player_id,
             'football',
             winningAmount,
-            currentFootballBudget,
+            currentBudget,
             tiebreaker.round_id
           );
+          console.log(`📝 Created transaction for ${tiebreaker.player_name || 'Unknown Player'}`);
         } else {
           console.warn(`⚠️ Could not find firebase_uid for team ${tiebreaker.current_highest_team_id} - transaction not logged`);
         }
         
         console.log(`💰 Updated team ${tiebreaker.current_highest_team_id}:`);
-        console.log(`   - Deducted £${winningAmount} from football_budget (${currentFootballBudget} → ${newFootballBudget})`);
-        console.log(`   - Increased football_spent by £${winningAmount} (${currentFootballSpent} → ${newFootballSpent})`);
+        console.log(`   - Currency system: ${currencySystem}`);
+        console.log(`   - Deducted £${winningAmount} from ${isDualCurrency ? 'football_budget' : 'budget'} (${currentBudget} → ${currentBudget - winningAmount})`);
+        console.log(`   - Increased ${isDualCurrency ? 'football_spent' : 'total_spent'} by £${winningAmount} (${currentSpent} → ${currentSpent + winningAmount})`);
         console.log(`   - Incremented ${tiebreaker.position} count (${currentPositionCount} → ${currentPositionCount + 1})`);
         console.log(`   - Incremented players_count (${currentPlayersCount} → ${newPlayersCount})`);
+        
+        // Broadcast real-time updates to team
+        await broadcastSquadUpdate(seasonId, tiebreaker.current_highest_team_id, {
+          player_id: tiebreaker.player_id,
+          player_name: tiebreaker.player_name || 'Unknown Player',
+          action: 'acquired',
+          price: winningAmount,
+        });
+
+        await broadcastWalletUpdate(seasonId, tiebreaker.current_highest_team_id, {
+          new_balance: isDualCurrency ? updateData.football_budget : updateData.budget,
+          amount_spent: winningAmount,
+          currency_type: isDualCurrency ? 'football' : 'single',
+        });
+
+        console.log(`📢 Broadcast squad and wallet updates to team ${tiebreaker.current_highest_team_id}`);
         
         // Trigger news generation for Last Person Standing auction completion
         const teamName = teamSeasonData?.team_name || 'Team';
@@ -367,8 +441,37 @@ export async function finalizeBulkTiebreaker(
         });
         
         console.log(`📰 News generation triggered for tiebreaker completion`);
+
+        // Send FCM notification to winner team
+        try {
+          await sendNotificationToSeason(
+            {
+              title: '🏆 Tiebreaker Won!',
+              body: `${teamName} won ${tiebreaker.player_name} for £${winningAmount}!`,
+              url: `/dashboard/team/squad`,
+              icon: '/logo.png',
+              data: {
+                type: 'tiebreaker_won',
+                playerId: tiebreaker.player_id,
+                playerName: tiebreaker.player_name || 'Unknown Player',
+                teamId: tiebreaker.current_highest_team_id,
+                amount: winningAmount.toString()
+              }
+            },
+            seasonId
+          );
+          console.log(`🔔 FCM notification sent for tiebreaker win`);
+        } catch (notifError) {
+          console.error('Failed to send tiebreaker win notification:', notifError);
+          // Don't fail the finalization if notification fails
+        }
       } else {
-        console.log(`🔄 Skipped Firebase budget update (player already assigned)`);
+        if (!isNewAssignment) {
+          console.log(`🔄 Skipped Firebase update (player already assigned to ${tiebreaker.current_highest_team_id})`);
+        }
+        if (transactionExists) {
+          console.log(`🔄 Skipped Firebase update (transaction already exists)`);
+        }
       }
     } else {
       console.warn(`⚠️ Team season ${teamSeasonId} not found - balance not updated`);

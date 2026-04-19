@@ -1,0 +1,171 @@
+[
+  {
+    "team": "Blue Strikers",
+    "teamId": "SSPSLT0016",
+    "success": true,
+    "before": {
+      "budget": 1831,
+      "spent": 2036
+    },
+    "after": {
+      "budget": 1831,
+      "spent": 1018
+    }
+  },
+  {
+    "team": "FC Barcelona",
+    "teamId": "SSPSLT0006",
+    "success": true,
+    "before": {
+      "budget": 3385.7,
+      "spent": 90
+    },
+    "after": {
+      "budget": 3385.7,
+      "spent": 60
+    }
+  },
+  {
+    "team": "La Masia",
+    "teamId": "SSPSLT0008",
+    "success": true,
+    "before": {
+      "budget": 3906.8,
+      "spent": 80
+    },
+    "after": {
+      "budget": 3906.8,
+      "spent": 60
+    }
+  },
+  {
+    "team": "Legends FC",
+    "teamId": "SSPSLT0015",
+    "success": true,
+    "before": {
+      "budget": 3986.7,
+      "spent": 90
+    },
+    "after": {
+      "budget": 3986.7,
+      "spent": 60
+    }
+  },
+  {
+    "team": "Los Blancos",
+    "teamId": "SSPSLT0034",
+    "success": true,
+    "before": {
+      "budget": 1929.72,
+      "spent": 100
+    },
+    "after": {
+      "budget": 1929.72,
+      "spent": 70
+    }
+  },
+  {
+    "team": "Los Galacticos",
+    "teamId": "SSPSLT0021",
+    "success": true,
+    "before": {
+      "budget": 1204.3,
+      "spent": 1850
+    },
+    "after": {
+      "budget": 1204.3,
+      "spent": 1820
+    }
+  },
+  {
+    "team": "Manchester United",
+    "teamId": "SSPSLT0002",
+    "success": true,
+    "before": {
+      "budget": 2053.9,
+      "spent": 600
+    },
+    "after": {
+      "budget": 2053.9,
+      "spent": 570
+    }
+  },
+  {
+    "team": "Psychoz",
+    "teamId": "SSPSLT0013",
+    "success": true,
+    "before": {
+      "budget": 4077,
+      "spent": 90
+    },
+    "after": {
+      "budget": 4077,
+      "spent": 60
+    }
+  },
+  {
+    "team": "Qatar Gladiators",
+    "teamId": "SSPSLT0009",
+    "success": true,
+    "before": {
+      "budget": 705.78,
+      "spent": 160
+    },
+    "after": {
+      "budget": 705.78,
+      "spent": 130
+    }
+  },
+  {
+    "team": "Red Hawks FC",
+    "teamId": "SSPSLT0004",
+    "success": true,
+    "before": {
+      "budget": 1585,
+      "spent": 250
+    },
+    "after": {
+      "budget": 1585,
+      "spent": 220
+    }
+  },
+  {
+    "team": "Skill 555",
+    "teamId": "SSPSLT0020",
+    "success": true,
+    "before": {
+      "budget": 1687.1,
+      "spent": 100
+    },
+    "after": {
+      "budget": 1687.1,
+      "spent": 70
+    }
+  },
+  {
+    "team": "TM Asgardians",
+    "teamId": "SSPSLT0005",
+    "success": true,
+    "before": {
+      "budget": 1514,
+      "spent": 120
+    },
+    "after": {
+      "budget": 1514,
+      "spent": 90
+    }
+  },
+  {
+    "team": "Varsity Soccers",
+    "teamId": "SSPSLT0010",
+    "success": true,
+    "before": {
+      "budget": 3759.2,
+      "spent": 121
+    },
+    "after": {
+      "budget": 3759.2,
+      "spent": 91
+    }
+  }
+]
