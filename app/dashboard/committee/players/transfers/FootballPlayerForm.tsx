@@ -198,6 +198,10 @@ export default function FootballPlayerForm() {
     const teamBFee = teamBLimit?.next_swap_fee || 0;
 
     let confirmMessage = `Swap ${selectedPlayerA.player_name} (${teamAName}) ↔ ${selectedPlayerB.player_name} (${teamBName})?\n\n`;
+    
+    confirmMessage += `Value Exchange:\n`;
+    confirmMessage += `• ${selectedPlayerA.player_name}: ${selectedPlayerA.acquisition_value} → ${selectedPlayerB.acquisition_value}\n`;
+    confirmMessage += `• ${selectedPlayerB.player_name}: ${selectedPlayerB.acquisition_value} → ${selectedPlayerA.acquisition_value}\n\n`;
 
     if (teamAFee > 0 || teamBFee > 0) {
       confirmMessage += `Fees:\n`;
@@ -207,7 +211,7 @@ export default function FootballPlayerForm() {
       confirmMessage += `This swap is FREE for both teams!\n`;
     }
 
-    confirmMessage += `\nOnly team assignments will change. No value or stat changes.`;
+    confirmMessage += `\nTeam assignments AND acquisition values will be swapped.`;
 
     if (!confirm(confirmMessage)) return;
 
@@ -414,9 +418,9 @@ export default function FootballPlayerForm() {
       <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
         <h3 className="font-semibold text-green-900 mb-2">⚽ Football Player Swap</h3>
         <ul className="text-sm text-green-800 space-y-1">
-          <li>• <strong>Swap:</strong> Exchange team assignments between two players</li>
+          <li>• <strong>Swap:</strong> Exchange team assignments AND acquisition values between two players</li>
           <li>• <strong>Swap Fees:</strong> First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
-          <li>• <strong>No value changes, no stat upgrades</strong></li>
+          <li>• <strong>Values are swapped:</strong> Player A gets Player B's value, Player B gets Player A's value</li>
         </ul>
       </div>
 

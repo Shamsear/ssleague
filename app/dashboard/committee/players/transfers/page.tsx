@@ -193,9 +193,9 @@ export default function PlayerTransfersPage() {
                     <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <h3 className="font-semibold text-gray-900 mb-2">How Football Player Swaps Work</h3>
                       <ul className="text-sm text-gray-700 space-y-1">
-                        <li>• Exchange team assignments between two players</li>
+                        <li>• Exchange team assignments AND acquisition values between two players</li>
                         <li>• First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
-                        <li>• No value changes, no stat upgrades</li>
+                        <li>• Values are swapped: Player A gets Player B's value, Player B gets Player A's value</li>
                       </ul>
                     </div>
                     <FootballPlayerForm key={playerType} />

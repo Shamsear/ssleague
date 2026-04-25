@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
         team_id,
         overall_rating,
         position,
-        position_group
+        position_group,
+        acquisition_value
       FROM footballplayers
       WHERE player_id IN ($1, $2) AND season_id = $3
     `;
@@ -166,20 +167,20 @@ export async function POST(request: NextRequest) {
     await sql.query('BEGIN');
 
     try {
-      // Update Player A to Player B's team in footballplayers
+      // Update Player A to Player B's team AND Player B's acquisition_value
       await sql.query(
         `UPDATE footballplayers 
-         SET team_id = $1, updated_at = NOW() 
-         WHERE player_id = $2 AND season_id = $3`,
-        [playerB.team_id, player_a_id, season_id]
+         SET team_id = $1, acquisition_value = $2, updated_at = NOW() 
+         WHERE player_id = $3 AND season_id = $4`,
+        [playerB.team_id, playerB.acquisition_value, player_a_id, season_id]
       );
 
-      // Update Player B to Player A's team in footballplayers
+      // Update Player B to Player A's team AND Player A's acquisition_value
       await sql.query(
         `UPDATE footballplayers 
-         SET team_id = $1, updated_at = NOW() 
-         WHERE player_id = $2 AND season_id = $3`,
-        [playerA.team_id, player_b_id, season_id]
+         SET team_id = $1, acquisition_value = $2, updated_at = NOW() 
+         WHERE player_id = $3 AND season_id = $4`,
+        [playerA.team_id, playerA.acquisition_value, player_b_id, season_id]
       );
 
       // Update team_players table (uses footballplayers.id, not player_id)
