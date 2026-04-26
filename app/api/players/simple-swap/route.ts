@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     console.log('🔍 Simple swap request:', { player_a_id, player_b_id, season_id });
 
-    // Fetch both players with their positions
+    // Fetch both players with all their stats
     // Note: footballplayers table doesn't always have season_id set for active players
     // We'll validate they're assigned to teams instead
     const playersQuery = `
@@ -64,7 +64,31 @@ export async function POST(request: NextRequest) {
         acquisition_value,
         season_id,
         status,
-        is_sold
+        is_sold,
+        nationality,
+        age,
+        playing_style,
+        club,
+        speed,
+        acceleration,
+        ball_control,
+        dribbling,
+        low_pass,
+        lofted_pass,
+        finishing,
+        heading,
+        physical_contact,
+        stamina,
+        defensive_awareness,
+        ball_winning,
+        aggression,
+        gk_reflexes,
+        gk_reach,
+        gk_handling,
+        weak_foot_usage,
+        weak_foot_accuracy,
+        form,
+        injury_resistance
       FROM footballplayers
       WHERE player_id IN ($1, $2)
     `;
@@ -279,46 +303,100 @@ export async function POST(request: NextRequest) {
 
       // Update player history
       try {
-        // Get team names from Firebase
-        const [teamADoc, teamBDoc] = await Promise.all([
-          adminDb.collection('teams').doc(playerA.team_id).get(),
-          adminDb.collection('teams').doc(playerB.team_id).get()
-        ]);
-        
-        const teamAName = teamADoc.exists ? teamADoc.data()?.name : 'Unknown Team';
-        const teamBName = teamBDoc.exists ? teamBDoc.data()?.name : 'Unknown Team';
+        // team_name should be the real-world club from footballplayers.team_name
+        // team_id = league team (e.g., SSPSLT0010)
+        const teamAName = playerA.team_name || 'Unknown Club';
+        const teamBName = playerB.team_name || 'Unknown Club';
 
         // Close old history records
         await closePlayerHistory(playerA.player_id, playerA.team_id, 'swap', season_id, transactionId);
         await closePlayerHistory(playerB.player_id, playerB.team_id, 'swap', season_id, transactionId);
 
-        // Create new history records
+        // Create new history records with full player stats
+        // team_id = league team (e.g., SSPSLT0010)
+        // team_name = real-world club (e.g., "Bayern Munich")
         await createPlayerHistory({
           playerId: playerA.player_id,
           playerName: playerA.player_name,
           position: playerA.position,
-          teamId: playerB.team_id,
-          teamName: teamBName,
+          teamId: playerB.team_id, // League team ID
+          teamName: teamAName, // Real-world club name from footballplayers.team_name
           seasonId: season_id,
           acquisitionType: 'swap',
-          acquisitionValue: playerB.acquisition_value, // Gets Player B's value
+          acquisitionValue: playerB.acquisition_value,
           contractStartSeason: season_id,
           contractEndSeason: season_id,
-          transactionId: transactionId
+          transactionId: transactionId,
+          // Add all player stats
+          positionGroup: playerA.position_group,
+          overallRating: playerA.overall_rating,
+          nationality: playerA.nationality,
+          age: playerA.age,
+          playingStyle: playerA.playing_style,
+          club: playerA.club,
+          isSold: playerA.is_sold,
+          speed: playerA.speed,
+          acceleration: playerA.acceleration,
+          ballControl: playerA.ball_control,
+          dribbling: playerA.dribbling,
+          lowPass: playerA.low_pass,
+          loftedPass: playerA.lofted_pass,
+          finishing: playerA.finishing,
+          heading: playerA.heading,
+          physicalContact: playerA.physical_contact,
+          stamina: playerA.stamina,
+          defensiveAwareness: playerA.defensive_awareness,
+          ballWinning: playerA.ball_winning,
+          aggression: playerA.aggression,
+          gkReflexes: playerA.gk_reflexes,
+          gkReach: playerA.gk_reach,
+          gkHandling: playerA.gk_handling,
+          weakFootUsage: playerA.weak_foot_usage,
+          weakFootAccuracy: playerA.weak_foot_accuracy,
+          form: playerA.form,
+          injuryResistance: playerA.injury_resistance,
         });
 
         await createPlayerHistory({
           playerId: playerB.player_id,
           playerName: playerB.player_name,
           position: playerB.position,
-          teamId: playerA.team_id,
-          teamName: teamAName,
+          teamId: playerA.team_id, // League team ID
+          teamName: teamBName, // Real-world club name from footballplayers.team_name
           seasonId: season_id,
           acquisitionType: 'swap',
-          acquisitionValue: playerA.acquisition_value, // Gets Player A's value
+          acquisitionValue: playerA.acquisition_value,
           contractStartSeason: season_id,
           contractEndSeason: season_id,
-          transactionId: transactionId
+          transactionId: transactionId,
+          // Add all player stats
+          positionGroup: playerB.position_group,
+          overallRating: playerB.overall_rating,
+          nationality: playerB.nationality,
+          age: playerB.age,
+          playingStyle: playerB.playing_style,
+          club: playerB.club,
+          isSold: playerB.is_sold,
+          speed: playerB.speed,
+          acceleration: playerB.acceleration,
+          ballControl: playerB.ball_control,
+          dribbling: playerB.dribbling,
+          lowPass: playerB.low_pass,
+          loftedPass: playerB.lofted_pass,
+          finishing: playerB.finishing,
+          heading: playerB.heading,
+          physicalContact: playerB.physical_contact,
+          stamina: playerB.stamina,
+          defensiveAwareness: playerB.defensive_awareness,
+          ballWinning: playerB.ball_winning,
+          aggression: playerB.aggression,
+          gkReflexes: playerB.gk_reflexes,
+          gkReach: playerB.gk_reach,
+          gkHandling: playerB.gk_handling,
+          weakFootUsage: playerB.weak_foot_usage,
+          weakFootAccuracy: playerB.weak_foot_accuracy,
+          form: playerB.form,
+          injuryResistance: playerB.injury_resistance,
         });
 
         console.log('✅ Player history updated');
