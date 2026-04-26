@@ -1020,6 +1020,8 @@ export default function PlayerDetailPage() {
                               ? 'bg-gradient-to-r from-red-50 to-orange-50'
                               : contract.status === 'swapped'
                               ? 'bg-gradient-to-r from-blue-50 to-indigo-50'
+                              : contract.status === 'takeover'
+                              ? 'bg-gradient-to-r from-purple-50 to-pink-50'
                               : 'bg-gradient-to-r from-green-50 to-emerald-50'
                           }`}>
                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 sm:mb-4">
@@ -1036,9 +1038,11 @@ export default function PlayerDetailPage() {
                                   ? 'bg-red-500 text-white'
                                   : contract.status === 'swapped'
                                   ? 'bg-blue-500 text-white'
+                                  : contract.status === 'takeover'
+                                  ? 'bg-purple-500 text-white'
                                   : 'bg-green-500 text-white'
                               }`}>
-                                {contract.status === 'released' ? '🔴 Released' : contract.status === 'swapped' ? '🔄 Swapped' : '🟢 Active'}
+                                {contract.status === 'released' ? '🔴 Released' : contract.status === 'swapped' ? '🔄 Swapped' : contract.status === 'takeover' ? '🔄 Takeover' : '🟢 Active'}
                               </span>
                             </div>
                           </div>
@@ -1046,7 +1050,7 @@ export default function PlayerDetailPage() {
                           {/* Card body */}
                           <div className="p-4 sm:p-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                              {/* Acquisition/Swap details */}
+                              {/* Acquisition/Swap/Takeover details */}
                               <div className="space-y-3 sm:space-y-4">
                                 <div className="flex items-center gap-2 mb-2 sm:mb-3">
                                   {contract.type === 'swap' ? (
@@ -1055,6 +1059,13 @@ export default function PlayerDetailPage() {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                                       </svg>
                                       <h4 className="text-base sm:text-lg font-semibold text-gray-900">Swap In</h4>
+                                    </>
+                                  ) : contract.type === 'takeover' ? (
+                                    <>
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                      </svg>
+                                      <h4 className="text-base sm:text-lg font-semibold text-gray-900">Inherited</h4>
                                     </>
                                   ) : (
                                     <>
@@ -1066,9 +1077,9 @@ export default function PlayerDetailPage() {
                                   )}
                                 </div>
                                 
-                                <div className={`${contract.type === 'swap' ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} rounded-lg sm:rounded-xl p-3 sm:p-4 border`}>
-                                  <p className="text-xs sm:text-sm text-gray-600 mb-1">{contract.type === 'swap' ? 'Swap Value' : 'Acquisition Value'}</p>
-                                  <p className={`text-2xl sm:text-3xl font-bold ${contract.type === 'swap' ? 'text-blue-700' : 'text-green-700'}`}>
+                                <div className={`${contract.type === 'swap' ? 'bg-blue-50 border-blue-200' : contract.type === 'takeover' ? 'bg-purple-50 border-purple-200' : 'bg-green-50 border-green-200'} rounded-lg sm:rounded-xl p-3 sm:p-4 border`}>
+                                  <p className="text-xs sm:text-sm text-gray-600 mb-1">{contract.type === 'swap' ? 'Swap Value' : contract.type === 'takeover' ? 'Inherited Value' : 'Acquisition Value'}</p>
+                                  <p className={`text-2xl sm:text-3xl font-bold ${contract.type === 'swap' ? 'text-blue-700' : contract.type === 'takeover' ? 'text-purple-700' : 'text-green-700'}`}>
                                     £{contract.acquisition_value?.toLocaleString() || 0}
                                   </p>
                                 </div>
@@ -1157,6 +1168,38 @@ export default function PlayerDetailPage() {
                                   {contract.end_date && (
                                     <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 rounded-lg">
                                       <span className="text-xs sm:text-sm text-gray-600">Swap Date</span>
+                                      <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                        {new Date(contract.end_date).toLocaleDateString('en-GB', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: 'numeric'
+                                        })}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Takeover details */}
+                              {contract.status === 'takeover' && (
+                                <div className="space-y-3 sm:space-y-4">
+                                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                    </svg>
+                                    <h4 className="text-base sm:text-lg font-semibold text-gray-900">Takeover</h4>
+                                  </div>
+                                  
+                                  <div className="bg-purple-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-purple-200">
+                                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Contract Ended</p>
+                                    <p className="text-base sm:text-lg font-bold text-purple-700">
+                                      Team was taken over by new owner
+                                    </p>
+                                  </div>
+
+                                  {contract.end_date && (
+                                    <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                                      <span className="text-xs sm:text-sm text-gray-600">Takeover Date</span>
                                       <span className="text-xs sm:text-sm font-semibold text-gray-900">
                                         {new Date(contract.end_date).toLocaleDateString('en-GB', {
                                           day: '2-digit',

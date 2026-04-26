@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
         player_id,
         name as player_name,
         team_id,
+        team_name,
         overall_rating,
         position,
         position_group,

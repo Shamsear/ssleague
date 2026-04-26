@@ -49,7 +49,6 @@ export async function GET(
       SELECT 
         ph.player_id,
         ph.team_id,
-        t.name as team_name,
         ph.season_id,
         ph.acquisition_type,
         ph.acquisition_date,
@@ -61,17 +60,48 @@ export async function GET(
         ph.contract_start_season,
         ph.contract_end_season
       FROM player_history ph
-      LEFT JOIN teams t ON ph.team_id = t.id
       WHERE ph.player_id = ${playerIdForTransactions.toString()}
       ORDER BY ph.acquisition_date ASC
     `;
     
     console.log('Player history records found:', playerHistory.length);
-    console.log('Player history details:', JSON.stringify(playerHistory, null, 2));
+    
+    // Fetch team names from Firebase for each unique team_id
+    const uniqueTeamIds = [...new Set(playerHistory.map((h: any) => h.team_id).filter(Boolean))];
+    const teamNamesMap: Record<string, string> = {};
+    
+    console.log('Fetching team names for:', uniqueTeamIds);
+    
+    for (const teamId of uniqueTeamIds) {
+      try {
+        const teamDoc = await adminDb.collection('teams').doc(teamId).get();
+        console.log(`Team ${teamId}: exists=${teamDoc.exists}`);
+        if (teamDoc.exists) {
+          const teamData = teamDoc.data();
+          // Try team_name first, then name, then fallback to Unknown Team
+          teamNamesMap[teamId] = teamData?.team_name || teamData?.name || 'Unknown Team';
+          console.log(`  -> Name: ${teamNamesMap[teamId]}`);
+        } else {
+          console.log(`  -> Team ${teamId} not found in Firebase`);
+          teamNamesMap[teamId] = 'Unknown Team';
+        }
+      } catch (error: any) {
+        console.error(`Error fetching team ${teamId}:`, error.message);
+        teamNamesMap[teamId] = 'Unknown Team';
+      }
+    }
+    
+    // Add team names to player history records
+    const playerHistoryWithTeams = playerHistory.map((h: any) => ({
+      ...h,
+      team_name: teamNamesMap[h.team_id] || 'Unknown Team'
+    }));
+    
+    console.log('Player history details:', JSON.stringify(playerHistoryWithTeams, null, 2));
     
     // Build roadmap from player_history
     console.log('Building roadmap from player_history...');
-    const roadmap = playerHistory.map((history: any) => {
+    const roadmap = playerHistoryWithTeams.map((history: any) => {
       const baseData = {
         team_id: history.team_id,
         team_name: history.team_name,
@@ -113,7 +143,7 @@ export async function GET(
       success: true,
       data: {
         transactions, // For cross-reference only
-        playerHistory,
+        playerHistory: playerHistoryWithTeams,
         roadmap
       }
     });
