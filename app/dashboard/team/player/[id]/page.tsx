@@ -1018,6 +1018,8 @@ export default function PlayerDetailPage() {
                           <div className={`p-4 sm:p-6 ${
                             contract.status === 'released'
                               ? 'bg-gradient-to-r from-red-50 to-orange-50'
+                              : contract.status === 'swapped'
+                              ? 'bg-gradient-to-r from-blue-50 to-indigo-50'
                               : 'bg-gradient-to-r from-green-50 to-emerald-50'
                           }`}>
                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 sm:mb-4">
@@ -1028,27 +1030,15 @@ export default function PlayerDetailPage() {
                                   </svg>
                                   <h3 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{contract.team_name}</h3>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
-                                  <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                  <span className="font-medium">{contract.acquisition_season_name || contract.acquisition_season}</span>
-                                  {contract.release_season && (
-                                    <>
-                                      <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                      </svg>
-                                      <span className="font-medium">{contract.release_season}</span>
-                                    </>
-                                  )}
-                                </div>
                               </div>
                               <span className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-bold shadow-sm whitespace-nowrap ${
                                 contract.status === 'released'
                                   ? 'bg-red-500 text-white'
+                                  : contract.status === 'swapped'
+                                  ? 'bg-blue-500 text-white'
                                   : 'bg-green-500 text-white'
                               }`}>
-                                {contract.status === 'released' ? '🔴 Released' : '🟢 Active'}
+                                {contract.status === 'released' ? '🔴 Released' : contract.status === 'swapped' ? '🔄 Swapped' : '🟢 Active'}
                               </span>
                             </div>
                           </div>
@@ -1056,19 +1046,30 @@ export default function PlayerDetailPage() {
                           {/* Card body */}
                           <div className="p-4 sm:p-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                              {/* Acquisition details */}
+                              {/* Acquisition/Swap details */}
                               <div className="space-y-3 sm:space-y-4">
                                 <div className="flex items-center gap-2 mb-2 sm:mb-3">
-                                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                  </svg>
-                                  <h4 className="text-base sm:text-lg font-semibold text-gray-900">Acquisition</h4>
+                                  {contract.type === 'swap' ? (
+                                    <>
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                      </svg>
+                                      <h4 className="text-base sm:text-lg font-semibold text-gray-900">Swap In</h4>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                      </svg>
+                                      <h4 className="text-base sm:text-lg font-semibold text-gray-900">Acquisition</h4>
+                                    </>
+                                  )}
                                 </div>
                                 
-                                <div className="bg-green-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-green-200">
-                                  <p className="text-xs sm:text-sm text-gray-600 mb-1">Transfer Fee</p>
-                                  <p className="text-2xl sm:text-3xl font-bold text-green-700">
-                                    £{contract.acquisition_amount?.toLocaleString() || 0}
+                                <div className={`${contract.type === 'swap' ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} rounded-lg sm:rounded-xl p-3 sm:p-4 border`}>
+                                  <p className="text-xs sm:text-sm text-gray-600 mb-1">{contract.type === 'swap' ? 'Swap Value' : 'Acquisition Value'}</p>
+                                  <p className={`text-2xl sm:text-3xl font-bold ${contract.type === 'swap' ? 'text-blue-700' : 'text-green-700'}`}>
+                                    £{contract.acquisition_value?.toLocaleString() || 0}
                                   </p>
                                 </div>
 
@@ -1130,6 +1131,38 @@ export default function PlayerDetailPage() {
                                       <span className="text-xs sm:text-sm text-gray-600">Timing</span>
                                       <span className="text-xs sm:text-sm font-semibold text-gray-900 capitalize">
                                         {contract.release_timing === 'mid' ? 'Mid-Season' : 'Start of Season'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Swap details */}
+                              {contract.status === 'swapped' && (
+                                <div className="space-y-3 sm:space-y-4">
+                                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                    </svg>
+                                    <h4 className="text-base sm:text-lg font-semibold text-gray-900">Swap</h4>
+                                  </div>
+                                  
+                                  <div className="bg-blue-50 rounded-lg sm:rounded-xl p-3 sm:p-4 border border-blue-200">
+                                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Contract Ended</p>
+                                    <p className="text-base sm:text-lg font-bold text-blue-700">
+                                      Player was swapped to another team
+                                    </p>
+                                  </div>
+
+                                  {contract.end_date && (
+                                    <div className="flex items-center justify-between p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                                      <span className="text-xs sm:text-sm text-gray-600">Swap Date</span>
+                                      <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                        {new Date(contract.end_date).toLocaleDateString('en-GB', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: 'numeric'
+                                        })}
                                       </span>
                                     </div>
                                   )}

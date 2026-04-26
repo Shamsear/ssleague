@@ -13,14 +13,18 @@ export async function GET(
   try {
     const { id } = await params;
     
+    console.log('=== CONTRACT HISTORY DEBUG ===');
+    console.log('Requested player ID:', id);
+    
     // First, get the player's player_id from the database
     const playerData = await sql`
       SELECT player_id FROM footballplayers WHERE id = ${id}
     `;
     
     const playerIdForTransactions = playerData[0]?.player_id || id;
+    console.log('Player ID for transactions:', playerIdForTransactions);
     
-    // Fetch all transactions for this player from Firebase using player_id
+    // Fetch transactions from Firebase for cross-reference only
     const transactionsSnapshot = await adminDb
       .collection('transactions')
       .where('player_id', '==', playerIdForTransactions.toString())
@@ -32,94 +36,85 @@ export async function GET(
         ...doc.data()
       }))
       .sort((a: any, b: any) => {
-        // Sort by created_at in descending order (newest first)
         const aTime = a.created_at?._seconds || a.created_at?.seconds || 0;
         const bTime = b.created_at?._seconds || b.created_at?.seconds || 0;
         return bTime - aTime;
       });
     
-    // Fetch all winning bids for this player from Neon to build contract history
-    // NOTE: bids.player_id stores the footballplayers.id (not player_id column)
-    const winningBids = await sql`
+    console.log('Firebase transactions found:', transactions.length);
+    console.log('Transaction types:', transactions.map((t: any) => t.transaction_type));
+    
+    // Fetch ALL player history from Neon (primary source for contract history)
+    const playerHistory = await sql`
       SELECT 
-        b.id,
-        b.round_id,
-        b.team_id,
-        b.amount,
-        b.encrypted_bid_data,
-        b.created_at as bid_time,
-        b.season_id,
+        ph.player_id,
+        ph.team_id,
         t.name as team_name,
-        r.position as round_number
-      FROM bids b
-      LEFT JOIN teams t ON b.team_id = t.id
-      LEFT JOIN rounds r ON b.round_id::text = r.id::text
-      WHERE b.player_id = ${id}
-        AND b.status = 'won'
-      ORDER BY b.created_at ASC
+        ph.season_id,
+        ph.acquisition_type,
+        ph.acquisition_date,
+        ph.acquisition_value,
+        ph.status,
+        ph.end_date,
+        ph.end_reason,
+        ph.transaction_id,
+        ph.contract_start_season,
+        ph.contract_end_season
+      FROM player_history ph
+      LEFT JOIN teams t ON ph.team_id = t.id
+      WHERE ph.player_id = ${playerIdForTransactions.toString()}
+      ORDER BY ph.acquisition_date ASC
     `;
     
-    // Build player roadmap
-    const roadmap = [];
+    console.log('Player history records found:', playerHistory.length);
+    console.log('Player history details:', JSON.stringify(playerHistory, null, 2));
     
-    // Process winning bids to create contract periods
-    for (const bid of winningBids) {
-      const acquisitionSeason = bid.season_id;
+    // Build roadmap from player_history
+    console.log('Building roadmap from player_history...');
+    const roadmap = playerHistory.map((history: any) => {
+      const baseData = {
+        team_id: history.team_id,
+        team_name: history.team_name,
+        season_id: history.season_id,
+        acquisition_date: history.acquisition_date,
+        acquisition_value: history.acquisition_value,
+        status: history.status,
+        end_date: history.end_date,
+        end_reason: history.end_reason,
+        transaction_id: history.transaction_id,
+        contract_start_season: history.contract_start_season,
+        contract_end_season: history.contract_end_season
+      };
       
-      // Try to get bid amount from amount column or decrypt encrypted_bid_data
-      let bidAmount = bid.amount;
-      if (!bidAmount && bid.encrypted_bid_data) {
-        try {
-          const decrypted = decryptBidData(bid.encrypted_bid_data);
-          bidAmount = decrypted.amount;
-        } catch (err) {
-          console.error('Failed to decrypt bid:', err);
-          bidAmount = 0;
-        }
+      if (history.acquisition_type === 'swap') {
+        return {
+          type: 'swap',
+          ...baseData
+        };
+      } else if (history.acquisition_type === 'auction') {
+        return {
+          type: 'auction',
+          ...baseData,
+          acquisition_amount: history.acquisition_value
+        };
+      } else {
+        return {
+          type: history.acquisition_type || 'unknown',
+          ...baseData
+        };
       }
-      bidAmount = bidAmount || 0;
-      
-      // Check if there's a release transaction for this player from this team
-      const releaseTransaction = transactions.find(
-        (t: any) => 
-          t.transaction_type === 'release' && 
-          t.team_id === bid.team_id &&
-          t.season_id >= acquisitionSeason
-      );
-      
-      roadmap.push({
-        type: 'contract',
-        team_id: bid.team_id,
-        team_name: bid.team_name,
-        acquisition_season: acquisitionSeason,
-        acquisition_season_name: acquisitionSeason, // Use season_id as name since we don't have seasons table
-        acquisition_amount: bidAmount,
-        acquisition_date: bid.bid_time,
-        acquisition_round: bid.round_number,
-        release_season: releaseTransaction?.release_season || null,
-        release_season_name: releaseTransaction?.season_id || null,
-        release_amount: releaseTransaction?.refund_amount || null,
-        release_date: releaseTransaction?.created_at 
-          ? (releaseTransaction.created_at._seconds 
-              ? new Date(releaseTransaction.created_at._seconds * 1000).toISOString()
-              : releaseTransaction.created_at)
-          : null,
-        release_timing: releaseTransaction?.release_timing || null,
-        contract_duration: 2, // Default 2 seasons
-        status: releaseTransaction ? 'released' : 'active'
-      });
-    }
+    });
     
-    // Separate release transactions
-    const releases = transactions.filter((t: any) => t.transaction_type === 'release');
+    console.log('Final roadmap entries:', roadmap.length);
+    console.log('Roadmap summary:', roadmap.map((r: any) => ({ type: r.type, team: r.team_name, date: r.acquisition_date })));
+    console.log('=== END CONTRACT HISTORY DEBUG ===');
     
     return NextResponse.json({
       success: true,
       data: {
-        transactions,
-        releases,
-        roadmap,
-        winningBids
+        transactions, // For cross-reference only
+        playerHistory,
+        roadmap
       }
     });
   } catch (error: any) {
