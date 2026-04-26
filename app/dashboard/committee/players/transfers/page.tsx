@@ -10,9 +10,10 @@ import FootballPlayerForm from './FootballPlayerForm';
 import ReleaseRealPlayerForm from './ReleaseRealPlayerForm';
 import ReleaseFootballPlayerForm from './ReleaseFootballPlayerForm';
 import BulkReleaseFootballPlayerForm from './BulkReleaseFootballPlayerForm';
+import BulkSwapForm from './BulkSwapForm';
 import Link from 'next/link';
 
-type TabType = 'transfer' | 'swap' | 'release' | 'bulk_release';
+type TabType = 'transfer' | 'swap' | 'bulk_swap' | 'release' | 'bulk_release';
 
 export default function PlayerTransfersPage() {
   const { user, loading } = useAuth();
@@ -167,6 +168,15 @@ export default function PlayerTransfersPage() {
                       🔄 Swap Players
                     </button>
                     <button
+                      onClick={() => setActiveTab('bulk_swap')}
+                      className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'bulk_swap'
+                        ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                    >
+                      🔄🔄 Bulk Swap
+                    </button>
+                    <button
                       onClick={() => setActiveTab('release')}
                       className={`flex-1 py-4 px-6 text-center font-semibold transition-all ${activeTab === 'release'
                         ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
@@ -194,11 +204,18 @@ export default function PlayerTransfersPage() {
                       <h3 className="font-semibold text-gray-900 mb-2">How Football Player Swaps Work</h3>
                       <ul className="text-sm text-gray-700 space-y-1">
                         <li>• Exchange team assignments AND acquisition values between two players</li>
-                        <li>• First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
+                        <li>• First 6 swaps FREE, 7th swap = 100, 8th swap = 125</li>
                         <li>• Values are swapped: Player A gets Player B's value, Player B gets Player A's value</li>
                       </ul>
                     </div>
                     <FootballPlayerForm key={playerType} />
+                  </div>
+                )}
+
+                {/* Football Player Bulk Swap */}
+                {activeTab === 'bulk_swap' && (
+                  <div>
+                    <BulkSwapForm />
                   </div>
                 )}
 

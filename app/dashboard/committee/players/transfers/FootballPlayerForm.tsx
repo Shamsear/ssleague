@@ -419,7 +419,7 @@ export default function FootballPlayerForm() {
         <h3 className="font-semibold text-green-900 mb-2">⚽ Football Player Swap</h3>
         <ul className="text-sm text-green-800 space-y-1">
           <li>• <strong>Swap:</strong> Exchange team assignments AND acquisition values between two players</li>
-          <li>• <strong>Swap Fees:</strong> First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
+          <li>• <strong>Swap Fees:</strong> First 6 swaps FREE, 7th swap = 100, 8th swap = 125</li>
           <li>• <strong>Values are swapped:</strong> Player A gets Player B's value, Player B gets Player A's value</li>
         </ul>
       </div>

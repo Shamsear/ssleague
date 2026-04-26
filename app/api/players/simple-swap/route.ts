@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuctionDb } from '@/lib/neon/auction-config';
 import { adminDb } from '@/lib/firebase/admin';
 import admin from 'firebase-admin';
+import { closePlayerHistory, createPlayerHistory, getTeamName } from '@/lib/player-history';
 
 /**
  * POST /api/players/simple-swap
@@ -46,7 +47,11 @@ export async function POST(request: NextRequest) {
 
     const sql = getAuctionDb();
 
+    console.log('🔍 Simple swap request:', { player_a_id, player_b_id, season_id });
+
     // Fetch both players with their positions
+    // Note: footballplayers table doesn't always have season_id set for active players
+    // We'll validate they're assigned to teams instead
     const playersQuery = `
       SELECT 
         id,
@@ -56,19 +61,37 @@ export async function POST(request: NextRequest) {
         overall_rating,
         position,
         position_group,
-        acquisition_value
+        acquisition_value,
+        season_id,
+        status,
+        is_sold
       FROM footballplayers
-      WHERE player_id IN ($1, $2) AND season_id = $3
+      WHERE player_id IN ($1, $2)
     `;
     
-    const players = await sql.query(playersQuery, [player_a_id, player_b_id, season_id]);
+    const players = await sql.query(playersQuery, [player_a_id, player_b_id]);
+
+    console.log('📊 Players found:', players.length, players.map((p: any) => ({ 
+      id: p.player_id, 
+      name: p.player_name, 
+      team: p.team_id, 
+      season: p.season_id,
+      status: p.status,
+      is_sold: p.is_sold
+    })));
 
     if (players.length !== 2) {
       return NextResponse.json(
         {
           success: false,
-          error: 'One or both players not found',
-          errorCode: 'PLAYER_NOT_FOUND'
+          error: `One or both players not found. Found ${players.length} player(s). Make sure both players exist in the database.`,
+          errorCode: 'PLAYER_NOT_FOUND',
+          debug: {
+            player_a_id,
+            player_b_id,
+            season_id,
+            found_count: players.length
+          }
         },
         { status: 404 }
       );
@@ -85,6 +108,29 @@ export async function POST(request: NextRequest) {
           errorCode: 'PLAYER_NOT_FOUND'
         },
         { status: 404 }
+      );
+    }
+
+    // Validate players are assigned to teams (not free agents)
+    if (!playerA.team_id || playerA.status === 'free_agent' || !playerA.is_sold) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${playerA.player_name} is not assigned to a team (free agent or not sold)`,
+          errorCode: 'PLAYER_NOT_ASSIGNED'
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!playerB.team_id || playerB.status === 'free_agent' || !playerB.is_sold) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${playerB.player_name} is not assigned to a team (free agent or not sold)`,
+          errorCode: 'PLAYER_NOT_ASSIGNED'
+        },
+        { status: 400 }
       );
     }
 
@@ -128,10 +174,10 @@ export async function POST(request: NextRequest) {
 
     // Calculate fees based on swap count
     const calculateFee = (swapNumber: number): number => {
-      if (swapNumber <= 3) return 0;      // First 3 swaps are free
-      if (swapNumber === 4) return 100;   // 4th swap costs 100
-      if (swapNumber === 5) return 125;   // 5th swap costs 125
-      return 150; // 6th+ swaps cost 150 (or reject if you want max 5)
+      if (swapNumber <= 6) return 0;      // First 6 swaps are free
+      if (swapNumber === 7) return 100;   // 7th swap costs 100
+      if (swapNumber === 8) return 125;   // 8th swap costs 125
+      return 150; // 9th+ swaps cost 150
     };
 
     const teamAFee = calculateFee(teamASwapCount);
@@ -167,20 +213,20 @@ export async function POST(request: NextRequest) {
     await sql.query('BEGIN');
 
     try {
-      // Update Player A to Player B's team AND Player B's acquisition_value
+      // Update Player A to Player B's team AND swap acquisition_value
       await sql.query(
         `UPDATE footballplayers 
          SET team_id = $1, acquisition_value = $2, updated_at = NOW() 
-         WHERE player_id = $3 AND season_id = $4`,
-        [playerB.team_id, playerB.acquisition_value, player_a_id, season_id]
+         WHERE player_id = $3`,
+        [playerB.team_id, playerB.acquisition_value, player_a_id]
       );
 
-      // Update Player B to Player A's team AND Player A's acquisition_value
+      // Update Player B to Player A's team AND swap acquisition_value
       await sql.query(
         `UPDATE footballplayers 
          SET team_id = $1, acquisition_value = $2, updated_at = NOW() 
-         WHERE player_id = $3 AND season_id = $4`,
-        [playerA.team_id, playerA.acquisition_value, player_b_id, season_id]
+         WHERE player_id = $3`,
+        [playerA.team_id, playerA.acquisition_value, player_b_id]
       );
 
       // Update team_players table (uses footballplayers.id, not player_id)
@@ -188,9 +234,9 @@ export async function POST(request: NextRequest) {
       const updatePlayerAResult = await sql.query(
         `UPDATE team_players 
          SET team_id = $1, updated_at = NOW() 
-         WHERE player_id = $2 AND season_id = $3
+         WHERE player_id = $2
          RETURNING id`,
-        [playerB.team_id, playerA.id, season_id]
+        [playerB.team_id, playerA.id]
       );
       
       console.log(`Updated Player A in team_players: ${updatePlayerAResult.length} rows affected`);
@@ -199,14 +245,87 @@ export async function POST(request: NextRequest) {
       const updatePlayerBResult = await sql.query(
         `UPDATE team_players 
          SET team_id = $1, updated_at = NOW() 
-         WHERE player_id = $2 AND season_id = $3
+         WHERE player_id = $2
          RETURNING id`,
-        [playerA.team_id, playerB.id, season_id]
+        [playerA.team_id, playerB.id]
       );
       
       console.log(`Updated Player B in team_players: ${updatePlayerBResult.length} rows affected`);
 
       await sql.query('COMMIT');
+
+      // Create transaction record in Firebase player_transactions
+      const transactionRef = adminDb.collection('player_transactions').doc();
+      const transactionId = transactionRef.id;
+      
+      await transactionRef.set({
+        transaction_type: 'swap',
+        player_a_id: playerA.player_id,
+        player_a_name: playerA.player_name,
+        player_b_id: playerB.player_id,
+        player_b_name: playerB.player_name,
+        player_type: 'football',
+        team_a_id: playerA.team_id,
+        team_b_id: playerB.team_id,
+        season_id: season_id,
+        fee_team_a: teamAFee,
+        fee_team_b: teamBFee,
+        processed_by: swapped_by,
+        processed_by_name: swapped_by_name,
+        created_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log('✅ Transaction record created:', transactionId);
+
+      // Update player history
+      try {
+        // Get team names from Firebase
+        const [teamADoc, teamBDoc] = await Promise.all([
+          adminDb.collection('teams').doc(playerA.team_id).get(),
+          adminDb.collection('teams').doc(playerB.team_id).get()
+        ]);
+        
+        const teamAName = teamADoc.exists ? teamADoc.data()?.name : 'Unknown Team';
+        const teamBName = teamBDoc.exists ? teamBDoc.data()?.name : 'Unknown Team';
+
+        // Close old history records
+        await closePlayerHistory(playerA.player_id, playerA.team_id, 'swap', season_id, transactionId);
+        await closePlayerHistory(playerB.player_id, playerB.team_id, 'swap', season_id, transactionId);
+
+        // Create new history records
+        await createPlayerHistory({
+          playerId: playerA.player_id,
+          playerName: playerA.player_name,
+          position: playerA.position,
+          teamId: playerB.team_id,
+          teamName: teamBName,
+          seasonId: season_id,
+          acquisitionType: 'swap',
+          acquisitionValue: playerB.acquisition_value, // Gets Player B's value
+          contractStartSeason: season_id,
+          contractEndSeason: season_id,
+          transactionId: transactionId
+        });
+
+        await createPlayerHistory({
+          playerId: playerB.player_id,
+          playerName: playerB.player_name,
+          position: playerB.position,
+          teamId: playerA.team_id,
+          teamName: teamAName,
+          seasonId: season_id,
+          acquisitionType: 'swap',
+          acquisitionValue: playerA.acquisition_value, // Gets Player A's value
+          contractStartSeason: season_id,
+          contractEndSeason: season_id,
+          transactionId: transactionId
+        });
+
+        console.log('✅ Player history updated');
+      } catch (historyError) {
+        console.error('Error updating player history:', historyError);
+        // Continue even if history update fails
+      }
 
       // Update team budgets, swap counts, and position counts in Firestore
       const batch = adminDb.batch();

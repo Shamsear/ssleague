@@ -7,8 +7,6 @@ import Link from 'next/link';
 import { History, Download, Filter, ArrowUpDown } from 'lucide-react';
 import { fetchWithTokenRefresh } from '@/lib/token-refresh';
 import { usePermissions } from '@/hooks/usePermissions';
-import { db } from '@/lib/firebase/config';
-import { collection, query, where, getDocs, orderBy, limit as fbLimit } from 'firebase/firestore';
 
 interface TransferTransaction {
   id: string;
@@ -154,114 +152,34 @@ export default function TransferHistoryPage() {
     try {
       setIsLoading(true);
       
-      // Query ALL transfer transactions to get available seasons
-      // Then filter by selected season if one is chosen
-      const q = query(
-        collection(db, 'transactions')
-      );
-      
-      const snapshot = await getDocs(q);
-      
-      const allTxns: TransferTransaction[] = [];
-      const seasonsSet = new Set<string>();
-      
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        
-        // Only include transfer-related transactions: release, transfer, swap
-        const transferTypes = ['release', 'transfer', 'swap', 'player_transfer', 'player_swap'];
-        if (!transferTypes.includes(data.transaction_type)) {
-          return; // Skip non-transfer transactions
-        }
-        
-        // Collect unique seasons from transactions
-        if (data.season_id) {
-          seasonsSet.add(data.season_id);
-        }
-        
-        // Apply season filter if selected (otherwise show current season by default)
-        const seasonToFilter = selectedSeason || userSeasonId;
-        if (data.season_id !== seasonToFilter) {
-          return;
-        }
-        
-        // Apply type filter if selected
-        if (selectedType && data.transaction_type !== selectedType) {
-          return;
-        }
-        
-        // Apply player type filter if selected (real/football)
-        if (selectedPlayerType) {
-          const txPlayerType = data.player_type || data.player?.type || data.player_a?.type;
-          if (txPlayerType !== selectedPlayerType) {
-            return;
-          }
-        }
-        
-        // Apply team filter if selected - use team_id for accurate matching
-        if (selectedTeamId) {
-          const matchesTeam = 
-            data.team_id === selectedTeamId ||
-            data.old_team_id === selectedTeamId ||
-            data.new_team_id === selectedTeamId ||
-            data.teams?.team_a_id === selectedTeamId ||
-            data.teams?.team_b_id === selectedTeamId;
-          
-          if (!matchesTeam) {
-            return;
-          }
-        }
-        
-        allTxns.push({
-          id: doc.id,
-          transaction_type: data.transaction_type,
-          season_id: data.season_id,
-          processed_by: data.processed_by || '',
-          processed_by_name: data.processed_by_name || 'Unknown',
-          created_at: data.created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-          // Release fields
-          player_name: data.player_name,
-          player_type: data.player_type,
-          team_id: data.team_id,
-          team_name: data.team_name,
-          auction_value: data.auction_value,
-          refund_amount: data.refund_amount,
-          refund_percentage: data.refund_percentage,
-          release_timing: data.release_timing,
-          release_season: data.release_season,
-          original_contract_start: data.original_contract_start,
-          original_contract_end: data.original_contract_end,
-          // Transfer fields
-          player: data.player,
-          old_team_id: data.old_team_id,
-          new_team_id: data.new_team_id,
-          values: data.values,
-          star_rating: data.star_rating,
-          financial: data.financial,
-          new_salary: data.new_salary,
-          // Swap fields
-          player_a: data.player_a,
-          player_b: data.player_b,
-          teams: data.teams,
-        });
+      // Build query params
+      const params = new URLSearchParams({
+        season_id: selectedSeason || userSeasonId,
+        page: currentPage.toString(),
+        limit: limit.toString(),
       });
+
+      if (selectedTeamId) params.append('team_id', selectedTeamId);
+      if (selectedType) params.append('type', selectedType);
+      if (selectedPlayerType) params.append('player_type', selectedPlayerType);
+
+      // Fetch from API
+      const response = await fetchWithTokenRefresh(`/api/transfers/history?${params.toString()}`);
       
-      // Update available seasons (sorted in descending order)
-      const sortedSeasons = Array.from(seasonsSet).sort().reverse();
-      setAvailableSeasons(sortedSeasons);
+      if (!response.ok) {
+        throw new Error('Failed to fetch transfer history');
+      }
+
+      const result = await response.json();
       
-      // Sort by date (newest first)
-      allTxns.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      
-      setTotalCount(allTxns.length);
-      
-      // Apply pagination
-      const startIndex = currentPage * limit;
-      const endIndex = startIndex + limit;
-      const paginatedTxns = allTxns.slice(startIndex, endIndex);
-      
-      setTransactions(paginatedTxns);
-      setHasMore(endIndex < allTxns.length);
+      if (result.success) {
+        setTransactions(result.data.transactions);
+        setTotalCount(result.data.totalCount);
+        setHasMore(result.data.hasMore);
+        setAvailableSeasons(result.data.availableSeasons);
+      } else {
+        throw new Error(result.error || 'Failed to fetch transfer history');
+      }
       
     } catch (error) {
       console.error('Error loading transactions:', error);
@@ -441,6 +359,7 @@ export default function TransferHistoryPage() {
                 <option value="player_transfer">Player Transfers (Old)</option>
                 <option value="swap">Player Swaps</option>
                 <option value="player_swap">Player Swaps (Old)</option>
+                <option value="football_swap">Football Swaps</option>
               </select>
             </div>
             <div>
@@ -575,33 +494,52 @@ export default function TransferHistoryPage() {
                           <p className="text-xs text-blue-600 font-semibold mb-2">Player A</p>
                           <p className="font-bold text-gray-900 mb-1">{tx.player_a?.name}</p>
                           <div className="text-xs space-y-1">
-                            <p>Value: {tx.player_a?.old_value.toFixed(2)} → {tx.player_a?.new_value.toFixed(2)}</p>
-                            <p>Stars: {tx.player_a?.old_star}⭐ → {tx.player_a?.new_star}⭐</p>
+                            {tx.player_a?.old_value > 0 && (
+                              <p>Value: {tx.player_a?.old_value.toFixed(2)} → {tx.player_a?.new_value.toFixed(2)}</p>
+                            )}
+                            {tx.player_a?.old_star > 0 && (
+                              <p>Stars: {tx.player_a?.old_star}⭐ → {tx.player_a?.new_star}⭐</p>
+                            )}
                             <p>Team: {tx.teams?.team_a_id}</p>
+                            {tx.teams?.team_a_pays > 0 && (
+                              <p className="text-red-600 font-semibold">Fee: £{tx.teams.team_a_pays}</p>
+                            )}
                           </div>
                         </div>
                         <div className="bg-purple-50 rounded-xl p-4">
                           <p className="text-xs text-purple-600 font-semibold mb-2">Player B</p>
                           <p className="font-bold text-gray-900 mb-1">{tx.player_b?.name}</p>
                           <div className="text-xs space-y-1">
-                            <p>Value: {tx.player_b?.old_value.toFixed(2)} → {tx.player_b?.new_value.toFixed(2)}</p>
-                            <p>Stars: {tx.player_b?.old_star}⭐ → {tx.player_b?.new_star}⭐</p>
+                            {tx.player_b?.old_value > 0 && (
+                              <p>Value: {tx.player_b?.old_value.toFixed(2)} → {tx.player_b?.new_value.toFixed(2)}</p>
+                            )}
+                            {tx.player_b?.old_star > 0 && (
+                              <p>Stars: {tx.player_b?.old_star}⭐ → {tx.player_b?.new_star}⭐</p>
+                            )}
                             <p>Team: {tx.teams?.team_b_id}</p>
+                            {tx.teams?.team_b_pays > 0 && (
+                              <p className="text-red-600 font-semibold">Fee: £{tx.teams.team_b_pays}</p>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-4 border-t">
-                        <div>
-                          <p className="text-xs text-gray-600">Total Fees</p>
-                          <p className="text-sm font-bold text-purple-600">{tx.financial?.total_committee_fees?.toFixed(2)}</p>
+                      <div className="flex items-center justify-center">
+                        <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg">
+                          {tx.player_a?.name} ↔ {tx.player_b?.name}
                         </div>
-                        {tx.financial?.cash_amount && tx.financial.cash_amount > 0 && (
-                          <div>
-                            <p className="text-xs text-gray-600">Cash</p>
-                            <p className="text-sm font-bold text-green-600">{tx.financial.cash_amount.toFixed(2)}</p>
-                          </div>
-                        )}
                       </div>
+                      {tx.financial?.total_committee_fees !== undefined && tx.financial.total_committee_fees > 0 && (
+                        <div className="pt-4 border-t text-center">
+                          <p className="text-xs text-gray-600">Total Swap Fees</p>
+                          <p className="text-lg font-bold text-purple-600">£{tx.financial.total_committee_fees.toFixed(2)}</p>
+                        </div>
+                      )}
+                      {tx.financial?.cash_amount && tx.financial.cash_amount > 0 && (
+                        <div className="pt-2 text-center">
+                          <p className="text-xs text-gray-600">Cash Transfer</p>
+                          <p className="text-sm font-bold text-green-600">£{tx.financial.cash_amount.toFixed(2)}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

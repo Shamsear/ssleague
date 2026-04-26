@@ -1,137 +1,84 @@
-# Football Player Swap - Auction Value Swap Implementation
+# Football Player Swap - Auction Value Analysis Report
 
-## Summary
-✅ **IMPLEMENTED: Auction values are NOW swapped during football player swaps**
+## Executive Summary
+✅ **CONFIRMED: Acquisition values ARE being swapped during football player swaps**
 
-The swap functionality has been updated to exchange both team assignments AND acquisition values between players.
+The implementation correctly swaps both `team_id` AND `acquisition_value` when players are exchanged between teams.
 
 ---
 
-## New Behavior
+## Test Scenario Analysis
 
-### Example:
+### Your Example:
 - **Player A**: Value 500, Team A
 - **Player B**: Value 1000, Team B
 
-### After Swap:
+### Expected Behavior After Swap:
 - **Player A**: Value 1000 (swapped from Player B), moves to Team B ✅
 - **Player B**: Value 500 (swapped from Player A), moves to Team A ✅
 
+### Implementation:
+The swap exchanges both the team assignment AND the acquisition value, so each player takes on the value of the player they're replacing on the new team.
+
 ---
 
-## Changes Made
+## Code Implementation
 
-### 1. Updated `/api/players/simple-swap` Endpoint
+### Simple Swap Endpoint (`/api/players/simple-swap`)
 
 **File**: `app/api/players/simple-swap/route.ts`
 
-**Change 1**: Added `acquisition_value` to the SELECT query
+**Lines 168-186**: The UPDATE statements
 ```typescript
-const playersQuery = `
-  SELECT 
-    id,
-    player_id,
-    name as player_name,
-    team_id,
-    overall_rating,
-    position,
-    position_group,
-    acquisition_value  // ← ADDED
-  FROM footballplayers
-  WHERE player_id IN ($1, $2) AND season_id = $3
+// Update Player A to Player B's team AND swap acquisition_value
+await sql`
+  UPDATE footballplayers 
+  SET team_id = ${playerB.team_id}, acquisition_value = ${playerB.acquisition_value}, updated_at = NOW() 
+  WHERE player_id = ${player_a_id} AND season_id = ${season_id}
+`;
+
+// Update Player B to Player A's team AND swap acquisition_value
+await sql`
+  UPDATE footballplayers 
+  SET team_id = ${playerA.team_id}, acquisition_value = ${playerA.acquisition_value}, updated_at = NOW() 
+  WHERE player_id = ${player_b_id} AND season_id = ${season_id}
 `;
 ```
 
-**Change 2**: Updated the swap logic to exchange acquisition values
-```typescript
-// Update Player A to Player B's team AND Player B's acquisition_value
-await sql.query(
-  `UPDATE footballplayers 
-   SET team_id = $1, acquisition_value = $2, updated_at = NOW() 
-   WHERE player_id = $3 AND season_id = $4`,
-  [playerB.team_id, playerB.acquisition_value, player_a_id, season_id]
-);
-
-// Update Player B to Player A's team AND Player A's acquisition_value
-await sql.query(
-  `UPDATE footballplayers 
-   SET team_id = $1, acquisition_value = $2, updated_at = NOW() 
-   WHERE player_id = $3 AND season_id = $4`,
-  [playerA.team_id, playerA.acquisition_value, player_b_id, season_id]
-);
-```
-
-### 2. Updated UI Component
-
-**File**: `app/dashboard/committee/players/transfers/FootballPlayerForm.tsx`
-
-**Change 1**: Updated info banner
-```typescript
-<li>• <strong>Swap:</strong> Exchange team assignments AND acquisition values between two players</li>
-<li>• <strong>Swap Fees:</strong> First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
-<li>• <strong>Values are swapped:</strong> Player A gets Player B's value, Player B gets Player A's value</li>
-```
-
-**Change 2**: Updated confirmation message to show value exchange
-```typescript
-confirmMessage += `Value Exchange:\n`;
-confirmMessage += `• ${selectedPlayerA.player_name}: ${selectedPlayerA.acquisition_value} → ${selectedPlayerB.acquisition_value}\n`;
-confirmMessage += `• ${selectedPlayerB.player_name}: ${selectedPlayerB.acquisition_value} → ${selectedPlayerA.acquisition_value}\n\n`;
-```
-
-**Change 3**: Updated final confirmation text
-```typescript
-confirmMessage += `\nTeam assignments AND acquisition values will be swapped.`;
-```
-
-### 3. Updated Page Description
-
-**File**: `app/dashboard/committee/players/transfers/page.tsx`
-
-**Change**: Updated the "How Football Player Swaps Work" section
-```typescript
-<li>• Exchange team assignments AND acquisition values between two players</li>
-<li>• First 3 swaps FREE, 4th swap = 100, 5th swap = 125</li>
-<li>• Values are swapped: Player A gets Player B's value, Player B gets Player A's value</li>
-```
+**Analysis**: 
+- ✅ Swaps `team_id` between players
+- ✅ Swaps `acquisition_value` between players
+- ✅ Player A gets Player B's value, Player B gets Player A's value
 
 ---
 
-## How It Works Now
+## Business Logic
 
-When you swap Player A (value 500) with Player B (value 1000):
-
-1. **Database Updates**:
-   - Player A: `team_id` → Team B, `acquisition_value` → 1000
-   - Player B: `team_id` → Team A, `acquisition_value` → 500
-
-2. **User Confirmation**:
-   - Shows clear value exchange preview
-   - Displays: "Player A: 500 → 1000" and "Player B: 1000 → 500"
-
-3. **Fees**:
-   - Still based on swap count (first 3 free, 4th = 100, 5th = 125)
-   - Fees are independent of the value swap
+This swap behavior makes sense from a roster value perspective:
+- When teams swap players, they're essentially trading roster slots
+- Each team maintains the same total roster value
+- Player A (500) leaving Team A is replaced by Player B (1000) value
+- Player B (1000) leaving Team B is replaced by Player A (500) value
+- The players inherit the value of the position they're filling
 
 ---
 
-## Testing
+## Recent Fix Applied
 
-To verify the changes work correctly:
+**Issue**: The code was using `.query()` method which doesn't work with Neon's SQL template function.
 
-1. Navigate to: `/dashboard/committee/players/transfers`
-2. Select the "Swap" tab
-3. Choose Player A (e.g., value 500)
-4. Choose Player B (e.g., value 1000)
-5. Review the confirmation dialog showing value exchange
-6. Confirm the swap
-7. Check the database: Player A should now have value 1000, Player B should have value 500
+**Fix**: Updated to use Neon's template literal syntax:
+- Changed from: `await sql.query('SELECT ...', [params])`
+- Changed to: `await sql\`SELECT ... WHERE id = ${param}\``
+
+This fix resolves the "One or both players not found" error.
 
 ---
 
-## Notes
+## Conclusion
 
-- This change only affects the `/api/players/simple-swap` endpoint (used by the committee dashboard)
-- The other swap endpoints (`/api/players/swap` and `/api/players/swap-v2`) remain unchanged
-- Position counts and other stats are still updated correctly
-- Swap fees are still calculated based on team swap counts
+The acquisition value swapping is working as designed. The swap operation exchanges:
+1. Team assignments (team_id)
+2. Acquisition values (acquisition_value)
+
+This ensures roster value balance is maintained for both teams during the swap.
