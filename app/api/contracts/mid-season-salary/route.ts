@@ -29,6 +29,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Parse the current season number for contract comparison.
+    // Season IDs like "16", "16.5", "17", "17.5" are parsed as floats.
+    const currentSeasonNum = parseFloat(seasonId);
+
     // Get season
     const seasonRef = adminDb.collection('seasons').doc(seasonId);
     const seasonDoc = await seasonRef.get();
@@ -93,19 +97,49 @@ export async function POST(request: NextRequest) {
           teamSalaryTotal = customAmounts[teamId];
           console.log(`  Using custom amount: €${teamSalaryTotal.toFixed(2)}`);
 
-          // Get player count
+          // Get player count — count ALL active-contract players for this team
           const countResult = await sql`
             SELECT COUNT(*) as count FROM footballplayers
-            WHERE team_id = ${teamId} AND season_id = ${seasonId}
+            WHERE team_id = ${teamId}
+              AND is_sold = true
+              AND (
+                (
+                    contract_start_season IS NOT NULL
+                    AND contract_end_season IS NOT NULL
+                    AND contract_status IS DISTINCT FROM 'expired'
+                    AND CAST(contract_start_season AS FLOAT) <= ${currentSeasonNum}
+                    AND CAST(contract_end_season AS FLOAT) >= ${currentSeasonNum}
+                )
+                OR
+                (
+                    contract_start_season IS NULL
+                    AND season_id = ${seasonId}
+                )
+              )
           `;
           playerCount = parseInt(countResult[0]?.count) || 0;
           console.log(`  Players: ${playerCount}`);
         } else {
-          // Calculate from players
+          // Calculate from ALL players with an active contract for this team
+          // (may span multiple seasons due to 2-season contracts)
           const footballPlayers = await sql`
             SELECT player_id, acquisition_value FROM footballplayers
             WHERE team_id = ${teamId}
-            AND season_id = ${seasonId}
+              AND is_sold = true
+              AND (
+                (
+                    contract_start_season IS NOT NULL
+                    AND contract_end_season IS NOT NULL
+                    AND contract_status IS DISTINCT FROM 'expired'
+                    AND CAST(contract_start_season AS FLOAT) <= ${currentSeasonNum}
+                    AND CAST(contract_end_season AS FLOAT) >= ${currentSeasonNum}
+                )
+                OR
+                (
+                    contract_start_season IS NULL
+                    AND season_id = ${seasonId}
+                )
+              )
           `;
 
           playerCount = footballPlayers.length;

@@ -23,6 +23,8 @@ interface TeamPreview {
     name: string;
     auctionValue: number;
     salary: number;
+    contractSeason?: string; // Season when player was contracted
+    contractEnd?: string;    // Season when contract ends
   }[];
 }
 
@@ -331,6 +333,7 @@ _This is an automated salary deduction for the mid-season period._`;
             <div>
               <h3 className="font-semibold text-blue-900 mb-2">About Mid-Season Salary</h3>
               <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Shows <strong>all players with an active contract</strong> — including those signed in previous seasons</li>
                 <li>• Football player salaries = 10% of auction value per half-season</li>
                 <li>• Deducted from team's Euro balance</li>
                 <li>• Review and adjust amounts before processing</li>
@@ -525,12 +528,19 @@ _This is an automated salary deduction for the mid-season period._`;
                       {/* Player Details */}
                       {expandedTeam === team.teamId && (
                         <div className="mt-4 pt-4 border-t">
-                          <h5 className="font-semibold mb-2">Players:</h5>
+                          <h5 className="font-semibold mb-2">Players ({team.players.length}):</h5>
                           <div className="space-y-1 max-h-60 overflow-y-auto">
                             {team.players.map((player) => (
-                              <div key={player.id} className="flex justify-between text-sm bg-white p-2 rounded">
-                                <span>{player.name}</span>
-                                <span className="text-gray-600">
+                              <div key={player.id} className="flex justify-between items-center text-sm bg-white p-2 rounded">
+                                <div>
+                                  <span className="font-medium">{player.name}</span>
+                                  {player.contractSeason && (
+                                    <span className="ml-2 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                      S{player.contractSeason}{player.contractEnd ? `→${player.contractEnd}` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-gray-600 shrink-0 ml-2">
                                   €{player.auctionValue} → €{player.salary.toFixed(2)}
                                 </span>
                               </div>
