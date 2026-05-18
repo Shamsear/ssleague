@@ -16,6 +16,8 @@ interface GroupTeam {
   goals_against: number;
   goal_difference: number;
   points: number;
+  points_deducted?: number;
+  raw_points?: number;
   position: number;
   qualifies: boolean;
 }
@@ -32,6 +34,8 @@ interface TeamStats {
   goals_against: number;
   goal_difference: number;
   points: number;
+  points_deducted?: number;
+  raw_points?: number;
 }
 
 interface ShareableLeaderboardProps {
@@ -280,7 +284,7 @@ export default function ShareableLeaderboard({
                 <tr className="bg-gray-100 text-gray-700 text-xs font-bold uppercase">
                   <th className="py-3 px-2 text-center border border-gray-300">Rank</th>
                   <th className="py-3 px-4 text-left border border-gray-300">TEAM</th>
-                  <th className="py-3 px-2 text-center border border-gray-300">P</th>
+                  <th className="py-3 px-2 text-center border border-gray-300">PTS</th>
                   <th className="py-3 px-2 text-center border border-gray-300">MP</th>
                   <th className="py-3 px-2 text-center border border-gray-300">W</th>
                   <th className="py-3 px-2 text-center border border-gray-300">D</th>
@@ -289,7 +293,7 @@ export default function ShareableLeaderboard({
                   <th className="py-3 px-2 text-center border border-gray-300">A</th>
                   <th className="py-3 px-2 text-center border border-gray-300">GD</th>
                   <th className="py-3 px-2 text-center border border-gray-300">%</th>
-                  <th className="py-3 px-2 text-center border border-gray-300">EP</th>
+                  <th className="py-3 px-2 text-center border border-gray-300 text-red-600">PD</th>
                 </tr>
               </thead>
               <tbody>
@@ -334,7 +338,14 @@ export default function ShareableLeaderboard({
                     
                     {/* Points */}
                     <td className="py-3 px-2 text-center border border-gray-300 bg-blue-200">
-                      <span className="font-bold text-gray-900">{team.points}</span>
+                      <div className="flex flex-col items-center justify-center">
+                        <span className="font-bold text-gray-900">{team.points}</span>
+                        {(team.points_deducted || 0) > 0 && (
+                          <span className="text-red-600 text-[10px] font-black leading-none mt-0.5">
+                            (-{team.points_deducted})
+                          </span>
+                        )}
+                      </div>
                     </td>
                     
                     {/* Matches Played */}
@@ -382,14 +393,16 @@ export default function ShareableLeaderboard({
                     <td className="py-3 px-2 text-center border border-gray-300 bg-blue-200">
                       <span className="text-gray-700">
                         {team.matches_played > 0 
-                          ? Math.round((team.points / (team.matches_played * 3)) * 100)
+                          ? Math.round(((team.raw_points ?? team.points) / (team.matches_played * 3)) * 100)
                           : 0}
                       </span>
                     </td>
                     
-                    {/* Extra Points (placeholder) */}
-                    <td className="py-3 px-2 text-center border border-gray-300">
-                      <span className="text-gray-700">0</span>
+                    {/* Points Deducted */}
+                    <td className="py-3 px-2 text-center border border-gray-300 bg-red-50">
+                      <span className="font-semibold text-red-600">
+                        {team.points_deducted || 0}
+                      </span>
                     </td>
                   </tr>
                 ))}
