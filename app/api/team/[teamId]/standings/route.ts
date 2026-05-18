@@ -33,6 +33,7 @@ export async function GET(
         ts.goals_against,
         ts.goal_difference,
         ts.points,
+        COALESCE(ts.points_deducted, 0) as points_deducted,
         ts.position,
         t.tournament_name
       FROM teamstats ts
@@ -63,7 +64,8 @@ export async function GET(
         goalsFor: stats.goals_for || 0,
         goalsAgainst: stats.goals_against || 0,
         goalDifference: stats.goal_difference || 0,
-        points: stats.points || 0
+        points: stats.points || 0,
+        points_deducted: stats.points_deducted || 0
       }
     });
   } catch (error: any) {

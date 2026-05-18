@@ -102,7 +102,13 @@ export async function GET(
     // Handle different tournament formats
     if (tournament.has_group_stage) {
       // Group Stage format - calculate standings per group
-      const groupStandings = await calculateGroupStandings(fixtures, tournament.teams_advancing_per_group || 2);
+      const groupStandings = await calculateGroupStandings(
+        fixtures,
+        tournament.teams_advancing_per_group || 2,
+        sql,
+        tournamentId,
+        tournament.season_id
+      );
       
       return NextResponse.json({
         success: true,
@@ -125,7 +131,7 @@ export async function GET(
     } else {
       // League format (or League + Knockout)
       const leagueFixtures = fixtures.filter(f => !f.knockout_round);
-      const standings = await calculateLeagueStandings(leagueFixtures, sql);
+      const standings = await calculateLeagueStandings(leagueFixtures, sql, tournamentId, tournament.season_id);
       
       // Get playoff teams from tournament settings
       const tournamentSettings = await sql`
@@ -158,8 +164,26 @@ export async function GET(
   }
 }
 
-async function calculateLeagueStandings(fixtures: any[], sql: any) {
+async function calculateLeagueStandings(fixtures: any[], sql: any, tournamentId: string, seasonId: string | null) {
   const teamStats: Record<string, any> = {};
+
+  // Fetch points deducted from teamstats
+  const deductionsMap = new Map<string, number>();
+  if (tournamentId) {
+    try {
+      const deductions = await sql`
+        SELECT team_id, COALESCE(points_deducted, 0) as points_deducted
+        FROM teamstats
+        WHERE tournament_id = ${tournamentId}
+          ${seasonId ? sql`AND season_id = ${seasonId}` : sql``}
+      `;
+      deductions.forEach((d: any) => {
+        deductionsMap.set(d.team_id, Number(d.points_deducted) || 0);
+      });
+    } catch (err) {
+      console.error('Error fetching deductions in calculateLeagueStandings:', err);
+    }
+  }
 
   fixtures.forEach((fixture) => {
     const homeTeamId = fixture.home_team_id;
@@ -181,6 +205,7 @@ async function calculateLeagueStandings(fixtures: any[], sql: any) {
         goals_against: 0,
         goal_difference: 0,
         points: 0,
+        points_deducted: deductionsMap.get(homeTeamId) || 0,
       };
     }
     if (!teamStats[awayTeamId]) {
@@ -196,6 +221,7 @@ async function calculateLeagueStandings(fixtures: any[], sql: any) {
         goals_against: 0,
         goal_difference: 0,
         points: 0,
+        points_deducted: deductionsMap.get(awayTeamId) || 0,
       };
     }
 
@@ -248,10 +274,16 @@ async function calculateLeagueStandings(fixtures: any[], sql: any) {
   }
 
   // Calculate goal difference and sort
-  const standings = Object.values(teamStats).map((team: any) => ({
-    ...team,
-    goal_difference: team.goals_for - team.goals_against,
-  })).sort((a: any, b: any) => {
+  const standings = Object.values(teamStats).map((team: any) => {
+    const rawPoints = Number(team.points) || 0;
+    const pointsDeducted = Number(team.points_deducted) || 0;
+    return {
+      ...team,
+      points: rawPoints - pointsDeducted,
+      raw_points: rawPoints,
+      goal_difference: team.goals_for - team.goals_against,
+    };
+  }).sort((a: any, b: any) => {
     if (b.points !== a.points) return b.points - a.points;
     if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
     return b.goals_for - a.goals_for;
@@ -260,8 +292,32 @@ async function calculateLeagueStandings(fixtures: any[], sql: any) {
   return standings;
 }
 
-async function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) {
+async function calculateGroupStandings(
+  fixtures: any[],
+  teamsAdvancing: number,
+  sql: any,
+  tournamentId: string,
+  seasonId: string | null
+) {
   const groups: Record<string, any> = {};
+
+  // Fetch points deducted from teamstats
+  const deductionsMap = new Map<string, number>();
+  if (tournamentId) {
+    try {
+      const deductions = await sql`
+        SELECT team_id, COALESCE(points_deducted, 0) as points_deducted
+        FROM teamstats
+        WHERE tournament_id = ${tournamentId}
+          ${seasonId ? sql`AND season_id = ${seasonId}` : sql``}
+      `;
+      deductions.forEach((d: any) => {
+        deductionsMap.set(d.team_id, Number(d.points_deducted) || 0);
+      });
+    } catch (err) {
+      console.error('Error fetching deductions in calculateGroupStandings:', err);
+    }
+  }
 
   // Filter only group stage fixtures
   const groupFixtures = fixtures.filter(f => f.group_name);
@@ -292,6 +348,7 @@ async function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) 
         goals_against: 0,
         goal_difference: 0,
         points: 0,
+        points_deducted: deductionsMap.get(homeTeamId) || 0,
         position: 0,
         qualifies: false,
       };
@@ -310,6 +367,7 @@ async function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) 
         goals_against: 0,
         goal_difference: 0,
         points: 0,
+        points_deducted: deductionsMap.get(awayTeamId) || 0,
         position: 0,
         qualifies: false,
       };
@@ -376,10 +434,16 @@ async function calculateGroupStandings(fixtures: any[], teamsAdvancing: number) 
   const sortedGroups: Record<string, any[]> = {};
 
   Object.keys(groups).forEach((groupName) => {
-    const teams = Object.values(groups[groupName]).map((team: any) => ({
-      ...team,
-      goal_difference: team.goals_for - team.goals_against,
-    })).sort((a: any, b: any) => {
+    const teams = Object.values(groups[groupName]).map((team: any) => {
+      const rawPoints = Number(team.points) || 0;
+      const pointsDeducted = Number(team.points_deducted) || 0;
+      return {
+        ...team,
+        points: rawPoints - pointsDeducted,
+        raw_points: rawPoints,
+        goal_difference: team.goals_for - team.goals_against,
+      };
+    }).sort((a: any, b: any) => {
       if (b.points !== a.points) return b.points - a.points;
       if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
       return b.goals_for - a.goals_for;

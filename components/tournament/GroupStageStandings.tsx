@@ -15,6 +15,8 @@ interface GroupTeam {
   goals_against: number;
   goal_difference: number;
   points: number;
+  points_deducted?: number;
+  raw_points?: number;
   position: number;
   qualifies: boolean;
 }
@@ -204,8 +206,16 @@ export default function GroupStageStandings({ groupStandings, currentUserId }: G
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">
+                      <span 
+                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800"
+                        title={team.points_deducted ? `Base Points: ${team.raw_points ?? (team.points + team.points_deducted)} | Deductions: -${team.points_deducted}` : undefined}
+                      >
                         {team.points}
+                        {(team.points_deducted || 0) > 0 && (
+                          <span className="text-red-600 text-[10px] ml-1 font-bold">
+                            (-{team.points_deducted})
+                          </span>
+                        )}
                       </span>
                     </td>
                   </tr>
@@ -251,15 +261,25 @@ export default function GroupStageStandings({ groupStandings, currentUserId }: G
                       team.qualifies ? 'bg-green-50' : 'bg-gray-50'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-500 w-4">{index + 1}</span>
-                      <span className="text-sm font-medium text-gray-900 truncate max-w-[120px]">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-xs font-bold text-gray-500 w-4 flex-shrink-0">{index + 1}</span>
+                      <span className="text-sm font-medium text-gray-900 truncate flex-1">
                         {team.team_name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-[#0066FF]">{team.points}</span>
-                      {team.qualifies && <span className="text-green-600 text-xs">✓</span>}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span 
+                        className="text-sm font-bold text-[#0066FF]"
+                        title={team.points_deducted ? `Base Points: ${team.raw_points ?? (team.points + team.points_deducted)} | Deductions: -${team.points_deducted}` : undefined}
+                      >
+                        {team.points}
+                        {(team.points_deducted || 0) > 0 && (
+                          <span className="text-red-500 text-[10px] ml-0.5 font-bold">
+                            (-{team.points_deducted})
+                          </span>
+                        )}
+                      </span>
+                      {team.qualifies && <span className="text-green-600 text-xs font-bold">✓</span>}
                     </div>
                   </div>
                 ))}

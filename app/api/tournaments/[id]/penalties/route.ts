@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { recalculatePositions } from '@/lib/neon/teamstats';
 
 // GET - List all penalties for a tournament
 export async function GET(
@@ -176,7 +177,9 @@ export async function POST(
 
         console.log(`✅ Teamstats update result: ${updateResult.count} row(s) affected`);
 
-        if (updateResult.count === 0) {
+        if (updateResult.count > 0 && season_id) {
+            await recalculatePositions(season_id, id);
+        } else if (updateResult.count === 0) {
             console.warn(`⚠️ No teamstats row found for tournament ${id}, team ${team_id}`);
         }
 

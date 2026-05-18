@@ -14,6 +14,8 @@ interface TeamStats {
   goals_against: number;
   goal_difference: number;
   points: number;
+  points_deducted?: number;
+  raw_points?: number;
 }
 
 interface LeagueStandingsTableProps {
@@ -137,8 +139,16 @@ export default function LeagueStandingsTable({
                     </div>
                     
                     <div className="text-right">
-                      <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">
+                      <div 
+                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800"
+                        title={team.points_deducted ? `Base Points: ${team.raw_points ?? (team.points + team.points_deducted)} | Deductions: -${team.points_deducted}` : undefined}
+                      >
                         {team.points} pts
+                        {(team.points_deducted || 0) > 0 && (
+                          <span className="text-red-600 text-[10px] ml-1 font-bold">
+                            (-{team.points_deducted})
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -317,8 +327,16 @@ export default function LeagueStandingsTable({
                         </span>
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-center">
-                        <span className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-blue-100 text-blue-800">
+                        <span 
+                          className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-blue-100 text-blue-800"
+                          title={team.points_deducted ? `Base Points: ${team.raw_points ?? (team.points + team.points_deducted)} | Deductions: -${team.points_deducted}` : undefined}
+                        >
                           {team.points}
+                          {(team.points_deducted || 0) > 0 && (
+                            <span className="text-red-600 text-[10px] ml-1 font-bold">
+                              (-{team.points_deducted})
+                            </span>
+                          )}
                         </span>
                       </td>
                     </tr>
@@ -359,7 +377,7 @@ export default function LeagueStandingsTable({
               <h3 className="text-lg font-bold text-gray-900">Current Leader</h3>
               <p className="text-2xl font-extrabold text-yellow-600 mt-1">{topTeam.team_name}</p>
               <p className="text-sm text-gray-600 mt-1">
-                {topTeam.points} points • {topTeam.wins} wins • GD: {topTeam.goal_difference > 0 ? '+' : ''}{topTeam.goal_difference}
+                {topTeam.points} points{(topTeam.points_deducted || 0) > 0 && ` (-${topTeam.points_deducted} penalty)`} • {topTeam.wins} wins • GD: {topTeam.goal_difference > 0 ? '+' : ''}{topTeam.goal_difference}
               </p>
             </div>
           </div>

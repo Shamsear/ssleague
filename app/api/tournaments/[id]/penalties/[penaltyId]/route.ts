@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { recalculatePositions } from '@/lib/neon/teamstats';
 
 // DELETE - Remove/reverse a penalty
 export async function DELETE(
@@ -68,13 +69,17 @@ export async function DELETE(
         const totalPenalties = activePenalties[0].total;
 
         // Update teamstats
-        await sql`
+        const updateResult = await sql`
       UPDATE teamstats
       SET points_deducted = ${totalPenalties},
           updated_at = NOW()
       WHERE tournament_id = ${id}
       AND team_id = ${penalty.team_id}
     `;
+
+        if (updateResult.count > 0 && penalty.season_id) {
+            await recalculatePositions(penalty.season_id, id);
+        }
 
         console.log(`✅ Penalty removed: ${penalty.team_name} +${penalty.points_deducted} points restored (${removal_reason})`);
 

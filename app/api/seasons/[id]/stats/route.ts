@@ -25,11 +25,12 @@ export async function GET(
         SUM(goals_for) as goals_scored,
         SUM(goals_against) as goals_conceded,
         SUM(points) as points,
+        SUM(COALESCE(points_deducted, 0)) as points_deducted,
         MIN(position) as rank
       FROM teamstats
       WHERE LOWER(season_id) = LOWER(${seasonId})
       GROUP BY team_id, team_name
-      ORDER BY points DESC, (SUM(goals_for) - SUM(goals_against)) DESC
+      ORDER BY (SUM(points) - SUM(COALESCE(points_deducted, 0))) DESC, (SUM(goals_for) - SUM(goals_against)) DESC
     `;
 
     console.log(`[Season Stats API] Found ${teamStats.length} teams`);
@@ -109,19 +110,24 @@ export async function GET(
     console.log(`[Season Stats API] Found ${playerStats.length} players`);
 
     // Combine team stats with logos
-    const teams = teamStats.map((team, index) => ({
-      team_id: team.team_id,
-      team_name: team.team_name,
-      rank: team.rank || index + 1,
-      matches_played: parseInt(team.matches_played) || 0,
-      wins: parseInt(team.wins) || 0,
-      draws: parseInt(team.draws) || 0,
-      losses: parseInt(team.losses) || 0,
-      goals_scored: parseInt(team.goals_scored) || 0,
-      goals_conceded: parseInt(team.goals_conceded) || 0,
-      points: parseInt(team.points) || 0,
-      logo_url: teamsMap.get(team.team_id)?.logo_url || null
-    }));
+    const teams = teamStats.map((team, index) => {
+      const rawPoints = parseInt(team.points) || 0;
+      const pointsDeducted = parseInt(team.points_deducted) || 0;
+      return {
+        team_id: team.team_id,
+        team_name: team.team_name,
+        rank: team.rank || index + 1,
+        matches_played: parseInt(team.matches_played) || 0,
+        wins: parseInt(team.wins) || 0,
+        draws: parseInt(team.draws) || 0,
+        losses: parseInt(team.losses) || 0,
+        goals_scored: parseInt(team.goals_scored) || 0,
+        goals_conceded: parseInt(team.goals_conceded) || 0,
+        points: rawPoints - pointsDeducted, // Display net points
+        points_deducted: pointsDeducted,
+        logo_url: teamsMap.get(team.team_id)?.logo_url || null
+      };
+    });
 
     // Format player stats
     const players = playerStats.map(player => ({

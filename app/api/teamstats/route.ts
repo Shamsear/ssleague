@@ -32,12 +32,23 @@ export async function GET(request: NextRequest) {
         COALESCE(points_deducted, 0) as points_deducted
       FROM teamstats
       WHERE tournament_id = ${tournamentId}
-      ORDER BY points DESC, goal_difference DESC, goals_for DESC
+      ORDER BY (points - COALESCE(points_deducted, 0)) DESC, goal_difference DESC, goals_for DESC
     `;
+
+        const formattedTeamStats = teamStats.map((team: any) => {
+            const rawPoints = Number(team.points) || 0;
+            const pointsDeducted = Number(team.points_deducted) || 0;
+            return {
+                ...team,
+                points: rawPoints - pointsDeducted,
+                raw_points: rawPoints,
+                points_deducted: pointsDeducted
+            };
+        });
 
         return NextResponse.json({
             success: true,
-            teamStats: teamStats,
+            teamStats: formattedTeamStats,
         });
     } catch (error) {
         console.error('Error fetching team stats:', error);

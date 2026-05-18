@@ -60,12 +60,13 @@ export async function GET(
 
         if (fixtures.length === 0) {
             // No fixtures yet, try teamstats as fallback
-            standings = await sql`
+            const rawStandings = await sql`
         SELECT 
           ts.id,
           ts.team_id,
           ts.position,
           ts.points,
+          COALESCE(ts.points_deducted, 0) as points_deducted,
           ts.wins,
           ts.draws,
           ts.losses,
@@ -77,12 +78,38 @@ export async function GET(
           AND ts.tournament_id = ${tournamentId}
         ORDER BY ts.position ASC
       `;
+            standings = rawStandings.map((team: any) => {
+                const rawPoints = Number(team.points) || 0;
+                const pointsDeducted = Number(team.points_deducted) || 0;
+                return {
+                    ...team,
+                    points: rawPoints - pointsDeducted,
+                    raw_points: rawPoints
+                };
+            });
         } else {
             // Calculate standings from fixtures
+                // Fetch points deducted from teamstats
+                const deductionsMap = new Map<string, number>();
+                try {
+                    const deductions = await sql`
+                        SELECT team_id, COALESCE(points_deducted, 0) as points_deducted
+                        FROM teamstats
+                        WHERE tournament_id = ${tournamentId}
+                          AND season_id = ${seasonId}
+                    `;
+                    deductions.forEach((d: any) => {
+                        deductionsMap.set(d.team_id, Number(d.points_deducted) || 0);
+                    });
+                } catch (err) {
+                    console.error('Error fetching deductions in standings-with-budgets:', err);
+                }
+
                 const teamStats = new Map<string, {
                     team_id: string;
                     team_name: string;
                     points: number;
+                    points_deducted: number;
                     wins: number;
                     draws: number;
                     losses: number;
@@ -99,6 +126,7 @@ export async function GET(
                             team_id: fixture.home_team_id,
                             team_name: fixture.home_team_name,
                             points: 0,
+                            points_deducted: deductionsMap.get(fixture.home_team_id) || 0,
                             wins: 0,
                             draws: 0,
                             losses: 0,
@@ -114,6 +142,7 @@ export async function GET(
                             team_id: fixture.away_team_id,
                             team_name: fixture.away_team_name,
                             points: 0,
+                            points_deducted: deductionsMap.get(fixture.away_team_id) || 0,
                             wins: 0,
                             draws: 0,
                             losses: 0,
@@ -156,8 +185,18 @@ export async function GET(
                     awayTeam.goal_difference = awayTeam.goals_for - awayTeam.goals_against;
                 }
 
-                // Convert to array and sort by points, then goal difference
-                const sortedTeams = Array.from(teamStats.values()).sort((a, b) => {
+                // Convert to array, map net points, and sort
+                const mappedTeams = Array.from(teamStats.values()).map((team: any) => {
+                    const rawPoints = Number(team.points) || 0;
+                    const pointsDeducted = Number(team.points_deducted) || 0;
+                    return {
+                        ...team,
+                        points: rawPoints - pointsDeducted,
+                        raw_points: rawPoints
+                    };
+                });
+
+                const sortedTeams = mappedTeams.sort((a, b) => {
                     if (b.points !== a.points) return b.points - a.points;
                     if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
                     if (b.goals_for !== a.goals_for) return b.goals_for - a.goals_for;
@@ -170,6 +209,8 @@ export async function GET(
                     team_id: team.team_id,
                     position: index + 1,
                     points: team.points,
+                    raw_points: team.raw_points,
+                    points_deducted: team.points_deducted || 0,
                     wins: team.wins,
                     draws: team.draws,
                     losses: team.losses,
