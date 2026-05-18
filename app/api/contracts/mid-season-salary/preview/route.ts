@@ -32,10 +32,16 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Parse the current season number for contract comparison.
-        // Season IDs like "16", "16.5", "17", "17.5" are parsed as floats
-        // so comparisons work correctly across half-season boundaries.
-        const currentSeasonNum = parseFloat(seasonId);
+        // Extract the numeric portion of the season ID for contract comparisons.
+        // Season IDs are formatted like "SSPSLS16", "SSPSLS16.5", "SSPSLS17" etc.
+        // We strip non-numeric prefix characters so "SSPSLS16" → 16, "SSPSLS17" → 17.
+        const currentSeasonNum = parseFloat(seasonId.replace(/[^0-9.]/g, ''));
+        if (isNaN(currentSeasonNum)) {
+            return NextResponse.json(
+                { error: `Cannot parse season number from seasonId: ${seasonId}` },
+                { status: 400 }
+            );
+        }
 
         // Get all team_seasons for this season
         const teamSeasonsSnapshot = await adminDb
@@ -73,21 +79,22 @@ export async function GET(request: NextRequest) {
                     season_id,
                     contract_start_season,
                     contract_end_season,
-                    contract_status
+                    status
                 FROM footballplayers
                 WHERE team_id = ${teamId}
                   AND is_sold = true
                   AND (
-                    -- Players with explicit contract fields: check if contract covers current season
+                    -- Players with explicit contract fields: check if contract covers current season.
+                    -- Use REGEXP_REPLACE to strip non-numeric prefix from season IDs (e.g. "SSPSLS16" → 16)
                     (
                         contract_start_season IS NOT NULL
                         AND contract_end_season IS NOT NULL
-                        AND contract_status IS DISTINCT FROM 'expired'
-                        AND CAST(contract_start_season AS FLOAT) <= ${currentSeasonNum}
-                        AND CAST(contract_end_season AS FLOAT) >= ${currentSeasonNum}
+                        AND status IS DISTINCT FROM 'expired'
+                        AND CAST(REGEXP_REPLACE(contract_start_season, '[^0-9.]', '', 'g') AS FLOAT) <= ${currentSeasonNum}
+                        AND CAST(REGEXP_REPLACE(contract_end_season,   '[^0-9.]', '', 'g') AS FLOAT) >= ${currentSeasonNum}
                     )
                     OR
-                    -- Legacy players without contract fields: match by season_id
+                    -- Legacy players without contract fields: match by season_id directly
                     (
                         contract_start_season IS NULL
                         AND season_id = ${seasonId}

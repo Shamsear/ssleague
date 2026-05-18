@@ -29,9 +29,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse the current season number for contract comparison.
-    // Season IDs like "16", "16.5", "17", "17.5" are parsed as floats.
-    const currentSeasonNum = parseFloat(seasonId);
+    // Extract the numeric portion of the season ID for contract comparisons.
+    // Season IDs are formatted like "SSPSLS16", "SSPSLS16.5", "SSPSLS17" etc.
+    const currentSeasonNum = parseFloat(seasonId.replace(/[^0-9.]/g, ''));
+    if (isNaN(currentSeasonNum)) {
+      return NextResponse.json(
+        { error: `Cannot parse season number from seasonId: ${seasonId}` },
+        { status: 400 }
+      );
+    }
 
     // Get season
     const seasonRef = adminDb.collection('seasons').doc(seasonId);
@@ -106,9 +112,9 @@ export async function POST(request: NextRequest) {
                 (
                     contract_start_season IS NOT NULL
                     AND contract_end_season IS NOT NULL
-                    AND contract_status IS DISTINCT FROM 'expired'
-                    AND CAST(contract_start_season AS FLOAT) <= ${currentSeasonNum}
-                    AND CAST(contract_end_season AS FLOAT) >= ${currentSeasonNum}
+                    AND status IS DISTINCT FROM 'expired'
+                    AND CAST(REGEXP_REPLACE(contract_start_season, '[^0-9.]', '', 'g') AS FLOAT) <= ${currentSeasonNum}
+                    AND CAST(REGEXP_REPLACE(contract_end_season,   '[^0-9.]', '', 'g') AS FLOAT) >= ${currentSeasonNum}
                 )
                 OR
                 (
@@ -130,9 +136,9 @@ export async function POST(request: NextRequest) {
                 (
                     contract_start_season IS NOT NULL
                     AND contract_end_season IS NOT NULL
-                    AND contract_status IS DISTINCT FROM 'expired'
-                    AND CAST(contract_start_season AS FLOAT) <= ${currentSeasonNum}
-                    AND CAST(contract_end_season AS FLOAT) >= ${currentSeasonNum}
+                    AND status IS DISTINCT FROM 'expired'
+                    AND CAST(REGEXP_REPLACE(contract_start_season, '[^0-9.]', '', 'g') AS FLOAT) <= ${currentSeasonNum}
+                    AND CAST(REGEXP_REPLACE(contract_end_season,   '[^0-9.]', '', 'g') AS FLOAT) >= ${currentSeasonNum}
                 )
                 OR
                 (
