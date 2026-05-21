@@ -42,6 +42,7 @@
     "lucide-react": "^0.545.0",
     "nanoid": "^5.1.6",
     "next": "^16.0.10",
+    "nextjs-toploader": "^3.9.17",
     "papaparse": "^5.5.3",
     "pg": "^8.16.3",
     "prisma": "^6.17.1",

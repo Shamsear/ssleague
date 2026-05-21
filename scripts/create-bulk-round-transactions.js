@@ -23,7 +23,7 @@ const db = admin.firestore();
 const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL);
 
 const SEASON_ID = 'SSPSLS17';
-const ROUNDS = ['SSPSLFBR00008', 'SSPSLFBR00009'];
+const ROUNDS = ['SSPSLFBR00012', 'SSPSLFBR00011'];
 
 async function createBulkRoundTransactions() {
   console.log('🚀 Creating Missing Transactions for Bulk Rounds...\n');
