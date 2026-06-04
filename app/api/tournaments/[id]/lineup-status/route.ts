@@ -30,6 +30,14 @@ export async function GET(
             AND team_id = f.home_team_id
             AND submitted_at IS NOT NULL
         ) as home_lineup_submitted,
+        -- Get home team submission time
+        (
+          SELECT submitted_at FROM lineups 
+          WHERE fixture_id = f.id 
+            AND team_id = f.home_team_id
+            AND submitted_at IS NOT NULL
+          LIMIT 1
+        ) as home_submitted_at,
         -- Check if away team has submitted lineup
         EXISTS(
           SELECT 1 FROM lineups 
@@ -37,6 +45,14 @@ export async function GET(
             AND team_id = f.away_team_id
             AND submitted_at IS NOT NULL
         ) as away_lineup_submitted,
+        -- Get away team submission time
+        (
+          SELECT submitted_at FROM lineups 
+          WHERE fixture_id = f.id 
+            AND team_id = f.away_team_id
+            AND submitted_at IS NOT NULL
+          LIMIT 1
+        ) as away_submitted_at,
         -- Count home team lineup players
         COALESCE((
           SELECT jsonb_array_length(starting_xi) 

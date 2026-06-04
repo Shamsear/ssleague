@@ -16,6 +16,8 @@ interface FixtureLineupStatus {
   away_team_name: string;
   home_lineup_submitted: boolean;
   away_lineup_submitted: boolean;
+  home_submitted_at: string | null;
+  away_submitted_at: string | null;
   home_lineup_count: number;
   away_lineup_count: number;
   home_total_players: number;
@@ -58,6 +60,34 @@ export default function LineupStatusPage() {
   const [showViewLineupModal, setShowViewLineupModal] = useState(false);
   const [viewLineupData, setViewLineupData] = useState<any>(null);
   const [isLoadingViewLineup, setIsLoadingViewLineup] = useState(false);
+
+  // Helper function to format submission time
+  const formatSubmissionTime = (timestamp: string | null): string => {
+    if (!timestamp) return 'Not submitted';
+    
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    // Format: "2 mins ago", "3 hours ago", "2 days ago", or full date if older
+    if (diffMins < 60) {
+      return `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours} hr${diffHours !== 1 ? 's' : ''} ago`;
+    } else if (diffDays < 7) {
+      return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+  };
 
   useEffect(() => {
     if (loading) return; // Wait for auth to complete
@@ -489,6 +519,9 @@ export default function LineupStatusPage() {
                                   <span className="text-xs text-gray-500 mt-1 hidden md:block">
                                     {fixture.home_lineup_count}
                                   </span>
+                                  <span className="text-xs text-gray-600 mt-1 hidden md:block font-medium">
+                                    {formatSubmissionTime(fixture.home_submitted_at)}
+                                  </span>
                                 </div>
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
@@ -509,6 +542,9 @@ export default function LineupStatusPage() {
                                   </span>
                                   <span className="text-xs text-gray-500 mt-1 hidden md:block">
                                     {fixture.away_lineup_count}
+                                  </span>
+                                  <span className="text-xs text-gray-600 mt-1 hidden md:block font-medium">
+                                    {formatSubmissionTime(fixture.away_submitted_at)}
                                   </span>
                                 </div>
                               ) : (
