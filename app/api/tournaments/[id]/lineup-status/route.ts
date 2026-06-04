@@ -85,7 +85,6 @@ export async function GET(
         ), 0) as away_total_players
       FROM fixtures f
       WHERE f.tournament_id = ${tournamentId}
-        AND f.status IN ('scheduled', 'in_progress')
       ORDER BY f.round_number ASC, f.match_number ASC
     `;
 

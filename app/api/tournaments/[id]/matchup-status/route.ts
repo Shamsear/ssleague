@@ -35,13 +35,7 @@ export async function GET(
           WHEN f.matchups_created_by IS NOT NULL THEN
             CASE
               WHEN f.matchups_created_by = 'system_auto' THEN 'System (Auto)'
-              WHEN f.home_team_id IN (
-                SELECT team_id FROM team_members WHERE user_id = f.matchups_created_by
-              ) THEN f.home_team_name
-              WHEN f.away_team_id IN (
-                SELECT team_id FROM team_members WHERE user_id = f.matchups_created_by
-              ) THEN f.away_team_name
-              ELSE 'Unknown'
+              ELSE 'Manual'
             END
           ELSE NULL
         END as created_by_team_name,
