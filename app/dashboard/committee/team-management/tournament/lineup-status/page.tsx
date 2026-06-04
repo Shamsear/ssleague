@@ -76,6 +76,20 @@ export default function LineupStatusPage() {
     });
   };
 
+  // Helper function for shorter mobile format
+  const formatSubmissionTimeMobile = (timestamp: string | null): string => {
+    if (!timestamp) return '-';
+    
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   useEffect(() => {
     if (loading) return; // Wait for auth to complete
 
@@ -497,17 +511,20 @@ export default function LineupStatusPage() {
                                 {fixture.home_team_name}
                               </div>
                             </td>
-                            <td className="px-3 md:px-6 py-4 whitespace-nowrap text-center">
+                            <td className="px-3 md:px-6 py-4 text-center">
                               {fixture.home_lineup_submitted ? (
-                                <div className="flex flex-col items-center">
+                                <div className="flex flex-col items-center gap-1">
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                     ✓
                                   </span>
-                                  <span className="text-xs text-gray-500 mt-1 hidden md:block">
+                                  <span className="text-xs text-gray-500">
                                     {fixture.home_lineup_count}
                                   </span>
-                                  <span className="text-xs text-gray-600 mt-1 hidden md:block font-medium">
+                                  <span className="text-xs text-gray-600 font-medium hidden md:block">
                                     {formatSubmissionTime(fixture.home_submitted_at)}
+                                  </span>
+                                  <span className="text-xs text-gray-600 font-medium md:hidden max-w-[100px] text-center leading-tight">
+                                    {formatSubmissionTimeMobile(fixture.home_submitted_at)}
                                   </span>
                                 </div>
                               ) : (
@@ -521,17 +538,20 @@ export default function LineupStatusPage() {
                                 {fixture.away_team_name}
                               </div>
                             </td>
-                            <td className="px-3 md:px-6 py-4 whitespace-nowrap text-center">
+                            <td className="px-3 md:px-6 py-4 text-center">
                               {fixture.away_lineup_submitted ? (
-                                <div className="flex flex-col items-center">
+                                <div className="flex flex-col items-center gap-1">
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                     ✓
                                   </span>
-                                  <span className="text-xs text-gray-500 mt-1 hidden md:block">
+                                  <span className="text-xs text-gray-500">
                                     {fixture.away_lineup_count}
                                   </span>
-                                  <span className="text-xs text-gray-600 mt-1 hidden md:block font-medium">
+                                  <span className="text-xs text-gray-600 font-medium hidden md:block">
                                     {formatSubmissionTime(fixture.away_submitted_at)}
+                                  </span>
+                                  <span className="text-xs text-gray-600 font-medium md:hidden max-w-[100px] text-center leading-tight">
+                                    {formatSubmissionTimeMobile(fixture.away_submitted_at)}
                                   </span>
                                 </div>
                               ) : (
