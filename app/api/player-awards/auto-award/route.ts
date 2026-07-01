@@ -294,15 +294,38 @@ async function awardTournamentSpecificAwards(
         `;
 
         if (bestManager.length > 0) {
-          let manager_name = 'Unknown Manager';
+          let manager_name = '';
+          
+          // 1. Try to fetch from managers table
           try {
-            const teamDoc = await adminDb.collection('teams').doc(bestManager[0].team_id).get();
-            if (teamDoc.exists) {
-              const teamData = teamDoc.data();
-              manager_name = teamData?.owner_name || teamData?.manager_name || 'Unknown Manager';
+            const dbManager = await sql`
+              SELECT name FROM managers 
+              WHERE team_id = ${bestManager[0].team_id} 
+                AND season_id = ${seasonId}
+              LIMIT 1
+            `;
+            if (dbManager.length > 0 && dbManager[0].name) {
+              manager_name = dbManager[0].name.trim();
             }
-          } catch (firebaseErr) {
-            console.error('Error fetching manager name from Firebase:', firebaseErr);
+          } catch (dbErr) {
+            console.error('Error fetching manager from database:', dbErr);
+          }
+
+          // 2. Fallback to Firebase team owner_name
+          if (!manager_name) {
+            try {
+              const teamDoc = await adminDb.collection('teams').doc(bestManager[0].team_id).get();
+              if (teamDoc.exists) {
+                const teamData = teamDoc.data();
+                manager_name = teamData?.owner_name || teamData?.manager_name || 'Unknown Manager';
+              }
+            } catch (firebaseErr) {
+              console.error('Error fetching manager name from Firebase:', firebaseErr);
+            }
+          }
+
+          if (!manager_name) {
+            manager_name = 'Unknown Manager';
           }
 
           const result = await sql`
