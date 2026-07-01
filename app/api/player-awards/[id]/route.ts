@@ -12,13 +12,25 @@ export async function PATCH(
     const body = await request.json();
     const { instagram_link, instagram_post_url } = body;
 
-    await sql`
-      UPDATE player_awards
-      SET instagram_link = ${instagram_link || null},
-          instagram_post_url = ${instagram_post_url || null},
-          updated_at = NOW()
-      WHERE id = ${awardId}
-    `;
+    const isNewTable = typeof awardId === 'string' && awardId.startsWith('award_');
+
+    if (isNewTable) {
+      await sql`
+        UPDATE awards
+        SET instagram_link = ${instagram_link || null},
+            instagram_post_url = ${instagram_post_url || null},
+            updated_at = NOW()
+        WHERE id = ${awardId}
+      `;
+    } else {
+      await sql`
+        UPDATE player_awards
+        SET instagram_link = ${instagram_link || null},
+            instagram_post_url = ${instagram_post_url || null},
+            updated_at = NOW()
+        WHERE id = ${awardId}
+      `;
+    }
 
     return NextResponse.json({
       success: true,
@@ -42,12 +54,23 @@ export async function DELETE(
     const sql = getTournamentDb();
     const { id: awardId } = await params;
 
+    const isNewTable = typeof awardId === 'string' && awardId.startsWith('award_');
+
     // Get award details before deleting (to update awards_count)
-    const award = await sql`
-      SELECT player_id, season_id
-      FROM player_awards
-      WHERE id = ${awardId}
-    `;
+    let award;
+    if (isNewTable) {
+      award = await sql`
+        SELECT player_id, season_id
+        FROM awards
+        WHERE id = ${awardId}
+      `;
+    } else {
+      award = await sql`
+        SELECT player_id, season_id
+        FROM player_awards
+        WHERE id = ${awardId}
+      `;
+    }
 
     if (award.length === 0) {
       return NextResponse.json(
@@ -59,10 +82,17 @@ export async function DELETE(
     const { player_id, season_id } = award[0];
 
     // Delete the award
-    await sql`
-      DELETE FROM player_awards
-      WHERE id = ${awardId}
-    `;
+    if (isNewTable) {
+      await sql`
+        DELETE FROM awards
+        WHERE id = ${awardId}
+      `;
+    } else {
+      await sql`
+        DELETE FROM player_awards
+        WHERE id = ${awardId}
+      `;
+    }
 
     // Update player_season awards_count (decrement)
     await sql`

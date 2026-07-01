@@ -43,37 +43,129 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const getSeasonNumber = (id: string | null): number => {
+      if (!id) return 0;
+      const match = id.match(/\d+/);
+      return match ? parseInt(match[0]) : 0;
+    };
+    const useNewAwardsTable = getSeasonNumber(season_id) >= 16;
+
+    let teamId = null;
+    let teamName = null;
+    
+    if (award_type === 'Manager of Season') {
+      teamId = player_id;
+      try {
+        const teamStats = await sql`
+          SELECT team_name FROM teamstats
+          WHERE team_id = ${player_id} AND season_id = ${season_id}
+          LIMIT 1
+        `;
+        if (teamStats.length > 0) {
+          teamName = teamStats[0].team_name;
+        }
+      } catch (err) {
+        console.error('Error fetching team stats:', err);
+      }
+    } else {
+      try {
+        const playerStats = await sql`
+          SELECT team_id, team
+          FROM realplayerstats
+          WHERE player_id = ${player_id} AND season_id = ${season_id}
+          LIMIT 1
+        `;
+        if (playerStats.length > 0) {
+          teamId = playerStats[0].team_id;
+          teamName = playerStats[0].team;
+        }
+      } catch (err) {
+        console.error('Error fetching player team info:', err);
+      }
+    }
+
     // Insert award
-    const result = await sql`
-      INSERT INTO player_awards (
-        player_id,
-        player_name,
-        season_id,
-        award_category,
-        award_type,
-        award_position,
-        player_category,
-        awarded_by,
-        notes,
-        created_at,
-        updated_at
-      )
-      VALUES (
-        ${player_id},
-        ${player_name},
-        ${season_id},
-        ${award_category},
-        ${award_type},
-        ${award_position || null},
-        ${player_category || null},
-        'manual',
-        ${notes || 'Manually awarded by committee'},
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT (player_id, season_id, award_category, award_type, award_position) DO NOTHING
-      RETURNING *
-    `;
+    let result;
+    if (useNewAwardsTable) {
+      // Check if it already exists
+      const existing = await sql`
+        SELECT id FROM awards
+        WHERE season_id = ${season_id}
+          AND player_id = ${player_id}
+          AND award_type = ${award_type}
+          AND notes = ${notes || 'Manually awarded by committee'}
+        LIMIT 1
+      `;
+      if (existing.length > 0) {
+        return NextResponse.json(
+          { success: false, error: 'Award already exists for this player' },
+          { status: 409 }
+        );
+      }
+
+      const awardId = `award_${award_type.replace(/\s+/g, '_')}_manual_${season_id}_${Date.now()}`;
+      const performanceStats = award_position ? { position: award_position } : {};
+
+      result = await sql`
+        INSERT INTO awards (
+          id, award_type, tournament_id, season_id,
+          round_number, week_number,
+          player_id, player_name, team_id, team_name,
+          performance_stats, selected_by, selected_by_name, notes,
+          created_at, updated_at
+        )
+        VALUES (
+          ${awardId},
+          ${award_type},
+          'manual',
+          ${season_id},
+          NULL,
+          NULL,
+          ${player_id},
+          ${player_name},
+          ${teamId},
+          ${teamName},
+          ${JSON.stringify(performanceStats)},
+          'manual',
+          'Committee',
+          ${notes || 'Manually awarded by committee'},
+          NOW(),
+          NOW()
+        )
+        RETURNING *
+      `;
+    } else {
+      result = await sql`
+        INSERT INTO player_awards (
+          player_id,
+          player_name,
+          season_id,
+          award_category,
+          award_type,
+          award_position,
+          player_category,
+          awarded_by,
+          notes,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${player_id},
+          ${player_name},
+          ${season_id},
+          ${award_category},
+          ${award_type},
+          ${award_position || null},
+          ${player_category || null},
+          'manual',
+          ${notes || 'Manually awarded by committee'},
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (player_id, season_id, award_category, award_type, award_position) DO NOTHING
+        RETURNING *
+      `;
+    }
 
     if (result.length === 0) {
       return NextResponse.json(

@@ -81,6 +81,13 @@ async function awardTournamentSpecificAwards(
     const awards: any[] = [];
     let awardsGiven = 0;
 
+    const getSeasonNumber = (id: string | null): number => {
+      if (!id) return 0;
+      const match = id.match(/\d+/);
+      return match ? parseInt(match[0]) : 0;
+    };
+    const useNewAwardsTable = getSeasonNumber(seasonId) >= 16;
+
     console.log(`🏆 Awarding player awards for tournament ${tournamentId}...`);
 
     for (const awardType of awardTypes) {
@@ -121,27 +128,71 @@ async function awardTournamentSpecificAwards(
         `;
 
         if (topScorer.length > 0) {
-          const result = await sql`
-            INSERT INTO player_awards (
-              player_id, player_name, season_id, tournament_id,
-              award_category, award_type, award_position,
-              player_category, awarded_by, notes,
-              performance_stats
-            )
-            VALUES (
-              ${topScorer[0].player_id}, ${topScorer[0].player_name}, ${seasonId}, ${tournamentId},
-              'individual', 'Golden Boot', 'Winner',
-              NULL, 'system', 'Auto-awarded based on goals scored',
-              ${JSON.stringify({ goals: topScorer[0].total_goals })}
-            )
-            ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
-            RETURNING *
+          const playerStats = await sql`
+            SELECT team_id, team
+            FROM realplayerstats
+            WHERE player_id = ${topScorer[0].player_id} AND season_id = ${seasonId}
+            LIMIT 1
           `;
+          const teamId = playerStats.length > 0 ? playerStats[0].team_id : null;
+          const teamName = playerStats.length > 0 ? playerStats[0].team : null;
+          const performanceStats = { goals: topScorer[0].total_goals };
 
-          if (result.length > 0) {
-            awardsGiven++;
-            awards.push({ award_type: 'Golden Boot', player_name: topScorer[0].player_name });
-            console.log(`    ✅ Winner: ${topScorer[0].player_name} (${topScorer[0].total_goals} goals)`);
+          if (useNewAwardsTable) {
+            const existingAward = await sql`
+              SELECT id FROM awards
+              WHERE tournament_id = ${tournamentId}
+                AND season_id = ${seasonId}
+                AND award_type = 'Golden Boot'
+                AND player_id = ${topScorer[0].player_id}
+              LIMIT 1
+            `;
+            if (existingAward.length === 0) {
+              const awardId = `award_Golden_Boot_${tournamentId}_${seasonId}_season_${Date.now()}`;
+              const result = await sql`
+                INSERT INTO awards (
+                  id, award_type, tournament_id, season_id,
+                  round_number, week_number,
+                  player_id, player_name, team_id, team_name,
+                  performance_stats, selected_by, selected_by_name, notes
+                )
+                VALUES (
+                  ${awardId}, 'Golden Boot', ${tournamentId}, ${seasonId},
+                  NULL, NULL,
+                  ${topScorer[0].player_id}, ${topScorer[0].player_name}, ${teamId}, ${teamName},
+                  ${JSON.stringify(performanceStats)},
+                  'system', 'System', 'Auto-awarded based on goals scored'
+                )
+                RETURNING *
+              `;
+              if (result.length > 0) {
+                awardsGiven++;
+                awards.push({ award_type: 'Golden Boot', player_name: topScorer[0].player_name });
+                console.log(`    ✅ Winner: ${topScorer[0].player_name} (${topScorer[0].total_goals} goals)`);
+              }
+            }
+          } else {
+            const result = await sql`
+              INSERT INTO player_awards (
+                player_id, player_name, season_id, tournament_id,
+                award_category, award_type, award_position,
+                player_category, awarded_by, notes,
+                performance_stats
+              )
+              VALUES (
+                ${topScorer[0].player_id}, ${topScorer[0].player_name}, ${seasonId}, ${tournamentId},
+                'individual', 'Golden Boot', 'Winner',
+                NULL, 'system', 'Auto-awarded based on goals scored',
+                ${JSON.stringify(performanceStats)}
+              )
+              ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
+              RETURNING *
+            `;
+            if (result.length > 0) {
+              awardsGiven++;
+              awards.push({ award_type: 'Golden Boot', player_name: topScorer[0].player_name });
+              console.log(`    ✅ Winner: ${topScorer[0].player_name} (${topScorer[0].total_goals} goals)`);
+            }
           }
         }
       } else if (awardType === 'Golden Glove') {
@@ -187,32 +238,76 @@ async function awardTournamentSpecificAwards(
         `;
 
         if (topKeeper.length > 0) {
-          const result = await sql`
-            INSERT INTO player_awards (
-              player_id, player_name, season_id, tournament_id,
-              award_category, award_type, award_position,
-              player_category, awarded_by, notes,
-              performance_stats
-            )
-            VALUES (
-              ${topKeeper[0].player_id}, ${topKeeper[0].player_name}, ${seasonId}, ${tournamentId},
-              'individual', 'Golden Glove', 'Winner',
-              NULL, 'system', 'Auto-awarded based on goals conceded per match',
-              ${JSON.stringify({ 
-                goals_conceded: topKeeper[0].total_goals_conceded,
-                matches: topKeeper[0].total_matches,
-                goals_per_match: parseFloat(topKeeper[0].goals_per_match).toFixed(2),
-                clean_sheets: topKeeper[0].total_clean_sheets
-              })}
-            )
-            ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
-            RETURNING *
+          const playerStats = await sql`
+            SELECT team_id, team
+            FROM realplayerstats
+            WHERE player_id = ${topKeeper[0].player_id} AND season_id = ${seasonId}
+            LIMIT 1
           `;
+          const teamId = playerStats.length > 0 ? playerStats[0].team_id : null;
+          const teamName = playerStats.length > 0 ? playerStats[0].team : null;
+          const performanceStats = { 
+            goals_conceded: topKeeper[0].total_goals_conceded,
+            matches: topKeeper[0].total_matches,
+            goals_per_match: parseFloat(topKeeper[0].goals_per_match).toFixed(2),
+            clean_sheets: topKeeper[0].total_clean_sheets
+          };
 
-          if (result.length > 0) {
-            awardsGiven++;
-            awards.push({ award_type: 'Golden Glove', player_name: topKeeper[0].player_name });
-            console.log(`    ✅ Winner: ${topKeeper[0].player_name} (${parseFloat(topKeeper[0].goals_per_match).toFixed(2)} goals/match, ${topKeeper[0].total_clean_sheets} clean sheets)`);
+          if (useNewAwardsTable) {
+            const existingAward = await sql`
+              SELECT id FROM awards
+              WHERE tournament_id = ${tournamentId}
+                AND season_id = ${seasonId}
+                AND award_type = 'Golden Glove'
+                AND player_id = ${topKeeper[0].player_id}
+              LIMIT 1
+            `;
+            if (existingAward.length === 0) {
+              const awardId = `award_Golden_Glove_${tournamentId}_${seasonId}_season_${Date.now()}`;
+              const result = await sql`
+                INSERT INTO awards (
+                  id, award_type, tournament_id, season_id,
+                  round_number, week_number,
+                  player_id, player_name, team_id, team_name,
+                  performance_stats, selected_by, selected_by_name, notes
+                )
+                VALUES (
+                  ${awardId}, 'Golden Glove', ${tournamentId}, ${seasonId},
+                  NULL, NULL,
+                  ${topKeeper[0].player_id}, ${topKeeper[0].player_name}, ${teamId}, ${teamName},
+                  ${JSON.stringify(performanceStats)},
+                  'system', 'System', 'Auto-awarded based on goals conceded per match'
+                )
+                RETURNING *
+              `;
+              if (result.length > 0) {
+                awardsGiven++;
+                awards.push({ award_type: 'Golden Glove', player_name: topKeeper[0].player_name });
+                console.log(`    ✅ Winner: ${topKeeper[0].player_name} (${parseFloat(topKeeper[0].goals_per_match).toFixed(2)} goals/match, ${topKeeper[0].total_clean_sheets} clean sheets)`);
+              }
+            }
+          } else {
+            const result = await sql`
+              INSERT INTO player_awards (
+                player_id, player_name, season_id, tournament_id,
+                award_category, award_type, award_position,
+                player_category, awarded_by, notes,
+                performance_stats
+              )
+              VALUES (
+                ${topKeeper[0].player_id}, ${topKeeper[0].player_name}, ${seasonId}, ${tournamentId},
+                'individual', 'Golden Glove', 'Winner',
+                NULL, 'system', 'Auto-awarded based on goals conceded per match',
+                ${JSON.stringify(performanceStats)}
+              )
+              ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
+              RETURNING *
+            `;
+            if (result.length > 0) {
+              awardsGiven++;
+              awards.push({ award_type: 'Golden Glove', player_name: topKeeper[0].player_name });
+              console.log(`    ✅ Winner: ${topKeeper[0].player_name} (${parseFloat(topKeeper[0].goals_per_match).toFixed(2)} goals/match, ${topKeeper[0].total_clean_sheets} clean sheets)`);
+            }
           }
         }
       } else if (awardType === 'Golden Ball') {
@@ -254,30 +349,74 @@ async function awardTournamentSpecificAwards(
         `;
 
         if (bestPlayer.length > 0) {
-          const result = await sql`
-            INSERT INTO player_awards (
-              player_id, player_name, season_id, tournament_id,
-              award_category, award_type, award_position,
-              player_category, awarded_by, notes,
-              performance_stats
-            )
-            VALUES (
-              ${bestPlayer[0].player_id}, ${bestPlayer[0].player_name}, ${seasonId}, ${tournamentId},
-              'individual', 'Golden Ball', 'Winner',
-              NULL, 'system', 'Auto-awarded based on overall performance',
-              ${JSON.stringify({ 
-                goals: bestPlayer[0].total_goals,
-                clean_sheets: bestPlayer[0].total_clean_sheets
-              })}
-            )
-            ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
-            RETURNING *
+          const playerStats = await sql`
+            SELECT team_id, team
+            FROM realplayerstats
+            WHERE player_id = ${bestPlayer[0].player_id} AND season_id = ${seasonId}
+            LIMIT 1
           `;
+          const teamId = playerStats.length > 0 ? playerStats[0].team_id : null;
+          const teamName = playerStats.length > 0 ? playerStats[0].team : null;
+          const performanceStats = { 
+            goals: bestPlayer[0].total_goals,
+            clean_sheets: bestPlayer[0].total_clean_sheets
+          };
 
-          if (result.length > 0) {
-            awardsGiven++;
-            awards.push({ award_type: 'Golden Ball', player_name: bestPlayer[0].player_name });
-            console.log(`    ✅ Winner: ${bestPlayer[0].player_name}`);
+          if (useNewAwardsTable) {
+            const existingAward = await sql`
+              SELECT id FROM awards
+              WHERE tournament_id = ${tournamentId}
+                AND season_id = ${seasonId}
+                AND award_type = 'Golden Ball'
+                AND player_id = ${bestPlayer[0].player_id}
+              LIMIT 1
+            `;
+            if (existingAward.length === 0) {
+              const awardId = `award_Golden_Ball_${tournamentId}_${seasonId}_season_${Date.now()}`;
+              const result = await sql`
+                INSERT INTO awards (
+                  id, award_type, tournament_id, season_id,
+                  round_number, week_number,
+                  player_id, player_name, team_id, team_name,
+                  performance_stats, selected_by, selected_by_name, notes
+                )
+                VALUES (
+                  ${awardId}, 'Golden Ball', ${tournamentId}, ${seasonId},
+                  NULL, NULL,
+                  ${bestPlayer[0].player_id}, ${bestPlayer[0].player_name}, ${teamId}, ${teamName},
+                  ${JSON.stringify(performanceStats)},
+                  'system', 'System', 'Auto-awarded based on overall performance'
+                )
+                RETURNING *
+              `;
+              if (result.length > 0) {
+                awardsGiven++;
+                awards.push({ award_type: 'Golden Ball', player_name: bestPlayer[0].player_name });
+                console.log(`    ✅ Winner: ${bestPlayer[0].player_name}`);
+              }
+            }
+          } else {
+            const result = await sql`
+              INSERT INTO player_awards (
+                player_id, player_name, season_id, tournament_id,
+                award_category, award_type, award_position,
+                player_category, awarded_by, notes,
+                performance_stats
+              )
+              VALUES (
+                ${bestPlayer[0].player_id}, ${bestPlayer[0].player_name}, ${seasonId}, ${tournamentId},
+                'individual', 'Golden Ball', 'Winner',
+                NULL, 'system', 'Auto-awarded based on overall performance',
+                ${JSON.stringify(performanceStats)}
+              )
+              ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
+              RETURNING *
+            `;
+            if (result.length > 0) {
+              awardsGiven++;
+              awards.push({ award_type: 'Golden Ball', player_name: bestPlayer[0].player_name });
+              console.log(`    ✅ Winner: ${bestPlayer[0].player_name}`);
+            }
           }
         }
       } else if (awardType === 'Manager of Season') {
@@ -328,27 +467,63 @@ async function awardTournamentSpecificAwards(
             manager_name = 'Unknown Manager';
           }
 
-          const result = await sql`
-            INSERT INTO player_awards (
-              player_id, player_name, season_id, tournament_id,
-              award_category, award_type, award_position,
-              player_category, awarded_by, notes,
-              performance_stats
-            )
-            VALUES (
-              ${bestManager[0].team_id}, ${manager_name}, ${seasonId}, ${tournamentId},
-              'individual', 'Manager of Season', 'Winner',
-              NULL, 'system', 'Auto-awarded based on team performance',
-              ${JSON.stringify({ team: bestManager[0].team_name, points: bestManager[0].points })}
-            )
-            ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
-            RETURNING *
-          `;
+          const performanceStats = { team: bestManager[0].team_name, points: bestManager[0].points };
 
-          if (result.length > 0) {
-            awardsGiven++;
-            awards.push({ award_type: 'Manager of Season', player_name: manager_name });
-            console.log(`    ✅ Winner: ${manager_name} (${bestManager[0].team_name})`);
+          if (useNewAwardsTable) {
+            const existingAward = await sql`
+              SELECT id FROM awards
+              WHERE tournament_id = ${tournamentId}
+                AND season_id = ${seasonId}
+                AND award_type = 'Manager of Season'
+                AND player_id = ${bestManager[0].team_id}
+              LIMIT 1
+            `;
+            if (existingAward.length === 0) {
+              const awardId = `award_Manager_of_Season_${tournamentId}_${seasonId}_season_${Date.now()}`;
+              const result = await sql`
+                INSERT INTO awards (
+                  id, award_type, tournament_id, season_id,
+                  round_number, week_number,
+                  player_id, player_name, team_id, team_name,
+                  performance_stats, selected_by, selected_by_name, notes
+                )
+                VALUES (
+                  ${awardId}, 'Manager of Season', ${tournamentId}, ${seasonId},
+                  NULL, NULL,
+                  ${bestManager[0].team_id}, ${manager_name}, ${bestManager[0].team_id}, ${bestManager[0].team_name},
+                  ${JSON.stringify(performanceStats)},
+                  'system', 'System', 'Auto-awarded based on team performance'
+                )
+                RETURNING *
+              `;
+              if (result.length > 0) {
+                awardsGiven++;
+                awards.push({ award_type: 'Manager of Season', player_name: manager_name });
+                console.log(`    ✅ Winner: ${manager_name} (${bestManager[0].team_name})`);
+              }
+            }
+          } else {
+            const result = await sql`
+              INSERT INTO player_awards (
+                player_id, player_name, season_id, tournament_id,
+                award_category, award_type, award_position,
+                player_category, awarded_by, notes,
+                performance_stats
+              )
+              VALUES (
+                ${bestManager[0].team_id}, ${manager_name}, ${seasonId}, ${tournamentId},
+                'individual', 'Manager of Season', 'Winner',
+                NULL, 'system', 'Auto-awarded based on team performance',
+                ${JSON.stringify(performanceStats)}
+              )
+              ON CONFLICT (player_id, season_id, tournament_id, award_category, award_type, award_position) DO NOTHING
+              RETURNING *
+            `;
+            if (result.length > 0) {
+              awardsGiven++;
+              awards.push({ award_type: 'Manager of Season', player_name: manager_name });
+              console.log(`    ✅ Winner: ${manager_name} (${bestManager[0].team_name})`);
+            }
           }
         }
       } else if (awardType.startsWith('Best ')) {
