@@ -30,17 +30,12 @@ export async function PATCH(
 
     const fixture = fixtures[0];
 
-    // Mark as cancelled/null
     await sql`
       UPDATE fixtures
       SET 
         status = 'cancelled',
         match_status_reason = 'null_both_absent',
-        declared_by = ${declared_by || null},
-        declared_by_name = ${declared_by_name || null},
-        declared_at = NOW(),
-        updated_by = ${declared_by || null},
-        updated_by_name = ${declared_by_name || null},
+        played_date = NOW(),
         updated_at = NOW()
       WHERE id = ${fixtureId}
     `;
@@ -49,28 +44,25 @@ export async function PATCH(
     await sql`
       INSERT INTO fixture_audit_log (
         fixture_id,
-        action_type,
-        action_by,
-        action_by_name,
-        notes,
-        season_id,
-        round_number,
-        match_number,
-        changes
+        change_type,
+        changed_by,
+        changes,
+        tournament_id
       ) VALUES (
         ${fixtureId},
         'null_declared',
-        ${declared_by || 'system'},
         ${declared_by_name || 'Committee Admin'},
-        ${notes || 'Match declared NULL - both teams absent'},
-        ${fixture.season_id},
-        ${fixture.round_number},
-        ${fixture.match_number},
         ${JSON.stringify({
-      reason: 'both_teams_absent',
-      home_team: fixture.home_team_name,
-      away_team: fixture.away_team_name
-    })}
+          declared_by: declared_by || 'system',
+          notes: notes || 'Match declared NULL - both teams absent',
+          season_id: fixture.season_id,
+          round_number: fixture.round_number,
+          match_number: fixture.match_number,
+          reason: 'both_teams_absent',
+          home_team: fixture.home_team_name,
+          away_team: fixture.away_team_name
+        })},
+        ${fixture.season_id}
       )
     `;
 

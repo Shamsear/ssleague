@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
 import { sendNotificationToSeason } from '@/lib/notifications/send-notification';
+import { adminDb } from '@/lib/firebase/admin';
 
 // POST - Auto-award player awards based on tournament statistics
 export async function POST(request: NextRequest) {
@@ -284,7 +285,6 @@ async function awardTournamentSpecificAwards(
           SELECT 
             ts.team_id,
             ts.team_name,
-            ts.manager_name,
             ts.points
           FROM teamstats ts
           WHERE ts.season_id = ${seasonId}
@@ -293,7 +293,18 @@ async function awardTournamentSpecificAwards(
           LIMIT 1
         `;
 
-        if (bestManager.length > 0 && bestManager[0].manager_name) {
+        if (bestManager.length > 0) {
+          let manager_name = 'Unknown Manager';
+          try {
+            const teamDoc = await adminDb.collection('teams').doc(bestManager[0].team_id).get();
+            if (teamDoc.exists) {
+              const teamData = teamDoc.data();
+              manager_name = teamData?.owner_name || teamData?.manager_name || 'Unknown Manager';
+            }
+          } catch (firebaseErr) {
+            console.error('Error fetching manager name from Firebase:', firebaseErr);
+          }
+
           const result = await sql`
             INSERT INTO player_awards (
               player_id, player_name, season_id, tournament_id,
@@ -302,7 +313,7 @@ async function awardTournamentSpecificAwards(
               performance_stats
             )
             VALUES (
-              ${bestManager[0].team_id}, ${bestManager[0].manager_name}, ${seasonId}, ${tournamentId},
+              ${bestManager[0].team_id}, ${manager_name}, ${seasonId}, ${tournamentId},
               'individual', 'Manager of Season', 'Winner',
               NULL, 'system', 'Auto-awarded based on team performance',
               ${JSON.stringify({ team: bestManager[0].team_name, points: bestManager[0].points })}
@@ -313,8 +324,8 @@ async function awardTournamentSpecificAwards(
 
           if (result.length > 0) {
             awardsGiven++;
-            awards.push({ award_type: 'Manager of Season', player_name: bestManager[0].manager_name });
-            console.log(`    ✅ Winner: ${bestManager[0].manager_name} (${bestManager[0].team_name})`);
+            awards.push({ award_type: 'Manager of Season', player_name: manager_name });
+            console.log(`    ✅ Winner: ${manager_name} (${bestManager[0].team_name})`);
           }
         }
       } else if (awardType.startsWith('Best ')) {

@@ -13,128 +13,8 @@ async function revertMatchRewards(params: {
   oldResult: 'home_win' | 'away_win' | 'draw';
   seasonId: string;
 }) {
-  const sql = getTournamentDb();
-  const { fixtureId, oldResult, seasonId } = params;
-
-  // Get fixture details
-  const [fixture] = await sql`
-    SELECT home_team_id, away_team_id, tournament_id, round_number, leg
-    FROM fixtures
-    WHERE id = ${fixtureId}
-    LIMIT 1
-  `;
-
-  if (!fixture) {
-    console.log('Fixture not found for reward reversion');
-    return;
-  }
-
-  const { home_team_id, away_team_id, tournament_id, round_number, leg } = fixture;
-
-  // Get tournament rewards configuration
-  const [tournament] = await sql`
-    SELECT rewards
-    FROM tournaments
-    WHERE id = ${tournament_id}
-    LIMIT 1
-  `;
-
-  if (!tournament || !tournament.rewards || !tournament.rewards.match_results) {
-    console.log(`No match rewards configured for tournament ${tournament_id}`);
-    return;
-  }
-
-  const matchRewards = tournament.rewards.match_results;
-
-  // Determine what rewards were given based on old result
-  let homeECoin = 0, homeSSCoin = 0, awayECoin = 0, awaySSCoin = 0;
-
-  if (oldResult === 'home_win') {
-    homeECoin = matchRewards.win_ecoin || 0;
-    homeSSCoin = matchRewards.win_sscoin || 0;
-    awayECoin = matchRewards.loss_ecoin || 0;
-    awaySSCoin = matchRewards.loss_sscoin || 0;
-  } else if (oldResult === 'away_win') {
-    homeECoin = matchRewards.loss_ecoin || 0;
-    homeSSCoin = matchRewards.loss_sscoin || 0;
-    awayECoin = matchRewards.win_ecoin || 0;
-    awaySSCoin = matchRewards.win_sscoin || 0;
-  } else {
-    homeECoin = matchRewards.draw_ecoin || 0;
-    homeSSCoin = matchRewards.draw_sscoin || 0;
-    awayECoin = matchRewards.draw_ecoin || 0;
-    awaySSCoin = matchRewards.draw_sscoin || 0;
-  }
-
-  // Revert rewards from home team
-  if (homeECoin > 0 || homeSSCoin > 0) {
-    await sql`
-      UPDATE teams
-      SET 
-        football_budget = COALESCE(football_budget, 0) - ${homeECoin},
-        real_budget = COALESCE(real_budget, 0) - ${homeSSCoin},
-        updated_at = NOW()
-      WHERE id = ${home_team_id}
-    `;
-
-    // Record reversal transaction
-    await sql`
-      INSERT INTO transactions (
-        team_id,
-        season_id,
-        transaction_type,
-        amount_football,
-        amount_real,
-        description,
-        created_at
-      ) VALUES (
-        ${home_team_id},
-        ${seasonId},
-        'match_reward',
-        ${-homeECoin},
-        ${-homeSSCoin},
-        ${'Match Reward Reversal (Result Edited) - Round ' + round_number + (leg > 1 ? ' Leg ' + leg : '')},
-        NOW()
-      )
-    `;
-
-    console.log(`✅ Reverted match rewards from home team ${home_team_id}: eCoin -${homeECoin}, SSCoin -${homeSSCoin}`);
-  }
-
-  // Revert rewards from away team
-  if (awayECoin > 0 || awaySSCoin > 0) {
-    await sql`
-      UPDATE teams
-      SET 
-        football_budget = COALESCE(football_budget, 0) - ${awayECoin},
-        real_budget = COALESCE(real_budget, 0) - ${awaySSCoin},
-        updated_at = NOW()
-      WHERE id = ${away_team_id}
-    `;
-
-    // Record reversal transaction
-    await sql`
-      INSERT INTO transactions (
-        team_id,
-        season_id,
-        transaction_type,
-        amount_football,
-        amount_real,
-        description,
-        created_at
-      ) VALUES (
-        ${away_team_id},
-        ${seasonId},
-        'match_reward',
-        ${-awayECoin},
-        ${-awaySSCoin},
-        ${'Match Reward Reversal (Result Edited) - Round ' + round_number + (leg > 1 ? ' Leg ' + leg : '')},
-        NOW()
-      )
-    `;
-
-    console.log(`✅ Reverted match rewards from away team ${away_team_id}: eCoin -${awayECoin}, SSCoin -${awaySSCoin}`);
-  }
+  console.log('Skipping match reward reversion - teams and budgets are managed in Firebase/Auction DB');
+  return;
 }
 
 /**
@@ -145,135 +25,8 @@ async function distributeMatchRewards(params: {
   matchResult: 'home_win' | 'away_win' | 'draw';
   seasonId: string;
 }) {
-  const sql = getTournamentDb();
-  const { fixtureId, matchResult, seasonId } = params;
-
-  // Get fixture details
-  const [fixture] = await sql`
-    SELECT home_team_id, away_team_id, tournament_id, round_number, leg
-    FROM fixtures
-    WHERE id = ${fixtureId}
-    LIMIT 1
-  `;
-
-  if (!fixture) {
-    console.log('Fixture not found for rewards distribution');
-    return;
-  }
-
-  const { home_team_id, away_team_id, tournament_id, round_number, leg } = fixture;
-
-  // Get tournament rewards configuration
-  const [tournament] = await sql`
-    SELECT rewards
-    FROM tournaments
-    WHERE id = ${tournament_id}
-    LIMIT 1
-  `;
-
-  if (!tournament || !tournament.rewards || !tournament.rewards.match_results) {
-    console.log(`No match rewards configured for tournament ${tournament_id}`);
-    return;
-  }
-
-  const matchRewards = tournament.rewards.match_results;
-
-  // Determine rewards for each team
-  let homeECoin = 0, homeSSCoin = 0, awayECoin = 0, awaySSCoin = 0;
-  let homeResult = '', awayResult = '';
-
-  if (matchResult === 'home_win') {
-    homeECoin = matchRewards.win_ecoin || 0;
-    homeSSCoin = matchRewards.win_sscoin || 0;
-    awayECoin = matchRewards.loss_ecoin || 0;
-    awaySSCoin = matchRewards.loss_sscoin || 0;
-    homeResult = 'Win';
-    awayResult = 'Loss';
-  } else if (matchResult === 'away_win') {
-    homeECoin = matchRewards.loss_ecoin || 0;
-    homeSSCoin = matchRewards.loss_sscoin || 0;
-    awayECoin = matchRewards.win_ecoin || 0;
-    awaySSCoin = matchRewards.win_sscoin || 0;
-    homeResult = 'Loss';
-    awayResult = 'Win';
-  } else {
-    homeECoin = matchRewards.draw_ecoin || 0;
-    homeSSCoin = matchRewards.draw_sscoin || 0;
-    awayECoin = matchRewards.draw_ecoin || 0;
-    awaySSCoin = matchRewards.draw_sscoin || 0;
-    homeResult = 'Draw';
-    awayResult = 'Draw';
-  }
-
-  // Distribute rewards to home team
-  if (homeECoin > 0 || homeSSCoin > 0) {
-    await sql`
-      UPDATE teams
-      SET 
-        football_budget = COALESCE(football_budget, 0) + ${homeECoin},
-        real_budget = COALESCE(real_budget, 0) + ${homeSSCoin},
-        updated_at = NOW()
-      WHERE id = ${home_team_id}
-    `;
-
-    // Record transaction
-    await sql`
-      INSERT INTO transactions (
-        team_id,
-        season_id,
-        transaction_type,
-        amount_football,
-        amount_real,
-        description,
-        created_at
-      ) VALUES (
-        ${home_team_id},
-        ${seasonId},
-        'match_reward',
-        ${homeECoin},
-        ${homeSSCoin},
-        ${'Match Reward (' + homeResult + ') - Round ' + round_number + (leg > 1 ? ' Leg ' + leg : '') + ' [Corrected]'},
-        NOW()
-      )
-    `;
-
-    console.log(`✅ Distributed corrected match rewards to home team ${home_team_id}: eCoin ${homeECoin}, SSCoin ${homeSSCoin}`);
-  }
-
-  // Distribute rewards to away team
-  if (awayECoin > 0 || awaySSCoin > 0) {
-    await sql`
-      UPDATE teams
-      SET 
-        football_budget = COALESCE(football_budget, 0) + ${awayECoin},
-        real_budget = COALESCE(real_budget, 0) + ${awaySSCoin},
-        updated_at = NOW()
-      WHERE id = ${away_team_id}
-    `;
-
-    // Record transaction
-    await sql`
-      INSERT INTO transactions (
-        team_id,
-        season_id,
-        transaction_type,
-        amount_football,
-        amount_real,
-        description,
-        created_at
-      ) VALUES (
-        ${away_team_id},
-        ${seasonId},
-        'match_reward',
-        ${awayECoin},
-        ${awaySSCoin},
-        ${'Match Reward (' + awayResult + ') - Round ' + round_number + (leg > 1 ? ' Leg ' + leg : '') + ' [Corrected]'},
-        NOW()
-      )
-    `;
-
-    console.log(`✅ Distributed corrected match rewards to away team ${away_team_id}: eCoin ${awayECoin}, SSCoin ${awaySSCoin}`);
-  }
+  console.log('Skipping match reward distribution - teams and budgets are managed in Firebase/Auction DB');
+  return;
 }
 
 /**
@@ -292,7 +45,11 @@ export async function PATCH(
       matchups, 
       edited_by, 
       edited_by_name, 
-      edit_reason 
+      edit_reason,
+      motm_player_id,
+      motm_player_name,
+      home_penalty_goals,
+      away_penalty_goals
     } = body;
 
     if (!matchups || !Array.isArray(matchups)) {
@@ -302,9 +59,17 @@ export async function PATCH(
       );
     }
 
+    // Set fallback baseUrl for API requests to avoid undefined hostname errors in dev environments
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
     // Fetch fixture and old matchups
     const fixtures = await sql`
-      SELECT * FROM fixtures WHERE id = ${fixtureId} LIMIT 1
+      SELECT f.*, ts.scoring_type, f.knockout_format, f.scoring_system
+      FROM fixtures f
+      LEFT JOIN tournaments t ON f.tournament_id = t.id
+      LEFT JOIN tournament_settings ts ON t.id = ts.tournament_id
+      WHERE f.id = ${fixtureId}
+      LIMIT 1
     `;
 
     if (fixtures.length === 0) {
@@ -316,59 +81,78 @@ export async function PATCH(
 
     const fixture = fixtures[0];
     const seasonId = fixture.season_id;
+    const scoringType = fixture.scoring_system || fixture.scoring_type || 'goals';
+    const knockoutFormat = fixture.knockout_format;
+    const isFirstTimeSubmit = fixture.status !== 'completed';
+    const oldResult = fixture.result;
 
     // Fetch old matchups
     const oldMatchups = await sql`
-      SELECT * FROM matchups WHERE fixture_id = ${fixtureId}
+      SELECT * FROM matchups WHERE fixture_id = ${fixtureId} ORDER BY position ASC
     `;
 
-    // Step 1: Revert old stats
-    console.log('Reverting old stats...');
-    const revertStatsRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/realplayers/revert-fixture-stats`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        season_id: seasonId,
-        fixture_id: fixtureId,
-        matchups: oldMatchups.map((m: any) => ({
-          home_player_id: m.home_player_id,
-          home_player_name: m.home_player_name,
-          away_player_id: m.away_player_id,
-          away_player_name: m.away_player_name,
-          home_goals: m.home_goals,
-          away_goals: m.away_goals,
-        }))
-      })
+    // Merge old matchups with new scores from request body to preserve player IDs, substitutions, and is_null
+    const mergedMatchups = matchups.map((m: any) => {
+      const oldM = oldMatchups.find((om: any) => om.position === m.position);
+      if (!oldM) {
+        throw new Error(`Matchup at position ${m.position} not found in database`);
+      }
+      return {
+        ...oldM,
+        home_goals: m.home_goals,
+        away_goals: m.away_goals,
+      };
     });
 
-    if (!revertStatsRes.ok) {
-      throw new Error('Failed to revert stats');
-    }
+    if (!isFirstTimeSubmit) {
+      // Step 1: Revert old stats
+      console.log('Reverting old stats...');
+      const revertStatsRes = await fetch(`${baseUrl}/api/realplayers/revert-fixture-stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          season_id: seasonId,
+          fixture_id: fixtureId,
+          matchups: oldMatchups.map((m: any) => ({
+            home_player_id: m.home_player_id,
+            home_player_name: m.home_player_name,
+            away_player_id: m.away_player_id,
+            away_player_name: m.away_player_name,
+            home_goals: m.home_goals,
+            away_goals: m.away_goals,
+          }))
+        })
+      });
 
-    // Step 2: Revert old points
-    console.log('Reverting old points...');
-    const revertPointsRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/realplayers/revert-fixture-points`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fixture_id: fixtureId,
-        season_id: seasonId,
-        matchups: oldMatchups.map((m: any) => ({
-          home_player_id: m.home_player_id,
-          away_player_id: m.away_player_id,
-          home_goals: m.home_goals,
-          away_goals: m.away_goals,
-        }))
-      })
-    });
+      if (!revertStatsRes.ok) {
+        throw new Error('Failed to revert stats');
+      }
 
-    if (!revertPointsRes.ok) {
-      throw new Error('Failed to revert points');
+      // Step 2: Revert old points
+      console.log('Reverting old points...');
+      const revertPointsRes = await fetch(`${baseUrl}/api/realplayers/revert-fixture-points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fixture_id: fixtureId,
+          season_id: seasonId,
+          matchups: oldMatchups.map((m: any) => ({
+            home_player_id: m.home_player_id,
+            away_player_id: m.away_player_id,
+            home_goals: m.home_goals,
+            away_goals: m.away_goals,
+          }))
+        })
+      });
+
+      if (!revertPointsRes.ok) {
+        throw new Error('Failed to revert points');
+      }
     }
 
     // Step 3: Update matchups with new scores
     console.log('Updating matchups...');
-    for (const matchup of matchups) {
+    for (const matchup of mergedMatchups) {
       await sql`
         UPDATE matchups
         SET 
@@ -380,71 +164,100 @@ export async function PATCH(
       `;
     }
 
-    // Step 4: Calculate new fixture totals
-    const newHomeScore = matchups.reduce((sum: number, m: any) => sum + (m.home_goals || 0), 0);
-    const newAwayScore = matchups.reduce((sum: number, m: any) => sum + (m.away_goals || 0), 0);
-    const newResult = newHomeScore > newAwayScore ? 'home_win' : 
-                      newAwayScore > newHomeScore ? 'away_win' : 'draw';
+    // Destructure penalty goals and MOTM (or fall back to existing database columns)
+    const finalHomePenaltyGoals = home_penalty_goals !== undefined ? (Number(home_penalty_goals) || 0) : (Number(fixture.home_penalty_goals) || 0);
+    const finalAwayPenaltyGoals = away_penalty_goals !== undefined ? (Number(away_penalty_goals) || 0) : (Number(fixture.away_penalty_goals) || 0);
+    let finalMotmPlayerId = motm_player_id !== undefined ? motm_player_id : (fixture.motm_player_id || null);
+    let finalMotmPlayerName = motm_player_name !== undefined ? motm_player_name : (fixture.motm_player_name || null);
 
-    // Step 4.2: Delete old transactions for this fixture to prevent duplicates
-    console.log('🗑️  Deleting old transactions for this fixture...');
-    try {
-      await sql`
-        DELETE FROM transactions
-        WHERE description LIKE ${'%Fixture: ' + fixtureId + '%'}
-          AND transaction_type = 'match_reward'
-      `;
-      console.log('✅ Old transactions deleted');
-    } catch (txError) {
-      console.error('⚠️  Failed to delete old transactions:', txError);
-    }
-
-    // Step 4.3: Revert old match rewards if result changed
-    const oldResult = fixture.result;
-    if (oldResult && oldResult !== newResult) {
-      console.log(`🔄 Result changed from ${oldResult} to ${newResult} - adjusting match rewards...`);
-      try {
-        await revertMatchRewards({
-          fixtureId,
-          oldResult: oldResult as 'home_win' | 'away_win' | 'draw',
-          seasonId,
-        });
-        console.log('✅ Old match rewards reverted');
-      } catch (rewardError) {
-        console.error('⚠️ Failed to revert old match rewards:', rewardError);
-        // Continue anyway - we'll still distribute new rewards
-      }
-    }
-
-    // Step 4.5: Validate MOTM - clear if player was removed from match
-    if (fixture.motm_player_id) {
-      const motmStillInMatch = matchups.some(
-        (m: any) => m.home_player_id === fixture.motm_player_id || m.away_player_id === fixture.motm_player_id
+    // Validate MOTM - clear if player was removed from matchups
+    if (finalMotmPlayerId) {
+      const motmStillInMatch = mergedMatchups.some(
+        (m: any) => m.home_player_id === finalMotmPlayerId || m.away_player_id === finalMotmPlayerId
       );
 
       if (!motmStillInMatch) {
-        console.log(`⚠️  MOTM player ${fixture.motm_player_name} was removed from match - clearing MOTM`);
-        // Clear MOTM since the player is no longer in the match
-        await sql`
-          UPDATE fixtures
-          SET 
-            motm_player_id = NULL,
-            motm_player_name = NULL,
-            updated_at = NOW()
-          WHERE id = ${fixtureId}
-        `;
+        console.log(`⚠️ MOTM player ${finalMotmPlayerName} was removed from match - clearing MOTM`);
+        finalMotmPlayerId = null;
+        finalMotmPlayerName = null;
       }
     }
 
-    // Step 5: Update fixture
+    // Step 4: Calculate new fixture totals
+    const totalHomeSubPenalty = oldMatchups.reduce((sum: number, om: any) => sum + (Number(om.home_sub_penalty) || 0), 0);
+    const totalAwaySubPenalty = oldMatchups.reduce((sum: number, om: any) => sum + (Number(om.away_sub_penalty) || 0), 0);
+
+    let totalHomeScore = 0;
+    let totalAwayScore = 0;
+
+    if (knockoutFormat === 'round_robin' && scoringType === 'goals') {
+      let homeGoals = 0;
+      let awayGoals = 0;
+      for (const m of mergedMatchups) {
+        homeGoals += m.home_goals || 0;
+        awayGoals += m.away_goals || 0;
+      }
+      totalHomeScore = homeGoals + totalAwaySubPenalty + finalHomePenaltyGoals;
+      totalAwayScore = awayGoals + totalHomeSubPenalty + finalAwayPenaltyGoals;
+    } else if (scoringType === 'wins') {
+      for (const m of mergedMatchups) {
+        const homeMatchupScore = (m.home_goals || 0) + (Number(m.away_sub_penalty) || 0);
+        const awayMatchupScore = (m.away_goals || 0) + (Number(m.home_sub_penalty) || 0);
+        
+        if (homeMatchupScore > awayMatchupScore) {
+          totalHomeScore += 3;
+        } else if (awayMatchupScore > homeMatchupScore) {
+          totalAwayScore += 3;
+        } else {
+          totalHomeScore += 1;
+          totalAwayScore += 1;
+        }
+      }
+      totalHomeScore += finalHomePenaltyGoals;
+      totalAwayScore += finalAwayPenaltyGoals;
+    } else {
+      const matchupsHomeGoals = mergedMatchups.reduce((sum: number, m: any) => sum + (m.home_goals || 0), 0);
+      const matchupsAwayGoals = mergedMatchups.reduce((sum: number, m: any) => sum + (m.away_goals || 0), 0);
+      totalHomeScore = matchupsHomeGoals + totalAwaySubPenalty + finalHomePenaltyGoals;
+      totalAwayScore = matchupsAwayGoals + totalHomeSubPenalty + finalAwayPenaltyGoals;
+    }
+
+    const newHomeScore = totalHomeScore;
+    const newAwayScore = totalAwayScore;
+    const newResult = newHomeScore > newAwayScore ? 'home_win' : 
+                      newAwayScore > newHomeScore ? 'away_win' : 'draw';
+
+    if (!isFirstTimeSubmit) {
+      // Step 4.3: Revert old match rewards if result changed
+      if (oldResult && oldResult !== newResult) {
+        console.log(`🔄 Result changed from ${oldResult} to ${newResult} - adjusting match rewards...`);
+        try {
+          await revertMatchRewards({
+            fixtureId,
+            oldResult: oldResult as 'home_win' | 'away_win' | 'draw',
+            seasonId,
+          });
+          console.log('✅ Old match rewards reverted');
+        } catch (rewardError) {
+          console.error('⚠️ Failed to revert old match rewards:', rewardError);
+          // Continue anyway - we'll still distribute new rewards
+        }
+      }
+    }
+
+    // Step 5: Update fixture details
     await sql`
       UPDATE fixtures
       SET 
         home_score = ${newHomeScore},
         away_score = ${newAwayScore},
         result = ${newResult},
-        updated_by = ${edited_by || null},
-        updated_by_name = ${edited_by_name || null},
+        status = 'completed',
+        motm_player_id = ${finalMotmPlayerId},
+        motm_player_name = ${finalMotmPlayerName},
+        home_penalty_goals = ${finalHomePenaltyGoals},
+        away_penalty_goals = ${finalAwayPenaltyGoals},
+        played_date = NOW(),
         updated_at = NOW()
       WHERE id = ${fixtureId}
     `;
@@ -482,14 +295,14 @@ export async function PATCH(
 
     // Step 6: Apply new stats
     console.log('Applying new stats...');
-    const applyStatsRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/realplayers/update-stats`, {
+    const applyStatsRes = await fetch(`${baseUrl}/api/realplayers/update-stats`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         season_id: seasonId,
         fixture_id: fixtureId,
-        matchups: matchups,
-        motm_player_id: fixture.motm_player_id || null,
+        matchups: mergedMatchups,
+        motm_player_id: finalMotmPlayerId,
       })
     });
 
@@ -497,16 +310,16 @@ export async function PATCH(
       throw new Error('Failed to apply new stats');
     }
 
-    // Step 7: Apply new points (skip salary deduction since it was already done on initial submit)
+    // Step 7: Apply new points (skip salary deduction if this is an edit, but run it on first submit)
     console.log('Applying new points...');
-    const applyPointsRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/realplayers/update-points`, {
+    const applyPointsRes = await fetch(`${baseUrl}/api/realplayers/update-points`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fixture_id: fixtureId,
         season_id: seasonId,
-        matchups: matchups,
-        skip_salary_deduction: true, // Don't deduct salary again on edit
+        matchups: mergedMatchups,
+        skip_salary_deduction: !isFirstTimeSubmit, // Don't deduct salary again on edit
       })
     });
 
@@ -517,14 +330,14 @@ export async function PATCH(
     // Step 7.1: Adjust salaries for player swaps
     console.log('Adjusting salaries for player swaps...');
     try {
-      const salaryAdjustRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/realplayers/adjust-salaries-for-edit`, {
+      const salaryAdjustRes = await fetch(`${baseUrl}/api/realplayers/adjust-salaries-for-edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fixture_id: fixtureId,
           season_id: seasonId,
           old_matchups: oldMatchups,
-          new_matchups: matchups,
+          new_matchups: mergedMatchups,
         })
       });
 
@@ -542,7 +355,7 @@ export async function PATCH(
     // Step 7.5: Update team stats with new results
     console.log('Updating team stats...');
     try {
-      const teamStatsRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/teamstats/update-stats`, {
+      const teamStatsRes = await fetch(`${baseUrl}/api/teamstats/update-stats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -550,11 +363,11 @@ export async function PATCH(
           fixture_id: fixtureId,
           home_team_id: fixture.home_team_id,
           away_team_id: fixture.away_team_id,
-          home_score: totalHomeScore,
-          away_score: totalAwayScore,
-          home_penalty_goals: Number(home_penalty_goals) || 0,
-          away_penalty_goals: Number(away_penalty_goals) || 0,
-          matchups: matchups,
+          home_score: newHomeScore,
+          away_score: newAwayScore,
+          home_penalty_goals: finalHomePenaltyGoals,
+          away_penalty_goals: finalAwayPenaltyGoals,
+          matchups: mergedMatchups,
           is_edit: true  // Flag to indicate this is an edit
         })
       });
@@ -572,85 +385,86 @@ export async function PATCH(
       throw new Error('Failed to update team stats');
     }
 
-    // Step 7.5.5: Delete old fantasy team bonus points to prevent duplicates
-    console.log('🗑️  Deleting old fantasy team bonus points...');
-    try {
-      const { getFantasyDb } = await import('@/lib/neon/fantasy-config');
-      const fantasySql = getFantasyDb();
-      
-      await fantasySql`
-        DELETE FROM fantasy_team_bonus_points
-        WHERE fixture_id = ${fixtureId}
-      `;
-      console.log('✅ Old fantasy team bonus points deleted');
-    } catch (bonusError) {
-      console.error('⚠️  Failed to delete old fantasy bonus points:', bonusError);
-    }
+    if (!isFirstTimeSubmit) {
+      // Step 7.5.5: Delete old fantasy team bonus points to prevent duplicates
+      console.log('🗑️  Deleting old fantasy team bonus points...');
+      try {
+        const { getFantasyDb } = await import('@/lib/neon/fantasy-config');
+        const fantasySql = getFantasyDb();
+        
+        await fantasySql`
+          DELETE FROM fantasy_team_bonus_points
+          WHERE fixture_id = ${fixtureId}
+        `;
+        console.log('✅ Old fantasy team bonus points deleted');
+      } catch (bonusError) {
+        console.error('⚠️  Failed to delete old fantasy bonus points:', bonusError);
+      }
 
-    // Step 7.6: Revert old fantasy points
-    console.log('Reverting old fantasy points...');
-    try {
-      const revertFantasyRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/fantasy/revert-fixture-points`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fixture_id: fixtureId,
-          season_id: seasonId,
-        })
-      });
-
-      if (revertFantasyRes.ok) {
-        const revertData = await revertFantasyRes.json();
-        console.log(`✓ Reverted fantasy points: ${revertData.message}`);
-
-        // Step 7.7: Recalculate fantasy points with new results
-        console.log('Recalculating fantasy points...');
-        const recalcFantasyRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/fantasy/calculate-points`, {
+      // Step 7.6: Revert old fantasy points
+      console.log('Reverting old fantasy points...');
+      try {
+        const revertFantasyRes = await fetch(`${baseUrl}/api/fantasy/revert-fixture-points`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fixture_id: fixtureId,
             season_id: seasonId,
-            round_number: fixture.round_number,
           })
         });
 
-        if (recalcFantasyRes.ok) {
-          const fantasyData = await recalcFantasyRes.json();
-          console.log(`✅ Fantasy points recalculated: ${fantasyData.message}`);
+        if (revertFantasyRes.ok) {
+          const revertData = await revertFantasyRes.json();
+          console.log(`✓ Reverted fantasy points: ${revertData.message}`);
         } else {
-          console.log('ℹ️ No fantasy league active or fantasy calculation skipped');
+          console.log('ℹ️ No fantasy points to revert');
         }
+      } catch (fantasyError) {
+        console.error('Fantasy points revert error (non-critical):', fantasyError);
+      }
+    }
+
+    // Step 7.7: Calculate fantasy points with new results
+    console.log('Recalculating fantasy points...');
+    try {
+      const recalcFantasyRes = await fetch(`${baseUrl}/api/fantasy/calculate-points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fixture_id: fixtureId,
+          season_id: seasonId,
+          round_number: fixture.round_number,
+        })
+      });
+
+      if (recalcFantasyRes.ok) {
+        const fantasyData = await recalcFantasyRes.json();
+        console.log(`✅ Fantasy points recalculated: ${fantasyData.message}`);
       } else {
-        console.log('ℹ️ No fantasy points to revert');
+        console.log('ℹ️ No fantasy league active or fantasy calculation skipped');
       }
     } catch (fantasyError) {
-      console.error('Fantasy points update error (non-critical):', fantasyError);
-      // Don't fail the whole request if fantasy fails
+      console.error('Fantasy points calculation error (non-critical):', fantasyError);
     }
 
     // Step 8: Log in audit trail
     await sql`
       INSERT INTO fixture_audit_log (
         fixture_id,
-        action_type,
-        action_by,
-        action_by_name,
-        notes,
-        season_id,
-        round_number,
-        match_number,
-        changes
+        change_type,
+        changed_by,
+        changes,
+        tournament_id
       ) VALUES (
         ${fixtureId},
         'result_edited',
-        ${edited_by || 'system'},
         ${edited_by_name || 'Committee Admin'},
-        ${edit_reason || 'Result edited by committee admin'},
-        ${fixture.season_id},
-        ${fixture.round_number},
-        ${fixture.match_number},
         ${JSON.stringify({
+          edited_by: edited_by || 'system',
+          edit_reason: edit_reason || 'Result edited by committee admin',
+          season_id: fixture.season_id,
+          round_number: fixture.round_number,
+          match_number: fixture.match_number,
           old: {
             home_score: fixture.home_score,
             away_score: fixture.away_score,
@@ -661,10 +475,11 @@ export async function PATCH(
             home_score: newHomeScore,
             away_score: newAwayScore,
             result: newResult,
-            matchups: matchups
+            matchups: mergedMatchups
           },
           rewards_adjusted: oldResult !== newResult
-        })}
+        })},
+        ${fixture.season_id}
       )
     `;
 
@@ -692,7 +507,7 @@ export async function PATCH(
         home_score: newHomeScore,
         away_score: newAwayScore,
         result: newResult,
-        motm_player_name: fixture.motm_player_name || null,
+        motm_player_name: finalMotmPlayerName || null,
       });
       console.log('✅ New match result news generated');
     } catch (newsError) {

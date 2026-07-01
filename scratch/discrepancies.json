@@ -1,0 +1,382 @@
+[
+  {
+    "player_id": "sspslpsl0021",
+    "player_name": "RAHUL KL",
+    "team": "Psychoz",
+    "db": {
+      "matches": 20,
+      "goals_scored": 43,
+      "goals_conceded": 32,
+      "wins": 10,
+      "draws": 3,
+      "losses": 7,
+      "clean_sheets": 5,
+      "motm": 2,
+      "points": 111
+    },
+    "calc": {
+      "matches": 24,
+      "goals_scored": 46,
+      "goals_conceded": 44,
+      "wins": 10,
+      "draws": 4,
+      "losses": 10,
+      "clean_sheets": 5,
+      "motm": 2,
+      "points": 111
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 3,
+      "goals_conceded": 12,
+      "wins": 0,
+      "draws": 1,
+      "losses": 3,
+      "clean_sheets": 0,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0087",
+    "player_name": "Gokul Krishna",
+    "team": "Psychoz",
+    "db": {
+      "matches": 18,
+      "goals_scored": 42,
+      "goals_conceded": 30,
+      "wins": 10,
+      "draws": 3,
+      "losses": 5,
+      "clean_sheets": 3,
+      "motm": 2,
+      "points": 242
+    },
+    "calc": {
+      "matches": 22,
+      "goals_scored": 49,
+      "goals_conceded": 34,
+      "wins": 13,
+      "draws": 3,
+      "losses": 6,
+      "clean_sheets": 4,
+      "motm": 2,
+      "points": 242
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 7,
+      "goals_conceded": 4,
+      "wins": 3,
+      "draws": 0,
+      "losses": 1,
+      "clean_sheets": 1,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0066",
+    "player_name": "MUNEER BIN ALI",
+    "team": "Varsity Soccers",
+    "db": {
+      "matches": 32,
+      "goals_scored": 42,
+      "goals_conceded": 45,
+      "wins": 12,
+      "draws": 9,
+      "losses": 11,
+      "clean_sheets": 10,
+      "motm": 7,
+      "points": 100
+    },
+    "calc": {
+      "matches": 36,
+      "goals_scored": 45,
+      "goals_conceded": 55,
+      "wins": 12,
+      "draws": 10,
+      "losses": 14,
+      "clean_sheets": 10,
+      "motm": 7,
+      "points": 100
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 3,
+      "goals_conceded": 10,
+      "wins": 0,
+      "draws": 1,
+      "losses": 3,
+      "clean_sheets": 0,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0029",
+    "player_name": "Jithin Sabri",
+    "team": "Varsity Soccers",
+    "db": {
+      "matches": 31,
+      "goals_scored": 57,
+      "goals_conceded": 52,
+      "wins": 13,
+      "draws": 7,
+      "losses": 11,
+      "clean_sheets": 7,
+      "motm": 2,
+      "points": 165
+    },
+    "calc": {
+      "matches": 35,
+      "goals_scored": 61,
+      "goals_conceded": 60,
+      "wins": 14,
+      "draws": 7,
+      "losses": 14,
+      "clean_sheets": 8,
+      "motm": 2,
+      "points": 165
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 4,
+      "goals_conceded": 8,
+      "wins": 1,
+      "draws": 0,
+      "losses": 3,
+      "clean_sheets": 1,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0004",
+    "player_name": "Goku",
+    "team": "Psychoz",
+    "db": {
+      "matches": 30,
+      "goals_scored": 96,
+      "goals_conceded": 41,
+      "wins": 22,
+      "draws": 5,
+      "losses": 3,
+      "clean_sheets": 8,
+      "motm": 6,
+      "points": 262
+    },
+    "calc": {
+      "matches": 34,
+      "goals_scored": 104,
+      "goals_conceded": 44,
+      "wins": 24,
+      "draws": 6,
+      "losses": 4,
+      "clean_sheets": 10,
+      "motm": 10,
+      "points": 262
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 8,
+      "goals_conceded": 3,
+      "wins": 2,
+      "draws": 1,
+      "losses": 1,
+      "clean_sheets": 2,
+      "motm": 4,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0061",
+    "player_name": "Muhammad fasal ",
+    "team": "Varsity Soccers",
+    "db": {
+      "matches": 33,
+      "goals_scored": 57,
+      "goals_conceded": 50,
+      "wins": 15,
+      "draws": 7,
+      "losses": 11,
+      "clean_sheets": 7,
+      "motm": 4,
+      "points": 136
+    },
+    "calc": {
+      "matches": 37,
+      "goals_scored": 62,
+      "goals_conceded": 54,
+      "wins": 17,
+      "draws": 7,
+      "losses": 13,
+      "clean_sheets": 8,
+      "motm": 4,
+      "points": 136
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 5,
+      "goals_conceded": 4,
+      "wins": 2,
+      "draws": 0,
+      "losses": 2,
+      "clean_sheets": 1,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0144",
+    "player_name": "Fayaz",
+    "team": "Varsity Soccers",
+    "db": {
+      "matches": 32,
+      "goals_scored": 83,
+      "goals_conceded": 41,
+      "wins": 20,
+      "draws": 6,
+      "losses": 6,
+      "clean_sheets": 14,
+      "motm": 9,
+      "points": 284
+    },
+    "calc": {
+      "matches": 36,
+      "goals_scored": 92,
+      "goals_conceded": 45,
+      "wins": 22,
+      "draws": 6,
+      "losses": 8,
+      "clean_sheets": 16,
+      "motm": 9,
+      "points": 284
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 9,
+      "goals_conceded": 4,
+      "wins": 2,
+      "draws": 0,
+      "losses": 2,
+      "clean_sheets": 2,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0093",
+    "player_name": "Jinto",
+    "team": "Psychoz",
+    "db": {
+      "matches": 29,
+      "goals_scored": 72,
+      "goals_conceded": 35,
+      "wins": 22,
+      "draws": 2,
+      "losses": 5,
+      "clean_sheets": 8,
+      "motm": 4,
+      "points": 162
+    },
+    "calc": {
+      "matches": 33,
+      "goals_scored": 76,
+      "goals_conceded": 39,
+      "wins": 25,
+      "draws": 2,
+      "losses": 6,
+      "clean_sheets": 11,
+      "motm": 4,
+      "points": 162
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 4,
+      "goals_conceded": 4,
+      "wins": 3,
+      "draws": 0,
+      "losses": 1,
+      "clean_sheets": 3,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0063",
+    "player_name": "Adil Mubarack",
+    "team": "Varsity Soccers",
+    "db": {
+      "matches": 31,
+      "goals_scored": 80,
+      "goals_conceded": 53,
+      "wins": 17,
+      "draws": 5,
+      "losses": 9,
+      "clean_sheets": 9,
+      "motm": 2,
+      "points": 255
+    },
+    "calc": {
+      "matches": 35,
+      "goals_scored": 86,
+      "goals_conceded": 60,
+      "wins": 19,
+      "draws": 5,
+      "losses": 11,
+      "clean_sheets": 10,
+      "motm": 2,
+      "points": 255
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 6,
+      "goals_conceded": 7,
+      "wins": 2,
+      "draws": 0,
+      "losses": 2,
+      "clean_sheets": 1,
+      "motm": 0,
+      "points": 0
+    }
+  },
+  {
+    "player_id": "sspslpsl0020",
+    "player_name": "Muhammed Fijas ",
+    "team": "Psychoz",
+    "db": {
+      "matches": 31,
+      "goals_scored": 98,
+      "goals_conceded": 23,
+      "wins": 24,
+      "draws": 6,
+      "losses": 1,
+      "clean_sheets": 15,
+      "motm": 14,
+      "points": 430
+    },
+    "calc": {
+      "matches": 35,
+      "goals_scored": 110,
+      "goals_conceded": 24,
+      "wins": 28,
+      "draws": 6,
+      "losses": 1,
+      "clean_sheets": 18,
+      "motm": 14,
+      "points": 430
+    },
+    "diff": {
+      "matches": 4,
+      "goals_scored": 12,
+      "goals_conceded": 1,
+      "wins": 4,
+      "draws": 0,
+      "losses": 0,
+      "clean_sheets": 3,
+      "motm": 0,
+      "points": 0
+    }
+  }
+]

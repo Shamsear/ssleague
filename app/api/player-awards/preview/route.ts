@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournamentDb } from '@/lib/neon/tournament-config';
+import { adminDb } from '@/lib/firebase/admin';
 
 // POST - Preview player awards based on tournament statistics
 export async function POST(request: NextRequest) {
@@ -176,7 +177,6 @@ export async function POST(request: NextRequest) {
           SELECT 
             ts.team_id,
             ts.team_name,
-            ts.manager_name,
             ts.points
           FROM teamstats ts
           WHERE ts.season_id = ${season_id}
@@ -185,11 +185,22 @@ export async function POST(request: NextRequest) {
           LIMIT 1
         `;
 
-        if (bestManager.length > 0 && bestManager[0].manager_name) {
+        if (bestManager.length > 0) {
+          let manager_name = 'Unknown Manager';
+          try {
+            const teamDoc = await adminDb.collection('teams').doc(bestManager[0].team_id).get();
+            if (teamDoc.exists) {
+              const teamData = teamDoc.data();
+              manager_name = teamData?.owner_name || teamData?.manager_name || 'Unknown Manager';
+            }
+          } catch (firebaseErr) {
+            console.error('Error fetching manager name from Firebase:', firebaseErr);
+          }
+
           preview.push({
             award_type: 'Manager of Season',
             player_id: bestManager[0].team_id,
-            player_name: bestManager[0].manager_name,
+            player_name: manager_name,
             stats: { team: bestManager[0].team_name, points: bestManager[0].points }
           });
         }
